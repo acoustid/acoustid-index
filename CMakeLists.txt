@@ -1,0 +1,36 @@
+cmake_minimum_required(VERSION 2.6)
+
+project(fpserver)
+
+find_package(Qt4 COMPONENTS QtCore QtNetwork REQUIRED)
+include(${QT_USE_FILE})
+
+set(fpindexlib_SOURCES
+	src/store/buffered_input_stream.cpp
+	src/store/input_stream.cpp
+	src/store/output_stream.cpp
+	src/store/directory.cpp
+	src/store/fs_input_stream.cpp
+)
+add_library(fpindexlib ${fpindexlib_SOURCES})
+
+set(fpserver_HEADERS listener.h connection.h)
+set(fpserver_SOURCES listener.cpp connection.cpp main.cpp)
+
+qt4_wrap_cpp(fpserver_MOC ${fpserver_HEADERS})
+
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+
+add_executable(fpserver
+    ${fpserver_SOURCES}
+    ${fpserver_MOC}
+)
+target_link_libraries(fpserver ${QT_LIBRARIES})
+
+add_executable(fpindex fpindex.cpp)
+target_link_libraries(fpindex ${QT_LIBRARIES} fpindexlib)
+
+add_executable(fpsearch fpsearch.cpp)
+target_link_libraries(fpsearch ${QT_LIBRARIES} fpindexlib)
+

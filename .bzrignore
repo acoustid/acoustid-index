@@ -1,0 +1,8 @@
+moc_*.cxx
+cmake_install.cmake
+Makefile
+CMakeFiles
+CMakeCache.txt
+./fpserver
+./fpindex
+./fpsearch
