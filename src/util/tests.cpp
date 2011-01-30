@@ -14,26 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef ACOUSTID_INPUT_STREAM_H_
-#define ACOUSTID_INPUT_STREAM_H_
+#include <gtest/gtest.h>
 
-#include <stdlib.h>
-#include <stdint.h>
+int main(int argc, char **argv)
+{
+	::testing::InitGoogleTest(&argc, argv);
+	return RUN_ALL_TESTS();
+}
 
-class InputStream {
-
-public:
-
-	virtual ~InputStream();
-
-	virtual uint8_t readByte() = 0;
-	virtual uint16_t readInt16();
-	virtual uint32_t readInt32();
-	virtual uint32_t readVInt32();
-
-	virtual size_t position() = 0;
-	virtual void seek(size_t position) = 0;
-
-};
-
-#endif

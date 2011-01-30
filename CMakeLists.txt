@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 2.6)
 
 project(fpserver)
 
+find_package(GTest)
 find_package(Qt4 COMPONENTS QtCore QtNetwork REQUIRED)
 include(${QT_USE_FILE})
 
@@ -19,8 +20,11 @@ set(fpserver_SOURCES listener.cpp connection.cpp main.cpp)
 
 qt4_wrap_cpp(fpserver_MOC ${fpserver_HEADERS})
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories(
+	${CMAKE_CURRENT_BINARY_DIR}
+	${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${GTEST_INCLUDE_DIRS}
+)
 
 add_executable(fpserver
     ${fpserver_SOURCES}
@@ -33,4 +37,16 @@ target_link_libraries(fpindex ${QT_LIBRARIES} fpindexlib)
 
 add_executable(fpsearch fpsearch.cpp)
 target_link_libraries(fpsearch ${QT_LIBRARIES} fpindexlib)
+
+set(tests_SOURCES
+		src/store/input_stream_test.cpp
+		src/store/output_stream_test.cpp
+		src/util/tests.cpp
+)
+
+if(GTEST_FOUND)
+	add_executable(tests ${tests_SOURCES})
+	target_link_libraries(tests ${GTEST_BOTH_LIBRARIES} -lpthread fpindexlib)
+	add_custom_target(check ./tests $ENV{GTEST_FLAGS} DEPENDS tests)
+endif()
 

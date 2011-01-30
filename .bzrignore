@@ -6,3 +6,5 @@ CMakeCache.txt
 ./fpserver
 ./fpindex
 ./fpsearch
+./tests
+doc/tree_structure.png

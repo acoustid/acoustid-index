@@ -14,26 +14,13 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef ACOUSTID_INPUT_STREAM_H_
-#define ACOUSTID_INPUT_STREAM_H_
+#ifndef ACOUSTID_UTIL_TEST_UTILS_H_
+#define ACOUSTID_UTIL_TEST_UTILS_H_
 
-#include <stdlib.h>
-#include <stdint.h>
-
-class InputStream {
-
-public:
-
-	virtual ~InputStream();
-
-	virtual uint8_t readByte() = 0;
-	virtual uint16_t readInt16();
-	virtual uint32_t readInt32();
-	virtual uint32_t readVInt32();
-
-	virtual size_t position() = 0;
-	virtual void seek(size_t position) = 0;
-
-};
+#define ASSERT_INTARRAY_EQ(v1, v2, length) \
+	for (size_t i = 0; i < (length); i++) { \
+		ASSERT_EQ((long long)(v1)[i], (long long)(v2)[i]) << "Different value at index " << i; \
+	} 
 
 #endif
+
