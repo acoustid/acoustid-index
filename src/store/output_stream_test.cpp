@@ -47,7 +47,7 @@ private:
 	uint8_t *m_data;
 };
 
-TEST(OutputStream, WriteByte)
+TEST(OutputStreamTest, WriteByte)
 {
 	uint8_t data[100];
 	uint8_t expected[] = { 1, 255 };
@@ -64,7 +64,7 @@ TEST(OutputStream, WriteByte)
 	ASSERT_INTARRAY_EQ(&expected[1], data, outputStream.position());
 }
 
-TEST(OutputStream, WriteInt16)
+TEST(OutputStreamTest, WriteInt16)
 {
 	uint8_t data[100];
 	uint8_t expected[] = { 0, 1, /**/ 1, 0, /**/ 255, 255 };
@@ -86,7 +86,7 @@ TEST(OutputStream, WriteInt16)
 	ASSERT_INTARRAY_EQ(&expected[4], data, outputStream.position());
 }
 
-TEST(OutputStream, WriteInt32)
+TEST(OutputStreamTest, WriteInt32)
 {
 	uint8_t data[100];
 	uint8_t expected[] = { 0, 0, 0, 1, /**/ 0, 0, 1, 0, /**/ 0, 0, 255, 255,
@@ -114,7 +114,7 @@ TEST(OutputStream, WriteInt32)
 	ASSERT_INTARRAY_EQ(&expected[12], data, outputStream.position());
 }
 
-TEST(OutputStream, WriteVInt32)
+TEST(OutputStreamTest, WriteVInt32)
 {
 	uint8_t data[100];
 	SimpleOutputStream outputStream(data);

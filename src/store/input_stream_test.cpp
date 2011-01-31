@@ -40,7 +40,7 @@ private:
 	uint8_t *m_data;
 };
 
-TEST(InputStream, ReadByte)
+TEST(InputStreamTest, ReadByte)
 {
 	uint8_t data[] = { 0, 0xff, 0x01 };
 	SimpleInputStream inputStream(data);
@@ -49,7 +49,7 @@ TEST(InputStream, ReadByte)
 	ASSERT_EQ(0x01, inputStream.readByte());
 }
 
-TEST(InputStream, ReadInt16)
+TEST(InputStreamTest, ReadInt16)
 {
 	uint8_t data[] = { 0, 0, 0xff, 0xff, 0x01, 0x02 };
 	SimpleInputStream inputStream(data);
@@ -58,7 +58,7 @@ TEST(InputStream, ReadInt16)
 	ASSERT_EQ(0x0102, inputStream.readInt16());
 }
 
-TEST(InputStream, ReadInt32)
+TEST(InputStreamTest, ReadInt32)
 {
 	uint8_t data[] = { 0, 0, 0, 0, 0xff, 0xff, 0xff, 0xff, 0x01, 0x02, 0x03, 0x04 };
 	SimpleInputStream inputStream(data);
@@ -67,7 +67,7 @@ TEST(InputStream, ReadInt32)
 	ASSERT_EQ(0x01020304, inputStream.readInt32());
 }
 
-TEST(InputStream, ReadVInt32)
+TEST(InputStreamTest, ReadVInt32)
 {
 	uint8_t data[] = {
 		1,
