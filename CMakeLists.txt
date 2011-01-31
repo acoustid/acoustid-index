@@ -8,6 +8,7 @@ include(${QT_USE_FILE})
 
 set(fpindexlib_SOURCES
 	src/index/segment_index_writer.cpp
+	src/index/segment_index.cpp
 	src/index/segment_data_writer.cpp
 	src/store/buffered_input_stream.cpp
 	src/store/buffered_output_stream.cpp
@@ -47,6 +48,7 @@ target_link_libraries(fpsearch ${QT_LIBRARIES} fpindexlib)
 
 set(tests_SOURCES
 		src/index/segment_index_writer_test.cpp
+		src/index/segment_index_test.cpp
 		src/store/input_stream_test.cpp
 		src/store/output_stream_test.cpp
 		src/store/fs_output_stream_test.cpp
