@@ -43,14 +43,14 @@ TEST_F(SegmentIndexWriterTest, Write)
 	SegmentIndexWriter writer(stream);
 	writer.setBlockSize(256);
 	writer.setIndexInterval(2);
-	writer.addItem(0);
-	writer.addItem(1);
 	writer.addItem(2);
 	writer.addItem(3);
 	writer.addItem(4);
 	writer.addItem(5);
 	writer.addItem(6);
 	writer.addItem(7);
+	writer.addItem(8);
+	writer.addItem(9);
 	writer.close();
 
 	FSInputStream *input = FSInputStream::open(stream->fileName());
@@ -59,24 +59,14 @@ TEST_F(SegmentIndexWriterTest, Write)
 	ASSERT_EQ(2, input->readInt32());
 
 	ASSERT_EQ(8, input->readInt32());
-	ASSERT_EQ(0, input->readInt32());
-	ASSERT_EQ(1, input->readInt32());
-	ASSERT_EQ(2, input->readInt32());
-	ASSERT_EQ(3, input->readInt32());
-	ASSERT_EQ(4, input->readInt32());
-	ASSERT_EQ(5, input->readInt32());
-	ASSERT_EQ(6, input->readInt32());
-	ASSERT_EQ(7, input->readInt32());
-
-	ASSERT_EQ(4, input->readInt32());
-	ASSERT_EQ(0, input->readInt32());
-	ASSERT_EQ(2, input->readInt32());
-	ASSERT_EQ(4, input->readInt32());
-	ASSERT_EQ(6, input->readInt32());
-
-	ASSERT_EQ(2, input->readInt32());
-	ASSERT_EQ(0, input->readInt32());
-	ASSERT_EQ(4, input->readInt32());
+	ASSERT_EQ(2, input->readVInt32());
+	ASSERT_EQ(1, input->readVInt32());
+	ASSERT_EQ(1, input->readVInt32());
+	ASSERT_EQ(1, input->readVInt32());
+	ASSERT_EQ(1, input->readVInt32());
+	ASSERT_EQ(1, input->readVInt32());
+	ASSERT_EQ(1, input->readVInt32());
+	ASSERT_EQ(1, input->readVInt32());
 
 	delete input;
 }

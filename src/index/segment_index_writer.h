@@ -38,9 +38,14 @@ public:
 	void close();
 
 private:
+	void maybeWriteHeader();
+
 	size_t m_blockSize;
 	size_t m_indexInterval;
-	QList<uint32_t> m_keys;
+	uint32_t m_lastKey;
+	size_t m_keyCount;
+	size_t m_keyCountPosition;
+	bool m_headerWritten;
 	OutputStream *m_output;
 };
 
