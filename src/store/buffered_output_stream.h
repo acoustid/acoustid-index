@@ -14,18 +14,36 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef ACOUSTID_COMMON_H_
-#define ACOUSTID_COMMON_H_
+#ifndef ACOUSTID_BUFFERED_OUTPUT_STREAM_H_
+#define ACOUSTID_BUFFERED_OUTPUT_STREAM_H_
 
-#ifndef _XOPEN_SOURCE
-#define _XOPEN_SOURCE 700
-#endif
+#include "output_stream.h"
 
-#include <stdint.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <fcntl.h>
+class BufferedOutputStream : public OutputStream 
+{
+public:
+	BufferedOutputStream(size_t bufferSize = 1024 * 8);
+	~BufferedOutputStream();
 
-#include <QDebug>
+	size_t bufferSize();
+	void setBufferSize(size_t size);
+
+	void writeByte(uint8_t);
+
+	size_t position();
+	void seek(size_t position);
+	void flush();
+
+protected:
+	virtual size_t write(uint8_t *data, size_t offset, size_t length) = 0;
+	void refill();
+
+private:
+	uint8_t *m_buffer;
+	size_t m_bufferSize;
+	size_t m_start;
+	size_t m_position;
+	size_t m_length;
+};
 
 #endif
