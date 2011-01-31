@@ -46,6 +46,7 @@ add_executable(fpsearch fpsearch.cpp)
 target_link_libraries(fpsearch ${QT_LIBRARIES} fpindexlib)
 
 set(tests_SOURCES
+		src/index/segment_index_writer_test.cpp
 		src/store/input_stream_test.cpp
 		src/store/output_stream_test.cpp
 		src/store/fs_output_stream_test.cpp

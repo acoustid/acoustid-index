@@ -17,6 +17,7 @@
 #ifndef ACOUSTID_INDEX_SEGMENT_INDEX_WRITER_H_
 #define ACOUSTID_INDEX_SEGMENT_INDEX_WRITER_H_
 
+#include <QList>
 #include "common.h"
 
 class OutputStream;
@@ -27,9 +28,19 @@ public:
 	SegmentIndexWriter(OutputStream *output);
 	virtual ~SegmentIndexWriter();
 
-	virtual void addItem(uint32_t key);
+	size_t blockSize() const { return m_blockSize; }
+	void setBlockSize(size_t i) { m_blockSize = i; }
+
+	size_t indexInterval() const { return m_indexInterval; }
+	void setIndexInterval(size_t i) { m_indexInterval = i; }
+
+	void addItem(uint32_t key);
+	void close();
 
 private:
+	size_t m_blockSize;
+	size_t m_indexInterval;
+	QList<uint32_t> m_keys;
 	OutputStream *m_output;
 };
 

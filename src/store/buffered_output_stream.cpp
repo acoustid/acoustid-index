@@ -24,6 +24,7 @@ BufferedOutputStream::BufferedOutputStream(size_t bufferSize)
 
 BufferedOutputStream::~BufferedOutputStream()
 {
+	flush();
 	if (m_buffer) {
 		delete[] m_buffer;
 	}
