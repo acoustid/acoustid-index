@@ -20,6 +20,13 @@ OutputStream::~OutputStream()
 {
 }
 
+void OutputStream::writeBytes(uint8_t *data, size_t length)
+{
+	for (size_t i = 0; i < length; i++) {
+		writeByte(data[i]);
+	}
+}
+
 void OutputStream::writeInt16(uint16_t i)
 {
 	writeByte((i >>  8) & 0xff);

@@ -144,3 +144,16 @@ TEST(OutputStreamTest, WriteVInt32)
 	ASSERT_INTARRAY_EQ(expected_16385, data, outputStream.position());
 }
 
+TEST(OutputStreamTest, WriteBytes)
+{
+	uint8_t data[100];
+	SimpleOutputStream outputStream(data);
+
+	uint8_t d[] = { 1, 2, 3, 4 };
+	outputStream.reset();
+	outputStream.writeBytes(d, 4);
+	uint8_t expected[] = { 1, 2, 3, 4 };
+	ASSERT_EQ(4, outputStream.position());
+	ASSERT_INTARRAY_EQ(expected, data, outputStream.position());
+}
+

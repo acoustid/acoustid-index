@@ -36,6 +36,7 @@ public:
 
 protected:
 	virtual size_t write(uint8_t *data, size_t offset, size_t length) = 0;
+	void flushBuffer();
 	void refill();
 
 private:

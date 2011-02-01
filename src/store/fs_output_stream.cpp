@@ -27,6 +27,7 @@ FSOutputStream::FSOutputStream(int fd)
 
 FSOutputStream::~FSOutputStream()
 {
+	flushBuffer(); // XXX this indirectly calls a virtual function write()
 }
 
 int FSOutputStream::fileDescriptor() const

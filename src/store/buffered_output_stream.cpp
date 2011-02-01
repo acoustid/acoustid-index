@@ -24,7 +24,6 @@ BufferedOutputStream::BufferedOutputStream(size_t bufferSize)
 
 BufferedOutputStream::~BufferedOutputStream()
 {
-	flush();
 	if (m_buffer) {
 		delete[] m_buffer;
 	}
@@ -37,7 +36,7 @@ size_t BufferedOutputStream::bufferSize()
 
 void BufferedOutputStream::setBufferSize(size_t bufferSize)
 {
-	flush();
+	flushBuffer();
 	m_bufferSize = bufferSize;
 	if (m_buffer) {
 		delete[] m_buffer;
@@ -48,18 +47,23 @@ void BufferedOutputStream::setBufferSize(size_t bufferSize)
 void BufferedOutputStream::writeByte(uint8_t b)
 {
 	if (m_position >= m_bufferSize) {
-		flush();
+		flushBuffer();
 	}
 	m_buffer[m_position++] = b;
 }
 
-void BufferedOutputStream::flush()
+void BufferedOutputStream::flushBuffer()
 {
 	if (m_position) {
 		write(m_buffer, m_start, m_position);
 		m_start += m_position;
 		m_position = 0;
 	}
+}
+
+void BufferedOutputStream::flush()
+{
+	flushBuffer();
 }
 
 size_t BufferedOutputStream::position()
@@ -69,7 +73,7 @@ size_t BufferedOutputStream::position()
 
 void BufferedOutputStream::seek(size_t position)
 {
-	flush();
+	flushBuffer();
 	m_start = position;
 }
 

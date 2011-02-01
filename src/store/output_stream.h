@@ -26,6 +26,7 @@ public:
 	virtual ~OutputStream();
 
 	virtual void writeByte(uint8_t value) = 0;
+	virtual void writeBytes(uint8_t *data, size_t length);
 	virtual void writeInt16(uint16_t value);
 	virtual void writeInt32(uint32_t value);
 	virtual void writeVInt32(uint32_t value);
