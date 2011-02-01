@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#include "common.h"
 #include "buffered_output_stream.h"
 
 BufferedOutputStream::BufferedOutputStream(size_t bufferSize)
@@ -50,6 +51,20 @@ void BufferedOutputStream::writeByte(uint8_t b)
 		flushBuffer();
 	}
 	m_buffer[m_position++] = b;
+}
+
+void BufferedOutputStream::writeBytes(uint8_t *data, size_t length)
+{
+	if (m_position + length <= m_bufferSize) {
+		memcpy(m_buffer + m_position, data, length);
+		m_position += length;
+		if (m_position + length == m_bufferSize) {
+			flushBuffer();
+		}
+		return;
+	}
+	flushBuffer();
+	write(data, m_start, m_position);
 }
 
 void BufferedOutputStream::flushBuffer()

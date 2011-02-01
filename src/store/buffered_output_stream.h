@@ -29,6 +29,7 @@ public:
 	void setBufferSize(size_t size);
 
 	void writeByte(uint8_t);
+	void writeBytes(uint8_t *data, size_t length);
 
 	size_t position();
 	void seek(size_t position);
