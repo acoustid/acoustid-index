@@ -47,7 +47,7 @@ size_t FSOutputStream::write(uint8_t *data, size_t offset, size_t length)
 FSOutputStream *FSOutputStream::open(const QString &fileName)
 {
 	QByteArray encodedFileName = QFile::encodeName(fileName);
-	int fd = ::open(encodedFileName.data(), O_WRONLY | O_CREAT);
+	int fd = ::open(encodedFileName.data(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 	return new FSOutputStream(fd);
 }
 

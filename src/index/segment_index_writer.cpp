@@ -26,6 +26,7 @@ SegmentIndexWriter::SegmentIndexWriter(OutputStream *output)
 
 SegmentIndexWriter::~SegmentIndexWriter()
 {
+	close();
 }
 
 void SegmentIndexWriter::maybeWriteHeader()

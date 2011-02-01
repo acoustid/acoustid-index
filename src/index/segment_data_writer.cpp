@@ -53,6 +53,7 @@ SegmentDataWriter::SegmentDataWriter(OutputStream *output, SegmentIndexWriter *i
 
 SegmentDataWriter::~SegmentDataWriter()
 {
+	close();
 	if (m_buffer) {
 		delete m_buffer;
 	}
