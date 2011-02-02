@@ -45,6 +45,10 @@ int main(int argc, char **argv)
 	qDebug() << "Need to look at blocks" << blocks;
 	qDebug() << "Index search took" << timer.elapsed() << "ms";
 
+	delete indexReader;
+	delete inputStream;
+	delete index;
+
 	return 0;
 }
 
