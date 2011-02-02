@@ -23,9 +23,6 @@ BufferedInputStream::BufferedInputStream(size_t bufferSize)
 
 BufferedInputStream::~BufferedInputStream()
 {
-	if (m_buffer) {
-		delete[] m_buffer;
-	}
 }
 
 size_t BufferedInputStream::bufferSize()
@@ -36,10 +33,7 @@ size_t BufferedInputStream::bufferSize()
 void BufferedInputStream::setBufferSize(size_t bufferSize)
 {
 	m_bufferSize = bufferSize;
-	if (m_buffer) {
-		delete[] m_buffer;
-		m_buffer = 0;
-	}
+	m_buffer.reset(0);
 	m_start += m_position;
 	m_position = 0;
 	m_length = 0;
@@ -58,9 +52,9 @@ void BufferedInputStream::refill()
 	m_start += m_position;
 	m_position = 0;
 	if (!m_buffer) {
-		m_buffer = new uint8_t[m_bufferSize];
+		m_buffer.reset(new uint8_t[m_bufferSize]);
 	}
-	m_length = read(m_buffer, m_start, m_bufferSize);
+	m_length = read(m_buffer.get(), m_start, m_bufferSize);
 }
 
 size_t BufferedInputStream::position()

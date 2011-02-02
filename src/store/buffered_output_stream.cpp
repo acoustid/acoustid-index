@@ -20,14 +20,11 @@
 BufferedOutputStream::BufferedOutputStream(size_t bufferSize)
 	: m_bufferSize(bufferSize), m_start(0), m_position(0)
 {
-	m_buffer = new uint8_t[m_bufferSize];
+	m_buffer.reset(new uint8_t[m_bufferSize]);
 }
 
 BufferedOutputStream::~BufferedOutputStream()
 {
-	if (m_buffer) {
-		delete[] m_buffer;
-	}
 }
 
 size_t BufferedOutputStream::bufferSize()
@@ -39,10 +36,7 @@ void BufferedOutputStream::setBufferSize(size_t bufferSize)
 {
 	flushBuffer();
 	m_bufferSize = bufferSize;
-	if (m_buffer) {
-		delete[] m_buffer;
-		m_buffer = new uint8_t[m_bufferSize];
-	}
+	m_buffer.reset(new uint8_t[m_bufferSize]);
 }
 
 void BufferedOutputStream::writeByte(uint8_t b)
@@ -56,7 +50,7 @@ void BufferedOutputStream::writeByte(uint8_t b)
 void BufferedOutputStream::writeBytes(uint8_t *data, size_t length)
 {
 	if (m_position + length <= m_bufferSize) {
-		memcpy(m_buffer + m_position, data, length);
+		memcpy(&m_buffer[m_position], data, length);
 		m_position += length;
 		if (m_position + length == m_bufferSize) {
 			flushBuffer();
@@ -70,7 +64,7 @@ void BufferedOutputStream::writeBytes(uint8_t *data, size_t length)
 void BufferedOutputStream::flushBuffer()
 {
 	if (m_position) {
-		write(m_buffer, m_start, m_position);
+		write(m_buffer.get(), m_start, m_position);
 		m_start += m_position;
 		m_position = 0;
 	}

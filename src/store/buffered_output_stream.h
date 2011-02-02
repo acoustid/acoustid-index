@@ -17,6 +17,7 @@
 #ifndef ACOUSTID_BUFFERED_OUTPUT_STREAM_H_
 #define ACOUSTID_BUFFERED_OUTPUT_STREAM_H_
 
+#include "common.h"
 #include "output_stream.h"
 
 class BufferedOutputStream : public OutputStream 
@@ -41,7 +42,7 @@ protected:
 	void refill();
 
 private:
-	uint8_t *m_buffer;
+	ScopedArrayPtr<uint8_t> m_buffer;
 	size_t m_bufferSize;
 	size_t m_start;
 	size_t m_position;

@@ -46,7 +46,7 @@ private:
 	uint32_t m_lastValue;
 	size_t m_itemCount;
 	uint8_t *m_ptr;
-	uint8_t *m_buffer;
+	ScopedArrayPtr<uint8_t> m_buffer;
 };
 
 #endif

@@ -29,8 +29,8 @@ SegmentIndex::SegmentIndex(size_t blockSize, size_t indexInterval, size_t keyCou
 		m_levelCount++;
 	}
 	// allocate enough memory
-	m_levelKeyCounts = new size_t[m_levelCount];
-	m_levelKeys = new uint32_t*[m_levelCount];
+	m_levelKeyCounts.reset(new size_t[m_levelCount]);
+	m_levelKeys.reset(new uint32_t*[m_levelCount]);
 	levelKeyCount = keyCount;
 	for (size_t i = 0; i < m_levelCount; i++) {
 		m_levelKeyCounts[i] = levelKeyCount;
@@ -44,8 +44,6 @@ SegmentIndex::~SegmentIndex()
 	for (size_t i = 0; i < m_levelCount; i++) {
 		delete[] m_levelKeys[i];
 	}
-	delete[] m_levelKeys;
-	delete[] m_levelKeyCounts;
 }
 
 void SegmentIndex::rebuild()

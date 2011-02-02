@@ -136,6 +136,10 @@ class ScopedPtr {
     return ptr != p;
   }
 
+  operator bool() const {
+    return ptr != 0;
+  }
+
   T* get() const  {
     return ptr;
   }
@@ -234,6 +238,10 @@ class ScopedArrayPtr {
     return ptr != p;
   }
 
+  operator bool() const {
+    return ptr != 0;
+  }
+
   T* get() const {
     return ptr;
   }
@@ -327,6 +335,10 @@ class ScopedPtrMalloc {
 
   bool operator!=(T* p) const {
     return ptr != p;
+  }
+
+  operator bool() const {
+    return ptr != 0;
   }
 
   T* get() const {

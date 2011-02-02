@@ -38,8 +38,8 @@ private:
 	size_t m_blockSize;
 	size_t m_indexInterval;
 	size_t m_levelCount;
-	size_t *m_levelKeyCounts;
-	uint32_t **m_levelKeys;
+	ScopedArrayPtr<size_t> m_levelKeyCounts;
+	ScopedArrayPtr<uint32_t*> m_levelKeys;
 };
 
 #endif

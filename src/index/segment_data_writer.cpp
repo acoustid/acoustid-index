@@ -54,40 +54,34 @@ SegmentDataWriter::SegmentDataWriter(OutputStream *output, SegmentIndexWriter *i
 SegmentDataWriter::~SegmentDataWriter()
 {
 	close();
-	if (m_buffer) {
-		delete m_buffer;
-	}
 }
 
 void SegmentDataWriter::setBlockSize(size_t blockSize)
 {
-	if (m_buffer) {
-		delete m_buffer;
-		m_buffer = 0;
-	}
+	m_buffer.reset();
 	m_blockSize = blockSize;
 }
 
 void SegmentDataWriter::writeBlock()
 {
 	m_output->writeVInt32(m_itemCount);
-	m_output->writeBytes(m_buffer, m_blockSize - checkVInt32Size(m_itemCount)); // XXX
-	m_ptr = m_buffer;
+	m_output->writeBytes(m_buffer.get(), m_blockSize - checkVInt32Size(m_itemCount)); // XXX
+	m_ptr = m_buffer.get();
 	m_itemCount = 0;
-	memset(m_buffer, 0, m_blockSize);
+	memset(m_buffer.get(), 0, m_blockSize);
 }
 
 void SegmentDataWriter::addItem(uint32_t key, uint32_t value)
 {
 	if (!m_buffer) {
-		m_buffer = new uint8_t[m_blockSize];
-		m_ptr = m_buffer;
+		m_buffer.reset(new uint8_t[m_blockSize]);
+		m_ptr = m_buffer.get();
 	}
 
 	uint32_t keyDelta = m_itemCount ? key - m_lastKey : ~0;
 	uint32_t valueDelta = keyDelta ? value : value - m_lastValue;
 
-	size_t currentSize = m_ptr - m_buffer;
+	size_t currentSize = m_ptr - m_buffer.get();
 	currentSize += checkVInt32Size(m_itemCount + 1);
 	currentSize += m_itemCount ? checkVInt32Size(keyDelta) : 0;
 	currentSize += checkVInt32Size(valueDelta);
