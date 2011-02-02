@@ -27,7 +27,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#include <QScopedPointer>
 #include <QDebug>
+
+#include "util/scoped_ptr.h"
 
 #endif

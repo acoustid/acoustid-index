@@ -11,14 +11,14 @@
 
 int main(int argc, char **argv)
 {
-	QScopedPointer<OutputStream> indexStream(FSOutputStream::open("segment0.fii"));
-	QScopedPointer<OutputStream> dataStream(FSOutputStream::open("segment0.fid"));
+	ScopedPtr<OutputStream> indexStream(FSOutputStream::open("segment0.fii"));
+	ScopedPtr<OutputStream> dataStream(FSOutputStream::open("segment0.fid"));
 
-	SegmentIndexWriter indexWriter(indexStream.data());
+	SegmentIndexWriter indexWriter(indexStream.get());
 	indexWriter.setBlockSize(256);
 	indexWriter.setIndexInterval(256);
 
-	SegmentDataWriter dataWriter(dataStream.data(), &indexWriter, indexWriter.blockSize());
+	SegmentDataWriter dataWriter(dataStream.get(), &indexWriter, indexWriter.blockSize());
 
 	size_t itemCount = 0;
 	QTextStream in(stdin);

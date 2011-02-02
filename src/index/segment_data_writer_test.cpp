@@ -16,7 +16,6 @@
 
 #include <gtest/gtest.h>
 #include <QFile>
-#include <QScopedPointer>
 #include "util/test_utils.h"
 #include "store/fs_input_stream.h"
 #include "store/fs_output_stream.h"
@@ -59,7 +58,7 @@ TEST_F(SegmentDataWriterTest, Write)
 	writer.addItem(202, 303);
 	writer.close();
 
-	QScopedPointer<FSInputStream> input(FSInputStream::open(stream->fileName()));
+	ScopedPtr<FSInputStream> input(FSInputStream::open(stream->fileName()));
 
 	ASSERT_EQ(3, input->readVInt32());
 	ASSERT_EQ(300, input->readVInt32());
