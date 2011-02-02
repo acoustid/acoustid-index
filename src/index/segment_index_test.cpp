@@ -35,10 +35,11 @@ TEST(SegmentIndexTest, Sizes2)
 	SegmentIndex index(256, 10, 1024);
 	EXPECT_EQ(256, index.blockSize());
 	EXPECT_EQ(10, index.indexInterval());
-	EXPECT_EQ(3, index.levelCount());
+	EXPECT_EQ(4, index.levelCount());
 	EXPECT_EQ(1024, index.levelKeyCount(0));
-	EXPECT_EQ(102, index.levelKeyCount(1));
-	EXPECT_EQ(10, index.levelKeyCount(2));
+	EXPECT_EQ(103, index.levelKeyCount(1));
+	EXPECT_EQ(11, index.levelKeyCount(2));
+	EXPECT_EQ(2, index.levelKeyCount(3));
 }
 
 TEST(SegmentIndexTest, Sizes3)
@@ -48,8 +49,9 @@ TEST(SegmentIndexTest, Sizes3)
 	EXPECT_EQ(10, index.indexInterval());
 	EXPECT_EQ(4, index.levelCount());
 	EXPECT_EQ(1111, index.levelKeyCount(0));
-	EXPECT_EQ(111, index.levelKeyCount(1));
-	EXPECT_EQ(11, index.levelKeyCount(2));
+	EXPECT_EQ(112, index.levelKeyCount(1));
+	EXPECT_EQ(12, index.levelKeyCount(2));
+	EXPECT_EQ(2, index.levelKeyCount(3));
 }
 
 TEST(SegmentIndexTest, Rebuild)

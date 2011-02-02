@@ -26,7 +26,7 @@ SegmentIndex::SegmentIndex(size_t blockSize, size_t indexInterval, size_t keyCou
 	m_levelCount = 1;
 	size_t levelKeyCount = keyCount;
 	while (levelKeyCount > indexInterval) {
-		levelKeyCount /= indexInterval;
+		levelKeyCount = (levelKeyCount + indexInterval - 1) / indexInterval;
 		m_levelCount++;
 	}
 	// allocate enough memory
@@ -36,7 +36,7 @@ SegmentIndex::SegmentIndex(size_t blockSize, size_t indexInterval, size_t keyCou
 	for (size_t i = 0; i < m_levelCount; i++) {
 		m_levelKeyCounts[i] = levelKeyCount;
 		m_levelKeys[i] = new uint32_t[levelKeyCount];
-		levelKeyCount /= indexInterval;
+		levelKeyCount = (levelKeyCount + indexInterval - 1) / indexInterval;
 	}
 }
 
