@@ -14,34 +14,35 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef ACOUSTID_INDEX_SEGMENT_INDEX_H_
-#define ACOUSTID_INDEX_SEGMENT_INDEX_H_
+#ifndef ACOUSTID_UTIL_SEARCH_UTILS_H_
+#define ACOUSTID_UTIL_SEARCH_UTILS_H_
 
 #include "common.h"
+#include <algorithm>
 
-class SegmentIndex
+/**
+ * Find the position of the first element within the range [lo,hi) of the
+ * sorted array that is smaller than the specified value. Returns -1 if
+ * no such element exists.
+ */
+template<typename T>
+inline ssize_t searchFirstSmaller(T *data, size_t lo, size_t hi, T value)
 {
-public:
-	SegmentIndex(size_t blockSize, size_t indexInterval, size_t keyCount);
-	virtual ~SegmentIndex();
+	ssize_t index = std::lower_bound(data + lo, data + hi, value) - data;
+	return index - 1;
+}
 
-	size_t blockSize() { return m_blockSize; }
-	size_t indexInterval() { return m_indexInterval; }
-
-	size_t levelCount() { return m_levelCount; }
-	size_t levelKeyCount(size_t level) { return m_levelKeyCounts[level]; }
-	uint32_t *levelKeys(size_t level) { return m_levelKeys[level]; }
-
-	void rebuild();
-
-	bool search(uint32_t key, size_t *firstBlock, size_t *lastBlock);
-
-private:
-	size_t m_blockSize;
-	size_t m_indexInterval;
-	size_t m_levelCount;
-	ScopedArrayPtr<size_t> m_levelKeyCounts;
-	ScopedArrayPtr<uint32_t*> m_levelKeys;
-};
+/**
+ * Find the position of the last element within the range [lo,hi) of the
+ * sorted array that is greater than the specified value.
+ */
+template<typename T>
+inline ssize_t scanFirstGreater(T *data, size_t lo, size_t hi, T value)
+{
+	while (lo < hi && data[lo] <= value) {
+		++lo;
+	}
+	return lo;
+}
 
 #endif

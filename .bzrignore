@@ -9,3 +9,4 @@ CMakeCache.txt
 ./tests
 doc/tree_structure.png
 ./fpstats
+./fpsearch2

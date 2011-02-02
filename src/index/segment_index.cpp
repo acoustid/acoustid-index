@@ -16,6 +16,7 @@
 
 #include <math.h>
 #include "store/output_stream.h"
+#include "util/search_utils.h"
 #include "segment_index.h"
 
 SegmentIndex::SegmentIndex(size_t blockSize, size_t indexInterval, size_t keyCount)
@@ -58,3 +59,58 @@ void SegmentIndex::rebuild()
 	}
 }
 
+bool SegmentIndex::search(uint32_t key, size_t *firstBlock, size_t *lastBlock)
+{
+	size_t level = m_levelCount - 1;
+	size_t lo = 0, hi = m_levelKeyCounts[level];
+	do {
+		uint32_t *keys = m_levelKeys[level];
+		ssize_t pos = searchFirstSmaller(keys, lo, std::min(hi, m_levelKeyCounts[level]), key);
+		if (pos == -1) {
+			if (keys[0] > key) {
+				return false;
+			}
+			pos = 0;
+		}
+		hi = m_indexInterval * scanFirstGreater(keys, lo, m_levelKeyCounts[level], key);
+		lo = m_indexInterval * pos;
+	} while (level--);
+	*firstBlock = lo / m_indexInterval;
+	*lastBlock = hi / m_indexInterval - 1;
+	return true;
+}
+
+/*class MultiBinarySearcher
+{
+
+	void search(size_t left, size_t right, size_t highKey, size_t lowKey);
+
+private:
+	uint32_t *m_data;
+	uint32_t *m_keys;
+};
+
+void MultiBinarySearcher::search(size_t lo, size_t hi, size_t loKey, size_t hiKey)
+{
+	if (loKey >= hiKey) {
+		return;
+	}
+	size_t midKey = loKey + (hiKey - loKey) / 2;
+
+	size_t first = searchFirstSmaller(lo, hi, m_keys[midKey]);
+	if (first == -1) {
+		for (int i = 0; i <= midKey; i++) {
+			m_min[i] = -1;
+		}
+		search(lo, hi, midKey + 1, hiKey);
+		return;
+	}
+
+	size_t last = scanFirstGreater(first, hi, m_keys[midKey]);
+	m_min[midKey] = first;
+	m_max[midKey] = last;
+
+	search(left, position + 1, lowKey, middleKey);
+	search(position, right, middleKey + 1, highKey);
+}
+*/

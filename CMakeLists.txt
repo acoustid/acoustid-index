@@ -47,6 +47,9 @@ target_link_libraries(fpstats ${QT_LIBRARIES} fpindexlib)
 add_executable(fpsearch fpsearch.cpp)
 target_link_libraries(fpsearch ${QT_LIBRARIES} fpindexlib)
 
+add_executable(fpsearch2 fpsearch2.cpp)
+target_link_libraries(fpsearch2 ${QT_LIBRARIES} fpindexlib)
+
 set(tests_SOURCES
 		src/index/segment_data_writer_test.cpp
 		src/index/segment_index_test.cpp
@@ -55,6 +58,7 @@ set(tests_SOURCES
 		src/store/input_stream_test.cpp
 		src/store/output_stream_test.cpp
 		src/store/fs_output_stream_test.cpp
+		src/util/search_utils_test.cpp
 		src/util/tests.cpp
 )
 
