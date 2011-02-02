@@ -21,8 +21,15 @@ set(fpindexlib_SOURCES
 )
 add_library(fpindexlib ${fpindexlib_SOURCES})
 
-set(fpserver_HEADERS listener.h connection.h)
-set(fpserver_SOURCES listener.cpp connection.cpp main.cpp)
+set(fpserver_HEADERS
+	src/server/listener.h
+	src/server/connection.h
+)
+set(fpserver_SOURCES
+	src/server/listener.cpp
+	src/server/connection.cpp
+	src/server/main.cpp
+)
 
 qt4_wrap_cpp(fpserver_MOC ${fpserver_HEADERS})
 

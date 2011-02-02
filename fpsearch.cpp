@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "store/fs_input_stream.h"
-#include "timer.h"
+#include "util/timer.h"
 
 size_t bisectLeft(uint32_t key, uint32_t *data, size_t left, size_t right)
 {
@@ -162,7 +162,8 @@ int main(int argc, char **argv)
 		//qDebug() << "first_block =" << first_block;
 		//qDebug() << "last_block =" << last_block;
 	}
-	tm.stop();
+	qDebug() << "Query took" << tm.elapsed() << "ms";
+
 	QMap<uint32_t, int> idsStats;
 	for (int i = 0; i < ids.size(); i++) {
 		uint32_t id = ids.at(i);
@@ -175,7 +176,6 @@ int main(int argc, char **argv)
 		qDebug() << "Found ID" << id << "with count" << idsStats[id];
 	}
 
-	qDebug() << "Duration" << tm.duration() << "ms";
 	return 0;
 }
 

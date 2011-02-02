@@ -9,7 +9,7 @@
 #include "index/segment_index.h"
 #include "index/segment_index_reader.h"
 #include "store/fs_input_stream.h"
-#include "timer.h"
+#include "util/timer.h"
 
 int main(int argc, char **argv)
 {
@@ -27,6 +27,8 @@ int main(int argc, char **argv)
 	size_t fpSize = sizeof(fp) / sizeof(fp[0]);
 	std::sort(fp, fp + fpSize);
 
+	Timer timer;
+	timer.start();
 	QList<size_t> blocks;
 	for (size_t i = 0; i < fpSize; i++) {
 		size_t firstBlock, lastBlock;
@@ -41,6 +43,8 @@ int main(int argc, char **argv)
 	}
 
 	qDebug() << "Need to look at blocks" << blocks;
+	qDebug() << "Index search took" << timer.elapsed() << "ms";
+
 	return 0;
 }
 
