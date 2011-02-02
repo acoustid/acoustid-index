@@ -10,3 +10,4 @@ CMakeCache.txt
 doc/tree_structure.png
 ./fpstats
 ./fpsearch2
+./callgrind.out.*
