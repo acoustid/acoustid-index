@@ -7,6 +7,7 @@ find_package(Qt4 COMPONENTS QtCore QtNetwork REQUIRED)
 include(${QT_USE_FILE})
 
 set(fpindexlib_SOURCES
+	src/index/segment_data_reader.cpp
 	src/index/segment_data_writer.cpp
 	src/index/segment_index.cpp
 	src/index/segment_index_reader.cpp

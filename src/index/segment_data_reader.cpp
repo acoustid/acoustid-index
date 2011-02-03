@@ -14,32 +14,26 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#include "store/input_stream.h"
-#include "segment_index.h"
-#include "segment_index_reader.h"
+#include "store/output_stream.h"
+#include "segment_data_reader.h"
 
-SegmentIndexReader::SegmentIndexReader(InputStream *input)
-	: m_input(input)
+SegmentDataReader::SegmentDataReader(InputStream *input, size_t blockSize)
+	: m_input(input), m_blockSize(blockSize)
 {
 }
 
-SegmentIndexReader::~SegmentIndexReader()
+SegmentDataReader::~SegmentDataReader()
 {
 }
 
-SegmentIndex *SegmentIndexReader::read()
+void SegmentDataReader::setBlockSize(size_t blockSize)
 {
-	size_t blockSize = m_input->readInt32();
-	size_t indexInterval = m_input->readInt32();
-	size_t keyCount = m_input->readInt32();
-	//SegmentIndex *index = new SegmentIndex(blockSize, indexInterval, keyCount);
-	SegmentIndex *index = new SegmentIndex(blockSize, 16, keyCount);
-	uint32_t *keys = index->levelKeys(0), lastKey = 0;
-	for (size_t i = 0; i < keyCount; i++) {
-		lastKey += m_input->readVInt32();
-		*keys++ = lastKey;
-	}
-	index->rebuild();
-	return index;
+	m_blockSize = blockSize;
 }
 
+BlockDataIterator *SegmentDataReader::readBlock(size_t n, uint32_t key)
+{
+	m_input->seek(m_blockSize * n);
+	size_t length = m_input->readVInt32();
+	return new BlockDataIterator(m_input, length, key);
+}

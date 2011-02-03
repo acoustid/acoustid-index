@@ -15,8 +15,8 @@ int main(int argc, char **argv)
 	ScopedPtr<OutputStream> dataStream(FSOutputStream::open("segment0.fid"));
 
 	SegmentIndexWriter indexWriter(indexStream.get());
-	indexWriter.setBlockSize(256);
-	indexWriter.setIndexInterval(256);
+	indexWriter.setBlockSize(512);
+	indexWriter.setIndexInterval(128);
 
 	SegmentDataWriter dataWriter(dataStream.get(), &indexWriter, indexWriter.blockSize());
 
