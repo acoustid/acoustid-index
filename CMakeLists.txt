@@ -19,6 +19,7 @@ set(fpindexlib_SOURCES
 	src/store/directory.cpp
 	src/store/fs_input_stream.cpp
 	src/store/fs_output_stream.cpp
+	src/store/mmap_input_stream.cpp
 )
 add_library(fpindexlib ${fpindexlib_SOURCES})
 

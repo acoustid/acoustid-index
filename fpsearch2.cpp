@@ -9,13 +9,15 @@
 #include "index/segment_data_reader.h"
 #include "index/segment_index.h"
 #include "index/segment_index_reader.h"
+#include "store/mmap_input_stream.h"
 #include "store/fs_input_stream.h"
 #include "util/timer.h"
 
 int main(int argc, char **argv)
 {
-	InputStream *inputStream = FSInputStream::open("segment0.fii");
-	BufferedInputStream *dataInputStream = FSInputStream::open("segment0.fid");
+	//InputStream *inputStream = FSInputStream::open("segment0.fii");
+	InputStream *inputStream = MMapInputStream::open("segment0.fii");
+	InputStream *dataInputStream = MMapInputStream::open("segment0.fid");
 	SegmentIndexReader *indexReader = new SegmentIndexReader(inputStream);
 	SegmentIndex* index = indexReader->read();
 
@@ -23,7 +25,7 @@ int main(int argc, char **argv)
 	qDebug() << "IndexInterval =" << index->indexInterval();
 	qDebug() << "KeyCount0 =" << index->levelKeyCount(0);
 
-	dataInputStream->setBufferSize(index->blockSize());
+//	dataInputStream->setBufferSize(index->blockSize());
 	SegmentDataReader *dataReader = new SegmentDataReader(dataInputStream, index->blockSize());
 
 	uint32_t fp[] = {
@@ -56,7 +58,7 @@ int main(int argc, char **argv)
 					uint32_t key = blockData->key();
 					if (key >= fp[i]) {
 						if (key == fp[i]) {
-							//qDebug() << "got key with block" << block;
+							//qDebug() << "got key with block" << block << "and fingerprint id" << blockData->value();
 						}
 						break;
 					}
