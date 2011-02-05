@@ -27,6 +27,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+#include <QString>
 #include <QDebug>
 
 #include "util/scoped_ptr.h"

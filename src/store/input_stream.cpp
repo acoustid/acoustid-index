@@ -43,3 +43,13 @@ uint32_t InputStream::readVInt32()
 	return i;
 }
 
+QString InputStream::readString()
+{
+	size_t size = readVInt32();
+	ScopedArrayPtr<uint8_t> data(new uint8_t[size]);
+	for (size_t i = 0; i < size; i++) {
+		data[i] = readByte();
+	}
+	return QString::fromUtf8(reinterpret_cast<const char *>(data.get()), size);
+}
+

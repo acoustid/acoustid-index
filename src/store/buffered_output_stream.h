@@ -30,14 +30,14 @@ public:
 	void setBufferSize(size_t size);
 
 	void writeByte(uint8_t);
-	void writeBytes(uint8_t *data, size_t length);
+	void writeBytes(const uint8_t *data, size_t length);
 
 	size_t position();
 	void seek(size_t position);
 	void flush();
 
 protected:
-	virtual size_t write(uint8_t *data, size_t offset, size_t length) = 0;
+	virtual size_t write(const uint8_t *data, size_t offset, size_t length) = 0;
 	void flushBuffer();
 	void refill();
 

@@ -35,7 +35,7 @@ int FSOutputStream::fileDescriptor() const
 	return m_fd;
 }
 
-size_t FSOutputStream::write(uint8_t *data, size_t offset, size_t length)
+size_t FSOutputStream::write(const uint8_t *data, size_t offset, size_t length)
 {
 	ssize_t result = pwrite(m_fd, (void *)data, length, offset);
 	if (result == -1) {

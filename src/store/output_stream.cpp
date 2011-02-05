@@ -20,7 +20,7 @@ OutputStream::~OutputStream()
 {
 }
 
-void OutputStream::writeBytes(uint8_t *data, size_t length)
+void OutputStream::writeBytes(const uint8_t *data, size_t length)
 {
 	for (size_t i = 0; i < length; i++) {
 		writeByte(data[i]);
@@ -48,5 +48,12 @@ void OutputStream::writeVInt32(uint32_t i)
 		i >>= 7;
 	}
 	writeByte(i);
+}
+
+void OutputStream::writeString(const QString &s)
+{
+	QByteArray data = s.toUtf8();
+	writeVInt32(data.size());
+	writeBytes(reinterpret_cast<const uint8_t *>(data.constData()), data.size());
 }
 

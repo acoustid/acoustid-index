@@ -47,7 +47,7 @@ void BufferedOutputStream::writeByte(uint8_t b)
 	m_buffer[m_position++] = b;
 }
 
-void BufferedOutputStream::writeBytes(uint8_t *data, size_t length)
+void BufferedOutputStream::writeBytes(const uint8_t *data, size_t length)
 {
 	if (m_position + length <= m_bufferSize) {
 		memcpy(&m_buffer[m_position], data, length);

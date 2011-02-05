@@ -84,3 +84,12 @@ TEST(InputStreamTest, ReadVInt32)
 	ASSERT_EQ((5 << 28) | (4 << 21) | (3 << 14) | (2 << 7) | 1, inputStream.readVInt32());
 }
 
+TEST(InputStreamTest, ReadString)
+{
+	uint8_t data[] = {
+		4, 't', 'e', 's', 't'
+	};
+	SimpleInputStream inputStream(data);
+	ASSERT_EQ(std::string("test"), inputStream.readString().toStdString());
+}
+

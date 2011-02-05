@@ -31,7 +31,7 @@ public:
 	static FSOutputStream *open(const QString &fileName);
 
 protected:
-	size_t write(uint8_t *data, size_t offset, size_t length);
+	size_t write(const uint8_t *data, size_t offset, size_t length);
 
 private:
 	int m_fd;	
