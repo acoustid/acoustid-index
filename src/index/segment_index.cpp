@@ -62,21 +62,20 @@ void SegmentIndex::rebuild()
 bool SegmentIndex::search(uint32_t key, size_t *firstBlock, size_t *lastBlock)
 {
 	size_t level = m_levelCount - 1;
-	size_t lo = 0, hi = m_levelKeyCounts[level];
+	size_t lo = 0;
 	do {
 		uint32_t *keys = m_levelKeys[level];
-		ssize_t pos = searchFirstSmaller(keys, lo, std::min(hi, m_levelKeyCounts[level]), key);
+		ssize_t pos = searchFirstSmaller(keys, lo, std::min(lo + m_indexInterval, m_levelKeyCounts[level]), key);
 		if (pos == -1) {
 			if (keys[0] > key) {
 				return false;
 			}
 			pos = 0;
 		}
-		hi = m_indexInterval * scanFirstGreater(keys, lo, m_levelKeyCounts[level], key);
 		lo = m_indexInterval * pos;
 	} while (level--);
 	*firstBlock = lo / m_indexInterval;
-	*lastBlock = hi / m_indexInterval - 1;
+	*lastBlock = scanFirstGreater(m_levelKeys[0], *firstBlock, m_levelKeyCounts[0], key) - 1;
 	return true;
 }
 
