@@ -12,6 +12,8 @@ set(fpindexlib_SOURCES
 	src/index/segment_index.cpp
 	src/index/segment_index_reader.cpp
 	src/index/segment_index_writer.cpp
+	src/index/segment_searcher.cpp
+	src/index/top_hits_collector.cpp
 	src/store/buffered_input_stream.cpp
 	src/store/buffered_output_stream.cpp
 	src/store/input_stream.cpp

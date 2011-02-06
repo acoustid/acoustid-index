@@ -9,6 +9,8 @@
 #include "index/segment_data_reader.h"
 #include "index/segment_index.h"
 #include "index/segment_index_reader.h"
+#include "index/segment_searcher.h"
+#include "index/top_hits_collector.h"
 #include "store/mmap_input_stream.h"
 #include "store/fs_input_stream.h"
 #include "util/timer.h"
@@ -34,43 +36,20 @@ int main(int argc, char **argv)
 	size_t fpSize = sizeof(fp) / sizeof(fp[0]);
 	std::sort(fp, fp + fpSize);
 
+	TopHitsCollector collector(10);
+
+	SegmentSearcher searcher(index, dataReader);
+
 	Timer timer;
 	timer.start();
-	size_t lastReadBlock = ~0;
-	size_t readBlockCount = 0;
-	for (size_t i = 0; i < fpSize; i++) {
-		size_t firstBlock, lastBlock;
-		//qDebug() << "searching for key" << fp[i];
-		if (index->search(fp[i], &firstBlock, &lastBlock)) {
-			//qDebug() << "found blocks" << firstBlock << lastBlock;
-			if (readBlockCount > 0 && lastReadBlock >= firstBlock) {
-				firstBlock = lastReadBlock + 1;
-			}
-			if (firstBlock <= lastBlock) {
-				//qDebug() << "searching for key" << fp[i];
-				//qDebug() << "reading blocks" << firstBlock << lastBlock << (ssize_t(index->levelKey(firstBlock)) - ssize_t(fp[i])) << (ssize_t(index->levelKey(lastBlock)) - ssize_t(fp[i]));
-			}
-			for (size_t block = firstBlock; block <= lastBlock; block++) {
-				uint32_t firstKey = index->levelKey(block);
-				//qDebug() << "  - reading block" << block << ssize_t(firstKey - fp[i]);
-				ScopedPtr<BlockDataIterator> blockData(dataReader->readBlock(block, firstKey));
-				while (blockData->next()) {
-					uint32_t key = blockData->key();
-					if (key >= fp[i]) {
-						if (key == fp[i]) {
-							//qDebug() << "got key with block" << block << "and fingerprint id" << blockData->value();
-						}
-						break;
-					}
-				}
-				readBlockCount++;
-				lastReadBlock = block;
-			}
-		}
-	}
 
+	searcher.search(fp, fpSize, &collector);
 	qDebug() << "Index search took" << timer.elapsed() << "ms";
-	qDebug() << "Had to read" << readBlockCount << "blocks";
+
+	QList<Result> results = collector.topResults();
+	for (size_t i = 0; i < results.size(); i++) {
+		qDebug() << "Found" << results[i].id() << "with score" << results[i].score();
+	}
 
 	delete indexReader;
 	delete inputStream;
