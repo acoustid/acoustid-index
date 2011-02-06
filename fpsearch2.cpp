@@ -53,7 +53,7 @@ int main(int argc, char **argv)
 			for (size_t block = firstBlock; block <= lastBlock; block++) {
 				uint32_t firstKey = index->levelKey(block);
 				//qDebug() << "  - reading block" << block << ssize_t(firstKey - fp[i]);
-				BlockDataIterator *blockData = dataReader->readBlock(block, firstKey);
+				ScopedPtr<BlockDataIterator> blockData(dataReader->readBlock(block, firstKey));
 				while (blockData->next()) {
 					uint32_t key = blockData->key();
 					if (key >= fp[i]) {
@@ -75,6 +75,9 @@ int main(int argc, char **argv)
 	delete indexReader;
 	delete inputStream;
 	delete index;
+
+	delete dataInputStream;
+	delete dataReader;
 
 	return 0;
 }
