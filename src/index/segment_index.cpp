@@ -61,6 +61,17 @@ void SegmentIndex::rebuild()
 
 bool SegmentIndex::search(uint32_t key, size_t *firstBlock, size_t *lastBlock)
 {
+	ssize_t pos = searchFirstSmaller(m_levelKeys[0], 0, m_levelKeyCounts[0], key);
+	if (pos == -1) {
+		if (m_levelKeys[0][0] > key) {
+			return false;
+		}
+		pos = 0;
+	}
+	*firstBlock = pos;
+	*lastBlock = scanFirstGreater(m_levelKeys[0], *firstBlock, m_levelKeyCounts[0], key) - 1;
+	return true;
+/*
 	size_t level = m_levelCount - 1;
 	size_t lo = 0;
 	do {
@@ -76,7 +87,7 @@ bool SegmentIndex::search(uint32_t key, size_t *firstBlock, size_t *lastBlock)
 	} while (level--);
 	*firstBlock = lo / m_indexInterval;
 	*lastBlock = scanFirstGreater(m_levelKeys[0], *firstBlock, m_levelKeyCounts[0], key) - 1;
-	return true;
+	return true;*/
 }
 
 /*class MultiBinarySearcher
