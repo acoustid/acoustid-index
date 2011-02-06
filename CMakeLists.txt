@@ -62,6 +62,9 @@ target_link_libraries(fpsearch ${QT_LIBRARIES} fpindexlib)
 add_executable(fpsearch2 fpsearch2.cpp)
 target_link_libraries(fpsearch2 ${QT_LIBRARIES} fpindexlib)
 
+add_executable(fpdumpindex fpdumpindex.cpp)
+target_link_libraries(fpdumpindex ${QT_LIBRARIES} fpindexlib)
+
 set(tests_SOURCES
 		src/index/segment_data_writer_test.cpp
 		src/index/segment_index_test.cpp
