@@ -14,36 +14,26 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef ACOUSTID_STORE_RAM_DIRECTORY_H_
-#define ACOUSTID_STORE_RAM_DIRECTORY_H_
+#ifndef ACOUSTID_RAM_OUTPUT_STREAM_H_
+#define ACOUSTID_RAM_OUTPUT_STREAM_H_
 
-#include <QString>
-#include <QHash>
-#include "common.h"
-#include "directory.h"
+#include <QBuffer>
+#include "output_stream.h"
 
-class InputStream;
-class OutputStream;
-
-class RAMDirectory : public Directory
+class RAMOutputStream : public OutputStream
 {
 public:
-	RAMDirectory();
-	virtual ~RAMDirectory();
+	explicit RAMOutputStream(QByteArray *data);
+	~RAMOutputStream();
 
-	virtual void close();
+	void writeByte(uint8_t b);
 
-	const QByteArray &fileData(const QString &name);
-
-	virtual OutputStream *createFile(const QString &name);
-	virtual void deleteFile(const QString &name);
-	virtual InputStream *openFile(const QString &name);
-	virtual void renameFile(const QString &oldName, const QString &newName);
-	QStringList listFiles();
+	size_t position();
+	void seek(size_t position);
 
 private:
-	QStringList m_names;
-	QHash<QString, QByteArray*> m_data;
+	QBuffer m_buffer;
 };
 
 #endif
+

@@ -17,26 +17,16 @@
 #ifndef ACOUSTID_MMAP_INPUT_STREAM_H_
 #define ACOUSTID_MMAP_INPUT_STREAM_H_
 
-#include "input_stream.h"
+#include "memory_input_stream.h"
 
-class MMapInputStream : public InputStream
+class MMapInputStream : public MemoryInputStream
 {
 public:
-	explicit MMapInputStream(void *addr, size_t m_length);
-	~MMapInputStream();
-
-	size_t position();
-	void seek(size_t position);
-
-	uint8_t readByte();
-	uint32_t readVInt32();
+	MMapInputStream(const uint8_t *addr, size_t m_length);
 
 	static MMapInputStream *open(const QString &fileName);
 
 private:
-	uint8_t *m_addr;
-	size_t m_length;
-	size_t m_position;	
 };
 
 #endif

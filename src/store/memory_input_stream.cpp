@@ -14,36 +14,46 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef ACOUSTID_STORE_RAM_DIRECTORY_H_
-#define ACOUSTID_STORE_RAM_DIRECTORY_H_
-
 #include <QString>
-#include <QHash>
+#include <QFile>
+#include <sys/mman.h>
 #include "common.h"
-#include "directory.h"
+#include "memory_input_stream.h"
 
-class InputStream;
-class OutputStream;
-
-class RAMDirectory : public Directory
+MemoryInputStream::MemoryInputStream(const uint8_t *addr, size_t length)
+	: m_addr(addr), m_length(length), m_position(0)
 {
-public:
-	RAMDirectory();
-	virtual ~RAMDirectory();
+}
 
-	virtual void close();
+MemoryInputStream::~MemoryInputStream()
+{
+}
 
-	const QByteArray &fileData(const QString &name);
+size_t MemoryInputStream::position()
+{
+	return m_position;
+}
 
-	virtual OutputStream *createFile(const QString &name);
-	virtual void deleteFile(const QString &name);
-	virtual InputStream *openFile(const QString &name);
-	virtual void renameFile(const QString &oldName, const QString &newName);
-	QStringList listFiles();
+void MemoryInputStream::seek(size_t position)
+{
+	m_position = std::min(position, m_length);
+}
 
-private:
-	QStringList m_names;
-	QHash<QString, QByteArray*> m_data;
-};
+uint8_t MemoryInputStream::readByte()
+{
+	return m_addr[m_position++];
+}
 
-#endif
+uint32_t MemoryInputStream::readVInt32()
+{
+	uint8_t b = m_addr[m_position++];
+	uint32_t i = b & 0x7f;
+	int shift = 7;
+	while (b & 0x80) {
+		b = m_addr[m_position++];
+		i |= (b & 0x7f) << shift;
+		shift += 7;
+	}
+	return i;
+}
+

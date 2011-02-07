@@ -20,41 +20,9 @@
 #include "common.h"
 #include "mmap_input_stream.h"
 
-MMapInputStream::MMapInputStream(void *addr, size_t length)
-	: m_addr(static_cast<uint8_t *>(addr)), m_length(length), m_position(0)
+MMapInputStream::MMapInputStream(const uint8_t *addr, size_t length)
+	: MemoryInputStream(addr, length)
 {
-}
-
-MMapInputStream::~MMapInputStream()
-{
-}
-
-size_t MMapInputStream::position()
-{
-	return m_position;
-}
-
-void MMapInputStream::seek(size_t position)
-{
-	m_position = std::min(position, m_length);
-}
-
-uint8_t MMapInputStream::readByte()
-{
-	return m_addr[m_position++];
-}
-
-uint32_t MMapInputStream::readVInt32()
-{
-	uint8_t b = m_addr[m_position++];
-	uint32_t i = b & 0x7f;
-	int shift = 7;
-	while (b & 0x80) {
-		b = m_addr[m_position++];
-		i |= (b & 0x7f) << shift;
-		shift += 7;
-	}
-	return i;
 }
 
 MMapInputStream *MMapInputStream::open(const QString &fileName)
@@ -64,6 +32,6 @@ MMapInputStream *MMapInputStream::open(const QString &fileName)
 	struct stat sb;
 	fstat(fd, &sb);
 	void *addr = ::mmap(NULL, sb.st_size, PROT_READ, MAP_SHARED, fd, 0);
-	return new MMapInputStream(addr, sb.st_size);
+	return new MMapInputStream(static_cast<const uint8_t *>(addr), sb.st_size);
 }
 

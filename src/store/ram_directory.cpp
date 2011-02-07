@@ -14,11 +14,25 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#include "memory_input_stream.h"
+#include "ram_output_stream.h"
 #include "ram_directory.h"
+
+RAMDirectory::RAMDirectory()
+{
+}
+
+RAMDirectory::~RAMDirectory()
+{
+}
+
+void RAMDirectory::close()
+{
+}
 
 QStringList RAMDirectory::listFiles()
 {
-	return m_fileList;
+	return m_names;
 }
 
 void RAMDirectory::deleteFile(const QString &name)
@@ -43,13 +57,19 @@ InputStream *RAMDirectory::openFile(const QString &name)
 	if (!data) {
 		return NULL;
 	}
-	return new RAMInputStream(data->constData(), data->size());
+	return new MemoryInputStream(reinterpret_cast<const uint8_t *>(data->constData()), data->size());
 }
 
 OutputStream *RAMDirectory::createFile(const QString &name)
 {
 	QByteArray *data = new QByteArray();
 	m_data.insert(name, data);
+	m_names.append(name);
 	return new RAMOutputStream(data);
+}
+
+const QByteArray &RAMDirectory::fileData(const QString &name)
+{
+	return *m_data.value(name);
 }
 

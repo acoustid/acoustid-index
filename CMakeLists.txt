@@ -25,6 +25,9 @@ set(fpindexlib_SOURCES
 	src/store/fs_input_stream.cpp
 	src/store/fs_output_stream.cpp
 	src/store/mmap_input_stream.cpp
+	src/store/memory_input_stream.cpp
+	src/store/ram_directory.cpp
+	src/store/ram_output_stream.cpp
 )
 add_library(fpindexlib ${fpindexlib_SOURCES})
 
@@ -68,15 +71,16 @@ add_executable(fpdumpindex fpdumpindex.cpp)
 target_link_libraries(fpdumpindex ${QT_LIBRARIES} fpindexlib)
 
 set(tests_SOURCES
-		src/index/segment_data_writer_test.cpp
-		src/index/segment_index_test.cpp
-		src/index/segment_index_reader_test.cpp
-		src/index/segment_index_writer_test.cpp
-		src/store/input_stream_test.cpp
-		src/store/output_stream_test.cpp
-		src/store/fs_output_stream_test.cpp
-		src/util/search_utils_test.cpp
-		src/util/tests.cpp
+	src/index/segment_data_writer_test.cpp
+	src/index/segment_index_test.cpp
+	src/index/segment_index_reader_test.cpp
+	src/index/segment_index_writer_test.cpp
+	src/store/input_stream_test.cpp
+	src/store/output_stream_test.cpp
+	src/store/fs_output_stream_test.cpp
+	src/store/ram_directory_test.cpp
+	src/util/search_utils_test.cpp
+	src/util/tests.cpp
 )
 
 if(GTEST_FOUND)
