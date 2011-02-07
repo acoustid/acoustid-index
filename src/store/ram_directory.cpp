@@ -32,7 +32,7 @@ void RAMDirectory::close()
 
 QStringList RAMDirectory::listFiles()
 {
-	return m_names;
+	return m_data.keys();
 }
 
 void RAMDirectory::deleteFile(const QString &name)
@@ -40,14 +40,11 @@ void RAMDirectory::deleteFile(const QString &name)
 	if (!m_data.contains(name)) {
 		return;
 	}
-	m_names.removeAll(name);
 	delete m_data.take(name);
 }
 
 void RAMDirectory::renameFile(const QString &oldName, const QString &newName)
 {
-	m_names.removeAll(oldName);
-	m_names.append(newName);
 	m_data.insert(newName, m_data.take(oldName));
 }
 
@@ -64,7 +61,6 @@ OutputStream *RAMDirectory::createFile(const QString &name)
 {
 	QByteArray *data = new QByteArray();
 	m_data.insert(name, data);
-	m_names.append(name);
 	return new RAMOutputStream(data);
 }
 

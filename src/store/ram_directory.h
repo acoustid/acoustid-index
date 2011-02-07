@@ -42,7 +42,6 @@ public:
 	QStringList listFiles();
 
 private:
-	QStringList m_names;
 	QHash<QString, QByteArray*> m_data;
 };
 
