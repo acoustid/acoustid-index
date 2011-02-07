@@ -17,6 +17,7 @@
 #include <QString>
 #include <QByteArray>
 #include <QFile>
+#include <errno.h>
 #include "common.h"
 #include "fs_output_stream.h"
 
@@ -41,7 +42,7 @@ size_t FSOutputStream::write(const uint8_t *data, size_t offset, size_t length)
 {
 	ssize_t result = pwrite(m_fd, (void *)data, length, offset);
 	if (result == -1) {
-		return 0;
+		throw IOException(QString("Couldn't write to a file (errno %1)").arg(errno));
 	}
 	return result;
 }
@@ -50,6 +51,9 @@ FSOutputStream *FSOutputStream::open(const QString &fileName)
 {
 	QByteArray encodedFileName = QFile::encodeName(fileName);
 	int fd = ::open(encodedFileName.data(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+	if (fd == -1) {
+		throw IOException(QString("Couldn't open the file '%1' for writing (errno %2)").arg(fileName).arg(errno));
+	}
 	return new FSOutputStream(fd);
 }
 

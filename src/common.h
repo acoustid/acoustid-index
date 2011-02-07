@@ -31,6 +31,7 @@
 #include <QString>
 #include <QDebug>
 
+#include "util/exceptions.h"
 #include "util/scoped_ptr.h"
 
 #endif

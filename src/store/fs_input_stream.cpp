@@ -16,6 +16,7 @@
 
 #include <QString>
 #include <QFile>
+#include <errno.h>
 #include "common.h"
 #include "fs_input_stream.h"
 
@@ -39,7 +40,7 @@ size_t FSInputStream::read(uint8_t *data, size_t offset, size_t length)
 {
 	ssize_t result = pread(m_fd, (void *)data, length, offset);
 	if (result == -1) {
-		return 0;
+		throw IOException(QString("Couldn't read from a file (errno %1)").arg(errno));
 	}
 	return result;
 }
@@ -48,6 +49,9 @@ FSInputStream *FSInputStream::open(const QString &fileName)
 {
 	QByteArray encodedFileName = QFile::encodeName(fileName);
 	int fd = ::open(encodedFileName.data(), O_RDONLY);
+	if (fd == -1) {
+		throw IOException(QString("Couldn't open the file '%1' for reading (errno %2)").arg(fileName).arg(errno));
+	}
 	return new FSInputStream(fd);
 }
 
