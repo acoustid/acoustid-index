@@ -19,6 +19,8 @@
 
 #include "common.h"
 
+namespace Acoustid {
+
 class SegmentIndex;
 class SegmentDataReader;
 class Collector;
@@ -35,5 +37,7 @@ private:
 	SegmentIndex *m_index;
 	SegmentDataReader *m_dataReader;
 };
+
+}
 
 #endif

@@ -14,10 +14,12 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef ACOUSTID_UTIL_INPUT_STREAM_H_
-#define ACOUSTID_UTIL_INPUT_STREAM_H_
+#ifndef ACOUSTID_STORE_INPUT_STREAM_H_
+#define ACOUSTID_STORE_INPUT_STREAM_H_
 
 #include "common.h"
+
+namespace Acoustid {
 
 class InputStream {
 
@@ -35,5 +37,7 @@ public:
 	virtual void seek(size_t position) = 0;
 
 };
+
+}
 
 #endif

@@ -21,6 +21,8 @@
 #include "store/fs_output_stream.h"
 #include "segment_index_writer.h"
 
+using namespace Acoustid;
+
 class SegmentIndexWriterTest : public ::testing::Test
 {
 protected:

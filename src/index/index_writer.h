@@ -20,6 +20,8 @@
 #include "common.h"
 #include "segment_info_list.h"
 
+namespace Acoustid {
+
 class IndexWriter
 {
 public:
@@ -42,5 +44,7 @@ private:
 	int m_revision;
 	SegmentInfoList m_segmentInfos;
 };
+
+}
 
 #endif

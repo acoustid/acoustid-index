@@ -16,6 +16,8 @@
 
 #include "directory.h"
 
+using namespace Acoustid;
+
 Directory::~Directory()
 {
 }

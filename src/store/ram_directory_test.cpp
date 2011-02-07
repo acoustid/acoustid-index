@@ -20,6 +20,8 @@
 #include "output_stream.h"
 #include "ram_directory.h"
 
+using namespace Acoustid;
+
 TEST(RAMDirectoryTest, EmptyListFiles)
 {
 	RAMDirectory dir;

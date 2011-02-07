@@ -19,6 +19,8 @@
 
 #include "common.h"
 
+namespace Acoustid {
+
 class InputStream;
 class SegmentIndex;
 
@@ -33,5 +35,7 @@ public:
 private:
 	InputStream *m_input;
 };
+
+}
 
 #endif

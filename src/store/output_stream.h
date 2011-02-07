@@ -14,10 +14,12 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef ACOUSTID_OUTPUT_STREAM_H_
-#define ACOUSTID_OUTPUT_STREAM_H_
+#ifndef ACOUSTID_STORE_OUTPUT_STREAM_H_
+#define ACOUSTID_STORE_OUTPUT_STREAM_H_
 
 #include "common.h"
+
+namespace Acoustid {
 
 class OutputStream {
 
@@ -36,6 +38,8 @@ public:
 	virtual void flush() {};
 
 };
+
+}
 
 #endif
 

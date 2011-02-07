@@ -19,6 +19,8 @@
 #include "util/search_utils.h"
 #include "segment_index.h"
 
+using namespace Acoustid;
+
 SegmentIndex::SegmentIndex(size_t blockSize, size_t indexInterval, size_t keyCount)
 	: m_blockSize(blockSize), m_indexInterval(indexInterval)
 {

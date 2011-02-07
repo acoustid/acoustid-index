@@ -20,6 +20,8 @@
 #include "common.h"
 #include "store/input_stream.h"
 
+namespace Acoustid {
+
 class BlockDataIterator
 {
 public:
@@ -75,5 +77,7 @@ private:
 	InputStream *m_input;
 	size_t m_blockSize;
 };
+
+}
 
 #endif

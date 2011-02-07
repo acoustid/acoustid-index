@@ -17,6 +17,8 @@
 #include <gtest/gtest.h>
 #include "input_stream.h"
 
+using namespace Acoustid;
+
 class SimpleInputStream : public InputStream
 {
 public:

@@ -20,6 +20,8 @@
 #include "common.h"
 #include "memory_input_stream.h"
 
+using namespace Acoustid;
+
 MemoryInputStream::MemoryInputStream(const uint8_t *addr, size_t length)
 	: m_addr(addr), m_length(length), m_position(0)
 {

@@ -18,6 +18,8 @@
 #include "segment_index.h"
 #include "segment_index_reader.h"
 
+using namespace Acoustid;
+
 SegmentIndexReader::SegmentIndexReader(InputStream *input)
 	: m_input(input)
 {

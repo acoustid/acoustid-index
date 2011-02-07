@@ -18,6 +18,8 @@
 #include "util/test_utils.h"
 #include "output_stream.h"
 
+using namespace Acoustid;
+
 class SimpleOutputStream : public OutputStream
 {
 public:

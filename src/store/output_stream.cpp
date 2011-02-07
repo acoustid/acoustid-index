@@ -16,6 +16,8 @@
 
 #include "output_stream.h"
 
+using namespace Acoustid;
+
 OutputStream::~OutputStream()
 {
 }

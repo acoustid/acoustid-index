@@ -17,6 +17,8 @@
 #include "common.h"
 #include "buffered_output_stream.h"
 
+using namespace Acoustid;
+
 BufferedOutputStream::BufferedOutputStream(size_t bufferSize)
 	: m_bufferSize(bufferSize), m_start(0), m_position(0)
 {

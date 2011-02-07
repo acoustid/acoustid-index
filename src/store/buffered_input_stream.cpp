@@ -16,6 +16,8 @@
 
 #include "buffered_input_stream.h"
 
+using namespace Acoustid;
+
 BufferedInputStream::BufferedInputStream(size_t bufferSize)
 	: m_bufferSize(bufferSize), m_buffer(0), m_start(0), m_position(0), m_length(0)
 {

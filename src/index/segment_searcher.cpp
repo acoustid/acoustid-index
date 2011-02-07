@@ -20,6 +20,8 @@
 #include "segment_data_reader.h"
 #include "segment_searcher.h"
 
+using namespace Acoustid;
+
 SegmentSearcher::SegmentSearcher(SegmentIndex *index, SegmentDataReader *dataReader)
 	: m_index(index), m_dataReader(dataReader)
 {

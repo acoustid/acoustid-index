@@ -22,6 +22,8 @@
 #include "common.h"
 #include "segment_info.h"
 
+namespace Acoustid {
+
 class Directory;
 class InputStream;
 class OutputStream;
@@ -56,6 +58,8 @@ public:
 private:
 	QList<SegmentInfo> m_infos;
 };
+
+}
 
 #endif
 

@@ -20,6 +20,8 @@
 #include <QBuffer>
 #include "output_stream.h"
 
+namespace Acoustid {
+
 class RAMOutputStream : public OutputStream
 {
 public:
@@ -34,6 +36,8 @@ public:
 private:
 	QBuffer m_buffer;
 };
+
+}
 
 #endif
 

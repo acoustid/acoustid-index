@@ -19,6 +19,8 @@
 
 #include "common.h"
 
+namespace Acoustid {
+
 class SegmentInfo
 {
 public:
@@ -52,5 +54,7 @@ private:
 	size_t m_blockSize;
 	size_t m_numDocs;
 };
+
+}
 
 #endif

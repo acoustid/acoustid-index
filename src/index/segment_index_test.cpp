@@ -19,6 +19,8 @@
 #include "util/test_utils.h"
 #include "segment_index.h"
 
+using namespace Acoustid;
+
 TEST(SegmentIndexTest, Sizes1)
 {
 	SegmentIndex index(256, 10, 1000);

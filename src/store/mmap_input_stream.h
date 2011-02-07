@@ -19,6 +19,8 @@
 
 #include "memory_input_stream.h"
 
+namespace Acoustid {
+
 class MMapInputStream : public MemoryInputStream
 {
 public:
@@ -28,6 +30,8 @@ public:
 
 private:
 };
+
+}
 
 #endif
 

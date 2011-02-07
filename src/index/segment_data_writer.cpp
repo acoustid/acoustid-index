@@ -18,6 +18,8 @@
 #include "segment_data_writer.h"
 #include "segment_index_writer.h"
 
+using namespace Acoustid;
+
 inline size_t checkVInt32Size(uint32_t i)
 {
 	if (i < 128) {

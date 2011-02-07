@@ -20,6 +20,8 @@
 #include <QString>
 #include <QStringList>
 
+namespace Acoustid {
+
 class InputStream;
 class OutputStream;
 
@@ -37,5 +39,7 @@ public:
 	virtual QStringList listFiles() = 0;
 
 };
+
+}
 
 #endif

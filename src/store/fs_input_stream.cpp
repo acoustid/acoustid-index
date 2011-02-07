@@ -19,6 +19,8 @@
 #include "common.h"
 #include "fs_input_stream.h"
 
+using namespace Acoustid;
+
 FSInputStream::FSInputStream(int fd)
 	: m_fd(fd)
 {

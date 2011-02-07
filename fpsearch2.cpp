@@ -15,6 +15,8 @@
 #include "store/fs_input_stream.h"
 #include "util/timer.h"
 
+using namespace Acoustid;
+
 int main(int argc, char **argv)
 {
 	//InputStream *inputStream = FSInputStream::open("segment0.fii");

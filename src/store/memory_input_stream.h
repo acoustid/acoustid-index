@@ -19,6 +19,8 @@
 
 #include "input_stream.h"
 
+namespace Acoustid {
+
 class MemoryInputStream : public InputStream
 {
 public:
@@ -36,6 +38,8 @@ private:
 	size_t m_length;
 	size_t m_position;	
 };
+
+}
 
 #endif
 

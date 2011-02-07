@@ -22,6 +22,8 @@
 #include "segment_index.h"
 #include "segment_index_reader.h"
 
+using namespace Acoustid;
+
 class SegmentIndexReaderTest : public ::testing::Test
 {
 protected:

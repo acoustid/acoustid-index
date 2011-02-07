@@ -20,6 +20,8 @@
 #include <QString>
 #include "directory.h"
 
+namespace Acoustid {
+
 class InputStream;
 class OutputStream;
 
@@ -45,5 +47,7 @@ private:
 
 	QString m_path;
 };
+
+}
 
 #endif

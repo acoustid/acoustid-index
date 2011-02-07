@@ -19,6 +19,8 @@
 
 #include "buffered_input_stream.h"
 
+namespace Acoustid {
+
 class FSInputStream : public BufferedInputStream
 {
 public:
@@ -35,6 +37,8 @@ protected:
 private:
 	int m_fd;	
 };
+
+}
 
 #endif
 

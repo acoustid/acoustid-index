@@ -22,6 +22,8 @@
 #include "common.h"
 #include "collector.h"
 
+namespace Acoustid {
+
 class Result
 {
 public:
@@ -49,6 +51,8 @@ private:
 	QHash<uint32_t, unsigned int> m_counts;
 	size_t m_numHits;
 };
+
+}
 
 #endif
 

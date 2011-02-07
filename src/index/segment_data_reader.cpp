@@ -17,6 +17,8 @@
 #include "store/output_stream.h"
 #include "segment_data_reader.h"
 
+using namespace Acoustid;
+
 SegmentDataReader::SegmentDataReader(InputStream *input, size_t blockSize)
 	: m_input(input), m_blockSize(blockSize)
 {

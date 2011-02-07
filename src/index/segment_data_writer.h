@@ -19,6 +19,8 @@
 
 #include "common.h"
 
+namespace Acoustid {
+
 class OutputStream;
 class SegmentIndexWriter;
 
@@ -48,5 +50,7 @@ private:
 	uint8_t *m_ptr;
 	ScopedArrayPtr<uint8_t> m_buffer;
 };
+
+}
 
 #endif

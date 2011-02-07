@@ -19,6 +19,8 @@
 
 #include "common.h"
 
+namespace Acoustid {
+
 class SegmentIndex
 {
 public:
@@ -49,5 +51,7 @@ private:
 	ScopedArrayPtr<size_t> m_levelKeyCounts;
 	ScopedArrayPtr<uint32_t*> m_levelKeys;
 };
+
+}
 
 #endif

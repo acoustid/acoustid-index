@@ -20,6 +20,8 @@
 #include "common.h"
 #include "mmap_input_stream.h"
 
+using namespace Acoustid;
+
 MMapInputStream::MMapInputStream(const uint8_t *addr, size_t length)
 	: MemoryInputStream(addr, length)
 {

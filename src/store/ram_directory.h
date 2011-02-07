@@ -22,6 +22,8 @@
 #include "common.h"
 #include "directory.h"
 
+namespace Acoustid {
+
 class InputStream;
 class OutputStream;
 
@@ -44,5 +46,7 @@ public:
 private:
 	QHash<QString, QByteArray*> m_data;
 };
+
+}
 
 #endif

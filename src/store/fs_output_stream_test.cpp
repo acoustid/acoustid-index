@@ -19,6 +19,8 @@
 #include "util/test_utils.h"
 #include "fs_output_stream.h"
 
+using namespace Acoustid;
+
 class FSOutputStreamTest : public ::testing::Test
 {
 protected:

@@ -22,6 +22,8 @@
 #include "fs_output_stream.h"
 #include "fs_directory.h"
 
+using namespace Acoustid;
+
 FSDirectory::FSDirectory(const QString &path)
 	: m_path(path)
 {

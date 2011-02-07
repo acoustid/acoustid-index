@@ -22,6 +22,8 @@
 #include "segment_data_writer.h"
 #include "segment_index_writer.h"
 
+using namespace Acoustid;
+
 class SegmentDataWriterTest : public ::testing::Test
 {
 protected:

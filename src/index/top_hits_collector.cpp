@@ -17,6 +17,8 @@
 #include <algorithm>
 #include "top_hits_collector.h"
 
+using namespace Acoustid;
+
 TopHitsCollector::TopHitsCollector(size_t numHits)
 	: m_numHits(numHits)
 {

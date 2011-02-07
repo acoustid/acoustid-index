@@ -18,6 +18,8 @@
 #include "store/directory.h"
 #include "index_writer.h"
 
+using namespace Acoustid;
+
 IndexWriter::IndexWriter(Directory *dir)
 	: m_dir(dir)
 {

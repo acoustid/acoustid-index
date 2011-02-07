@@ -20,6 +20,8 @@
 #include <QString>
 #include "buffered_output_stream.h"
 
+namespace Acoustid {
+
 class FSOutputStream : public BufferedOutputStream
 {
 public:
@@ -49,6 +51,8 @@ public:
 private:
 	QString m_fileName;
 };
+
+}
 
 #endif
 

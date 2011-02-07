@@ -17,6 +17,8 @@
 #include "common.h"
 #include "ram_output_stream.h"
 
+using namespace Acoustid;
+
 RAMOutputStream::RAMOutputStream(QByteArray *data)
 	: m_buffer(data)
 {

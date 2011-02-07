@@ -8,6 +8,8 @@
 #include "store/fs_input_stream.h"
 #include "util/timer.h"
 
+using namespace Acoustid;
+
 size_t bisectLeft(uint32_t key, uint32_t *data, size_t left, size_t right)
 {
 	size_t origRight = right;

@@ -3,6 +3,8 @@
 #include "store/output_stream.h"
 #include "segment_info_list.h"
 
+using namespace Acoustid;
+
 int SegmentInfoList::segmentsRevision(const QString &fileName)
 {
 	return fileName.mid(9).toInt();

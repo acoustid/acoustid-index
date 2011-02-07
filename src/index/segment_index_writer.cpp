@@ -17,6 +17,8 @@
 #include "store/output_stream.h"
 #include "segment_index_writer.h"
 
+using namespace Acoustid;
+
 SegmentIndexWriter::SegmentIndexWriter(OutputStream *output)
 	: m_output(output), m_blockSize(0), m_indexInterval(0),
 	  m_headerWritten(false), m_keyCount(0), m_lastKey(0),

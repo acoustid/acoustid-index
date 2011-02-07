@@ -18,6 +18,8 @@
 #include "ram_output_stream.h"
 #include "ram_directory.h"
 
+using namespace Acoustid;
+
 RAMDirectory::RAMDirectory()
 {
 }

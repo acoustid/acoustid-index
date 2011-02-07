@@ -20,6 +20,8 @@
 #include <QList>
 #include "common.h"
 
+namespace Acoustid {
+
 class OutputStream;
 
 class SegmentIndexWriter
@@ -48,5 +50,7 @@ private:
 	bool m_headerWritten;
 	OutputStream *m_output;
 };
+
+}
 
 #endif

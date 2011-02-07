@@ -20,6 +20,8 @@
 #include "common.h"
 #include "output_stream.h"
 
+namespace Acoustid {
+
 class BufferedOutputStream : public OutputStream 
 {
 public:
@@ -48,5 +50,7 @@ private:
 	size_t m_position;
 	size_t m_length;
 };
+
+}
 
 #endif

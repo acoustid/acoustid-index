@@ -16,6 +16,8 @@
 
 #include "input_stream.h"
 
+using namespace Acoustid;
+
 InputStream::~InputStream()
 {
 }

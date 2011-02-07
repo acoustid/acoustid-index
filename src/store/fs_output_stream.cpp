@@ -20,6 +20,8 @@
 #include "common.h"
 #include "fs_output_stream.h"
 
+using namespace Acoustid;
+
 FSOutputStream::FSOutputStream(int fd)
 	: m_fd(fd)
 {

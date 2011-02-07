@@ -9,6 +9,8 @@
 #include "store/fs_output_stream.h"
 
 
+using namespace Acoustid;
+
 int main(int argc, char **argv)
 {
 	ScopedPtr<OutputStream> indexStream(FSOutputStream::open("segment0.fii"));
