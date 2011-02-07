@@ -14,28 +14,48 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef ACOUSTID_DIRECTORY_H_
-#define ACOUSTID_DIRECTORY_H_
+#ifndef ACOUSTID_SEGMENT_INFO_LIST_H_
+#define ACOUSTID_SEGMENT_INFO_LIST_H_
 
-#include <QString>
+#include <QList>
 #include <QStringList>
+#include "common.h"
+#include "segment_info.h"
 
+class Directory;
 class InputStream;
 class OutputStream;
 
-class Directory {
-
+class SegmentInfoList
+{
 public:
-	virtual ~Directory();
+	SegmentInfoList()
+	{
+	}
 
-	virtual void close() = 0;
+	size_t segmentCount() const
+	{
+		return m_infos.size();
+	}
 
-	virtual OutputStream *createFile(const QString &name) = 0;
-	virtual void deleteFile(const QString &name) = 0;
-	virtual InputStream *openFile(const QString &name) = 0;
-	virtual void renameFile(const QString &oldName, const QString &newName) = 0;
-	virtual QStringList listFiles() = 0;
+	const SegmentInfo &info(size_t i) const
+	{
+		return m_infos[i];
+	}
 
+	void clear();
+	void add(const SegmentInfo &info);
+
+	void read(InputStream *input);
+	void write(OutputStream *output);
+
+	static int findCurrentRevision(Directory *dir);
+	static QString segmentsFileName(int revision);
+	static int segmentsRevision(const QString &fileName);
+
+private:
+	QList<SegmentInfo> m_infos;
 };
 
 #endif
+

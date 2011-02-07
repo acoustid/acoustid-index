@@ -14,28 +14,33 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef ACOUSTID_DIRECTORY_H_
-#define ACOUSTID_DIRECTORY_H_
+#ifndef ACOUSTID_INDEX_WRITER_H_
+#define ACOUSTID_INDEX_WRITER_H_
 
-#include <QString>
-#include <QStringList>
+#include "common.h"
+#include "segment_info_list.h"
 
-class InputStream;
-class OutputStream;
-
-class Directory {
-
+class IndexWriter
+{
 public:
-	virtual ~Directory();
+	IndexWriter(Directory *dir);
+	virtual ~IndexWriter();
 
-	virtual void close() = 0;
+	void addDocument(uint32_t id, uint32_t *terms, size_t length);
+	void commit();
 
-	virtual OutputStream *createFile(const QString &name) = 0;
-	virtual void deleteFile(const QString &name) = 0;
-	virtual InputStream *openFile(const QString &name) = 0;
-	virtual void renameFile(const QString &oldName, const QString &newName) = 0;
-	virtual QStringList listFiles() = 0;
+private:
 
+	void flush();
+	void maybeFlush();
+
+	size_t m_maxSegmentBufferSize;
+	std::vector<uint64_t> m_segmentBuffer;
+	/*SegmentIndexWriter *m_segmentIndexWriter;
+	SegmentDataWriter *m_segmentDataWriter;*/
+	Directory *m_dir;
+	int m_revision;
+	SegmentInfoList m_segmentInfos;
 };
 
 #endif

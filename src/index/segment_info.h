@@ -14,28 +14,43 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef ACOUSTID_DIRECTORY_H_
-#define ACOUSTID_DIRECTORY_H_
+#ifndef ACOUSTID_SEGMENT_INFO_H_
+#define ACOUSTID_SEGMENT_INFO_H_
 
-#include <QString>
-#include <QStringList>
+#include "common.h"
 
-class InputStream;
-class OutputStream;
-
-class Directory {
-
+class SegmentInfo
+{
 public:
-	virtual ~Directory();
+	SegmentInfo(const QString &name = QString(), size_t numDocs = 0)
+		: m_name(name), m_numDocs(numDocs)
+	{
+	}
 
-	virtual void close() = 0;
+	QString name() const
+	{
+		return m_name;
+	}
 
-	virtual OutputStream *createFile(const QString &name) = 0;
-	virtual void deleteFile(const QString &name) = 0;
-	virtual InputStream *openFile(const QString &name) = 0;
-	virtual void renameFile(const QString &oldName, const QString &newName) = 0;
-	virtual QStringList listFiles() = 0;
+	void setName(const QString &name)
+	{
+		m_name = name;
+	}
 
+	size_t numDocs() const
+	{
+		return m_numDocs;
+	}
+
+	void setNumDocs(size_t numDocs)
+	{
+		m_numDocs = numDocs;
+	}
+
+private:
+	QString m_name;
+	size_t m_blockSize;
+	size_t m_numDocs;
 };
 
 #endif
