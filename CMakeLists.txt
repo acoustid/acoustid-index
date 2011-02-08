@@ -75,6 +75,8 @@ set(tests_SOURCES
 	src/index/segment_index_test.cpp
 	src/index/segment_index_reader_test.cpp
 	src/index/segment_index_writer_test.cpp
+	src/index/segment_info_list_test.cpp
+	src/index/index_writer_test.cpp
 	src/store/input_stream_test.cpp
 	src/store/output_stream_test.cpp
 	src/store/fs_output_stream_test.cpp

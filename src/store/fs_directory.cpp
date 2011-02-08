@@ -17,6 +17,7 @@
 #include <QString>
 #include <QByteArray>
 #include <QFile>
+#include <QDir>
 #include "common.h"
 #include "fs_input_stream.h"
 #include "fs_output_stream.h"
@@ -57,4 +58,15 @@ void FSDirectory::renameFile(const QString &oldName, const QString &newName)
 	QFile::rename(filePath(oldName), filePath(newName));
 }
 
+QStringList FSDirectory::listFiles()
+{
+	QDir dir(m_path);
+	return dir.entryList(QStringList(), QDir::Files);
+
+}
+
+bool FSDirectory::fileExists(const QString &name)
+{
+	QFile::exists(filePath(name));
+}
 

@@ -20,20 +20,28 @@
 
 using namespace Acoustid;
 
-IndexWriter::IndexWriter(Directory *dir)
+IndexWriter::IndexWriter(Directory *dir, bool create)
 	: m_dir(dir)
 {
 	m_revision = SegmentInfoList::findCurrentRevision(dir);
 	if (m_revision != -1) {
 		m_segmentInfos.read(dir->openFile(SegmentInfoList::segmentsFileName(m_revision)));
 	}
-	else {
+	else if (create) {
 		commit();
+	}
+	else {
+		throw IOException("there is no index in the directory");
 	}
 }
 
 IndexWriter::~IndexWriter()
 {
+}
+
+int IndexWriter::revision()
+{
+	return m_revision;
 }
 
 void IndexWriter::addDocument(uint32_t id, uint32_t *terms, size_t length)

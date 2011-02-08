@@ -14,33 +14,31 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef ACOUSTID_DIRECTORY_H_
-#define ACOUSTID_DIRECTORY_H_
+#include <gtest/gtest.h>
+#include "util/test_utils.h"
+#include "store/ram_directory.h"
+#include "store/input_stream.h"
+#include "store/output_stream.h"
+#include "index_writer.h"
 
-#include <QString>
-#include <QStringList>
+using namespace Acoustid;
 
-namespace Acoustid {
+TEST(IndexWriterTest, OpenEmpty)
+{
+	RAMDirectory dir;
 
-class InputStream;
-class OutputStream;
-
-class Directory {
-
-public:
-	virtual ~Directory();
-
-	virtual void close() = 0;
-
-	virtual OutputStream *createFile(const QString &name) = 0;
-	virtual void deleteFile(const QString &name) = 0;
-	virtual InputStream *openFile(const QString &name) = 0;
-	virtual void renameFile(const QString &oldName, const QString &newName) = 0;
-	virtual QStringList listFiles() = 0;
-	virtual bool fileExists(const QString &name);
-
-};
-
+	ASSERT_FALSE(dir.fileExists("segments_0"));
+	ASSERT_THROW(IndexWriter writer(&dir), IOException);
+	ASSERT_FALSE(dir.fileExists("segments_0"));
 }
 
-#endif
+TEST(IndexWriterTest, OpenEmptyCreate)
+{
+	RAMDirectory dir;
+
+	ASSERT_FALSE(dir.fileExists("segments_0"));
+	IndexWriter writer(&dir, true);
+	ASSERT_TRUE(dir.fileExists("segments_0"));
+	ASSERT_EQ(0, writer.revision());
+}
+

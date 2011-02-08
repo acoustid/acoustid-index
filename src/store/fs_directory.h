@@ -37,6 +37,8 @@ public:
 	virtual void deleteFile(const QString &name);
 	virtual InputStream *openFile(const QString &name);
 	virtual void renameFile(const QString &oldName, const QString &newName);
+	QStringList listFiles();
+	bool fileExists(const QString &name);
 
 private:
 

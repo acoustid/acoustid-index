@@ -25,8 +25,10 @@ namespace Acoustid {
 class IndexWriter
 {
 public:
-	IndexWriter(Directory *dir);
+	IndexWriter(Directory *dir, bool create = false);
 	virtual ~IndexWriter();
+
+	int revision();
 
 	void addDocument(uint32_t id, uint32_t *terms, size_t length);
 	void commit();

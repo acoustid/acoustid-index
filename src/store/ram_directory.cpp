@@ -37,6 +37,11 @@ QStringList RAMDirectory::listFiles()
 	return m_data.keys();
 }
 
+bool RAMDirectory::fileExists(const QString &name)
+{
+	return m_data.contains(name);
+}
+
 void RAMDirectory::deleteFile(const QString &name)
 {
 	if (!m_data.contains(name)) {
