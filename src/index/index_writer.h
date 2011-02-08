@@ -30,6 +30,11 @@ public:
 
 	int revision();
 
+	const SegmentInfoList &segmentInfoList()
+	{
+		return m_segmentInfos;
+	}
+
 	void addDocument(uint32_t id, uint32_t *terms, size_t length);
 	void commit();
 
@@ -39,9 +44,8 @@ private:
 	void maybeFlush();
 
 	size_t m_maxSegmentBufferSize;
+	size_t m_numDocsInBuffer;
 	std::vector<uint64_t> m_segmentBuffer;
-	/*SegmentIndexWriter *m_segmentIndexWriter;
-	SegmentDataWriter *m_segmentDataWriter;*/
 	Directory *m_dir;
 	int m_revision;
 	SegmentInfoList m_segmentInfos;

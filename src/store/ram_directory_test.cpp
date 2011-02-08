@@ -60,6 +60,12 @@ TEST(RAMDirectoryTest, OpenFile)
 	ASSERT_EQ(0, input->readByte());
 }
 
+TEST(RAMDirectoryTest, OpenNonExistantFile)
+{
+	RAMDirectory dir;
+	ASSERT_THROW(dir.openFile("test.txt"), IOException);
+}
+
 TEST(RAMDirectoryTest, DeleteFile)
 {
 	RAMDirectory dir;

@@ -59,7 +59,7 @@ InputStream *RAMDirectory::openFile(const QString &name)
 {
 	QByteArray *data = m_data.value(name);
 	if (!data) {
-		return NULL;
+		throw IOException("file does not exist");
 	}
 	return new MemoryInputStream(reinterpret_cast<const uint8_t *>(data->constData()), data->size());
 }
