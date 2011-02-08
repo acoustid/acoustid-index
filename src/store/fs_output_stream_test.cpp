@@ -52,7 +52,7 @@ TEST_F(FSOutputStreamTest, Write)
 
 	QFile file(stream->fileName());
 	ASSERT_EQ(8, file.size());
-	file.open(QIODevice::ReadOnly);
+	ASSERT_TRUE(file.open(QIODevice::ReadOnly));
 	QByteArray data = file.readAll();
 	char expected[] = { 0, 1, 2, 3, 4, 5, 6, 7 };
 	ASSERT_INTARRAY_EQ(expected, data.data(), 8);
@@ -75,7 +75,7 @@ TEST_F(FSOutputStreamTest, WriteAndSmallBufferSize)
 	QFile file(stream->fileName());
 
 	ASSERT_EQ(8, file.size());
-	file.open(QIODevice::ReadOnly);
+	ASSERT_TRUE(file.open(QIODevice::ReadOnly));
 	QByteArray data = file.readAll();
 	char expected[] = { 0, 1, 2, 3, 4, 5, 6, 7 };
 	ASSERT_INTARRAY_EQ(expected, data.data(), 8);
@@ -83,7 +83,7 @@ TEST_F(FSOutputStreamTest, WriteAndSmallBufferSize)
 
 	stream->flush();
 	ASSERT_EQ(9, file.size());
-	file.open(QIODevice::ReadOnly);
+	ASSERT_TRUE(file.open(QIODevice::ReadOnly));
 	QByteArray data2 = file.readAll();
 	char expected2[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8 };
 	ASSERT_INTARRAY_EQ(expected2, data2.data(), 9);
@@ -113,7 +113,7 @@ TEST_F(FSOutputStreamTest, WriteAfterSeek)
 	QFile file(stream->fileName());
 
 	ASSERT_EQ(8, file.size());
-	file.open(QIODevice::ReadOnly);
+	ASSERT_TRUE(file.open(QIODevice::ReadOnly));
 	QByteArray data = file.readAll();
 	char expected[] = { 9, 1, 2, 10, 4, 5, 6, 7 };
 	ASSERT_INTARRAY_EQ(expected, data.data(), 8);

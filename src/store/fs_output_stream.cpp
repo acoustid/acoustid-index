@@ -52,7 +52,7 @@ FSOutputStream *FSOutputStream::open(const QString &fileName)
 	QByteArray encodedFileName = QFile::encodeName(fileName);
 	int fd = ::open(encodedFileName.data(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
 	if (fd == -1) {
-		throw IOException(QString("Couldn't open the file '%1' for writing (errno %2)").arg(fileName).arg(errno));
+		throw IOException(QString("couldn't open the file '%1' for writing (errno %2)").arg(fileName).arg(errno));
 	}
 	return new FSOutputStream(fd);
 }
@@ -71,6 +71,9 @@ NamedFSOutputStream *NamedFSOutputStream::openTemporary()
 {
 	QByteArray path("/tmp/acoustidXXXXXX");
 	int fd = ::mkstemp(path.data());
+	if (fd == -1) {
+		throw IOException("couldn't create a temporary file");
+	}
 	return new NamedFSOutputStream(path, fd);
 }
 
