@@ -44,7 +44,6 @@ protected:
 TEST_F(SegmentIndexReaderTest, Read)
 {
 	stream->writeInt32(256);
-	stream->writeInt32(2);
 	stream->writeInt32(8);
 	stream->writeVInt32(2);
 	stream->writeVInt32(1);
@@ -61,19 +60,10 @@ TEST_F(SegmentIndexReaderTest, Read)
 	SegmentIndex *index = reader->read();
 
 	ASSERT_EQ(256, index->blockSize());
-	ASSERT_EQ(2, index->indexInterval());
 
 	ASSERT_EQ(8, index->levelKeyCount(0));
 	uint32_t expected0[] = { 2, 3, 4, 5, 6, 7, 8, 9 };
 	ASSERT_INTARRAY_EQ(expected0, index->levelKeys(0), 8);
-
-	ASSERT_EQ(4, index->levelKeyCount(1));
-	uint32_t expected1[] = { 2, 4, 6, 8 };
-	ASSERT_INTARRAY_EQ(expected1, index->levelKeys(1), 4);
-
-	ASSERT_EQ(2, index->levelKeyCount(2));
-	uint32_t expected2[] = { 2, 6 };
-	ASSERT_INTARRAY_EQ(expected2, index->levelKeys(2), 2);
 
 	delete index;
 	delete reader;

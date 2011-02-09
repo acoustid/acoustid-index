@@ -18,7 +18,6 @@ int main(int argc, char **argv)
 
 	SegmentIndexWriter indexWriter(indexStream.get());
 	indexWriter.setBlockSize(512);
-	indexWriter.setIndexInterval(128);
 
 	SegmentDataWriter dataWriter(dataStream.get(), &indexWriter, indexWriter.blockSize());
 

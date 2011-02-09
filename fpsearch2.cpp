@@ -26,7 +26,6 @@ int main(int argc, char **argv)
 	SegmentIndex* index = indexReader->read();
 
 	qDebug() << "BlockSize =" << index->blockSize();
-	qDebug() << "IndexInterval =" << index->indexInterval();
 	qDebug() << "KeyCount0 =" << index->levelKeyCount(0);
 
 //	dataInputStream->setBufferSize(index->blockSize());

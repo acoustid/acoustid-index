@@ -23,70 +23,34 @@ using namespace Acoustid;
 
 TEST(SegmentIndexTest, Sizes1)
 {
-	SegmentIndex index(256, 10, 1000);
+	SegmentIndex index(256, 1000);
 	EXPECT_EQ(256, index.blockSize());
-	EXPECT_EQ(10, index.indexInterval());
-	EXPECT_EQ(3, index.levelCount());
+	EXPECT_EQ(1, index.levelCount());
 	EXPECT_EQ(1000, index.levelKeyCount(0));
-	EXPECT_EQ(100, index.levelKeyCount(1));
-	EXPECT_EQ(10, index.levelKeyCount(2));
 }
 
 TEST(SegmentIndexTest, Sizes2)
 {
-	SegmentIndex index(256, 10, 1024);
+	SegmentIndex index(256, 1024);
 	EXPECT_EQ(256, index.blockSize());
-	EXPECT_EQ(10, index.indexInterval());
-	EXPECT_EQ(4, index.levelCount());
+	EXPECT_EQ(1, index.levelCount());
 	EXPECT_EQ(1024, index.levelKeyCount(0));
-	EXPECT_EQ(103, index.levelKeyCount(1));
-	EXPECT_EQ(11, index.levelKeyCount(2));
-	EXPECT_EQ(2, index.levelKeyCount(3));
 }
 
 TEST(SegmentIndexTest, Sizes3)
 {
-	SegmentIndex index(256, 10, 1111);
+	SegmentIndex index(256, 1111);
 	EXPECT_EQ(256, index.blockSize());
-	EXPECT_EQ(10, index.indexInterval());
-	EXPECT_EQ(4, index.levelCount());
+	EXPECT_EQ(1, index.levelCount());
 	EXPECT_EQ(1111, index.levelKeyCount(0));
-	EXPECT_EQ(112, index.levelKeyCount(1));
-	EXPECT_EQ(12, index.levelKeyCount(2));
-	EXPECT_EQ(2, index.levelKeyCount(3));
-}
-
-TEST(SegmentIndexTest, Rebuild)
-{
-	SegmentIndex index(256, 2, 8);
-	ASSERT_EQ(3, index.levelCount());
-	EXPECT_EQ(8, index.levelKeyCount(0));
-	EXPECT_EQ(4, index.levelKeyCount(1));
-	EXPECT_EQ(2, index.levelKeyCount(2));
-	uint32_t *data = index.levelKeys(0);
-	data[0] = 0;
-	data[1] = 1;
-	data[2] = 2;
-	data[3] = 3;
-	data[4] = 4;
-	data[5] = 5;
-	data[6] = 6;
-	data[7] = 7;
-	index.rebuild();
-	uint32_t expected1[] = { 0, 2, 4, 6 };
-	ASSERT_INTARRAY_EQ(expected1, index.levelKeys(1), 4);
-	uint32_t expected2[] = { 0, 4 };
-	ASSERT_INTARRAY_EQ(expected2, index.levelKeys(2), 2);
 }
 
 TEST(SegmentIndexTest, Search)
 {
 	size_t firstBlock = 0, lastBlock = 0;
-	SegmentIndex index(256, 2, 8);
-	ASSERT_EQ(3, index.levelCount());
+	SegmentIndex index(256, 8);
+	ASSERT_EQ(1, index.levelCount());
 	EXPECT_EQ(8, index.levelKeyCount(0));
-	EXPECT_EQ(4, index.levelKeyCount(1));
-	EXPECT_EQ(2, index.levelKeyCount(2));
 	uint32_t *data = index.levelKeys(0);
 	data[0] = 1;
 	data[1] = 2;

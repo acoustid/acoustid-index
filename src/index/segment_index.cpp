@@ -21,9 +21,10 @@
 
 using namespace Acoustid;
 
-SegmentIndex::SegmentIndex(size_t blockSize, size_t indexInterval, size_t keyCount)
-	: m_blockSize(blockSize), m_indexInterval(indexInterval)
+SegmentIndex::SegmentIndex(size_t blockSize, size_t keyCount)
+	: m_blockSize(blockSize)
 {
+	size_t indexInterval = keyCount;
 	// calculate the number of levels
 	m_levelCount = 1;
 	size_t levelKeyCount = keyCount;
@@ -51,14 +52,14 @@ SegmentIndex::~SegmentIndex()
 
 void SegmentIndex::rebuild()
 {
-	int skipInterval = m_indexInterval;
+	/*int skipInterval = m_indexInterval;
 	for (size_t level = 1; level < m_levelCount; level++) {
 		uint32_t *dest = &m_levelKeys[level][0];
 		for (size_t i = 0; i < m_levelKeyCounts[0]; i += skipInterval) {
 			*dest++ = m_levelKeys[0][i];
 		}
 		skipInterval *= m_indexInterval;
-	}
+	}*/
 }
 
 bool SegmentIndex::search(uint32_t key, size_t *firstBlock, size_t *lastBlock)

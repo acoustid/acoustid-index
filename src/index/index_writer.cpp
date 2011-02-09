@@ -84,7 +84,6 @@ void IndexWriter::flush()
 
 	SegmentIndexWriter indexWriter(indexOutput.get());
 	indexWriter.setBlockSize(512);
-	indexWriter.setIndexInterval(32);
 
 	SegmentDataWriter writer(dataOutput.get(), &indexWriter, indexWriter.blockSize());
 	for (size_t i = 0; i < m_segmentBuffer.size(); i++) {

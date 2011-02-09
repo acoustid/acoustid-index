@@ -33,9 +33,6 @@ public:
 	size_t blockSize() const { return m_blockSize; }
 	void setBlockSize(size_t i) { m_blockSize = i; }
 
-	size_t indexInterval() const { return m_indexInterval; }
-	void setIndexInterval(size_t i) { m_indexInterval = i; }
-
 	void addItem(uint32_t key);
 	void close();
 
@@ -43,7 +40,6 @@ private:
 	void maybeWriteHeader();
 
 	size_t m_blockSize;
-	size_t m_indexInterval;
 	uint32_t m_lastKey;
 	size_t m_keyCount;
 	size_t m_keyCountPosition;

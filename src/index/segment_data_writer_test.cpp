@@ -51,7 +51,6 @@ TEST_F(SegmentDataWriterTest, Write)
 {
 	SegmentIndexWriter indexWriter(indexStream);
 	indexWriter.setBlockSize(8);
-	indexWriter.setIndexInterval(2);
 
 	SegmentDataWriter writer(stream, &indexWriter, indexWriter.blockSize());
 	writer.addItem(200, 300);
