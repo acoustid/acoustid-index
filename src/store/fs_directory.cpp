@@ -40,12 +40,24 @@ void FSDirectory::close()
 
 OutputStream *FSDirectory::createFile(const QString &name)
 {
-	return FSOutputStream::open(filePath(name));
+	QString path = filePath(name);
+	return FSOutputStream::open(path);
 }
 
 InputStream *FSDirectory::openFile(const QString &name)
 {
-	return FSInputStream::open(filePath(name));
+	QString path = filePath(name);
+	FSFileSharedPtr file = m_openInputFiles.value(path).toStrongRef();
+	FSInputStream *input;
+	if (file.isNull()) {
+		m_openInputFiles.remove(path);
+		input = FSInputStream::open(path);
+		m_openInputFiles.insert(path, input->file());
+	}
+	else {
+		input = new FSInputStream(file);
+	}
+	return input;
 }
 
 void FSDirectory::deleteFile(const QString &name)
@@ -62,7 +74,6 @@ QStringList FSDirectory::listFiles()
 {
 	QDir dir(m_path);
 	return dir.entryList(QStringList(), QDir::Files);
-
 }
 
 bool FSDirectory::fileExists(const QString &name)

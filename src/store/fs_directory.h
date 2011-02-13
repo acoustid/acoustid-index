@@ -18,6 +18,8 @@
 #define ACOUSTID_STORE_FS_DIRECTORY_H_
 
 #include <QString>
+#include <QHash>
+#include "fs_file.h"
 #include "directory.h"
 
 namespace Acoustid {
@@ -47,6 +49,7 @@ private:
 		return m_path + "/" + name;
 	}
 
+	QHash<QString, FSFileWeakPtr> m_openInputFiles;
 	QString m_path;
 };
 

@@ -14,34 +14,40 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef ACOUSTID_FS_INPUT_STREAM_H_
-#define ACOUSTID_FS_INPUT_STREAM_H_
+#ifndef ACOUSTID_STORE_FS_FILE_H_
+#define ACOUSTID_STORE_FS_FILE_H_
 
 #include <QSharedPointer>
-#include "fs_file.h"
-#include "buffered_input_stream.h"
+#include "common.h"
 
 namespace Acoustid {
 
-class FSInputStream : public BufferedInputStream
+class FSFile
 {
 public:
-	explicit FSInputStream(const FSFileSharedPtr &file);
-	~FSInputStream();
+	explicit FSFile(int fd) : m_fd(fd)
+	{
+	}
 
-	int fileDescriptor() const;
-	const FSFileSharedPtr &file() const;
+	~FSFile()
+	{
+		if (m_fd) {
+			::close(m_fd);
+		}
+	}
 
-	static FSInputStream *open(const QString &fileName);
-
-protected:
-	size_t read(uint8_t *data, size_t offset, size_t length);
+	int fileDescriptor() const
+	{
+		return m_fd;
+	}
 
 private:
-	FSFileSharedPtr m_file;
+	int m_fd;
 };
+
+typedef QWeakPointer<FSFile> FSFileWeakPtr;
+typedef QSharedPointer<FSFile> FSFileSharedPtr;
 
 }
 
 #endif
-

@@ -23,8 +23,8 @@
 
 using namespace Acoustid;
 
-FSOutputStream::FSOutputStream(int fd)
-	: m_fd(fd)
+FSOutputStream::FSOutputStream(const FSFileSharedPtr &file)
+	: m_file(file)
 {
 }
 
@@ -35,12 +35,12 @@ FSOutputStream::~FSOutputStream()
 
 int FSOutputStream::fileDescriptor() const
 {
-	return m_fd;
+	return m_file->fileDescriptor();
 }
 
 size_t FSOutputStream::write(const uint8_t *data, size_t offset, size_t length)
 {
-	ssize_t result = pwrite(m_fd, (void *)data, length, offset);
+	ssize_t result = pwrite(fileDescriptor(), (void *)data, length, offset);
 	if (result == -1) {
 		throw IOException(QString("Couldn't write to a file (errno %1)").arg(errno));
 	}
@@ -54,11 +54,11 @@ FSOutputStream *FSOutputStream::open(const QString &fileName)
 	if (fd == -1) {
 		throw IOException(QString("couldn't open the file '%1' for writing (errno %2)").arg(fileName).arg(errno));
 	}
-	return new FSOutputStream(fd);
+	return new FSOutputStream(FSFileSharedPtr(new FSFile(fd)));
 }
 
-NamedFSOutputStream::NamedFSOutputStream(const QString &fileName, int fd)
-	: FSOutputStream(fd), m_fileName(fileName)
+NamedFSOutputStream::NamedFSOutputStream(const QString &fileName, const FSFileSharedPtr &file)
+	: FSOutputStream(file), m_fileName(fileName)
 {
 }
 
@@ -74,6 +74,6 @@ NamedFSOutputStream *NamedFSOutputStream::openTemporary()
 	if (fd == -1) {
 		throw IOException("couldn't create a temporary file");
 	}
-	return new NamedFSOutputStream(path, fd);
+	return new NamedFSOutputStream(path, FSFileSharedPtr(new FSFile(fd)));
 }
 
