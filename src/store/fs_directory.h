@@ -19,6 +19,7 @@
 
 #include <QString>
 #include <QHash>
+#include <QMutex>
 #include "fs_file.h"
 #include "directory.h"
 
@@ -49,6 +50,7 @@ private:
 		return m_path + "/" + name;
 	}
 
+	QMutex m_mutex;
 	QHash<QString, FSFileWeakPtr> m_openInputFiles;
 	QString m_path;
 };
