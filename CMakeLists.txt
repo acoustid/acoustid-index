@@ -56,19 +56,16 @@ add_executable(fpserver
 )
 target_link_libraries(fpserver ${QT_LIBRARIES})
 
-add_executable(fpindex fpindex.cpp)
+add_executable(fpindex src/tools/fpindex.cpp)
 target_link_libraries(fpindex ${QT_LIBRARIES} fpindexlib)
 
-add_executable(fpstats fpstats.cpp)
+add_executable(fpstats src/tools/fpstats.cpp)
 target_link_libraries(fpstats ${QT_LIBRARIES} fpindexlib)
 
-add_executable(fpsearch fpsearch.cpp)
+add_executable(fpsearch src/tools/fpsearch.cpp)
 target_link_libraries(fpsearch ${QT_LIBRARIES} fpindexlib)
 
-add_executable(fpsearch2 fpsearch2.cpp)
-target_link_libraries(fpsearch2 ${QT_LIBRARIES} fpindexlib)
-
-add_executable(fpdumpindex fpdumpindex.cpp)
+add_executable(fpdumpindex src/tools/fpdumpindex.cpp)
 target_link_libraries(fpdumpindex ${QT_LIBRARIES} fpindexlib)
 
 set(tests_SOURCES
