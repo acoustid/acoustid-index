@@ -61,7 +61,8 @@ void IndexWriter::commit()
 {
 	flush();
 	m_revision++;
-	m_segmentInfos.write(m_dir->createFile(SegmentInfoList::segmentsFileName(m_revision)));
+	ScopedPtr<OutputStream> segmentsFile(m_dir->createFile(SegmentInfoList::segmentsFileName(m_revision)));
+	m_segmentInfos.write(segmentsFile.get());
 }
 
 void IndexWriter::maybeFlush()

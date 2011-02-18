@@ -77,6 +77,7 @@ void SegmentDataWriter::addItem(uint32_t key, uint32_t value)
 {
 	if (!m_buffer) {
 		m_buffer.reset(new uint8_t[m_blockSize]);
+		memset(m_buffer.get(), 0, m_blockSize);
 		m_ptr = m_buffer.get();
 	}
 
