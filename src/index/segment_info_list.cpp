@@ -47,6 +47,7 @@ void SegmentInfoList::add(const SegmentInfo &info)
 void SegmentInfoList::read(InputStream *input)
 {
 	clear();
+	setNextSegmentNum(input->readVInt32());
 	size_t segmentCount = input->readVInt32();
 	for (size_t i = 0; i < segmentCount; i++) {
 		QString name = input->readString();
@@ -57,6 +58,7 @@ void SegmentInfoList::read(InputStream *input)
 
 void SegmentInfoList::write(OutputStream *output)
 {
+	output->writeVInt32(lastSegmetNum());
 	output->writeVInt32(segmentCount());
 	for (size_t i = 0; i < segmentCount(); i++) {
 		output->writeString(info(i).name());

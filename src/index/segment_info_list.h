@@ -31,7 +31,7 @@ class OutputStream;
 class SegmentInfoList
 {
 public:
-	SegmentInfoList()
+	SegmentInfoList() : m_nextSegmentNum(0)
 	{
 	}
 
@@ -43,6 +43,21 @@ public:
 	const SegmentInfo &info(size_t i) const
 	{
 		return m_infos[i];
+	}
+
+	size_t lastSegmetNum() const
+	{
+		return m_nextSegmentNum;
+	}
+
+	size_t incNextSegmentNum()
+	{
+		return m_nextSegmentNum++;
+	}
+
+	void setNextSegmentNum(size_t n)
+	{
+		m_nextSegmentNum = n;
 	}
 
 	void clear();
@@ -57,6 +72,7 @@ public:
 
 private:
 	QList<SegmentInfo> m_infos;
+	size_t m_nextSegmentNum;
 };
 
 }

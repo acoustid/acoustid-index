@@ -79,7 +79,8 @@ void IndexWriter::flush()
 	}
 	std::sort(m_segmentBuffer.begin(), m_segmentBuffer.end());
 
-	QString name = "segment_0";
+	size_t num = m_segmentInfos.incNextSegmentNum();
+	QString name = QString("segment_%1").arg(num);
 	ScopedPtr<OutputStream> indexOutput(m_dir->createFile(name + ".fii"));
 	ScopedPtr<OutputStream> dataOutput(m_dir->createFile(name + ".fid"));
 
