@@ -29,6 +29,7 @@ set(fpindexlib_SOURCES
 	src/store/memory_input_stream.cpp
 	src/store/ram_directory.cpp
 	src/store/ram_output_stream.cpp
+	src/util/options.cpp
 )
 add_library(fpindexlib ${fpindexlib_SOURCES})
 
