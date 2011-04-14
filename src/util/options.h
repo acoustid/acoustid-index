@@ -6,6 +6,7 @@
 
 #include <QString>
 #include <QList>
+#include <QHash>
 
 namespace Acoustid {
 
@@ -37,6 +38,58 @@ private:
 	QString m_metaVar;
 };
 
+class Options
+{
+public:
+	Options()
+	{
+	}
+
+	Options(const QHash<QString, QString> &options, const QList<QString> &arguments)
+		: m_options(options), m_arguments(arguments)
+	{
+	}
+
+	bool contains(const QString &name) const
+	{
+		return m_options.contains(name);
+	}
+
+	QString option(const QString &name) const
+	{
+		return m_options.value(name);
+	}
+
+	int argumentCount() const
+	{
+		return m_arguments.size();
+	}
+
+	const QString &argument(int i) const
+	{
+		return m_arguments.at(i);
+	}
+
+	const QList<QString> &arguments() const
+	{
+		return m_arguments;
+	}
+
+	void addArgument(const QString &argument)
+	{
+		m_arguments.append(argument);
+	}
+
+	void addOption(const QString &name, const QString &value)
+	{
+		m_options.insert(name, value);
+	}
+
+private:
+	QHash<QString, QString> m_options;
+	QList<QString> m_arguments;
+};
+
 /*
 	OptionParser parser("%prog [options]");
 	parser.addOption("file", 'f').setArgument().setHelp("input file").setMetaVar("INPUT");
@@ -50,7 +103,7 @@ public:
 	OptionParser(const QString &usage = QString("%prog [options]"));
 	~OptionParser();
 	Option &addOption(const QString &longName, char shortName = 0);
-	void parse(int argc, char *const argv[]);
+	Options *parse(int argc, char *const argv[]);
 	virtual void error(const QString &message);
 	virtual void exit(int code);
 private:

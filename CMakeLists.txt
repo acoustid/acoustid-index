@@ -86,6 +86,7 @@ set(tests_SOURCES
 	src/store/fs_output_stream_test.cpp
 	src/store/ram_directory_test.cpp
 	src/util/search_utils_test.cpp
+	src/util/options_test.cpp
 	src/util/exceptions_test.cpp
 	src/util/tests.cpp
 )

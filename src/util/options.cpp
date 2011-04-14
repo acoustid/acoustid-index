@@ -118,8 +118,9 @@ void OptionParser::error(const QString &message)
 	exit(EXIT_FAILURE);
 }
 
-void OptionParser::parse(int argc, char *const argv[])
+Options *OptionParser::parse(int argc, char *const argv[])
 {
+	Options *options = new Options();
 	QByteArray shortOptions;
 	int shortIndexes[256];
 	std::fill(shortIndexes, shortIndexes + 256, -1);
@@ -139,6 +140,9 @@ void OptionParser::parse(int argc, char *const argv[])
 		longOptions[i].val = 0;
 		if (option->shortName()) {
 			shortOptions += option->shortName();
+			if (option->argument() != Option::NoArgument) {
+				shortOptions += ':';
+			}
 			shortIndexes[option->shortName()] = i;
 		}
 	}
@@ -146,9 +150,6 @@ void OptionParser::parse(int argc, char *const argv[])
 	longOptions[i].has_arg = 0;
 	longOptions[i].flag = 0;
 	longOptions[i].val = 0;
-
-	QStringList args;
-	QHash<QString, QString> opts;
 
 	m_prog = argv[0];
 	int longIndex = 0;
@@ -160,7 +161,7 @@ void OptionParser::parse(int argc, char *const argv[])
 		if (c == 0 || shortIndexes[c] != -1) {
 			i = (c == 0) ? longIndex : shortIndexes[c];
 			QString name = m_options[i]->longName();
-			opts[name] = QString::fromLocal8Bit(optarg);
+			options->addOption(name, QString::fromLocal8Bit(optarg));
 			if (name == "help") {
 				showHelp();
 				exit(EXIT_SUCCESS);
@@ -172,10 +173,12 @@ void OptionParser::parse(int argc, char *const argv[])
 		}
 	}
 	while (optind < argc) {
-		args.append(QString::fromLocal8Bit(argv[optind++]));
+		options->addArgument(QString::fromLocal8Bit(argv[optind++]));
 	}
 	for (i = 0; i < m_options.size(); i++) {
 		free((void *) longOptions[i].name);
 	}
+	delete[] longOptions;
+	return options;
 }
 
