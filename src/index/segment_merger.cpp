@@ -10,7 +10,13 @@ SegmentMerger::SegmentMerger(SegmentDataWriter *writer)
 {
 }
 
-void SegmentMerger::merge()
+SegmentMerger::~SegmentMerger()
+{
+	qDeleteAll(m_readers);
+	delete m_writer;
+}
+
+size_t SegmentMerger::merge()
 {
 	QMutableListIterator<SegmentEnum *> iter(m_readers);
 	while (iter.hasNext()) {
@@ -19,6 +25,7 @@ void SegmentMerger::merge()
 			iter.remove();
 		}
 	}
+	QSet<int> docs;
 	uint64_t lastMinItem = ~0;
 	while (!m_readers.isEmpty()) {
 		size_t minItemIndex = 0;
@@ -35,9 +42,14 @@ void SegmentMerger::merge()
 			m_readers.removeAt(minItemIndex);
 		}
 		if (minItem != lastMinItem) {
-			m_writer->addItem((minItem >> 32) & 0xffffffff, minItem & 0xffffffff);
+			uint32_t key = (minItem >> 32) & 0xffffffff;
+			uint32_t value = minItem & 0xffffffff;
+			docs.insert(value);
+			m_writer->addItem(key, value);
 			lastMinItem = minItem;
 		}
 	}
 	m_writer->close();
+	return docs.size();
 }
+

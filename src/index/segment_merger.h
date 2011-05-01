@@ -14,13 +14,14 @@ class SegmentMerger
 {
 public:
 	SegmentMerger(SegmentDataWriter *target);
+	virtual ~SegmentMerger();
 
 	void addSource(SegmentEnum *reader)
 	{
 		m_readers.append(reader);
 	}
 
-	void merge();
+	size_t merge();
 
 private:
 	QList<SegmentEnum *> m_readers;

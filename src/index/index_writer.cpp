@@ -7,7 +7,12 @@
 #include "store/output_stream.h"
 #include "segment_index_writer.h"
 #include "segment_data_writer.h"
+#include "segment_index_reader.h"
+#include "segment_data_reader.h"
+#include "segment_merger.h"
 #include "index_writer.h"
+
+#define BLOCK_SIZE 512
 
 using namespace Acoustid;
 
@@ -67,26 +72,39 @@ void IndexWriter::maybeMerge()
 		return;
 	}
 
-	/*SegmentInfo info(m_segmentInfos.incNextSegmentId());
+	SegmentInfo info(m_segmentInfos.incNextSegmentId());
 	ScopedPtr<OutputStream> indexOutput(m_dir->createFile(info.name() + ".fii"));
 	ScopedPtr<OutputStream> dataOutput(m_dir->createFile(info.name() + ".fid"));
 
 	SegmentIndexWriter indexWriter(indexOutput.get());
-	indexWriter.setBlockSize(512);
+	indexWriter.setBlockSize(BLOCK_SIZE);
 
-	SegmentDataWriter writer(dataOutput.get(), &indexWriter, indexWriter.blockSize());
-	SegmentMerger merger(&writer);
+	SegmentDataWriter *writer = new SegmentDataWriter(dataOutput.get(), &indexWriter, indexWriter.blockSize());
+	SegmentMerger merger(writer);
+	//qDebug() << "merging";
 	for (size_t i = 0; i < merge.size(); i++) {
-		SegmentInfo mergeInfo = m_segmentInfos.info(i);
-		InputStream *indexInput = m_dir->openFile(mergeInfo.name() + ".fii");
-		InputStream *dataInput = m_dir->openFile(mergeInfo.name() + ".fid");
-		//SegmentEnum *segmentEnum = new SegmentEnum(ind)
-		merger.add(m_segmentInfos.info(i));
+		SegmentInfo mergeInfo = m_segmentInfos.info(merge.at(i));
+		SegmentIndex *index = SegmentIndexReader(m_dir->openFile(mergeInfo.name() + ".fii")).read();
+		SegmentDataReader *dataReader = new SegmentDataReader(m_dir->openFile(mergeInfo.name() + ".fid"), BLOCK_SIZE);
+		SegmentEnum *segmentEnum = new SegmentEnum(index, dataReader);
+		//qDebug() << "adding source" << i << mergeInfo.id() << mergeInfo.numDocs();
+		merger.addSource(segmentEnum);
 	}
-	merger.merge();
+	info.setNumDocs(merger.merge());
 
-	m_segmentInfos.add(info);*/
-	
+	SegmentInfoList infos;
+	infos.setNextSegmentId(m_segmentInfos.lastSegmetNum());
+	QSet<int> merged = merge.toSet();
+	//qDebug() << "merge" << merge;
+	//qDebug() << "merged" << merged;
+	for (size_t i = 0; i < m_segmentInfos.size(); i++) {
+		if (!merged.contains(i)) {
+			infos.add(m_segmentInfos.info(i));
+		}
+	}
+	infos.add(info);
+
+	m_segmentInfos = infos;
 }
 
 void IndexWriter::flush()
@@ -97,11 +115,12 @@ void IndexWriter::flush()
 	std::sort(m_segmentBuffer.begin(), m_segmentBuffer.end());
 
 	SegmentInfo info(m_segmentInfos.incNextSegmentId(), m_numDocsInBuffer);
+	//qDebug() << "new segment" << info.id() << m_numDocsInBuffer;
 	ScopedPtr<OutputStream> indexOutput(m_dir->createFile(info.name() + ".fii"));
 	ScopedPtr<OutputStream> dataOutput(m_dir->createFile(info.name() + ".fid"));
 
 	SegmentIndexWriter indexWriter(indexOutput.get());
-	indexWriter.setBlockSize(512);
+	indexWriter.setBlockSize(BLOCK_SIZE);
 
 	SegmentDataWriter writer(dataOutput.get(), &indexWriter, indexWriter.blockSize());
 	for (size_t i = 0; i < m_segmentBuffer.size(); i++) {
@@ -112,7 +131,15 @@ void IndexWriter::flush()
 	writer.close();
 
 	m_segmentInfos.add(info);
+	//qDebug() << "segments before merge:";
+	//for (size_t i = 0; i < m_segmentInfos.size(); i++) {
+		//qDebug() << "   id =" << m_segmentInfos.info(i).id() << m_segmentInfos.info(i).numDocs();
+	//}
 	maybeMerge();
+	//qDebug() << "segments after merge:";
+	//for (size_t i = 0; i < m_segmentInfos.size(); i++) {
+		//qDebug() << "   id =" << m_segmentInfos.info(i).id() << m_segmentInfos.info(i).numDocs();
+	//}
 
 	m_segmentBuffer.clear();
 	m_numDocsInBuffer = 0;

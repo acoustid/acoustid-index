@@ -20,6 +20,7 @@ using namespace Acoustid;
 TEST(SegmentMergerTest, Iterate)
 {
 	RAMDirectory dir;
+	size_t numDocs;
 
 	{
 		ScopedPtr<OutputStream> indexOutput(dir.createFile("segment_0.fii"));
@@ -56,24 +57,24 @@ TEST(SegmentMergerTest, Iterate)
 		indexWriter.setBlockSize(8);
 
 		ScopedPtr<OutputStream> dataOutput(dir.createFile("segment_2.fid"));
-		SegmentDataWriter writer(dataOutput.get(), &indexWriter, indexWriter.blockSize());
+		SegmentDataWriter *writer = new SegmentDataWriter(dataOutput.get(), &indexWriter, indexWriter.blockSize());
 
 		InputStream *indexInput1 = dir.openFile("segment_0.fii");
 		InputStream *dataInput1 = dir.openFile("segment_0.fid");
 		SegmentIndex *index1 = SegmentIndexReader(indexInput1).read();
 		SegmentDataReader *dataReader1 = new SegmentDataReader(dataInput1, index1->blockSize());
-		SegmentEnum reader1(index1, dataReader1);
+		SegmentEnum *reader1 = new SegmentEnum(index1, dataReader1);
 
 		InputStream *indexInput2 = dir.openFile("segment_1.fii");
 		InputStream *dataInput2 = dir.openFile("segment_1.fid");
 		SegmentIndex *index2 = SegmentIndexReader(indexInput2).read();
 		SegmentDataReader *dataReader2 = new SegmentDataReader(dataInput2, index2->blockSize());
-		SegmentEnum reader2(index2, dataReader2);
+		SegmentEnum *reader2 = new SegmentEnum(index2, dataReader2);
 
-		SegmentMerger merger(&writer);
-		merger.addSource(&reader1);
-		merger.addSource(&reader2);
-		merger.merge();
+		SegmentMerger merger(writer);
+		merger.addSource(reader1);
+		merger.addSource(reader2);
+		numDocs = merger.merge();
 	}
 
 	InputStream *indexInput = dir.openFile("segment_2.fii");
@@ -82,6 +83,7 @@ TEST(SegmentMergerTest, Iterate)
 	SegmentDataReader *dataReader = new SegmentDataReader(dataInput, index->blockSize());
 	SegmentEnum reader(index, dataReader);
 
+	ASSERT_EQ(7, numDocs);
 	ASSERT_TRUE(reader.next());
 	ASSERT_EQ(199, reader.key());
 	ASSERT_EQ(500, reader.value());

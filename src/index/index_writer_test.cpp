@@ -66,3 +66,43 @@ TEST(IndexWriterTest, AddDocument)
 	}
 }
 
+TEST(IndexWriterTest, Merge)
+{
+	RAMDirectory dir;
+	IndexWriter writer(&dir, true);
+	ASSERT_TRUE(dir.fileExists("segments_0"));
+	ASSERT_EQ(0, writer.revision());
+	ASSERT_EQ(0, writer.segmentInfoList().segmentCount());
+
+	writer.segmentMergePolicy()->setMaxMergeAtOnce(2);
+	writer.segmentMergePolicy()->setMaxSegmentsPerTier(2);
+
+	uint32_t fp[] = { 7, 9, 12 };
+	writer.addDocument(1, fp, 3);
+	writer.commit();
+	ASSERT_EQ(1, writer.segmentInfoList().segmentCount());
+	ASSERT_EQ(1, writer.segmentInfoList().info(0).numDocs());
+	writer.addDocument(2, fp, 3);
+	writer.commit();
+	ASSERT_EQ(2, writer.segmentInfoList().segmentCount());
+	ASSERT_EQ(1, writer.segmentInfoList().info(0).numDocs());
+	ASSERT_EQ(1, writer.segmentInfoList().info(1).numDocs());
+	writer.addDocument(3, fp, 3);
+	writer.commit();
+	ASSERT_EQ(2, writer.segmentInfoList().segmentCount());
+	ASSERT_EQ(1, writer.segmentInfoList().info(0).numDocs());
+	ASSERT_EQ(2, writer.segmentInfoList().info(1).numDocs());
+	writer.addDocument(4, fp, 3);
+	writer.commit();
+	ASSERT_EQ(3, writer.segmentInfoList().segmentCount());
+	ASSERT_EQ(1, writer.segmentInfoList().info(0).numDocs());
+	ASSERT_EQ(2, writer.segmentInfoList().info(1).numDocs());
+	ASSERT_EQ(1, writer.segmentInfoList().info(2).numDocs());
+	writer.addDocument(5, fp, 3);
+	writer.commit();
+	ASSERT_EQ(3, writer.segmentInfoList().segmentCount());
+	ASSERT_EQ(2, writer.segmentInfoList().info(0).numDocs());
+	ASSERT_EQ(1, writer.segmentInfoList().info(1).numDocs());
+	ASSERT_EQ(2, writer.segmentInfoList().info(2).numDocs());
+}
+
