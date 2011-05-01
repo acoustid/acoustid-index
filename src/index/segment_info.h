@@ -11,19 +11,24 @@ namespace Acoustid {
 class SegmentInfo
 {
 public:
-	SegmentInfo(const QString &name = QString(), size_t numDocs = 0)
-		: m_name(name), m_numDocs(numDocs)
+	SegmentInfo(int id = 0, size_t numDocs = 0)
+		: m_id(id), m_numDocs(numDocs)
 	{
 	}
 
 	QString name() const
 	{
-		return m_name;
+		return QString("segment_%1").arg(m_id);
 	}
 
-	void setName(const QString &name)
+	void setId(int id)
 	{
-		m_name = name;
+		m_id = id;
+	}
+
+	int id() const
+	{
+		return m_id;
 	}
 
 	size_t numDocs() const
@@ -37,8 +42,7 @@ public:
 	}
 
 private:
-	QString m_name;
-	size_t m_blockSize;
+	int m_id;
 	size_t m_numDocs;
 };
 

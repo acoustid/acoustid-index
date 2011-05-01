@@ -37,9 +37,9 @@ TEST(SegmentInfoListTest, Read)
 	ScopedPtr<OutputStream> output(dir.createFile("segments_0"));
 	output->writeVInt32(3);
 	output->writeVInt32(2);
-	output->writeString("segment_0");
+	output->writeVInt32(0);
 	output->writeVInt32(42);
-	output->writeString("segment_2");
+	output->writeVInt32(2);
 	output->writeVInt32(66);
 	output.reset();
 
@@ -61,9 +61,9 @@ TEST(SegmentInfoListTest, Write)
 	RAMDirectory dir;
 
 	SegmentInfoList infos;
-	infos.add(SegmentInfo("segment_0", 42));
+	infos.add(SegmentInfo(0, 42));
 	infos.incNextSegmentNum();
-	infos.add(SegmentInfo("segment_1", 66));
+	infos.add(SegmentInfo(1, 66));
 	infos.incNextSegmentNum();
 	ScopedPtr<OutputStream> output(dir.createFile("segments_0"));
 	infos.write(output.get());
@@ -72,17 +72,17 @@ TEST(SegmentInfoListTest, Write)
 	ScopedPtr<InputStream> input(dir.openFile("segments_0"));
 	ASSERT_EQ(2, input->readVInt32());
 	ASSERT_EQ(2, input->readVInt32());
-	ASSERT_EQ("segment_0", input->readString());
+	ASSERT_EQ(0, input->readVInt32());
 	ASSERT_EQ(42, input->readVInt32());
-	ASSERT_EQ("segment_1", input->readString());
+	ASSERT_EQ(1, input->readVInt32());
 	ASSERT_EQ(66, input->readVInt32());
 }
 
 TEST(SegmentInfoListTest, Clear)
 {
 	SegmentInfoList infos;
-	infos.add(SegmentInfo("segment_0", 42));
-	infos.add(SegmentInfo("segment_1", 66));
+	infos.add(SegmentInfo(0, 42));
+	infos.add(SegmentInfo(1, 66));
 	ASSERT_EQ(2, infos.segmentCount());
 	infos.clear();
 	ASSERT_EQ(0, infos.segmentCount());

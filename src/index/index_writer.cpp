@@ -67,9 +67,9 @@ void IndexWriter::flush()
 	std::sort(m_segmentBuffer.begin(), m_segmentBuffer.end());
 
 	size_t num = m_segmentInfos.incNextSegmentNum();
-	QString name = QString("segment_%1").arg(num);
-	ScopedPtr<OutputStream> indexOutput(m_dir->createFile(name + ".fii"));
-	ScopedPtr<OutputStream> dataOutput(m_dir->createFile(name + ".fid"));
+	SegmentInfo info(num, m_numDocsInBuffer);
+	ScopedPtr<OutputStream> indexOutput(m_dir->createFile(info.name() + ".fii"));
+	ScopedPtr<OutputStream> dataOutput(m_dir->createFile(info.name() + ".fid"));
 
 	SegmentIndexWriter indexWriter(indexOutput.get());
 	indexWriter.setBlockSize(512);
@@ -82,7 +82,7 @@ void IndexWriter::flush()
 	}
 	writer.close();
 
-	m_segmentInfos.add(SegmentInfo(name, m_numDocsInBuffer));
+	m_segmentInfos.add(info);
 
 	m_segmentBuffer.clear();
 	m_numDocsInBuffer = 0;
