@@ -48,7 +48,7 @@ TEST(SegmentInfoListTest, Read)
 	infos.read(input.get());
 	input.reset();
 
-	ASSERT_EQ(3, infos.lastSegmetNum());
+	ASSERT_EQ(3, infos.lastSegmentId());
 	ASSERT_EQ(2, infos.segmentCount());
 	ASSERT_EQ("segment_0", infos.info(0).name());
 	ASSERT_EQ(42, infos.info(0).numDocs());
@@ -62,9 +62,9 @@ TEST(SegmentInfoListTest, Write)
 
 	SegmentInfoList infos;
 	infos.add(SegmentInfo(0, 42));
-	infos.incNextSegmentId();
+	infos.incLastSegmentId();
 	infos.add(SegmentInfo(1, 66));
-	infos.incNextSegmentId();
+	infos.incLastSegmentId();
 	ScopedPtr<OutputStream> output(dir.createFile("segments_0"));
 	infos.write(output.get());
 	output.reset();

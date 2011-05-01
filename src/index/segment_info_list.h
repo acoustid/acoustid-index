@@ -27,7 +27,7 @@ public:
 	}
 
 	SegmentInfoList(const SegmentInfoList &other)
-		: m_nextSegmentNum(other.lastSegmetNum()),
+		: m_nextSegmentNum(other.lastSegmentId()),
 		  m_infos(other.infos())
 	{
 	}
@@ -72,17 +72,17 @@ public:
 		return m_infos;
 	}
 
-	size_t lastSegmetNum() const
+	size_t lastSegmentId() const
 	{
 		return m_nextSegmentNum;
 	}
 
-	size_t incNextSegmentId()
+	size_t incLastSegmentId()
 	{
 		return m_nextSegmentNum++;
 	}
 
-	void setNextSegmentId(size_t n)
+	void setLastSegmentId(size_t n)
 	{
 		m_nextSegmentNum = n;
 	}

@@ -72,7 +72,7 @@ void IndexWriter::maybeMerge()
 		return;
 	}
 
-	SegmentInfo info(m_segmentInfos.incNextSegmentId());
+	SegmentInfo info(m_segmentInfos.incLastSegmentId());
 	ScopedPtr<OutputStream> indexOutput(m_dir->createFile(info.name() + ".fii"));
 	ScopedPtr<OutputStream> dataOutput(m_dir->createFile(info.name() + ".fid"));
 
@@ -93,7 +93,7 @@ void IndexWriter::maybeMerge()
 	info.setNumDocs(merger.merge());
 
 	SegmentInfoList infos;
-	infos.setNextSegmentId(m_segmentInfos.lastSegmetNum());
+	infos.setLastSegmentId(m_segmentInfos.lastSegmentId());
 	QSet<int> merged = merge.toSet();
 	//qDebug() << "merge" << merge;
 	//qDebug() << "merged" << merged;
@@ -114,7 +114,7 @@ void IndexWriter::flush()
 	}
 	std::sort(m_segmentBuffer.begin(), m_segmentBuffer.end());
 
-	SegmentInfo info(m_segmentInfos.incNextSegmentId(), m_numDocsInBuffer);
+	SegmentInfo info(m_segmentInfos.incLastSegmentId(), m_numDocsInBuffer);
 	//qDebug() << "new segment" << info.id() << m_numDocsInBuffer;
 	ScopedPtr<OutputStream> indexOutput(m_dir->createFile(info.name() + ".fii"));
 	ScopedPtr<OutputStream> dataOutput(m_dir->createFile(info.name() + ".fid"));
