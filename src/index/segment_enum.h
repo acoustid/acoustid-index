@@ -18,6 +18,12 @@ public:
 		  m_currentBlock(0)
 	{}
 
+	~SegmentEnum()
+	{
+		delete m_index;
+		delete m_dataReader;
+	}
+
 	bool next()
 	{
 		if (!m_currentBlock.get() || !m_currentBlock->next()) {
