@@ -47,7 +47,7 @@ void SegmentInfoList::add(const SegmentInfo &info)
 void SegmentInfoList::read(InputStream *input)
 {
 	clear();
-	setNextSegmentNum(input->readVInt32());
+	setNextSegmentId(input->readVInt32());
 	size_t segmentCount = input->readVInt32();
 	for (size_t i = 0; i < segmentCount; i++) {
 		int id = input->readVInt32();

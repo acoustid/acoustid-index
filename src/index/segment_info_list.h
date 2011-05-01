@@ -37,12 +37,12 @@ public:
 		return m_nextSegmentNum;
 	}
 
-	size_t incNextSegmentNum()
+	size_t incNextSegmentId()
 	{
 		return m_nextSegmentNum++;
 	}
 
-	void setNextSegmentNum(size_t n)
+	void setNextSegmentId(size_t n)
 	{
 		m_nextSegmentNum = n;
 	}

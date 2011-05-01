@@ -62,9 +62,9 @@ TEST(SegmentInfoListTest, Write)
 
 	SegmentInfoList infos;
 	infos.add(SegmentInfo(0, 42));
-	infos.incNextSegmentNum();
+	infos.incNextSegmentId();
 	infos.add(SegmentInfo(1, 66));
-	infos.incNextSegmentNum();
+	infos.incNextSegmentId();
 	ScopedPtr<OutputStream> output(dir.createFile("segments_0"));
 	infos.write(output.get());
 	output.reset();

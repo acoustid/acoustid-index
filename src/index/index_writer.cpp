@@ -66,7 +66,7 @@ void IndexWriter::flush()
 	}
 	std::sort(m_segmentBuffer.begin(), m_segmentBuffer.end());
 
-	size_t num = m_segmentInfos.incNextSegmentNum();
+	size_t num = m_segmentInfos.incNextSegmentId();
 	SegmentInfo info(num, m_numDocsInBuffer);
 	ScopedPtr<OutputStream> indexOutput(m_dir->createFile(info.name() + ".fii"));
 	ScopedPtr<OutputStream> dataOutput(m_dir->createFile(info.name() + ".fid"));
