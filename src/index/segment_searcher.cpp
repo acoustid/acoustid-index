@@ -16,6 +16,8 @@ SegmentSearcher::SegmentSearcher(SegmentIndex *index, SegmentDataReader *dataRea
 
 SegmentSearcher::~SegmentSearcher()
 {
+	delete m_index;
+	delete m_dataReader;
 }
 
 void SegmentSearcher::search(uint32_t *fingerprint, size_t length, Collector *collector)

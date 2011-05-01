@@ -8,7 +8,8 @@ using namespace Acoustid;
 int main(int argc, char **argv)
 {
 	FSDirectory dir(".");
-	IndexWriter writer(&dir, true);
+	IndexWriter writer(&dir);
+	writer.open(true);
 
 	size_t length = argc - 2;
 	uint32_t id = strtoul(argv[1], NULL, 10);

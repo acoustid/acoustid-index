@@ -80,6 +80,7 @@ set(tests_SOURCES
 	src/index/segment_index_reader_test.cpp
 	src/index/segment_index_writer_test.cpp
 	src/index/segment_info_list_test.cpp
+	src/index/index_reader_test.cpp
 	src/index/index_writer_test.cpp
 	src/index/segment_enum_test.cpp
 	src/index/segment_merger_test.cpp

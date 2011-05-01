@@ -7,7 +7,7 @@
 #include "store/output_stream.h"
 #include "segment_index_reader.h"
 #include "segment_data_reader.h"
-#include "segment_merger.h"
+#include "segment_searcher.h"
 #include "index_reader.h"
 
 #define BLOCK_SIZE 512
@@ -32,5 +32,21 @@ void IndexReader::open()
 
 IndexReader::~IndexReader()
 {
+}
+
+SegmentIndex *IndexReader::segmentIndex(int i)
+{
+	const SegmentInfo &info = m_infos.info(i);
+	return SegmentIndexReader(m_dir->openFile(info.name() + ".fii")).read();
+}
+
+void IndexReader::search(uint32_t *fingerprint, size_t length, Collector *collector)
+{
+	for (int i = 0; i < m_infos.size(); i++) {
+		const SegmentInfo &info = m_infos.info(i);
+		SegmentDataReader *dataReader = new SegmentDataReader(m_dir->openFile(info.name() + ".fid"), BLOCK_SIZE);
+		SegmentSearcher searcher(segmentIndex(i), dataReader);
+		searcher.search(fingerprint, length, collector);
+	}
 }
 

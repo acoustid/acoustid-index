@@ -5,9 +5,12 @@
 #define ACOUSTID_INDEX_READER_H_
 
 #include "common.h"
+#include "collector.h"
 #include "segment_info_list.h"
 
 namespace Acoustid {
+
+class SegmentIndex;
 
 class IndexReader
 {
@@ -32,6 +35,8 @@ public:
 		return m_infos;
 	}
 
+	void search(uint32_t *fingerprint, size_t length, Collector *collector);
+
 protected:
 	void setRevision(int revision)
 	{
@@ -42,6 +47,8 @@ protected:
 	{
 		m_infos = infos;
 	}
+
+	SegmentIndex *segmentIndex(int i);
 
 	Directory *m_dir;
 	int m_revision;
