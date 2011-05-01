@@ -16,19 +16,8 @@ class SegmentDataWriterTest : public ::testing::Test
 protected:
 	void SetUp()
 	{
-		stream = NamedFSOutputStream::openTemporary();
-		indexStream = NamedFSOutputStream::openTemporary();
-	}
-	void TearDown()
-	{
-		if (stream) {
-			QFile::remove(stream->fileName());
-			delete stream;
-		}
-		if (indexStream) {
-			QFile::remove(indexStream->fileName());
-			delete indexStream;
-		}
+		stream = NamedFSOutputStream::openTemporary(true);
+		indexStream = NamedFSOutputStream::openTemporary(true);
 	}
 	NamedFSOutputStream *stream;
 	NamedFSOutputStream *indexStream;
@@ -36,10 +25,10 @@ protected:
 
 TEST_F(SegmentDataWriterTest, Write)
 {
-	SegmentIndexWriter indexWriter(indexStream);
-	indexWriter.setBlockSize(8);
+	SegmentIndexWriter *indexWriter = new SegmentIndexWriter(indexStream);
+	indexWriter->setBlockSize(8);
 
-	SegmentDataWriter writer(stream, &indexWriter, indexWriter.blockSize());
+	SegmentDataWriter writer(stream, indexWriter, indexWriter->blockSize());
 	writer.addItem(200, 300);
 	writer.addItem(201, 301);
 	writer.addItem(201, 302);

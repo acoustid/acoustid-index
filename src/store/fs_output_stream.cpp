@@ -44,9 +44,16 @@ FSOutputStream *FSOutputStream::open(const QString &fileName)
 	return new FSOutputStream(FSFileSharedPtr(new FSFile(fd)));
 }
 
-NamedFSOutputStream::NamedFSOutputStream(const QString &fileName, const FSFileSharedPtr &file)
-	: FSOutputStream(file), m_fileName(fileName)
+NamedFSOutputStream::NamedFSOutputStream(const QString &fileName, const FSFileSharedPtr &file, bool autoDelete)
+	: FSOutputStream(file), m_fileName(fileName), m_autoDelete(autoDelete)
 {
+}
+
+NamedFSOutputStream::~NamedFSOutputStream()
+{
+	if (m_autoDelete) {
+		QFile::remove(m_fileName);
+	}
 }
 
 QString NamedFSOutputStream::fileName() const
@@ -54,13 +61,13 @@ QString NamedFSOutputStream::fileName() const
 	return m_fileName;
 }
 
-NamedFSOutputStream *NamedFSOutputStream::openTemporary()
+NamedFSOutputStream *NamedFSOutputStream::openTemporary(bool autoDelete)
 {
 	QByteArray path("/tmp/acoustidXXXXXX");
 	int fd = ::mkstemp(path.data());
 	if (fd == -1) {
 		throw IOException("couldn't create a temporary file");
 	}
-	return new NamedFSOutputStream(path, FSFileSharedPtr(new FSFile(fd)));
+	return new NamedFSOutputStream(path, FSFileSharedPtr(new FSFile(fd)), autoDelete);
 }
 

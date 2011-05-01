@@ -19,7 +19,6 @@ using namespace Acoustid;
 IndexWriter::IndexWriter(Directory *dir, bool create)
 	: m_dir(dir), m_numDocsInBuffer(0), m_maxSegmentBufferSize(1024 * 1024 * 10)
 {
-	m_mergePolicy = new SegmentMergePolicy();
 	m_revision = SegmentInfoList::findCurrentRevision(dir);
 	if (m_revision != -1) {
 		m_segmentInfos.read(dir->openFile(SegmentInfoList::segmentsFileName(m_revision)));
@@ -30,10 +29,12 @@ IndexWriter::IndexWriter(Directory *dir, bool create)
 	else {
 		throw IOException("there is no index in the directory");
 	}
+	m_mergePolicy = new SegmentMergePolicy();
 }
 
 IndexWriter::~IndexWriter()
 {
+	delete m_mergePolicy;
 }
 
 int IndexWriter::revision()
@@ -73,13 +74,13 @@ void IndexWriter::maybeMerge()
 	}
 
 	SegmentInfo info(m_segmentInfos.incLastSegmentId());
-	ScopedPtr<OutputStream> indexOutput(m_dir->createFile(info.name() + ".fii"));
-	ScopedPtr<OutputStream> dataOutput(m_dir->createFile(info.name() + ".fid"));
+	OutputStream *indexOutput = m_dir->createFile(info.name() + ".fii");
+	OutputStream *dataOutput = m_dir->createFile(info.name() + ".fid");
 
-	SegmentIndexWriter indexWriter(indexOutput.get());
-	indexWriter.setBlockSize(BLOCK_SIZE);
+	SegmentIndexWriter *indexWriter = new SegmentIndexWriter(indexOutput);
+	indexWriter->setBlockSize(BLOCK_SIZE);
 
-	SegmentDataWriter *writer = new SegmentDataWriter(dataOutput.get(), &indexWriter, indexWriter.blockSize());
+	SegmentDataWriter *writer = new SegmentDataWriter(dataOutput, indexWriter, indexWriter->blockSize());
 	SegmentMerger merger(writer);
 	//qDebug() << "merging";
 	for (size_t i = 0; i < merge.size(); i++) {
@@ -116,13 +117,13 @@ void IndexWriter::flush()
 
 	SegmentInfo info(m_segmentInfos.incLastSegmentId(), m_numDocsInBuffer);
 	//qDebug() << "new segment" << info.id() << m_numDocsInBuffer;
-	ScopedPtr<OutputStream> indexOutput(m_dir->createFile(info.name() + ".fii"));
-	ScopedPtr<OutputStream> dataOutput(m_dir->createFile(info.name() + ".fid"));
+	OutputStream *indexOutput = m_dir->createFile(info.name() + ".fii");
+	OutputStream *dataOutput = m_dir->createFile(info.name() + ".fid");
 
-	SegmentIndexWriter indexWriter(indexOutput.get());
-	indexWriter.setBlockSize(BLOCK_SIZE);
+	SegmentIndexWriter *indexWriter = new SegmentIndexWriter(indexOutput);
+	indexWriter->setBlockSize(BLOCK_SIZE);
 
-	SegmentDataWriter writer(dataOutput.get(), &indexWriter, indexWriter.blockSize());
+	SegmentDataWriter writer(dataOutput, indexWriter, indexWriter->blockSize());
 	for (size_t i = 0; i < m_segmentBuffer.size(); i++) {
 		uint32_t key = (m_segmentBuffer[i] >> 32);
 		uint32_t value = m_segmentBuffer[i] & 0xffffffff;

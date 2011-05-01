@@ -43,6 +43,8 @@ SegmentDataWriter::SegmentDataWriter(OutputStream *output, SegmentIndexWriter *i
 SegmentDataWriter::~SegmentDataWriter()
 {
 	close();
+	delete m_output;
+	delete m_indexWriter;
 }
 
 void SegmentDataWriter::setBlockSize(size_t blockSize)

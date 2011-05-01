@@ -13,6 +13,7 @@ RAMDirectory::RAMDirectory()
 
 RAMDirectory::~RAMDirectory()
 {
+	qDeleteAll(m_data.values());
 }
 
 void RAMDirectory::close()

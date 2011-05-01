@@ -30,5 +30,8 @@ TEST(OptionParserTest, Basic)
 	EXPECT_EQ(1, options->argumentCount());
 	EXPECT_STREQ("file", qPrintable(options->argument(0)));
 	delete options;
+	for (int i = 0; i < argc; i++) {
+		free(argv[i]);
+	}
 }
 

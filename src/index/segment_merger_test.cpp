@@ -23,12 +23,12 @@ TEST(SegmentMergerTest, Iterate)
 	size_t numDocs;
 
 	{
-		ScopedPtr<OutputStream> indexOutput(dir.createFile("segment_0.fii"));
-		SegmentIndexWriter indexWriter(indexOutput.get());
-		indexWriter.setBlockSize(8);
+		OutputStream *indexOutput = dir.createFile("segment_0.fii");
+		SegmentIndexWriter *indexWriter = new SegmentIndexWriter(indexOutput);
+		indexWriter->setBlockSize(8);
 
-		ScopedPtr<OutputStream> dataOutput(dir.createFile("segment_0.fid"));
-		SegmentDataWriter writer(dataOutput.get(), &indexWriter, indexWriter.blockSize());
+		OutputStream *dataOutput = dir.createFile("segment_0.fid");
+		SegmentDataWriter writer(dataOutput, indexWriter, indexWriter->blockSize());
 		writer.addItem(200, 300);
 		writer.addItem(201, 301);
 		writer.addItem(201, 302);
@@ -37,12 +37,12 @@ TEST(SegmentMergerTest, Iterate)
 	}
 
 	{
-		ScopedPtr<OutputStream> indexOutput(dir.createFile("segment_1.fii"));
-		SegmentIndexWriter indexWriter(indexOutput.get());
-		indexWriter.setBlockSize(8);
+		OutputStream *indexOutput = dir.createFile("segment_1.fii");
+		SegmentIndexWriter *indexWriter = new SegmentIndexWriter(indexOutput);
+		indexWriter->setBlockSize(8);
 
-		ScopedPtr<OutputStream> dataOutput(dir.createFile("segment_1.fid"));
-		SegmentDataWriter writer(dataOutput.get(), &indexWriter, indexWriter.blockSize());
+		OutputStream *dataOutput = dir.createFile("segment_1.fid");
+		SegmentDataWriter writer(dataOutput, indexWriter, indexWriter->blockSize());
 		writer.addItem(199, 500);
 		writer.addItem(201, 300);
 		writer.addItem(201, 304);
@@ -52,12 +52,12 @@ TEST(SegmentMergerTest, Iterate)
 	}
 
 	{
-		ScopedPtr<OutputStream> indexOutput(dir.createFile("segment_2.fii"));
-		SegmentIndexWriter indexWriter(indexOutput.get());
-		indexWriter.setBlockSize(8);
+		OutputStream *indexOutput = dir.createFile("segment_2.fii");
+		SegmentIndexWriter *indexWriter = new SegmentIndexWriter(indexOutput);
+		indexWriter->setBlockSize(8);
 
-		ScopedPtr<OutputStream> dataOutput(dir.createFile("segment_2.fid"));
-		SegmentDataWriter *writer = new SegmentDataWriter(dataOutput.get(), &indexWriter, indexWriter.blockSize());
+		OutputStream *dataOutput(dir.createFile("segment_2.fid"));
+		SegmentDataWriter *writer = new SegmentDataWriter(dataOutput, indexWriter, indexWriter->blockSize());
 
 		InputStream *indexInput1 = dir.openFile("segment_0.fii");
 		InputStream *dataInput1 = dir.openFile("segment_0.fid");

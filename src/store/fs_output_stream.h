@@ -31,13 +31,15 @@ private:
 class NamedFSOutputStream : public FSOutputStream
 {
 public:
-	NamedFSOutputStream(const QString &name, const FSFileSharedPtr &file);
+	NamedFSOutputStream(const QString &name, const FSFileSharedPtr &file, bool autoDelete = false);
+	~NamedFSOutputStream();
 
 	QString fileName() const;
 
-	static NamedFSOutputStream *openTemporary();
+	static NamedFSOutputStream *openTemporary(bool autoDelete = false);
 
 private:
+	bool m_autoDelete;
 	QString m_fileName;
 };
 

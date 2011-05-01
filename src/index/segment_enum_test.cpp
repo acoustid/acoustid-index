@@ -21,12 +21,12 @@ TEST(SegmentEnumTest, Iterate)
 	RAMDirectory dir;
 
 	{
-		ScopedPtr<OutputStream> indexOutput(dir.createFile("segment_0.fii"));
-		SegmentIndexWriter indexWriter(indexOutput.get());
-		indexWriter.setBlockSize(8);
+		OutputStream *indexOutput = dir.createFile("segment_0.fii");
+		SegmentIndexWriter *indexWriter = new SegmentIndexWriter(indexOutput);
+		indexWriter->setBlockSize(8);
 
-		ScopedPtr<OutputStream> dataOutput(dir.createFile("segment_0.fid"));
-		SegmentDataWriter writer(dataOutput.get(), &indexWriter, indexWriter.blockSize());
+		OutputStream *dataOutput = dir.createFile("segment_0.fid");
+		SegmentDataWriter writer(dataOutput, indexWriter, indexWriter->blockSize());
 		writer.addItem(200, 300);
 		writer.addItem(201, 301);
 		writer.addItem(201, 302);

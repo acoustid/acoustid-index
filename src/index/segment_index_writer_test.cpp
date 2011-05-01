@@ -15,14 +15,7 @@ class SegmentIndexWriterTest : public ::testing::Test
 protected:
 	void SetUp()
 	{
-		stream = NamedFSOutputStream::openTemporary();
-	}
-	void TearDown()
-	{
-		if (stream) {
-			QFile::remove(stream->fileName());
-			delete stream;
-		}
+		stream = NamedFSOutputStream::openTemporary(true);
 	}
 	NamedFSOutputStream *stream;
 };
