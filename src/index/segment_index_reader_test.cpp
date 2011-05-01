@@ -54,6 +54,5 @@ TEST_F(SegmentIndexReaderTest, Read)
 
 	delete index;
 	delete reader;
-	delete input;
 }
 

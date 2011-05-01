@@ -14,6 +14,7 @@ SegmentIndexReader::SegmentIndexReader(InputStream *input)
 
 SegmentIndexReader::~SegmentIndexReader()
 {
+	delete m_input;
 }
 
 SegmentIndex *SegmentIndexReader::read()
