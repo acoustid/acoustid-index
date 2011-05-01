@@ -4,6 +4,7 @@
 #ifndef ACOUSTID_INDEX_SEGMENT_INDEX_H_
 #define ACOUSTID_INDEX_SEGMENT_INDEX_H_
 
+#include <QSharedPointer>
 #include "common.h"
 
 namespace Acoustid {
@@ -36,6 +37,9 @@ private:
 	ScopedArrayPtr<size_t> m_levelKeyCounts;
 	ScopedArrayPtr<uint32_t*> m_levelKeys;
 };
+
+typedef QWeakPointer<SegmentIndex> SegmentIndexWeakPtr;
+typedef QSharedPointer<SegmentIndex> SegmentIndexSharedPtr;
 
 }
 

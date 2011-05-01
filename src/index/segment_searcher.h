@@ -5,23 +5,23 @@
 #define ACOUSTID_INDEX_SEGMENT_SEARCHER_H_
 
 #include "common.h"
+#include "segment_index.h"
 
 namespace Acoustid {
 
-class SegmentIndex;
 class SegmentDataReader;
 class Collector;
 
 class SegmentSearcher
 {
 public:
-	SegmentSearcher(SegmentIndex *index, SegmentDataReader *dataReader);
+	SegmentSearcher(SegmentIndexSharedPtr index, SegmentDataReader *dataReader);
 	virtual ~SegmentSearcher();
 
 	void search(uint32_t *fingerprint, size_t length, Collector *collector);
 
 private:
-	SegmentIndex *m_index;
+	SegmentIndexSharedPtr m_index;
 	SegmentDataReader *m_dataReader;
 };
 

@@ -44,9 +44,7 @@ TEST(SegmentInfoListTest, Read)
 	output.reset();
 
 	SegmentInfoList infos;
-	ScopedPtr<InputStream> input(dir.openFile("segments_0"));
-	infos.read(input.get());
-	input.reset();
+	infos.read(dir.openFile("segments_0"));
 
 	ASSERT_EQ(3, infos.lastSegmentId());
 	ASSERT_EQ(2, infos.segmentCount());

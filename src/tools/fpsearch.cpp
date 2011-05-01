@@ -23,7 +23,7 @@ int main(int argc, char **argv)
 	InputStream *inputStream = FSInputStream::open("segment_0.fii");
 	InputStream *dataInputStream = FSInputStream::open("segment_0.fid");
 	SegmentIndexReader *indexReader = new SegmentIndexReader(inputStream);
-	SegmentIndex* index = indexReader->read();
+	SegmentIndexSharedPtr index = indexReader->read();
 
 	qDebug() << "BlockSize =" << index->blockSize();
 	qDebug() << "KeyCount0 =" << index->levelKeyCount(0);
@@ -55,7 +55,6 @@ int main(int argc, char **argv)
 
 	delete indexReader;
 	delete inputStream;
-	delete index;
 
 	delete dataInputStream;
 	delete dataReader;

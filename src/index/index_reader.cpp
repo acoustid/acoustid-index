@@ -34,10 +34,21 @@ IndexReader::~IndexReader()
 {
 }
 
-SegmentIndex *IndexReader::segmentIndex(int i)
+SegmentIndexSharedPtr IndexReader::segmentIndex(int i)
 {
 	const SegmentInfo &info = m_infos.info(i);
-	return SegmentIndexReader(m_dir->openFile(info.name() + ".fii")).read();
+	SegmentIndexSharedPtr index(m_indexes.value(info.id()));
+	if (index.isNull()) {
+		index = SegmentIndexReader(m_dir->openFile(info.name() + ".fii")).read();
+		m_indexes.insert(info.id(), index);
+	}
+	return index;
+}
+
+void IndexReader::closeSegmentIndex(int i)
+{
+	const SegmentInfo &info = m_infos.info(i);
+	m_indexes.remove(info.id());
 }
 
 void IndexReader::search(uint32_t *fingerprint, size_t length, Collector *collector)

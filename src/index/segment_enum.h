@@ -13,14 +13,13 @@ namespace Acoustid {
 class SegmentEnum
 {
 public:
-	SegmentEnum(SegmentIndex *index, SegmentDataReader *dataReader)
+	SegmentEnum(SegmentIndexSharedPtr index, SegmentDataReader *dataReader)
 		: m_index(index), m_dataReader(dataReader), m_block(0),
 		  m_currentBlock(0)
 	{}
 
 	~SegmentEnum()
 	{
-		delete m_index;
 		delete m_dataReader;
 	}
 
@@ -50,7 +49,7 @@ public:
 
 private:
 	size_t m_block;
-	SegmentIndex *m_index;
+	SegmentIndexSharedPtr m_index;
 	SegmentDataReader *m_dataReader;
 	ScopedPtr<BlockDataIterator> m_currentBlock;
 };

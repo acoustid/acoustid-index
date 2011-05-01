@@ -9,14 +9,13 @@
 
 using namespace Acoustid;
 
-SegmentSearcher::SegmentSearcher(SegmentIndex *index, SegmentDataReader *dataReader)
+SegmentSearcher::SegmentSearcher(SegmentIndexSharedPtr index, SegmentDataReader *dataReader)
 	: m_index(index), m_dataReader(dataReader)
 {
 }
 
 SegmentSearcher::~SegmentSearcher()
 {
-	delete m_index;
 	delete m_dataReader;
 }
 

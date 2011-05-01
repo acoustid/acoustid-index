@@ -54,6 +54,7 @@ void SegmentInfoList::read(InputStream *input)
 		size_t numDocs = input->readVInt32();
 		add(SegmentInfo(id, numDocs));
 	}
+	delete input;
 }
 
 void SegmentInfoList::write(OutputStream *output)

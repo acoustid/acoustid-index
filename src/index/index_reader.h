@@ -6,6 +6,7 @@
 
 #include "common.h"
 #include "collector.h"
+#include "segment_index.h"
 #include "segment_info_list.h"
 
 namespace Acoustid {
@@ -48,9 +49,11 @@ protected:
 		m_infos = infos;
 	}
 
-	SegmentIndex *segmentIndex(int i);
+	SegmentIndexSharedPtr segmentIndex(int i);
+	void closeSegmentIndex(int i);
 
 	Directory *m_dir;
+	QHash<int, SegmentIndexSharedPtr> m_indexes;
 	int m_revision;
 	SegmentInfoList m_infos;
 };

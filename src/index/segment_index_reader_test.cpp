@@ -16,12 +16,11 @@ class SegmentIndexReaderTest : public ::testing::Test
 protected:
 	void SetUp()
 	{
-		stream = NamedFSOutputStream::openTemporary();
+		stream = NamedFSOutputStream::openTemporary(true);
 	}
-	void TearDown()
+    void TearDown()
 	{
 		if (stream) {
-			QFile::remove(stream->fileName());
 			delete stream;
 		}
 	}
@@ -43,14 +42,12 @@ TEST_F(SegmentIndexReaderTest, Read)
 	stream->flush();
 
 	FSInputStream *input = FSInputStream::open(stream->fileName());
-	SegmentIndex *index = SegmentIndexReader(input).read();
+	SegmentIndexSharedPtr index = SegmentIndexReader(input).read();
 
 	ASSERT_EQ(256, index->blockSize());
 
 	ASSERT_EQ(8, index->levelKeyCount(0));
 	uint32_t expected0[] = { 2, 3, 4, 5, 6, 7, 8, 9 };
 	ASSERT_INTARRAY_EQ(expected0, index->levelKeys(0), 8);
-
-	delete index;
 }
 

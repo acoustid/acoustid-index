@@ -84,9 +84,8 @@ void IndexWriter::maybeMerge()
 	//qDebug() << "merging";
 	for (size_t i = 0; i < merge.size(); i++) {
 		SegmentInfo mergeInfo = m_infos.info(merge.at(i));
-		SegmentIndex *index = SegmentIndexReader(m_dir->openFile(mergeInfo.name() + ".fii")).read();
 		SegmentDataReader *dataReader = new SegmentDataReader(m_dir->openFile(mergeInfo.name() + ".fid"), BLOCK_SIZE);
-		SegmentEnum *segmentEnum = new SegmentEnum(index, dataReader);
+		SegmentEnum *segmentEnum = new SegmentEnum(segmentIndex(i), dataReader);
 		//qDebug() << "adding source" << i << mergeInfo.id() << mergeInfo.numDocs();
 		merger.addSource(segmentEnum);
 	}
@@ -100,6 +99,9 @@ void IndexWriter::maybeMerge()
 	for (size_t i = 0; i < m_infos.size(); i++) {
 		if (!merged.contains(i)) {
 			infos.add(m_infos.info(i));
+		}
+		else {
+			closeSegmentIndex(i);
 		}
 	}
 	infos.add(info);

@@ -36,7 +36,7 @@ TEST(SegmentEnumTest, Iterate)
 
 	InputStream *indexInput = dir.openFile("segment_0.fii");
 	InputStream *dataInput = dir.openFile("segment_0.fid");
-	SegmentIndex *index = SegmentIndexReader(indexInput).read();
+	SegmentIndexSharedPtr index = SegmentIndexReader(indexInput).read();
 	SegmentDataReader *dataReader = new SegmentDataReader(dataInput, index->blockSize());
 
 	SegmentEnum reader(index, dataReader);
