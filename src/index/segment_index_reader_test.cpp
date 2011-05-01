@@ -43,8 +43,7 @@ TEST_F(SegmentIndexReaderTest, Read)
 	stream->flush();
 
 	FSInputStream *input = FSInputStream::open(stream->fileName());
-	SegmentIndexReader *reader = new SegmentIndexReader(input);
-	SegmentIndex *index = reader->read();
+	SegmentIndex *index = SegmentIndexReader(input).read();
 
 	ASSERT_EQ(256, index->blockSize());
 
@@ -53,6 +52,5 @@ TEST_F(SegmentIndexReaderTest, Read)
 	ASSERT_INTARRAY_EQ(expected0, index->levelKeys(0), 8);
 
 	delete index;
-	delete reader;
 }
 

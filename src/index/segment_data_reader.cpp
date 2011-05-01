@@ -13,6 +13,7 @@ SegmentDataReader::SegmentDataReader(InputStream *input, size_t blockSize)
 
 SegmentDataReader::~SegmentDataReader()
 {
+	delete m_input;
 }
 
 void SegmentDataReader::setBlockSize(size_t blockSize)

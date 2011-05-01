@@ -59,15 +59,15 @@ TEST(SegmentMergerTest, Iterate)
 		SegmentDataWriter writer(dataOutput.get(), &indexWriter, indexWriter.blockSize());
 
 		InputStream *indexInput1 = dir.openFile("segment_0.fii");
-		ScopedPtr<InputStream> dataInput1(dir.openFile("segment_0.fid"));
+		InputStream *dataInput1 = dir.openFile("segment_0.fid");
 		SegmentIndex *index1 = SegmentIndexReader(indexInput1).read();
-		SegmentDataReader *dataReader1 = new SegmentDataReader(dataInput1.get(), index1->blockSize());
+		SegmentDataReader *dataReader1 = new SegmentDataReader(dataInput1, index1->blockSize());
 		SegmentEnum reader1(index1, dataReader1);
 
 		InputStream *indexInput2 = dir.openFile("segment_1.fii");
-		ScopedPtr<InputStream> dataInput2(dir.openFile("segment_1.fid"));
+		InputStream *dataInput2 = dir.openFile("segment_1.fid");
 		SegmentIndex *index2 = SegmentIndexReader(indexInput2).read();
-		SegmentDataReader *dataReader2 = new SegmentDataReader(dataInput2.get(), index2->blockSize());
+		SegmentDataReader *dataReader2 = new SegmentDataReader(dataInput2, index2->blockSize());
 		SegmentEnum reader2(index2, dataReader2);
 
 		SegmentMerger merger(&writer);
@@ -77,9 +77,9 @@ TEST(SegmentMergerTest, Iterate)
 	}
 
 	InputStream *indexInput = dir.openFile("segment_2.fii");
-	ScopedPtr<InputStream> dataInput(dir.openFile("segment_2.fid"));
+	InputStream *dataInput = dir.openFile("segment_2.fid");
 	SegmentIndex *index = SegmentIndexReader(indexInput).read();
-	SegmentDataReader *dataReader = new SegmentDataReader(dataInput.get(), index->blockSize());
+	SegmentDataReader *dataReader = new SegmentDataReader(dataInput, index->blockSize());
 	SegmentEnum reader(index, dataReader);
 
 	ASSERT_TRUE(reader.next());

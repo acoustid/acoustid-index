@@ -35,9 +35,9 @@ TEST(SegmentEnumTest, Iterate)
 	}
 
 	InputStream *indexInput = dir.openFile("segment_0.fii");
-	ScopedPtr<InputStream> dataInput(dir.openFile("segment_0.fid"));
+	InputStream *dataInput = dir.openFile("segment_0.fid");
 	SegmentIndex *index = SegmentIndexReader(indexInput).read();
-	SegmentDataReader *dataReader = new SegmentDataReader(dataInput.get(), index->blockSize());
+	SegmentDataReader *dataReader = new SegmentDataReader(dataInput, index->blockSize());
 
 	SegmentEnum reader(index, dataReader);
 	ASSERT_TRUE(reader.next());
