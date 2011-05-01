@@ -18,6 +18,7 @@ set(fpindexlib_SOURCES
 	src/index/segment_merge_policy.cpp
 	src/index/top_hits_collector.cpp
 	src/index/index_writer.cpp
+	src/index/index_reader.cpp
 	src/store/buffered_input_stream.cpp
 	src/store/buffered_output_stream.cpp
 	src/store/input_stream.cpp

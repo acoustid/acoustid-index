@@ -16,12 +16,17 @@
 
 using namespace Acoustid;
 
-IndexWriter::IndexWriter(Directory *dir, bool create)
-	: m_dir(dir), m_numDocsInBuffer(0), m_maxSegmentBufferSize(1024 * 1024 * 10)
+IndexWriter::IndexWriter(Directory *dir)
+	: IndexReader(dir), m_numDocsInBuffer(0), m_maxSegmentBufferSize(1024 * 1024 * 10)
 {
-	m_revision = SegmentInfoList::findCurrentRevision(dir);
+	m_mergePolicy = new SegmentMergePolicy();
+}
+
+void IndexWriter::open(bool create)
+{
+	m_revision = SegmentInfoList::findCurrentRevision(m_dir);
 	if (m_revision != -1) {
-		m_segmentInfos.read(dir->openFile(SegmentInfoList::segmentsFileName(m_revision)));
+		m_infos.read(m_dir->openFile(SegmentInfoList::segmentsFileName(m_revision)));
 	}
 	else if (create) {
 		commit();
@@ -29,17 +34,11 @@ IndexWriter::IndexWriter(Directory *dir, bool create)
 	else {
 		throw IOException("there is no index in the directory");
 	}
-	m_mergePolicy = new SegmentMergePolicy();
 }
 
 IndexWriter::~IndexWriter()
 {
 	delete m_mergePolicy;
-}
-
-int IndexWriter::revision()
-{
-	return m_revision;
 }
 
 void IndexWriter::addDocument(uint32_t id, uint32_t *terms, size_t length)
@@ -56,7 +55,7 @@ void IndexWriter::commit()
 	flush();
 	m_revision++;
 	ScopedPtr<OutputStream> segmentsFile(m_dir->createFile(SegmentInfoList::segmentsFileName(m_revision)));
-	m_segmentInfos.write(segmentsFile.get());
+	m_infos.write(segmentsFile.get());
 }
 
 void IndexWriter::maybeFlush()
@@ -68,12 +67,12 @@ void IndexWriter::maybeFlush()
 
 void IndexWriter::maybeMerge()
 {
-	QList<int> merge = m_mergePolicy->findMerges(m_segmentInfos);
+	QList<int> merge = m_mergePolicy->findMerges(m_infos);
 	if (merge.isEmpty()) {
 		return;
 	}
 
-	SegmentInfo info(m_segmentInfos.incLastSegmentId());
+	SegmentInfo info(m_infos.incLastSegmentId());
 	OutputStream *indexOutput = m_dir->createFile(info.name() + ".fii");
 	OutputStream *dataOutput = m_dir->createFile(info.name() + ".fid");
 
@@ -84,7 +83,7 @@ void IndexWriter::maybeMerge()
 	SegmentMerger merger(writer);
 	//qDebug() << "merging";
 	for (size_t i = 0; i < merge.size(); i++) {
-		SegmentInfo mergeInfo = m_segmentInfos.info(merge.at(i));
+		SegmentInfo mergeInfo = m_infos.info(merge.at(i));
 		SegmentIndex *index = SegmentIndexReader(m_dir->openFile(mergeInfo.name() + ".fii")).read();
 		SegmentDataReader *dataReader = new SegmentDataReader(m_dir->openFile(mergeInfo.name() + ".fid"), BLOCK_SIZE);
 		SegmentEnum *segmentEnum = new SegmentEnum(index, dataReader);
@@ -94,18 +93,18 @@ void IndexWriter::maybeMerge()
 	info.setNumDocs(merger.merge());
 
 	SegmentInfoList infos;
-	infos.setLastSegmentId(m_segmentInfos.lastSegmentId());
+	infos.setLastSegmentId(m_infos.lastSegmentId());
 	QSet<int> merged = merge.toSet();
 	//qDebug() << "merge" << merge;
 	//qDebug() << "merged" << merged;
-	for (size_t i = 0; i < m_segmentInfos.size(); i++) {
+	for (size_t i = 0; i < m_infos.size(); i++) {
 		if (!merged.contains(i)) {
-			infos.add(m_segmentInfos.info(i));
+			infos.add(m_infos.info(i));
 		}
 	}
 	infos.add(info);
 
-	m_segmentInfos = infos;
+	m_infos = infos;
 }
 
 void IndexWriter::flush()
@@ -115,7 +114,7 @@ void IndexWriter::flush()
 	}
 	std::sort(m_segmentBuffer.begin(), m_segmentBuffer.end());
 
-	SegmentInfo info(m_segmentInfos.incLastSegmentId(), m_numDocsInBuffer);
+	SegmentInfo info(m_infos.incLastSegmentId(), m_numDocsInBuffer);
 	//qDebug() << "new segment" << info.id() << m_numDocsInBuffer;
 	OutputStream *indexOutput = m_dir->createFile(info.name() + ".fii");
 	OutputStream *dataOutput = m_dir->createFile(info.name() + ".fid");
@@ -131,15 +130,15 @@ void IndexWriter::flush()
 	}
 	writer.close();
 
-	m_segmentInfos.add(info);
+	m_infos.add(info);
 	//qDebug() << "segments before merge:";
-	//for (size_t i = 0; i < m_segmentInfos.size(); i++) {
-		//qDebug() << "   id =" << m_segmentInfos.info(i).id() << m_segmentInfos.info(i).numDocs();
+	//for (size_t i = 0; i < m_infos.size(); i++) {
+		//qDebug() << "   id =" << m_infos.info(i).id() << m_infos.info(i).numDocs();
 	//}
 	maybeMerge();
 	//qDebug() << "segments after merge:";
-	//for (size_t i = 0; i < m_segmentInfos.size(); i++) {
-		//qDebug() << "   id =" << m_segmentInfos.info(i).id() << m_segmentInfos.info(i).numDocs();
+	//for (size_t i = 0; i < m_infos.size(); i++) {
+		//qDebug() << "   id =" << m_infos.info(i).id() << m_infos.info(i).numDocs();
 	//}
 
 	m_segmentBuffer.clear();

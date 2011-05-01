@@ -7,21 +7,17 @@
 #include "common.h"
 #include "segment_info_list.h"
 #include "segment_merge_policy.h"
+#include "index_reader.h"
 
 namespace Acoustid {
 
-class IndexWriter
+class IndexWriter : public IndexReader
 {
 public:
-	IndexWriter(Directory *dir, bool create = false);
+	IndexWriter(Directory *dir);
 	virtual ~IndexWriter();
 
-	int revision();
-
-	const SegmentInfoList &segmentInfoList()
-	{
-		return m_segmentInfos;
-	}
+	void open(bool create = false);
 
 	SegmentMergePolicy *segmentMergePolicy()
 	{
@@ -40,10 +36,7 @@ private:
 	size_t m_maxSegmentBufferSize;
 	size_t m_numDocsInBuffer;
 	std::vector<uint64_t> m_segmentBuffer;
-	Directory *m_dir;
-	int m_revision;
 	SegmentMergePolicy *m_mergePolicy;
-	SegmentInfoList m_segmentInfos;
 };
 
 }

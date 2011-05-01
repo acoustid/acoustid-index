@@ -14,8 +14,9 @@ TEST(IndexWriterTest, OpenEmpty)
 {
 	RAMDirectory dir;
 
+	IndexWriter writer(&dir);
 	ASSERT_FALSE(dir.fileExists("segments_0"));
-	ASSERT_THROW(IndexWriter writer(&dir), IOException);
+	ASSERT_THROW(writer.open(), IOException);
 	ASSERT_FALSE(dir.fileExists("segments_0"));
 }
 
@@ -24,7 +25,8 @@ TEST(IndexWriterTest, OpenEmptyCreate)
 	RAMDirectory dir;
 
 	ASSERT_FALSE(dir.fileExists("segments_0"));
-	IndexWriter writer(&dir, true);
+	IndexWriter writer(&dir);
+	writer.open(true);
 	ASSERT_TRUE(dir.fileExists("segments_0"));
 	ASSERT_EQ(0, writer.revision());
 }
@@ -32,10 +34,11 @@ TEST(IndexWriterTest, OpenEmptyCreate)
 TEST(IndexWriterTest, AddDocument)
 {
 	RAMDirectory dir;
-	IndexWriter writer(&dir, true);
+	IndexWriter writer(&dir);
+	writer.open(true);
 	ASSERT_TRUE(dir.fileExists("segments_0"));
 	ASSERT_EQ(0, writer.revision());
-	ASSERT_EQ(0, writer.segmentInfoList().segmentCount());
+	ASSERT_EQ(0, writer.segmentInfos().segmentCount());
 
 	uint32_t fp[] = { 7, 9, 12 };
 	writer.addDocument(1, fp, 3);
@@ -44,9 +47,9 @@ TEST(IndexWriterTest, AddDocument)
 	ASSERT_TRUE(dir.fileExists("segment_0.fii"));
 	ASSERT_TRUE(dir.fileExists("segment_0.fid"));
 	ASSERT_EQ(1, writer.revision());
-	ASSERT_EQ(1, writer.segmentInfoList().segmentCount());
-	ASSERT_EQ("segment_0", writer.segmentInfoList().info(0).name());
-	ASSERT_EQ(1, writer.segmentInfoList().info(0).numDocs());
+	ASSERT_EQ(1, writer.segmentInfos().segmentCount());
+	ASSERT_EQ("segment_0", writer.segmentInfos().info(0).name());
+	ASSERT_EQ(1, writer.segmentInfos().info(0).numDocs());
 
 	{
 		ScopedPtr<InputStream> input(dir.openFile("segment_0.fii"));
@@ -69,10 +72,11 @@ TEST(IndexWriterTest, AddDocument)
 TEST(IndexWriterTest, Merge)
 {
 	RAMDirectory dir;
-	IndexWriter writer(&dir, true);
+	IndexWriter writer(&dir);
+	writer.open(true);
 	ASSERT_TRUE(dir.fileExists("segments_0"));
 	ASSERT_EQ(0, writer.revision());
-	ASSERT_EQ(0, writer.segmentInfoList().segmentCount());
+	ASSERT_EQ(0, writer.segmentInfos().segmentCount());
 
 	writer.segmentMergePolicy()->setMaxMergeAtOnce(2);
 	writer.segmentMergePolicy()->setMaxSegmentsPerTier(2);
@@ -80,29 +84,29 @@ TEST(IndexWriterTest, Merge)
 	uint32_t fp[] = { 7, 9, 12 };
 	writer.addDocument(1, fp, 3);
 	writer.commit();
-	ASSERT_EQ(1, writer.segmentInfoList().segmentCount());
-	ASSERT_EQ(1, writer.segmentInfoList().info(0).numDocs());
+	ASSERT_EQ(1, writer.segmentInfos().segmentCount());
+	ASSERT_EQ(1, writer.segmentInfos().info(0).numDocs());
 	writer.addDocument(2, fp, 3);
 	writer.commit();
-	ASSERT_EQ(2, writer.segmentInfoList().segmentCount());
-	ASSERT_EQ(1, writer.segmentInfoList().info(0).numDocs());
-	ASSERT_EQ(1, writer.segmentInfoList().info(1).numDocs());
+	ASSERT_EQ(2, writer.segmentInfos().segmentCount());
+	ASSERT_EQ(1, writer.segmentInfos().info(0).numDocs());
+	ASSERT_EQ(1, writer.segmentInfos().info(1).numDocs());
 	writer.addDocument(3, fp, 3);
 	writer.commit();
-	ASSERT_EQ(2, writer.segmentInfoList().segmentCount());
-	ASSERT_EQ(1, writer.segmentInfoList().info(0).numDocs());
-	ASSERT_EQ(2, writer.segmentInfoList().info(1).numDocs());
+	ASSERT_EQ(2, writer.segmentInfos().segmentCount());
+	ASSERT_EQ(1, writer.segmentInfos().info(0).numDocs());
+	ASSERT_EQ(2, writer.segmentInfos().info(1).numDocs());
 	writer.addDocument(4, fp, 3);
 	writer.commit();
-	ASSERT_EQ(3, writer.segmentInfoList().segmentCount());
-	ASSERT_EQ(1, writer.segmentInfoList().info(0).numDocs());
-	ASSERT_EQ(2, writer.segmentInfoList().info(1).numDocs());
-	ASSERT_EQ(1, writer.segmentInfoList().info(2).numDocs());
+	ASSERT_EQ(3, writer.segmentInfos().segmentCount());
+	ASSERT_EQ(1, writer.segmentInfos().info(0).numDocs());
+	ASSERT_EQ(2, writer.segmentInfos().info(1).numDocs());
+	ASSERT_EQ(1, writer.segmentInfos().info(2).numDocs());
 	writer.addDocument(5, fp, 3);
 	writer.commit();
-	ASSERT_EQ(3, writer.segmentInfoList().segmentCount());
-	ASSERT_EQ(2, writer.segmentInfoList().info(0).numDocs());
-	ASSERT_EQ(1, writer.segmentInfoList().info(1).numDocs());
-	ASSERT_EQ(2, writer.segmentInfoList().info(2).numDocs());
+	ASSERT_EQ(3, writer.segmentInfos().segmentCount());
+	ASSERT_EQ(2, writer.segmentInfos().info(0).numDocs());
+	ASSERT_EQ(1, writer.segmentInfos().info(1).numDocs());
+	ASSERT_EQ(2, writer.segmentInfos().info(2).numDocs());
 }
 
