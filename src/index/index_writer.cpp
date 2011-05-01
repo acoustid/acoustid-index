@@ -14,6 +14,7 @@ using namespace Acoustid;
 IndexWriter::IndexWriter(Directory *dir, bool create)
 	: m_dir(dir), m_numDocsInBuffer(0), m_maxSegmentBufferSize(1024 * 1024 * 10)
 {
+	m_mergePolicy = new SegmentMergePolicy();
 	m_revision = SegmentInfoList::findCurrentRevision(dir);
 	if (m_revision != -1) {
 		m_segmentInfos.read(dir->openFile(SegmentInfoList::segmentsFileName(m_revision)));
@@ -59,6 +60,35 @@ void IndexWriter::maybeFlush()
 	}
 }
 
+void IndexWriter::maybeMerge()
+{
+	QList<int> merge = m_mergePolicy->findMerges(m_segmentInfos);
+	if (merge.isEmpty()) {
+		return;
+	}
+
+	/*SegmentInfo info(m_segmentInfos.incNextSegmentId());
+	ScopedPtr<OutputStream> indexOutput(m_dir->createFile(info.name() + ".fii"));
+	ScopedPtr<OutputStream> dataOutput(m_dir->createFile(info.name() + ".fid"));
+
+	SegmentIndexWriter indexWriter(indexOutput.get());
+	indexWriter.setBlockSize(512);
+
+	SegmentDataWriter writer(dataOutput.get(), &indexWriter, indexWriter.blockSize());
+	SegmentMerger merger(&writer);
+	for (size_t i = 0; i < merge.size(); i++) {
+		SegmentInfo mergeInfo = m_segmentInfos.info(i);
+		InputStream *indexInput = m_dir->openFile(mergeInfo.name() + ".fii");
+		InputStream *dataInput = m_dir->openFile(mergeInfo.name() + ".fid");
+		//SegmentEnum *segmentEnum = new SegmentEnum(ind)
+		merger.add(m_segmentInfos.info(i));
+	}
+	merger.merge();
+
+	m_segmentInfos.add(info);*/
+	
+}
+
 void IndexWriter::flush()
 {
 	if (m_segmentBuffer.empty()) {
@@ -66,8 +96,7 @@ void IndexWriter::flush()
 	}
 	std::sort(m_segmentBuffer.begin(), m_segmentBuffer.end());
 
-	size_t num = m_segmentInfos.incNextSegmentId();
-	SegmentInfo info(num, m_numDocsInBuffer);
+	SegmentInfo info(m_segmentInfos.incNextSegmentId(), m_numDocsInBuffer);
 	ScopedPtr<OutputStream> indexOutput(m_dir->createFile(info.name() + ".fii"));
 	ScopedPtr<OutputStream> dataOutput(m_dir->createFile(info.name() + ".fid"));
 
@@ -83,6 +112,7 @@ void IndexWriter::flush()
 	writer.close();
 
 	m_segmentInfos.add(info);
+	maybeMerge();
 
 	m_segmentBuffer.clear();
 	m_numDocsInBuffer = 0;

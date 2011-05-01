@@ -6,6 +6,7 @@
 
 #include "common.h"
 #include "segment_info_list.h"
+#include "segment_merge_policy.h"
 
 namespace Acoustid {
 
@@ -22,6 +23,11 @@ public:
 		return m_segmentInfos;
 	}
 
+	SegmentMergePolicy *segmentMergePolicy()
+	{
+		return m_mergePolicy;
+	}
+
 	void addDocument(uint32_t id, uint32_t *terms, size_t length);
 	void commit();
 
@@ -29,12 +35,14 @@ private:
 
 	void flush();
 	void maybeFlush();
+	void maybeMerge();
 
 	size_t m_maxSegmentBufferSize;
 	size_t m_numDocsInBuffer;
 	std::vector<uint64_t> m_segmentBuffer;
 	Directory *m_dir;
 	int m_revision;
+	SegmentMergePolicy *m_mergePolicy;
 	SegmentInfoList m_segmentInfos;
 };
 
