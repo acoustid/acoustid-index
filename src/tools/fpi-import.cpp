@@ -33,25 +33,32 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	QTextStream in(stdin);
+	const size_t lineSize = 1024 * 1024;
+	char line[lineSize];
+	int32_t fp[1024 * 10];
+
 	size_t counter = 0;
-	while (!in.atEnd()) {
-		QStringList line = in.readLine().split('|');
-		if (line.size() != 2) {
-			qWarning() << "Invalid line";
+	while (fgets(line, lineSize, stdin) != NULL) {
+		char *ptr = line;
+		long id = strtol(ptr, &ptr, 10);
+		if (*ptr++ != '|') {
+			qWarning() << "Invalid line 1";
 			continue;
 		}
-		int id = line.at(0).toInt();
-		QString fpstr = line.at(1);
-		if (fpstr.startsWith('{') && fpstr.endsWith('}')) {
-			fpstr = fpstr.mid(1, fpstr.size() - 2);
+		if (*ptr != '{') {
+			qWarning() << "Invalid line 2";
+			continue;
 		}
-		QStringList fparr = fpstr.split(',');
-		uint32_t fp[4096];
-		for (int i = 0; i < fparr.size(); i++) {
-			fp[i] = fparr.at(i).toInt();
+		size_t length = 0;
+		while (*ptr != '}' && *ptr != 0) {
+			ptr++;
+			fp[length++] = strtol(ptr, &ptr, 10);
+			if (*ptr != ',' && *ptr != '}' && *ptr != 0) {
+				qWarning() << "Invalid line 3" << int(*ptr);
+				continue;
+			}
 		}
-		writer.addDocument(id, fp, fparr.size());
+		writer.addDocument(id, (uint32_t *)fp, length);
 		if (counter % 1000 == 0) {
 			qDebug() << "Imported" << counter << "lines";
 		}
