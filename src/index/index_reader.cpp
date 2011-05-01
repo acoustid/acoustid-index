@@ -10,8 +10,6 @@
 #include "segment_searcher.h"
 #include "index_reader.h"
 
-#define BLOCK_SIZE 512
-
 using namespace Acoustid;
 
 IndexReader::IndexReader(Directory *dir)

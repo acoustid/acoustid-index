@@ -13,7 +13,7 @@ namespace Acoustid {
 class SegmentMergePolicy
 {
 public:
-	SegmentMergePolicy(int maxMergeAtOnce = 10, int maxSegmentsPerTier = 10);
+	SegmentMergePolicy(int maxMergeAtOnce = MAX_MERGE_AT_ONCE, int maxSegmentsPerTier = MAX_SEGMENTS_PER_TIER);
 	virtual ~SegmentMergePolicy();
 
 	void setMaxMergeAtOnce(int maxMergeAtOnce)

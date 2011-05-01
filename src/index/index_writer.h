@@ -19,6 +19,16 @@ public:
 	IndexWriter(Directory *dir);
 	virtual ~IndexWriter();
 
+	size_t maxSegmentBufferSize() const
+	{
+		return m_maxSegmentBufferSize;
+	}
+
+	void setMaxSegmentBufferSize(size_t maxSegmentBufferSize)
+	{
+		m_maxSegmentBufferSize = maxSegmentBufferSize;
+	}
+
 	void open(bool create = false);
 
 	SegmentMergePolicy *segmentMergePolicy()

@@ -21,4 +21,14 @@
 #include "util/exceptions.h"
 #include "util/scoped_ptr.h"
 
+namespace Acoustid {
+
+// Some default configuration options
+static const int MAX_SEGMENT_BUFFER_SIZE = 1024 * 1025 * 5;
+static const int BLOCK_SIZE = 512;
+static const int MAX_MERGE_AT_ONCE = 10;
+static const int MAX_SEGMENTS_PER_TIER = 10;
+
+}
+
 #endif

@@ -12,12 +12,10 @@
 #include "segment_merger.h"
 #include "index_writer.h"
 
-#define BLOCK_SIZE 512
-
 using namespace Acoustid;
 
 IndexWriter::IndexWriter(Directory *dir)
-	: IndexReader(dir), m_numDocsInBuffer(0), m_maxSegmentBufferSize(1024 * 1024 * 10)
+	: IndexReader(dir), m_numDocsInBuffer(0), m_maxSegmentBufferSize(MAX_SEGMENT_BUFFER_SIZE)
 {
 	m_mergePolicy = new SegmentMergePolicy();
 }
@@ -80,7 +78,8 @@ void IndexWriter::maybeMerge()
 	if (merge.isEmpty()) {
 		return;
 	}
-	
+	//qDebug() << "Merging segments" << merge;
+
 	SegmentInfo info(m_infos.incLastSegmentId());
 	SegmentMerger merger(segmentDataWriter(info));
 	for (size_t i = 0; i < merge.size(); i++) {
@@ -110,7 +109,8 @@ void IndexWriter::flush()
 	if (m_segmentBuffer.empty()) {
 		return;
 	}
-	std::sort(m_segmentBuffer.begin(), m_segmentBuffer.end());
+	//qDebug() << "Writing new segment" << (m_segmentBuffer.size() * 8.0 / 1024 / 1024);
+	qSort(m_segmentBuffer.begin(), m_segmentBuffer.end());
 
 	SegmentInfo info(m_infos.incLastSegmentId(), m_numDocsInBuffer);
 	ScopedPtr<SegmentDataWriter> writer(segmentDataWriter(info));
