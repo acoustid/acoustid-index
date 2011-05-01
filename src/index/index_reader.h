@@ -12,6 +12,7 @@
 namespace Acoustid {
 
 class SegmentIndex;
+class SegmentDataReader;
 
 class IndexReader
 {
@@ -51,6 +52,7 @@ protected:
 
 	SegmentIndexSharedPtr segmentIndex(int i);
 	void closeSegmentIndex(int i);
+	SegmentDataReader *segmentDataReader(int i);
 
 	Directory *m_dir;
 	QHash<int, SegmentIndexSharedPtr> m_indexes;

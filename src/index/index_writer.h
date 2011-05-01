@@ -11,6 +11,8 @@
 
 namespace Acoustid {
 
+class SegmentDataWriter;
+
 class IndexWriter : public IndexReader
 {
 public:
@@ -32,6 +34,8 @@ private:
 	void flush();
 	void maybeFlush();
 	void maybeMerge();
+
+	SegmentDataWriter *segmentDataWriter(const SegmentInfo &info);
 
 	size_t m_maxSegmentBufferSize;
 	size_t m_numDocsInBuffer;

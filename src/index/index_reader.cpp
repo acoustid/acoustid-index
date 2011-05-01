@@ -39,10 +39,16 @@ SegmentIndexSharedPtr IndexReader::segmentIndex(int i)
 	const SegmentInfo &info = m_infos.info(i);
 	SegmentIndexSharedPtr index(m_indexes.value(info.id()));
 	if (index.isNull()) {
-		index = SegmentIndexReader(m_dir->openFile(info.name() + ".fii")).read();
+		index = SegmentIndexReader(m_dir->openFile(info.indexFileName())).read();
 		m_indexes.insert(info.id(), index);
 	}
 	return index;
+}
+
+SegmentDataReader *IndexReader::segmentDataReader(int i)
+{
+	const SegmentInfo &info = m_infos.info(i);
+	return new SegmentDataReader(m_dir->openFile(info.dataFileName()), BLOCK_SIZE);
 }
 
 void IndexReader::closeSegmentIndex(int i)
@@ -54,9 +60,7 @@ void IndexReader::closeSegmentIndex(int i)
 void IndexReader::search(uint32_t *fingerprint, size_t length, Collector *collector)
 {
 	for (int i = 0; i < m_infos.size(); i++) {
-		const SegmentInfo &info = m_infos.info(i);
-		SegmentDataReader *dataReader = new SegmentDataReader(m_dir->openFile(info.name() + ".fid"), BLOCK_SIZE);
-		SegmentSearcher searcher(segmentIndex(i), dataReader);
+		SegmentSearcher searcher(segmentIndex(i), segmentDataReader(i));
 		searcher.search(fingerprint, length, collector);
 	}
 }

@@ -21,6 +21,16 @@ public:
 		return QString("segment_%1").arg(m_id);
 	}
 
+	QString indexFileName() const
+	{
+		return name() + ".fii";
+	}
+
+	QString dataFileName() const
+	{
+		return name() + ".fid";
+	}
+
 	void setId(int id)
 	{
 		m_id = id;
