@@ -117,6 +117,7 @@ void IndexWriter::flush()
 	for (size_t i = 0; i < m_segmentBuffer.size(); i++) {
 		uint32_t key = (m_segmentBuffer[i] >> 32);
 		uint32_t value = m_segmentBuffer[i] & 0xffffffff;
+		//qDebug() << "adding item" << key << value;
 		writer->addItem(key, value);
 	}
 	writer->close();

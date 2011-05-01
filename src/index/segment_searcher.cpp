@@ -24,12 +24,15 @@ void SegmentSearcher::search(uint32_t *fingerprint, size_t length, Collector *co
 	// XXX do this in two phases, optimizing multiple reads of the same block
 	size_t lastReadBlock = ~0;
 	size_t readBlockCount = 0;
+	//qSort(fingerprint, fingerprint + length);
 	for (size_t i = 0; i < length; i++) {
 		size_t firstBlock, lastBlock;
+		//qDebug() << "searching for" << fingerprint[i];
 		if (m_index->search(fingerprint[i], &firstBlock, &lastBlock)) {
-			if (readBlockCount > 0 && lastReadBlock >= firstBlock) {
+			//qDebug() << "found blocks" << firstBlock << lastBlock;
+			/*if (readBlockCount > 0 && lastReadBlock >= firstBlock) {
 				firstBlock = lastReadBlock + 1;
-			}
+			}*/
 			for (size_t block = firstBlock; block <= lastBlock; block++) {
 				uint32_t firstKey = m_index->levelKey(block);
 				ScopedPtr<BlockDataIterator> blockData(m_dataReader->readBlock(block, firstKey));

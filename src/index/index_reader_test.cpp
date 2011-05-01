@@ -40,8 +40,8 @@ TEST(IndexReaderTest, Search)
 	reader.search(fp, 3, &collector);
 	ASSERT_EQ(2, collector.topResults().size());
 	ASSERT_EQ(1, collector.topResults().at(0).id());
-	ASSERT_EQ(1.0, collector.topResults().at(0).score());
+	ASSERT_EQ(3, collector.topResults().at(0).score());
 	ASSERT_EQ(2, collector.topResults().at(1).id());
-	ASSERT_EQ(1.0, collector.topResults().at(1).score());
+	ASSERT_EQ(3, collector.topResults().at(1).score());
 }
 

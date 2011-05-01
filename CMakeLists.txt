@@ -77,6 +77,9 @@ target_link_libraries(fpi-add ${QT_LIBRARIES} fpindexlib)
 add_executable(fpi-import src/tools/fpi-import.cpp)
 target_link_libraries(fpi-import ${QT_LIBRARIES} fpindexlib)
 
+add_executable(fpi-search src/tools/fpi-search.cpp)
+target_link_libraries(fpi-search ${QT_LIBRARIES} fpindexlib)
+
 set(tests_SOURCES
 	src/index/segment_data_writer_test.cpp
 	src/index/segment_index_test.cpp
