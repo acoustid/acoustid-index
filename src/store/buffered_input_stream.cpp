@@ -36,6 +36,25 @@ uint8_t BufferedInputStream::readByte()
 	return m_buffer[m_position++];
 }
 
+uint32_t BufferedInputStream::readVInt32()
+{
+	if (m_position >= m_length) {
+		refill();
+	}
+	uint8_t b = m_buffer[m_position++];
+	uint32_t i = b & 0x7f;
+	int shift = 7;
+	while (b & 0x80) {
+		if (m_position >= m_length) {
+			refill();
+		}
+		b = m_buffer[m_position++];
+		i |= (b & 0x7f) << shift;
+		shift += 7;
+	}
+	return i;
+}
+
 void BufferedInputStream::refill()
 {
 	m_start += m_position;

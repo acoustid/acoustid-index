@@ -19,6 +19,7 @@ public:
 	void setBufferSize(size_t size);
 
 	uint8_t readByte();
+	uint32_t readVInt32();
 
 	size_t position();
 	void seek(size_t position);
