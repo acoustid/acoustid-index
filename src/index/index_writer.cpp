@@ -81,12 +81,14 @@ void IndexWriter::maybeMerge()
 	//qDebug() << "Merging segments" << merge;
 
 	SegmentInfo info(m_infos.incLastSegmentId());
-	SegmentMerger merger(segmentDataWriter(info));
-	for (size_t i = 0; i < merge.size(); i++) {
-		int j = merge.at(i);
-		merger.addSource(new SegmentEnum(segmentIndex(j), segmentDataReader(j)));
+	{
+		SegmentMerger merger(segmentDataWriter(info));
+		for (size_t i = 0; i < merge.size(); i++) {
+			int j = merge.at(i);
+			merger.addSource(new SegmentEnum(segmentIndex(j), segmentDataReader(j)));
+		}
+		info.setNumDocs(merger.merge());
 	}
-	info.setNumDocs(merger.merge());
 
 	SegmentInfoList infos;
 	infos.setLastSegmentId(m_infos.lastSegmentId());

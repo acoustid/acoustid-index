@@ -107,5 +107,6 @@ void SegmentDataWriter::close()
 		writeBlock();
 	}
 	m_output->flush();
+	m_indexWriter->close();
 }
 
