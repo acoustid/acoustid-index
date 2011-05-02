@@ -35,7 +35,7 @@ int main(int argc, char **argv)
 	{
 		// load segment indexes into memory
 		TopHitsCollector collector(1);
-		uint32_t fp[1] = { 0 };
+		uint32_t fp[1] = { -1 };
 		reader.search(fp, 1, &collector);
 	}
 
