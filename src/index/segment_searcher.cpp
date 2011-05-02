@@ -1,6 +1,7 @@
 // Copyright (C) 2011  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
+#include <algorithm>
 #include "store/output_stream.h"
 #include "collector.h"
 #include "segment_index.h"
@@ -21,30 +22,24 @@ SegmentSearcher::~SegmentSearcher()
 
 void SegmentSearcher::search(uint32_t *fingerprint, size_t length, Collector *collector)
 {
-	if (!length) {
-		return;
-	}
-
-	size_t lastReadBlock = ~0;
-	size_t readBlockCount = 0;
-	qSort(fingerprint, fingerprint + length);
-	QList<size_t> blocks;
-	for (size_t i = 0; i < length; i++) {
-		size_t firstBlock, lastBlock;
-		if (m_index->search(fingerprint[i], &firstBlock, &lastBlock)) {
-			if (readBlockCount > 0 && lastReadBlock >= firstBlock) {
-				firstBlock = lastReadBlock + 1;
-			}
-			for (size_t block = firstBlock; block <= lastBlock; block++) {
-				blocks.append(block);
-				readBlockCount++;
-				lastReadBlock = block;
-			}
-		}
-	}
-	size_t i = 0;
-	for (size_t b = 0; b < blocks.size(); b++) {
-		size_t block = blocks.at(b);
+    std::sort(fingerprint, fingerprint + length);
+    size_t i = 0, block = 0, lastBlock = SIZE_MAX;
+    while (i < length) {
+        if (block > lastBlock || lastBlock == SIZE_MAX) {
+            size_t localFirstBlock, localLastBlock;
+		    if (m_index->search(fingerprint[i], &localFirstBlock, &localLastBlock)) {
+                if (block > localLastBlock) {
+                    i++;
+                    continue;
+                }
+                block = std::max(block, localFirstBlock);
+                lastBlock = localLastBlock;
+            }
+            else {
+                i++;
+                continue;
+            }
+        }
 		uint32_t firstKey = m_index->levelKey(block);
 		ScopedPtr<BlockDataIterator> blockData(m_dataReader->readBlock(block, firstKey));
 		while (blockData->next()) {
@@ -59,6 +54,7 @@ void SegmentSearcher::search(uint32_t *fingerprint, size_t length, Collector *co
 				collector->collect(blockData->value());
 			}
 		}
-	}
+        block++;
+    }
 }
 
