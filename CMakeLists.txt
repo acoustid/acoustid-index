@@ -91,6 +91,7 @@ set(tests_SOURCES
 	src/index/segment_enum_test.cpp
 	src/index/segment_merger_test.cpp
 	src/index/segment_merge_policy_test.cpp
+	src/store/buffered_input_stream_test.cpp
 	src/store/input_stream_test.cpp
 	src/store/output_stream_test.cpp
 	src/store/fs_output_stream_test.cpp

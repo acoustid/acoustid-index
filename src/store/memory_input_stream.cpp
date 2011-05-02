@@ -5,6 +5,7 @@
 #include <QFile>
 #include <sys/mman.h>
 #include "common.h"
+#include "util/vint.h"
 #include "memory_input_stream.h"
 
 using namespace Acoustid;
@@ -35,14 +36,19 @@ uint8_t MemoryInputStream::readByte()
 
 uint32_t MemoryInputStream::readVInt32()
 {
-	uint8_t b = m_addr[m_position++];
-	uint32_t i = b & 0x7f;
-	int shift = 7;
-	while (b & 0x80) {
-		b = m_addr[m_position++];
-		i |= (b & 0x7f) << shift;
-		shift += 7;
+	if (m_length - m_position >= kMaxVInt32Bytes) {
+		// We have enough data in the buffer for any vint32, so we can use an
+		// optimized function for reading from memory array.
+		uint32_t result;
+		ssize_t size = readVInt32FromArray(&m_addr[m_position], &result);
+		if (size == -1) {
+			throw IOException("can't read vint32");
+		}
+		m_position += size;
+		return result;
 	}
-	return i;
+	// We will probably run at the end of the stream, use the generic
+	// implementation and let readByte() handle that.
+	return InputStream::readVInt32();
 }
 

@@ -1,6 +1,7 @@
 // Copyright (C) 2011  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
+#include "util/vint.h"
 #include "buffered_input_stream.h"
 
 using namespace Acoustid;
@@ -41,18 +42,20 @@ uint32_t BufferedInputStream::readVInt32()
 	if (m_position >= m_length) {
 		refill();
 	}
-	uint8_t b = m_buffer[m_position++];
-	uint32_t i = b & 0x7f;
-	int shift = 7;
-	while (b & 0x80) {
-		if (m_position >= m_length) {
-			refill();
+	if (m_length - m_position >= kMaxVInt32Bytes) {
+		// We have enough data in the buffer for any vint32, so we can use an
+		// optimized function for reading from memory array.
+		uint32_t result;
+		ssize_t size = readVInt32FromArray(&m_buffer[m_position], &result);
+		if (size == -1) {
+			throw IOException("can't read vint32");
 		}
-		b = m_buffer[m_position++];
-		i |= (b & 0x7f) << shift;
-		shift += 7;
+		m_position += size;
+		return result;
 	}
-	return i;
+	// We will probably need to refill the buffer in the middle, use the
+	// generic implementation and let readByte() handle that.
+	return InputStream::readVInt32();
 }
 
 void BufferedInputStream::refill()
