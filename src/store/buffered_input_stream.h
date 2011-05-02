@@ -18,7 +18,14 @@ public:
 	size_t bufferSize();
 	void setBufferSize(size_t size);
 
-	uint8_t readByte();
+	uint8_t readByte()
+	{
+		if (m_position >= m_length) {
+			refill();
+		}
+		return m_buffer[m_position++];
+	}
+
 	uint32_t readVInt32();
 
 	size_t position();

@@ -29,14 +29,6 @@ void BufferedInputStream::setBufferSize(size_t bufferSize)
 	m_length = 0;
 }
 
-uint8_t BufferedInputStream::readByte()
-{
-	if (m_position >= m_length) {
-		refill();
-	}
-	return m_buffer[m_position++];
-}
-
 uint32_t BufferedInputStream::readVInt32()
 {
 	if (m_position >= m_length) {

@@ -15,9 +15,30 @@ public:
 	virtual ~InputStream();
 
 	virtual uint8_t readByte() = 0;
-	virtual uint16_t readInt16();
-	virtual uint32_t readInt32();
-	virtual uint32_t readVInt32();
+
+	virtual uint16_t readInt16()
+	{
+		return (readByte() << 8) | readByte();
+	}
+
+	virtual uint32_t readInt32()
+	{
+		return (readByte() << 24) | (readByte() << 16) | (readByte() << 8) | readByte();
+	}
+
+	virtual uint32_t readVInt32()
+	{
+		uint8_t b = readByte();
+		uint32_t i = b & 0x7f;
+		int shift = 7;
+		while (b & 0x80) {
+			b = readByte();
+			i |= (b & 0x7f) << shift;
+			shift += 7;
+		}
+		return i;
+	}
+
 	virtual QString readString();
 
 	virtual size_t position() = 0;
