@@ -2,9 +2,7 @@
 // Distributed under the MIT license, see the LICENSE file for details.
 
 #include <algorithm>
-#include "store/output_stream.h"
 #include "collector.h"
-#include "segment_index.h"
 #include "segment_data_reader.h"
 #include "segment_searcher.h"
 
@@ -22,20 +20,22 @@ SegmentSearcher::~SegmentSearcher()
 
 void SegmentSearcher::search(uint32_t *fingerprint, size_t length, Collector *collector)
 {
-	std::sort(fingerprint, fingerprint + length);
 	size_t i = 0, block = 0, lastBlock = SIZE_MAX;
 	while (i < length) {
 		if (block > lastBlock || lastBlock == SIZE_MAX) {
 			size_t localFirstBlock, localLastBlock;
 			if (m_index->search(fingerprint[i], &localFirstBlock, &localLastBlock)) {
 				if (block > localLastBlock) {
+					// We already searched this block and the fingerprint item was not found.
 					i++;
 					continue;
 				}
+				// Don't search for the same block multiple times.
 				block = std::max(block, localFirstBlock);
 				lastBlock = localLastBlock;
 			}
 			else {
+				// The fingerprint item is definitely not in any block.
 				i++;
 				continue;
 			}
@@ -55,6 +55,7 @@ void SegmentSearcher::search(uint32_t *fingerprint, size_t length, Collector *co
 				collector->collect(blockData->value());
 			}
 			else if (lastKey < fingerprint[i]) {
+				// There are no longer any items in this block that we could match.
 				break;
 			}
 		}

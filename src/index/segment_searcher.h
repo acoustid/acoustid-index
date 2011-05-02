@@ -18,6 +18,11 @@ public:
 	SegmentSearcher(SegmentIndexSharedPtr index, SegmentDataReader *dataReader);
 	virtual ~SegmentSearcher();
 
+	/**
+	 * Search for the fingerprint in one segment.
+	 *
+	 * The fingerprint must be sorted.
+	 */
 	void search(uint32_t *fingerprint, size_t length, Collector *collector);
 
 private:

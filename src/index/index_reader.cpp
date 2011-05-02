@@ -57,6 +57,7 @@ void IndexReader::closeSegmentIndex(int i)
 
 void IndexReader::search(uint32_t *fingerprint, size_t length, Collector *collector)
 {
+	std::sort(fingerprint, fingerprint + length);
 	for (int i = 0; i < m_infos.size(); i++) {
 		SegmentSearcher searcher(segmentIndex(i), segmentDataReader(i));
 		searcher.search(fingerprint, length, collector);
