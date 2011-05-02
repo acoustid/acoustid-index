@@ -6,6 +6,11 @@ find_package(GTest)
 find_package(Qt4 COMPONENTS QtCore QtNetwork REQUIRED)
 include(${QT_USE_FILE})
 
+add_definitions(
+        -D__STDC_LIMIT_MACROS
+        -D__STDC_CONSTANT_MACROS
+)
+
 set(fpindexlib_SOURCES
 	src/index/segment_data_reader.cpp
 	src/index/segment_data_writer.cpp
