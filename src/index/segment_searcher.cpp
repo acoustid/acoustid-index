@@ -45,20 +45,23 @@ void SegmentSearcher::search(uint32_t *fingerprint, size_t length, Collector *co
 		ScopedPtr<BlockDataIterator> blockData(m_dataReader->readBlock(block, firstKey));
 		while (blockData->next()) {
 			uint32_t key = blockData->key();
-			while (key > fingerprint[i]) {
-				i++;
-				if (i >= length) {
-					return;
+			if (key >= fingerprint[i]) {
+				while (key > fingerprint[i]) {
+					i++;
+					if (i >= length) {
+						return;
+					}
+					else if (lastKey < fingerprint[i]) {
+						// There are no longer any items in this block that we could match.
+						goto nextBlock;
+					}
+				}
+				if (key == fingerprint[i]) {
+					collector->collect(blockData->value());
 				}
 			}
-			if (key == fingerprint[i]) {
-				collector->collect(blockData->value());
-			}
-			else if (lastKey < fingerprint[i]) {
-				// There are no longer any items in this block that we could match.
-				break;
-			}
 		}
+	nextBlock:
 		block++;
 	}
 }
