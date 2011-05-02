@@ -48,7 +48,7 @@ int main(int argc, char **argv)
 		}
 		Timer timer;
 		timer.start();
-		TopHitsCollector collector(100);
+		TopHitsCollector collector(10);
 		reader.search((uint32_t *)fp, arg.size(), &collector);
 		qDebug() << "Search took" << timer.elapsed() << "ms";
 		QList<Result> results = collector.topResults();
