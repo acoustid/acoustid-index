@@ -2,6 +2,8 @@
 #define ACOUSTID_CONNECTION_H_
 
 #include <QTextStream>
+#include <QByteArray>
+#include "index/index_writer.h"
 
 class QTcpSocket;
 class Handler;
@@ -12,7 +14,7 @@ class Connection : public QObject
 	Q_OBJECT
 
 public:
-	Connection(QTcpSocket *socket, QObject *parent = 0);
+	Connection(Acoustid::IndexWriter *writer, QTcpSocket *socket, QObject *parent = 0);
 	~Connection();
 
 	Listener *listener() const;
@@ -24,9 +26,13 @@ signals:
 protected slots:
 	void readIncomingData();
 
+	void handleLine(const QString& line);
+
 private:
 	QTcpSocket *m_socket;
-	QTextStream m_stream;
+	QString m_buffer;
+	QTextStream m_output;
+    Acoustid::IndexWriter *m_writer;
 	Handler *m_handler;
 };
 

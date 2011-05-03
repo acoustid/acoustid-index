@@ -3,10 +3,15 @@
 #include "listener.h"
 #include "connection.h"
 
-Listener::Listener(QObject *parent)
+using namespace Acoustid;
+
+Listener::Listener(const QString &path, QObject *parent)
 	: QTcpServer(parent)
 {
 	connect(this, SIGNAL(newConnection()), SLOT(acceptNewConnection()));
+	m_dir = new FSDirectory(path);
+    m_writer = new IndexWriter(m_dir);
+    m_writer->open();
 }
 
 Listener::~Listener()
@@ -35,7 +40,7 @@ void Listener::removeConnection(Connection *connection)
 void Listener::acceptNewConnection()
 {
 	QTcpSocket *socket = nextPendingConnection();
-	Connection *connection = new Connection(socket, this);
+	Connection *connection = new Connection(m_writer, socket, this);
 	m_connections.append(connection);
 	qDebug() << "Adding connection" << connection;
 	connect(connection, SIGNAL(closed(Connection *)), SLOT(removeConnection(Connection *)));

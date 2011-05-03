@@ -62,7 +62,7 @@ add_executable(fpserver
     ${fpserver_SOURCES}
     ${fpserver_MOC}
 )
-target_link_libraries(fpserver ${QT_LIBRARIES})
+target_link_libraries(fpserver ${QT_LIBRARIES} fpindexlib)
 
 add_executable(fpindex src/tools/fpindex.cpp)
 target_link_libraries(fpindex ${QT_LIBRARIES} fpindexlib)
