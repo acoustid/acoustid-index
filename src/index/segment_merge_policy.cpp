@@ -29,7 +29,7 @@ public:
 
 	bool operator()(int a, int b) const
 	{
-		return m_infos->info(a).numDocs() > m_infos->info(b).numDocs();
+		return m_infos->info(a).blockCount() > m_infos->info(b).blockCount();
 	}
 
 private:
@@ -49,10 +49,10 @@ QList<int> SegmentMergePolicy::findMerges(const SegmentInfoList &infos)
 	qStableSort(segments.begin(), segments.end(), SegmentSizeLessThan(&infos));
 	//qDebug() << "Order after sorting is " << segments;
 
-	size_t minSegmentSize = infos.info(segments.last()).numDocs();
+	size_t minSegmentSize = infos.info(segments.last()).blockCount();
 	size_t totalIndexSize = 0;
 	for (size_t i = 0; i < infos.size(); i++) {
-		totalIndexSize += infos.info(i).numDocs();
+		totalIndexSize += infos.info(i).blockCount();
 	}
 	//qDebug() << "minSegmentSize =" << minSegmentSize;
 	//qDebug() << "totalIndexSize =" << totalIndexSize;
@@ -86,10 +86,10 @@ QList<int> SegmentMergePolicy::findMerges(const SegmentInfoList &infos)
 		for (size_t j = i; j < segments.size() && candidate.size() < m_maxMergeAtOnce; j++) {
 			int segment = segments.at(j);
 			candidate.append(segment);
-			mergeSize += infos.info(segment).numDocs();
+			mergeSize += infos.info(segment).blockCount();
 		}
 		if (candidate.size()) {
-			double score = double(infos.info(candidate.first()).numDocs()) / mergeSize;
+			double score = double(infos.info(candidate.first()).blockCount()) / mergeSize;
 			score *= pow(mergeSize, 0.05);
 			//qDebug() << "Evaluating merge " << candidate << " with score " << score;
 	 		if (score < bestScore) {

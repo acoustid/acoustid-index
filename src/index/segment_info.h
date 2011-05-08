@@ -11,8 +11,8 @@ namespace Acoustid {
 class SegmentInfo
 {
 public:
-	SegmentInfo(int id = 0, size_t numDocs = 0)
-		: m_id(id), m_numDocs(numDocs)
+	SegmentInfo(int id = 0, size_t blockCount = 0)
+		: m_id(id), m_blockCount(blockCount)
 	{
 	}
 
@@ -41,19 +41,19 @@ public:
 		return m_id;
 	}
 
-	size_t numDocs() const
+	size_t blockCount() const
 	{
-		return m_numDocs;
+		return m_blockCount;
 	}
 
-	void setNumDocs(size_t numDocs)
+	void setBlockCount(size_t blockCount)
 	{
-		m_numDocs = numDocs;
+		m_blockCount = blockCount;
 	}
 
 private:
 	int m_id;
-	size_t m_numDocs;
+	size_t m_blockCount;
 };
 
 }

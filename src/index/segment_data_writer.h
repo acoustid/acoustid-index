@@ -19,6 +19,9 @@ public:
 	SegmentDataWriter(OutputStream *output, SegmentIndexWriter *indexWriter, size_t blockSize);
 	virtual ~SegmentDataWriter();
 
+	// Number of blocks written into the file
+	size_t blockCount() const { return m_blockCount; }
+
 	size_t blockSize() { return m_blockSize; }
 	void setBlockSize(size_t blockSize);
 
@@ -34,6 +37,7 @@ private:
 	uint32_t m_lastKey;
 	uint32_t m_lastValue;
 	size_t m_itemCount;
+	size_t m_blockCount;
 	uint8_t *m_ptr;
 	ScopedArrayPtr<uint8_t> m_buffer;
 };

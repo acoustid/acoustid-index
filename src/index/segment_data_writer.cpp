@@ -36,7 +36,7 @@ inline uint8_t *encodeVInt32(uint32_t i, uint8_t *dest)
 
 SegmentDataWriter::SegmentDataWriter(OutputStream *output, SegmentIndexWriter *indexWriter, size_t blockSize)
 	: m_output(output), m_indexWriter(indexWriter), m_blockSize(blockSize),
-	  m_buffer(0), m_ptr(0), m_itemCount(0), m_lastKey(0), m_lastValue(0)
+	  m_buffer(0), m_ptr(0), m_itemCount(0), m_lastKey(0), m_lastValue(0), m_blockCount(0)
 {
 }
 
@@ -59,6 +59,7 @@ void SegmentDataWriter::writeBlock()
 	m_output->writeBytes(m_buffer.get(), m_blockSize - checkVInt32Size(m_itemCount)); // XXX
 	m_ptr = m_buffer.get();
 	m_itemCount = 0;
+	m_blockCount++;
 	memset(m_buffer.get(), 0, m_blockSize);
 }
 

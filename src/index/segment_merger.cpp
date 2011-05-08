@@ -51,6 +51,6 @@ size_t SegmentMerger::merge()
 		}
 	}
 	m_writer->close();
-	return docs.size();
+	return m_writer->blockCount();
 }
 

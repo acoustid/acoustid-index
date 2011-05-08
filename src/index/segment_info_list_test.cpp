@@ -49,9 +49,9 @@ TEST(SegmentInfoListTest, Read)
 	ASSERT_EQ(3, infos.lastSegmentId());
 	ASSERT_EQ(2, infos.segmentCount());
 	ASSERT_EQ("segment_0", infos.info(0).name());
-	ASSERT_EQ(42, infos.info(0).numDocs());
+	ASSERT_EQ(42, infos.info(0).blockCount());
 	ASSERT_EQ("segment_2", infos.info(1).name());
-	ASSERT_EQ(66, infos.info(1).numDocs());
+	ASSERT_EQ(66, infos.info(1).blockCount());
 }
 
 TEST(SegmentInfoListTest, Write)

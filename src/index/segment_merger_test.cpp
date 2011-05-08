@@ -20,7 +20,7 @@ using namespace Acoustid;
 TEST(SegmentMergerTest, Iterate)
 {
 	RAMDirectory dir;
-	size_t numDocs;
+	size_t blockCount;
 
 	{
 		OutputStream *indexOutput = dir.createFile("segment_0.fii");
@@ -74,7 +74,7 @@ TEST(SegmentMergerTest, Iterate)
 		SegmentMerger merger(writer);
 		merger.addSource(reader1);
 		merger.addSource(reader2);
-		numDocs = merger.merge();
+		blockCount = merger.merge();
 	}
 
 	InputStream *indexInput = dir.openFile("segment_2.fii");
@@ -83,7 +83,7 @@ TEST(SegmentMergerTest, Iterate)
 	SegmentDataReader *dataReader = new SegmentDataReader(dataInput, index->blockSize());
 	SegmentEnum reader(index, dataReader);
 
-	ASSERT_EQ(7, numDocs);
+	ASSERT_EQ(4, blockCount);
 	ASSERT_TRUE(reader.next());
 	ASSERT_EQ(199, reader.key());
 	ASSERT_EQ(500, reader.value());

@@ -15,7 +15,7 @@
 using namespace Acoustid;
 
 IndexWriter::IndexWriter(Directory *dir)
-	: IndexReader(dir), m_numDocsInBuffer(0), m_maxSegmentBufferSize(MAX_SEGMENT_BUFFER_SIZE)
+	: IndexReader(dir), m_maxSegmentBufferSize(MAX_SEGMENT_BUFFER_SIZE)
 {
 	m_mergePolicy = new SegmentMergePolicy();
 }
@@ -44,7 +44,6 @@ void IndexWriter::addDocument(uint32_t id, uint32_t *terms, size_t length)
 	for (size_t i = 0; i < length; i++) {
 		m_segmentBuffer.push_back((uint64_t(terms[i]) << 32) | id);
 	}
-	m_numDocsInBuffer++;
 	maybeFlush();
 }
 
@@ -87,7 +86,7 @@ void IndexWriter::maybeMerge()
 			int j = merge.at(i);
 			merger.addSource(new SegmentEnum(segmentIndex(j), segmentDataReader(j)));
 		}
-		info.setNumDocs(merger.merge());
+		info.setBlockCount(merger.merge());
 	}
 
 	SegmentInfoList infos;
@@ -114,7 +113,7 @@ void IndexWriter::flush()
 	//qDebug() << "Writing new segment" << (m_segmentBuffer.size() * 8.0 / 1024 / 1024);
 	qSort(m_segmentBuffer.begin(), m_segmentBuffer.end());
 
-	SegmentInfo info(m_infos.incLastSegmentId(), m_numDocsInBuffer);
+	SegmentInfo info(m_infos.incLastSegmentId());
 	ScopedPtr<SegmentDataWriter> writer(segmentDataWriter(info));
 	for (size_t i = 0; i < m_segmentBuffer.size(); i++) {
 		uint32_t key = (m_segmentBuffer[i] >> 32);
@@ -123,11 +122,11 @@ void IndexWriter::flush()
 		writer->addItem(key, value);
 	}
 	writer->close();
+	info.setBlockCount(writer->blockCount());
 
 	m_infos.add(info);
 	maybeMerge();
 
 	m_segmentBuffer.clear();
-	m_numDocsInBuffer = 0;
 }
 
