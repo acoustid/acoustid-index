@@ -39,8 +39,10 @@ TEST(SegmentInfoListTest, Read)
 	output->writeVInt32(2);
 	output->writeVInt32(0);
 	output->writeVInt32(42);
+	output->writeVInt32(100);
 	output->writeVInt32(2);
 	output->writeVInt32(66);
+	output->writeVInt32(200);
 	output.reset();
 
 	SegmentInfoList infos;
@@ -50,8 +52,10 @@ TEST(SegmentInfoListTest, Read)
 	ASSERT_EQ(2, infos.segmentCount());
 	ASSERT_EQ("segment_0", infos.info(0).name());
 	ASSERT_EQ(42, infos.info(0).blockCount());
+	ASSERT_EQ(100, infos.info(0).lastKey());
 	ASSERT_EQ("segment_2", infos.info(1).name());
 	ASSERT_EQ(66, infos.info(1).blockCount());
+	ASSERT_EQ(200, infos.info(1).lastKey());
 }
 
 TEST(SegmentInfoListTest, Write)
@@ -59,9 +63,9 @@ TEST(SegmentInfoListTest, Write)
 	RAMDirectory dir;
 
 	SegmentInfoList infos;
-	infos.add(SegmentInfo(0, 42));
+	infos.add(SegmentInfo(0, 42, 100));
 	infos.incLastSegmentId();
-	infos.add(SegmentInfo(1, 66));
+	infos.add(SegmentInfo(1, 66, 200));
 	infos.incLastSegmentId();
 	ScopedPtr<OutputStream> output(dir.createFile("segments_0"));
 	infos.write(output.get());
@@ -72,8 +76,10 @@ TEST(SegmentInfoListTest, Write)
 	ASSERT_EQ(2, input->readVInt32());
 	ASSERT_EQ(0, input->readVInt32());
 	ASSERT_EQ(42, input->readVInt32());
+	ASSERT_EQ(100, input->readVInt32());
 	ASSERT_EQ(1, input->readVInt32());
 	ASSERT_EQ(66, input->readVInt32());
+	ASSERT_EQ(200, input->readVInt32());
 }
 
 TEST(SegmentInfoListTest, Clear)

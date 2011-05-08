@@ -50,9 +50,10 @@ void SegmentInfoList::read(InputStream *input)
 	setLastSegmentId(input->readVInt32());
 	size_t segmentCount = input->readVInt32();
 	for (size_t i = 0; i < segmentCount; i++) {
-		int id = input->readVInt32();
-		size_t blockCount = input->readVInt32();
-		add(SegmentInfo(id, blockCount));
+		uint32_t id = input->readVInt32();
+		uint32_t blockCount = input->readVInt32();
+		uint32_t lastKey = input->readVInt32();
+		add(SegmentInfo(id, blockCount, lastKey));
 	}
 	delete input;
 }
@@ -64,6 +65,7 @@ void SegmentInfoList::write(OutputStream *output)
 	for (size_t i = 0; i < segmentCount(); i++) {
 		output->writeVInt32(info(i).id());
 		output->writeVInt32(info(i).blockCount());
+		output->writeVInt32(info(i).lastKey());
 	}
 }
 
