@@ -30,7 +30,6 @@ protected:
 TEST_F(SegmentIndexReaderTest, Read)
 {
 	stream->writeInt32(256);
-	stream->writeInt32(8);
 	stream->writeVInt32(2);
 	stream->writeVInt32(1);
 	stream->writeVInt32(1);
@@ -42,7 +41,7 @@ TEST_F(SegmentIndexReaderTest, Read)
 	stream->flush();
 
 	FSInputStream *input = FSInputStream::open(stream->fileName());
-	SegmentIndexSharedPtr index = SegmentIndexReader(input).read();
+	SegmentIndexSharedPtr index = SegmentIndexReader(input, 8).read();
 
 	ASSERT_EQ(256, index->blockSize());
 

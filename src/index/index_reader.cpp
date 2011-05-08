@@ -37,7 +37,7 @@ SegmentIndexSharedPtr IndexReader::segmentIndex(int i)
 	const SegmentInfo &info = m_infos.info(i);
 	SegmentIndexSharedPtr index(m_indexes.value(info.id()));
 	if (index.isNull()) {
-		index = SegmentIndexReader(m_dir->openFile(info.indexFileName())).read();
+		index = SegmentIndexReader(m_dir->openFile(info.indexFileName()), info.blockCount()).read();
 		m_indexes.insert(info.id(), index);
 	}
 	return index;

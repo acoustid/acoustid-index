@@ -70,11 +70,11 @@ target_link_libraries(fpindex ${QT_LIBRARIES} fpindexlib)
 add_executable(fpstats src/tools/fpstats.cpp)
 target_link_libraries(fpstats ${QT_LIBRARIES} fpindexlib)
 
-add_executable(fpsearch src/tools/fpsearch.cpp)
-target_link_libraries(fpsearch ${QT_LIBRARIES} fpindexlib)
+#add_executable(fpsearch src/tools/fpsearch.cpp)
+#target_link_libraries(fpsearch ${QT_LIBRARIES} fpindexlib)
 
-add_executable(fpdumpindex src/tools/fpdumpindex.cpp)
-target_link_libraries(fpdumpindex ${QT_LIBRARIES} fpindexlib)
+#add_executable(fpdumpindex src/tools/fpdumpindex.cpp)
+#target_link_libraries(fpdumpindex ${QT_LIBRARIES} fpindexlib)
 
 add_executable(fpi-add src/tools/fpi-add.cpp)
 target_link_libraries(fpi-add ${QT_LIBRARIES} fpindexlib)

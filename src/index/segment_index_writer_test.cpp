@@ -38,7 +38,6 @@ TEST_F(SegmentIndexWriterTest, Write)
 
 	ASSERT_EQ(256, input->readInt32());
 
-	ASSERT_EQ(8, input->readInt32());
 	ASSERT_EQ(2, input->readVInt32());
 	ASSERT_EQ(1, input->readVInt32());
 	ASSERT_EQ(1, input->readVInt32());

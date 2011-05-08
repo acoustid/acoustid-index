@@ -19,6 +19,7 @@ using namespace Acoustid;
 TEST(SegmentEnumTest, Iterate)
 {
 	RAMDirectory dir;
+	size_t blockCount;
 
 	{
 		OutputStream *indexOutput = dir.createFile("segment_0.fii");
@@ -32,11 +33,12 @@ TEST(SegmentEnumTest, Iterate)
 		writer.addItem(201, 302);
 		writer.addItem(202, 303);
 		writer.close();
+		blockCount = writer.blockCount();
 	}
 
 	InputStream *indexInput = dir.openFile("segment_0.fii");
 	InputStream *dataInput = dir.openFile("segment_0.fid");
-	SegmentIndexSharedPtr index = SegmentIndexReader(indexInput).read();
+	SegmentIndexSharedPtr index = SegmentIndexReader(indexInput, blockCount).read();
 	SegmentDataReader *dataReader = new SegmentDataReader(dataInput, index->blockSize());
 
 	SegmentEnum reader(index, dataReader);

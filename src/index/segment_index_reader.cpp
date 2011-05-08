@@ -7,8 +7,8 @@
 
 using namespace Acoustid;
 
-SegmentIndexReader::SegmentIndexReader(InputStream *input)
-	: m_input(input)
+SegmentIndexReader::SegmentIndexReader(InputStream *input, size_t blockCount)
+	: m_input(input), m_blockCount(blockCount)
 {
 }
 
@@ -20,10 +20,9 @@ SegmentIndexReader::~SegmentIndexReader()
 SegmentIndexSharedPtr SegmentIndexReader::read()
 {
 	size_t blockSize = m_input->readInt32();
-	size_t keyCount = m_input->readInt32();
-	SegmentIndexSharedPtr index(new SegmentIndex(blockSize, keyCount));
+	SegmentIndexSharedPtr index(new SegmentIndex(blockSize, m_blockCount));
 	uint32_t *keys = index->levelKeys(0), lastKey = 0;
-	for (size_t i = 0; i < keyCount; i++) {
+	for (size_t i = 0; i < m_blockCount; i++) {
 		lastKey += m_input->readVInt32();
 		*keys++ = lastKey;
 	}

@@ -20,7 +20,7 @@ using namespace Acoustid;
 TEST(SegmentMergerTest, Iterate)
 {
 	RAMDirectory dir;
-	size_t blockCount;
+	size_t blockCount0, blockCount1, blockCount;
 
 	{
 		OutputStream *indexOutput = dir.createFile("segment_0.fii");
@@ -34,6 +34,7 @@ TEST(SegmentMergerTest, Iterate)
 		writer.addItem(201, 302);
 		writer.addItem(202, 303);
 		writer.close();
+		blockCount0 = writer.blockCount();
 	}
 
 	{
@@ -49,6 +50,7 @@ TEST(SegmentMergerTest, Iterate)
 		writer.addItem(202, 303);
 		writer.addItem(500, 501);
 		writer.close();
+		blockCount1 = writer.blockCount();
 	}
 
 	{
@@ -61,13 +63,13 @@ TEST(SegmentMergerTest, Iterate)
 
 		InputStream *indexInput1 = dir.openFile("segment_0.fii");
 		InputStream *dataInput1 = dir.openFile("segment_0.fid");
-		SegmentIndexSharedPtr index1 = SegmentIndexReader(indexInput1).read();
+		SegmentIndexSharedPtr index1 = SegmentIndexReader(indexInput1, blockCount0).read();
 		SegmentDataReader *dataReader1 = new SegmentDataReader(dataInput1, index1->blockSize());
 		SegmentEnum *reader1 = new SegmentEnum(index1, dataReader1);
 
 		InputStream *indexInput2 = dir.openFile("segment_1.fii");
 		InputStream *dataInput2 = dir.openFile("segment_1.fid");
-		SegmentIndexSharedPtr index2 = SegmentIndexReader(indexInput2).read();
+		SegmentIndexSharedPtr index2 = SegmentIndexReader(indexInput2, blockCount1).read();
 		SegmentDataReader *dataReader2 = new SegmentDataReader(dataInput2, index2->blockSize());
 		SegmentEnum *reader2 = new SegmentEnum(index2, dataReader2);
 
@@ -79,11 +81,10 @@ TEST(SegmentMergerTest, Iterate)
 
 	InputStream *indexInput = dir.openFile("segment_2.fii");
 	InputStream *dataInput = dir.openFile("segment_2.fid");
-	SegmentIndexSharedPtr index = SegmentIndexReader(indexInput).read();
+	SegmentIndexSharedPtr index = SegmentIndexReader(indexInput, blockCount).read();
 	SegmentDataReader *dataReader = new SegmentDataReader(dataInput, index->blockSize());
 	SegmentEnum reader(index, dataReader);
 
-	ASSERT_EQ(4, blockCount);
 	ASSERT_TRUE(reader.next());
 	ASSERT_EQ(199, reader.key());
 	ASSERT_EQ(500, reader.value());

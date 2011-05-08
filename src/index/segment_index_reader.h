@@ -14,13 +14,14 @@ class InputStream;
 class SegmentIndexReader
 {
 public:
-	SegmentIndexReader(InputStream *input);
+	SegmentIndexReader(InputStream *input, size_t blockCount);
 	virtual ~SegmentIndexReader();
 
 	SegmentIndexSharedPtr read();
 
 private:
 	InputStream *m_input;
+	size_t m_blockCount;
 };
 
 }
