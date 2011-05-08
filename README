@@ -1,0 +1,14 @@
+Acoustid Index
+==============
+
+Acoustid Index is a "number search engine". It's similar to text search
+engines, but instead of searching in documents that consist of words,
+it searches in documents that consist of 32-bit integers.
+
+It's a simple inverted index data structure that doesn't do any kind of
+processing on the indexed documents. This is useful for searching in
+Chromaprint[1] audio fingerprints, which are nothing more than 32-bit
+integer arrays.
+
+  [1] http://acoustid.org/chromaprint
+
