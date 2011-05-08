@@ -2,37 +2,11 @@
 // Distributed under the MIT license, see the LICENSE file for details.
 
 #include "store/output_stream.h"
+#include "util/vint.h"
 #include "segment_data_writer.h"
 #include "segment_index_writer.h"
 
 using namespace Acoustid;
-
-inline size_t checkVInt32Size(uint32_t i)
-{
-	if (i < 128) {
-		return 1;
-	}
-	if (i < 128 * 128) {
-		return 2;
-	}
-	if (i < 128 * 128 * 128) {
-		return 3;
-	}
-	if (i < 128 * 128 * 128 * 128) {
-		return 4;
-	}
-	return 5;
-}
-
-inline uint8_t *encodeVInt32(uint32_t i, uint8_t *dest)
-{
-	while (i & ~0x7f) {
-		*dest++ = (i & 0x7f) | 0x80;
-		i >>= 7;
-	}
-	*dest++ = i;
-	return dest;
-}
 
 SegmentDataWriter::SegmentDataWriter(OutputStream *output, SegmentIndexWriter *indexWriter, size_t blockSize)
 	: m_output(output), m_indexWriter(indexWriter), m_blockSize(blockSize),
@@ -86,12 +60,12 @@ void SegmentDataWriter::addItem(uint32_t key, uint32_t value)
 	}
 
 	if (m_itemCount > 0) {
-		m_ptr = encodeVInt32(keyDelta, m_ptr);
+		m_ptr += writeVInt32ToArray(m_ptr, keyDelta);
 	}
 	else if (m_indexWriter) {
 		m_indexWriter->addItem(key);
 	}
-	m_ptr = encodeVInt32(valueDelta, m_ptr);
+	m_ptr += writeVInt32ToArray(m_ptr, valueDelta);
 
 	m_lastKey = key;
 	m_lastValue = value;

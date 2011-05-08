@@ -19,8 +19,11 @@ public:
 	SegmentDataWriter(OutputStream *output, SegmentIndexWriter *indexWriter, size_t blockSize);
 	virtual ~SegmentDataWriter();
 
-	// Number of blocks written into the file
+	// Number of blocks written into the file.
 	size_t blockCount() const { return m_blockCount; }
+
+	// Last key written into the file.
+	uint32_t lastKey() const { return m_lastKey; }
 
 	size_t blockSize() { return m_blockSize; }
 	void setBlockSize(size_t blockSize);
