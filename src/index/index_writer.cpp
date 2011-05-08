@@ -67,8 +67,7 @@ SegmentDataWriter *IndexWriter::segmentDataWriter(const SegmentInfo &info)
 	OutputStream *indexOutput = m_dir->createFile(info.indexFileName());
 	OutputStream *dataOutput = m_dir->createFile(info.dataFileName());
 	SegmentIndexWriter *indexWriter = new SegmentIndexWriter(indexOutput);
-	indexWriter->setBlockSize(BLOCK_SIZE);
-	return new SegmentDataWriter(dataOutput, indexWriter, indexWriter->blockSize());
+	return new SegmentDataWriter(dataOutput, indexWriter, BLOCK_SIZE);
 }
 
 void IndexWriter::maybeMerge()

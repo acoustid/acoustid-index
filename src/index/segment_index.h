@@ -12,10 +12,8 @@ namespace Acoustid {
 class SegmentIndex
 {
 public:
-	SegmentIndex(size_t blockSize, size_t keyCount);
+	SegmentIndex(size_t blockCount);
 	virtual ~SegmentIndex();
-
-	size_t blockSize() { return m_blockSize; }
 
 	size_t levelCount() { return m_levelCount; }
 	size_t levelKeyCount(size_t level) { return m_levelKeyCounts[level]; }
@@ -32,7 +30,6 @@ public:
 
 
 private:
-	size_t m_blockSize;
 	size_t m_levelCount;
 	ScopedArrayPtr<size_t> m_levelKeyCounts;
 	ScopedArrayPtr<uint32_t*> m_levelKeys;

@@ -23,7 +23,6 @@ protected:
 TEST_F(SegmentIndexWriterTest, Write)
 {
 	SegmentIndexWriter writer(stream);
-	writer.setBlockSize(256);
 	writer.addItem(2);
 	writer.addItem(3);
 	writer.addItem(4);
@@ -35,8 +34,6 @@ TEST_F(SegmentIndexWriterTest, Write)
 	writer.close();
 
 	FSInputStream *input = FSInputStream::open(stream->fileName());
-
-	ASSERT_EQ(256, input->readInt32());
 
 	ASSERT_EQ(2, input->readVInt32());
 	ASSERT_EQ(1, input->readVInt32());

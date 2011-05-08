@@ -24,10 +24,9 @@ TEST(SegmentEnumTest, Iterate)
 	{
 		OutputStream *indexOutput = dir.createFile("segment_0.fii");
 		SegmentIndexWriter *indexWriter = new SegmentIndexWriter(indexOutput);
-		indexWriter->setBlockSize(8);
 
 		OutputStream *dataOutput = dir.createFile("segment_0.fid");
-		SegmentDataWriter writer(dataOutput, indexWriter, indexWriter->blockSize());
+		SegmentDataWriter writer(dataOutput, indexWriter, 8);
 		writer.addItem(200, 300);
 		writer.addItem(201, 301);
 		writer.addItem(201, 302);
@@ -39,7 +38,7 @@ TEST(SegmentEnumTest, Iterate)
 	InputStream *indexInput = dir.openFile("segment_0.fii");
 	InputStream *dataInput = dir.openFile("segment_0.fid");
 	SegmentIndexSharedPtr index = SegmentIndexReader(indexInput, blockCount).read();
-	SegmentDataReader *dataReader = new SegmentDataReader(dataInput, index->blockSize());
+	SegmentDataReader *dataReader = new SegmentDataReader(dataInput, 8);
 
 	SegmentEnum reader(index, dataReader);
 	ASSERT_TRUE(reader.next());

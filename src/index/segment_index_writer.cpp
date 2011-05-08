@@ -7,8 +7,7 @@
 using namespace Acoustid;
 
 SegmentIndexWriter::SegmentIndexWriter(OutputStream *output)
-	: m_output(output), m_blockSize(0),
-	  m_headerWritten(false), m_lastKey(0)
+	: m_output(output), m_lastKey(0)
 {
 }
 
@@ -18,24 +17,14 @@ SegmentIndexWriter::~SegmentIndexWriter()
 	delete m_output;
 }
 
-void SegmentIndexWriter::maybeWriteHeader()
-{
-	if (!m_headerWritten) {
-		m_output->writeInt32(m_blockSize);
-		m_headerWritten = true;
-	}
-}
-
 void SegmentIndexWriter::addItem(uint32_t key)
 {
-	maybeWriteHeader();
 	m_output->writeVInt32(key - m_lastKey);
 	m_lastKey = key;
 }
 
 void SegmentIndexWriter::close()
 {
-	maybeWriteHeader();
 	m_output->flush();
 }
 

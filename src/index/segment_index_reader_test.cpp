@@ -29,7 +29,6 @@ protected:
 
 TEST_F(SegmentIndexReaderTest, Read)
 {
-	stream->writeInt32(256);
 	stream->writeVInt32(2);
 	stream->writeVInt32(1);
 	stream->writeVInt32(1);
@@ -42,8 +41,6 @@ TEST_F(SegmentIndexReaderTest, Read)
 
 	FSInputStream *input = FSInputStream::open(stream->fileName());
 	SegmentIndexSharedPtr index = SegmentIndexReader(input, 8).read();
-
-	ASSERT_EQ(256, index->blockSize());
 
 	ASSERT_EQ(8, index->levelKeyCount(0));
 	uint32_t expected0[] = { 2, 3, 4, 5, 6, 7, 8, 9 };

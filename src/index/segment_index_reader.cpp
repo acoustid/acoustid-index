@@ -19,8 +19,7 @@ SegmentIndexReader::~SegmentIndexReader()
 
 SegmentIndexSharedPtr SegmentIndexReader::read()
 {
-	size_t blockSize = m_input->readInt32();
-	SegmentIndexSharedPtr index(new SegmentIndex(blockSize, m_blockCount));
+	SegmentIndexSharedPtr index(new SegmentIndex(m_blockCount));
 	uint32_t *keys = index->levelKeys(0), lastKey = 0;
 	for (size_t i = 0; i < m_blockCount; i++) {
 		lastKey += m_input->readVInt32();

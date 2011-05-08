@@ -8,8 +8,7 @@
 
 using namespace Acoustid;
 
-SegmentIndex::SegmentIndex(size_t blockSize, size_t keyCount)
-	: m_blockSize(blockSize)
+SegmentIndex::SegmentIndex(size_t keyCount)
 {
 	size_t indexInterval = keyCount;
 	// calculate the number of levels

@@ -26,9 +26,8 @@ protected:
 TEST_F(SegmentDataWriterTest, Write)
 {
 	SegmentIndexWriter *indexWriter = new SegmentIndexWriter(indexStream);
-	indexWriter->setBlockSize(8);
 
-	SegmentDataWriter writer(stream, indexWriter, indexWriter->blockSize());
+	SegmentDataWriter writer(stream, indexWriter, 8);
 	writer.addItem(200, 300);
 	writer.addItem(201, 301);
 	writer.addItem(201, 302);

@@ -10,24 +10,21 @@ using namespace Acoustid;
 
 TEST(SegmentIndexTest, Sizes1)
 {
-	SegmentIndex index(256, 1000);
-	EXPECT_EQ(256, index.blockSize());
+	SegmentIndex index(1000);
 	EXPECT_EQ(1, index.levelCount());
 	EXPECT_EQ(1000, index.levelKeyCount(0));
 }
 
 TEST(SegmentIndexTest, Sizes2)
 {
-	SegmentIndex index(256, 1024);
-	EXPECT_EQ(256, index.blockSize());
+	SegmentIndex index(1024);
 	EXPECT_EQ(1, index.levelCount());
 	EXPECT_EQ(1024, index.levelKeyCount(0));
 }
 
 TEST(SegmentIndexTest, Sizes3)
 {
-	SegmentIndex index(256, 1111);
-	EXPECT_EQ(256, index.blockSize());
+	SegmentIndex index(1111);
 	EXPECT_EQ(1, index.levelCount());
 	EXPECT_EQ(1111, index.levelKeyCount(0));
 }
@@ -35,7 +32,7 @@ TEST(SegmentIndexTest, Sizes3)
 TEST(SegmentIndexTest, Search)
 {
 	size_t firstBlock = 0, lastBlock = 0;
-	SegmentIndex index(256, 8);
+	SegmentIndex index(8);
 	ASSERT_EQ(1, index.levelCount());
 	EXPECT_EQ(8, index.levelKeyCount(0));
 	uint32_t *data = index.levelKeys(0);

@@ -64,11 +64,11 @@ add_executable(fpserver
 )
 target_link_libraries(fpserver ${QT_LIBRARIES} fpindexlib)
 
-add_executable(fpindex src/tools/fpindex.cpp)
-target_link_libraries(fpindex ${QT_LIBRARIES} fpindexlib)
+#add_executable(fpindex src/tools/fpindex.cpp)
+#target_link_libraries(fpindex ${QT_LIBRARIES} fpindexlib)
 
-add_executable(fpstats src/tools/fpstats.cpp)
-target_link_libraries(fpstats ${QT_LIBRARIES} fpindexlib)
+#add_executable(fpstats src/tools/fpstats.cpp)
+#target_link_libraries(fpstats ${QT_LIBRARIES} fpindexlib)
 
 #add_executable(fpsearch src/tools/fpsearch.cpp)
 #target_link_libraries(fpsearch ${QT_LIBRARIES} fpindexlib)
