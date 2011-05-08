@@ -26,10 +26,10 @@ public:
 	bool next()
 	{
 		if (!m_currentBlock.get() || !m_currentBlock->next()) {
-			if (m_block >= m_index->levelKeyCount(0)) {
+			if (m_block >= m_index->blockCount()) {
 				return false;
 			}
-			uint32_t firstKey = m_index->levelKey(m_block);
+			uint32_t firstKey = m_index->key(m_block);
 			m_currentBlock.reset(m_dataReader->readBlock(m_block, firstKey));
 			m_currentBlock->next();
 			m_block++;

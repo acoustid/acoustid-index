@@ -15,24 +15,21 @@ public:
 	SegmentIndex(size_t blockCount);
 	virtual ~SegmentIndex();
 
-	size_t levelCount() { return m_levelCount; }
-	size_t levelKeyCount(size_t level) { return m_levelKeyCounts[level]; }
-	uint32_t *levelKeys(size_t level) { return m_levelKeys[level]; }
+	size_t blockCount() { return m_blockCount; }
 
-	uint32_t levelKey(size_t block, size_t level = 0)
+	uint32_t *keys() { return m_keys; }
+
+	uint32_t key(size_t block)
 	{
-		return m_levelKeys[level][block];
+		return m_keys[block];
 	}
-
-	void rebuild();
 
 	bool search(uint32_t key, size_t *firstBlock, size_t *lastBlock);
 
 
 private:
-	size_t m_levelCount;
-	ScopedArrayPtr<size_t> m_levelKeyCounts;
-	ScopedArrayPtr<uint32_t*> m_levelKeys;
+	size_t m_blockCount;
+	uint32_t* m_keys;
 };
 
 typedef QWeakPointer<SegmentIndex> SegmentIndexWeakPtr;

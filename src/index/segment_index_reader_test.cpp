@@ -42,8 +42,8 @@ TEST_F(SegmentIndexReaderTest, Read)
 	FSInputStream *input = FSInputStream::open(stream->fileName());
 	SegmentIndexSharedPtr index = SegmentIndexReader(input, 8).read();
 
-	ASSERT_EQ(8, index->levelKeyCount(0));
+	ASSERT_EQ(8, index->blockCount());
 	uint32_t expected0[] = { 2, 3, 4, 5, 6, 7, 8, 9 };
-	ASSERT_INTARRAY_EQ(expected0, index->levelKeys(0), 8);
+	ASSERT_INTARRAY_EQ(expected0, index->keys(), 8);
 }
 
