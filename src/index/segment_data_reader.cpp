@@ -24,6 +24,6 @@ void SegmentDataReader::setBlockSize(size_t blockSize)
 BlockDataIterator *SegmentDataReader::readBlock(size_t n, uint32_t key)
 {
 	m_input->seek(m_blockSize * n);
-	size_t length = m_input->readVInt32();
+	size_t length = m_input->readInt16();
 	return new BlockDataIterator(m_input, length, key);
 }

@@ -33,15 +33,18 @@ TEST_F(SegmentDataWriterTest, Write)
 	writer.addItem(201, 302);
 	writer.addItem(202, 303);
 	writer.close();
+	ASSERT_EQ(2, writer.blockCount());
 
 	ScopedPtr<FSInputStream> input(FSInputStream::open(stream->fileName()));
 
-	ASSERT_EQ(3, input->readVInt32());
+	ASSERT_EQ(2, input->readInt16());
 	ASSERT_EQ(300, input->readVInt32());
 	ASSERT_EQ(1, input->readVInt32());
 	ASSERT_EQ(301, input->readVInt32());
-	ASSERT_EQ(0, input->readVInt32());
-	ASSERT_EQ(1, input->readVInt32());
+
+	input->seek(8);
+	ASSERT_EQ(2, input->readInt16());
+	ASSERT_EQ(302, input->readVInt32());
 	ASSERT_EQ(1, input->readVInt32());
 	ASSERT_EQ(303, input->readVInt32());
 }

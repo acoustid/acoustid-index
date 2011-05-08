@@ -29,8 +29,9 @@ void SegmentDataWriter::setBlockSize(size_t blockSize)
 
 void SegmentDataWriter::writeBlock()
 {
-	m_output->writeVInt32(m_itemCount);
-	m_output->writeBytes(m_buffer.get(), m_blockSize - checkVInt32Size(m_itemCount)); // XXX
+	assert(m_itemCount < (1 << 16));
+	m_output->writeInt16(m_itemCount);
+	m_output->writeBytes(m_buffer.get(), m_blockSize - 2);
 	m_ptr = m_buffer.get();
 	m_itemCount = 0;
 	m_blockCount++;
@@ -49,7 +50,7 @@ void SegmentDataWriter::addItem(uint32_t key, uint32_t value)
 	uint32_t valueDelta = keyDelta ? value : value - m_lastValue;
 
 	size_t currentSize = m_ptr - m_buffer.get();
-	currentSize += checkVInt32Size(m_itemCount + 1);
+	currentSize += 2;
 	currentSize += m_itemCount ? checkVInt32Size(keyDelta) : 0;
 	currentSize += checkVInt32Size(valueDelta);
 
