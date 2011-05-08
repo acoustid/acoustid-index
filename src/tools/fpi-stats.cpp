@@ -40,7 +40,7 @@ int main(int argc, char **argv)
 	out << "Segments: " << infos.size() << endl;
 	for (int i = 0; i < infos.size(); i++) {
 		const SegmentInfo& info = infos.info(i);
-		out << "Segment " << info.id() << ": " << info.numDocs() << endl;
+		out << "Segment " << info.id() << ": " << info.blockCount() << endl;
 	}
 
 	return 0;
