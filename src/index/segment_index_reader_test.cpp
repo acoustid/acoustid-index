@@ -29,14 +29,14 @@ protected:
 
 TEST_F(SegmentIndexReaderTest, Read)
 {
-	stream->writeVInt32(2);
-	stream->writeVInt32(1);
-	stream->writeVInt32(1);
-	stream->writeVInt32(1);
-	stream->writeVInt32(1);
-	stream->writeVInt32(1);
-	stream->writeVInt32(1);
-	stream->writeVInt32(1);
+	stream->writeInt32(2);
+	stream->writeInt32(3);
+	stream->writeInt32(4);
+	stream->writeInt32(5);
+	stream->writeInt32(6);
+	stream->writeInt32(7);
+	stream->writeInt32(8);
+	stream->writeInt32(9);
 	stream->flush();
 
 	FSInputStream *input = FSInputStream::open(stream->fileName());

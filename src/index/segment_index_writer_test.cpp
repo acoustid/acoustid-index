@@ -35,14 +35,14 @@ TEST_F(SegmentIndexWriterTest, Write)
 
 	FSInputStream *input = FSInputStream::open(stream->fileName());
 
-	ASSERT_EQ(2, input->readVInt32());
-	ASSERT_EQ(1, input->readVInt32());
-	ASSERT_EQ(1, input->readVInt32());
-	ASSERT_EQ(1, input->readVInt32());
-	ASSERT_EQ(1, input->readVInt32());
-	ASSERT_EQ(1, input->readVInt32());
-	ASSERT_EQ(1, input->readVInt32());
-	ASSERT_EQ(1, input->readVInt32());
+	ASSERT_EQ(2, input->readInt32());
+	ASSERT_EQ(3, input->readInt32());
+	ASSERT_EQ(4, input->readInt32());
+	ASSERT_EQ(5, input->readInt32());
+	ASSERT_EQ(6, input->readInt32());
+	ASSERT_EQ(7, input->readInt32());
+	ASSERT_EQ(8, input->readInt32());
+	ASSERT_EQ(9, input->readInt32());
 
 	delete input;
 }

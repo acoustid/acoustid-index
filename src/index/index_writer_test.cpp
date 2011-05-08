@@ -53,7 +53,7 @@ TEST(IndexWriterTest, AddDocument)
 
 	{
 		ScopedPtr<InputStream> input(dir.openFile("segment_0.fii"));
-		ASSERT_EQ(7, input->readVInt32());
+		ASSERT_EQ(7, input->readInt32());
 	}
 
 	{

@@ -7,7 +7,7 @@
 using namespace Acoustid;
 
 SegmentIndexWriter::SegmentIndexWriter(OutputStream *output)
-	: m_output(output), m_lastKey(0)
+	: m_output(output)
 {
 }
 
@@ -19,8 +19,7 @@ SegmentIndexWriter::~SegmentIndexWriter()
 
 void SegmentIndexWriter::addItem(uint32_t key)
 {
-	m_output->writeVInt32(key - m_lastKey);
-	m_lastKey = key;
+	m_output->writeInt32(key);
 }
 
 void SegmentIndexWriter::close()

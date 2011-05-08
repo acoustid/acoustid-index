@@ -23,7 +23,6 @@ public:
 private:
 	void maybeWriteHeader();
 
-	uint32_t m_lastKey;
 	OutputStream *m_output;
 };
 
