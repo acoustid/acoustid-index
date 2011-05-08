@@ -106,6 +106,16 @@ void IndexWriter::maybeMerge()
 	m_infos = infos;
 }
 
+inline uint32_t itemKey(uint64_t item)
+{
+	return item >> 32;
+}
+
+inline uint32_t itemValue(uint64_t item)
+{
+	return item & 0xFFFFFFFF;
+}
+
 void IndexWriter::flush()
 {
 	if (m_segmentBuffer.empty()) {
@@ -116,11 +126,14 @@ void IndexWriter::flush()
 
 	SegmentInfo info(m_infos.incLastSegmentId());
 	ScopedPtr<SegmentDataWriter> writer(segmentDataWriter(info));
+	uint64_t lastItem = UINT64_MAX;
 	for (size_t i = 0; i < m_segmentBuffer.size(); i++) {
-		uint32_t key = (m_segmentBuffer[i] >> 32);
-		uint32_t value = m_segmentBuffer[i] & 0xffffffff;
-		//qDebug() << "adding item" << key << value;
-		writer->addItem(key, value);
+		uint64_t item = m_segmentBuffer[i];
+		if (item != lastItem) {
+			//qDebug() << "adding item" << key << value;
+			writer->addItem(itemKey(item), itemValue(item));
+			lastItem = item;
+		}
 	}
 	writer->close();
 	info.setBlockCount(writer->blockCount());
