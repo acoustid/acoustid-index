@@ -21,6 +21,11 @@ public:
 		m_readers.append(reader);
 	}
 
+	SegmentDataWriter *writer()
+	{
+		return m_writer;
+	}
+
 	size_t merge();
 
 private:

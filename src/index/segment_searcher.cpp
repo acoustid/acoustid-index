@@ -8,8 +8,8 @@
 
 using namespace Acoustid;
 
-SegmentSearcher::SegmentSearcher(SegmentIndexSharedPtr index, SegmentDataReader *dataReader)
-	: m_index(index), m_dataReader(dataReader)
+SegmentSearcher::SegmentSearcher(SegmentIndexSharedPtr index, SegmentDataReader *dataReader, uint32_t lastKey)
+	: m_index(index), m_dataReader(dataReader), m_lastKey(lastKey)
 {
 }
 
@@ -24,6 +24,10 @@ void SegmentSearcher::search(uint32_t *fingerprint, size_t length, Collector *co
 	while (i < length) {
 		if (block > lastBlock || lastBlock == SIZE_MAX) {
 			size_t localFirstBlock, localLastBlock;
+			if (fingerprint[i] > m_lastKey) {
+				// All following items are larger than the last segment's key.
+				return;
+			}
 			if (m_index->search(fingerprint[i], &localFirstBlock, &localLastBlock)) {
 				if (block > localLastBlock) {
 					// We already searched this block and the fingerprint item was not found.

@@ -59,7 +59,7 @@ void IndexReader::search(uint32_t *fingerprint, size_t length, Collector *collec
 {
 	std::sort(fingerprint, fingerprint + length);
 	for (int i = 0; i < m_infos.size(); i++) {
-		SegmentSearcher searcher(segmentIndex(i), segmentDataReader(i));
+		SegmentSearcher searcher(segmentIndex(i), segmentDataReader(i), m_infos.info(i).lastKey());
 		searcher.search(fingerprint, length, collector);
 	}
 }

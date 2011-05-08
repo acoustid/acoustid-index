@@ -15,7 +15,7 @@ class Collector;
 class SegmentSearcher
 {
 public:
-	SegmentSearcher(SegmentIndexSharedPtr index, SegmentDataReader *dataReader);
+	SegmentSearcher(SegmentIndexSharedPtr index, SegmentDataReader *dataReader, uint32_t lastKey = UINT32_MAX);
 	virtual ~SegmentSearcher();
 
 	/**
@@ -28,6 +28,7 @@ public:
 private:
 	SegmentIndexSharedPtr m_index;
 	SegmentDataReader *m_dataReader;
+	uint32_t m_lastKey;
 };
 
 }

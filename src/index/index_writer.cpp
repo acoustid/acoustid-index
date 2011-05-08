@@ -85,7 +85,9 @@ void IndexWriter::maybeMerge()
 			int j = merge.at(i);
 			merger.addSource(new SegmentEnum(segmentIndex(j), segmentDataReader(j)));
 		}
-		info.setBlockCount(merger.merge());
+		merger.merge();
+		info.setBlockCount(merger.writer()->blockCount());
+		info.setLastKey(merger.writer()->lastKey());
 	}
 
 	SegmentInfoList infos;
@@ -122,6 +124,7 @@ void IndexWriter::flush()
 	}
 	writer->close();
 	info.setBlockCount(writer->blockCount());
+	info.setLastKey(writer->lastKey());
 
 	m_infos.add(info);
 	maybeMerge();
