@@ -48,8 +48,8 @@ TEST(IndexWriterTest, AddDocument)
 	ASSERT_TRUE(dir.fileExists("segment_0.fid"));
 	ASSERT_EQ(1, writer.revision());
 	ASSERT_EQ(1, writer.segmentInfos().segmentCount());
-	ASSERT_EQ("segment_0", writer.segmentInfos().info(0).name());
-	ASSERT_EQ(1, writer.segmentInfos().info(0).blockCount());
+	ASSERT_EQ("segment_0", writer.segmentInfos().segment(0).name());
+	ASSERT_EQ(1, writer.segmentInfos().segment(0).blockCount());
 
 	{
 		ScopedPtr<InputStream> input(dir.openFile("segment_0.fii"));
@@ -83,26 +83,26 @@ TEST(IndexWriterTest, Merge)
 	writer.addDocument(1, fp, 3);
 	writer.commit();
 	ASSERT_EQ(1, writer.segmentInfos().segmentCount());
-	ASSERT_EQ(1, writer.segmentInfos().info(0).blockCount());
+	ASSERT_EQ(1, writer.segmentInfos().segment(0).blockCount());
 	writer.addDocument(2, fp, 3);
 	writer.commit();
 	ASSERT_EQ(2, writer.segmentInfos().segmentCount());
-	ASSERT_EQ(1, writer.segmentInfos().info(0).blockCount());
-	ASSERT_EQ(1, writer.segmentInfos().info(1).blockCount());
+	ASSERT_EQ(1, writer.segmentInfos().segment(0).blockCount());
+	ASSERT_EQ(1, writer.segmentInfos().segment(1).blockCount());
 	writer.addDocument(3, fp, 3);
 	writer.commit();
 	ASSERT_EQ(2, writer.segmentInfos().segmentCount());
-	ASSERT_EQ(1, writer.segmentInfos().info(0).blockCount());
-	ASSERT_EQ(1, writer.segmentInfos().info(1).blockCount());
+	ASSERT_EQ(1, writer.segmentInfos().segment(0).blockCount());
+	ASSERT_EQ(1, writer.segmentInfos().segment(1).blockCount());
 	writer.addDocument(4, fp, 3);
 	writer.commit();
 	ASSERT_EQ(2, writer.segmentInfos().segmentCount());
-	ASSERT_EQ(1, writer.segmentInfos().info(0).blockCount());
-	ASSERT_EQ(1, writer.segmentInfos().info(1).blockCount());
+	ASSERT_EQ(1, writer.segmentInfos().segment(0).blockCount());
+	ASSERT_EQ(1, writer.segmentInfos().segment(1).blockCount());
 	writer.addDocument(5, fp, 3);
 	writer.commit();
 	ASSERT_EQ(2, writer.segmentInfos().segmentCount());
-	ASSERT_EQ(1, writer.segmentInfos().info(0).blockCount());
-	ASSERT_EQ(1, writer.segmentInfos().info(1).blockCount());
+	ASSERT_EQ(1, writer.segmentInfos().segment(0).blockCount());
+	ASSERT_EQ(1, writer.segmentInfos().segment(1).blockCount());
 }
 

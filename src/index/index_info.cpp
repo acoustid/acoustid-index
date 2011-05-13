@@ -31,16 +31,6 @@ int IndexInfo::findCurrentRevision(Directory* dir)
 	return currentRev;
 }
 
-void IndexInfo::clear()
-{
-	m_infos.clear();
-}
-
-void IndexInfo::add(const SegmentInfo &info)
-{
-	m_infos.append(info);
-}
-
 bool IndexInfo::load(Directory* dir)
 {
 	m_revision = IndexInfo::findCurrentRevision(dir);
@@ -54,14 +44,14 @@ bool IndexInfo::load(Directory* dir)
 void IndexInfo::load(InputStream* input)
 {
 	ScopedPtr<InputStream> guard(input);
-	clear();
 	setLastSegmentId(input->readVInt32());
+	clearSegments();
 	size_t segmentCount = input->readVInt32();
 	for (size_t i = 0; i < segmentCount; i++) {
 		uint32_t id = input->readVInt32();
 		uint32_t blockCount = input->readVInt32();
 		uint32_t lastKey = input->readVInt32();
-		add(SegmentInfo(id, blockCount, lastKey));
+		addSegment(SegmentInfo(id, blockCount, lastKey));
 	}
 }
 
@@ -80,9 +70,9 @@ void IndexInfo::save(OutputStream *output)
 	output->writeVInt32(lastSegmentId());
 	output->writeVInt32(segmentCount());
 	for (size_t i = 0; i < segmentCount(); i++) {
-		output->writeVInt32(info(i).id());
-		output->writeVInt32(info(i).blockCount());
-		output->writeVInt32(info(i).lastKey());
+		output->writeVInt32(m_segments.at(i).id());
+		output->writeVInt32(m_segments.at(i).blockCount());
+		output->writeVInt32(m_segments.at(i).lastKey());
 	}
 }
 

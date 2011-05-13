@@ -50,12 +50,12 @@ TEST(IndexInfoTest, ReadFromDir)
 
 	ASSERT_EQ(3, infos.lastSegmentId());
 	ASSERT_EQ(2, infos.segmentCount());
-	ASSERT_EQ("segment_0", infos.info(0).name());
-	ASSERT_EQ(42, infos.info(0).blockCount());
-	ASSERT_EQ(100, infos.info(0).lastKey());
-	ASSERT_EQ("segment_2", infos.info(1).name());
-	ASSERT_EQ(66, infos.info(1).blockCount());
-	ASSERT_EQ(200, infos.info(1).lastKey());
+	ASSERT_EQ("segment_0", infos.segment(0).name());
+	ASSERT_EQ(42, infos.segment(0).blockCount());
+	ASSERT_EQ(100, infos.segment(0).lastKey());
+	ASSERT_EQ("segment_2", infos.segment(1).name());
+	ASSERT_EQ(66, infos.segment(1).blockCount());
+	ASSERT_EQ(200, infos.segment(1).lastKey());
 }
 
 TEST(IndexInfoTest, ReadFromStream)
@@ -78,12 +78,12 @@ TEST(IndexInfoTest, ReadFromStream)
 
 	ASSERT_EQ(3, infos.lastSegmentId());
 	ASSERT_EQ(2, infos.segmentCount());
-	ASSERT_EQ("segment_0", infos.info(0).name());
-	ASSERT_EQ(42, infos.info(0).blockCount());
-	ASSERT_EQ(100, infos.info(0).lastKey());
-	ASSERT_EQ("segment_2", infos.info(1).name());
-	ASSERT_EQ(66, infos.info(1).blockCount());
-	ASSERT_EQ(200, infos.info(1).lastKey());
+	ASSERT_EQ("segment_0", infos.segment(0).name());
+	ASSERT_EQ(42, infos.segment(0).blockCount());
+	ASSERT_EQ(100, infos.segment(0).lastKey());
+	ASSERT_EQ("segment_2", infos.segment(1).name());
+	ASSERT_EQ(66, infos.segment(1).blockCount());
+	ASSERT_EQ(200, infos.segment(1).lastKey());
 }
 
 TEST(IndexInfoTest, WriteIntoDir)
@@ -91,9 +91,9 @@ TEST(IndexInfoTest, WriteIntoDir)
 	RAMDirectory dir;
 
 	IndexInfo infos;
-	infos.add(SegmentInfo(0, 42, 100));
+	infos.addSegment(SegmentInfo(0, 42, 100));
 	infos.incLastSegmentId();
-	infos.add(SegmentInfo(1, 66, 200));
+	infos.addSegment(SegmentInfo(1, 66, 200));
 	infos.incLastSegmentId();
 	infos.save(&dir);
 
@@ -113,9 +113,9 @@ TEST(IndexInfoTest, WriteIntoStream)
 	RAMDirectory dir;
 
 	IndexInfo infos;
-	infos.add(SegmentInfo(0, 42, 100));
+	infos.addSegment(SegmentInfo(0, 42, 100));
 	infos.incLastSegmentId();
-	infos.add(SegmentInfo(1, 66, 200));
+	infos.addSegment(SegmentInfo(1, 66, 200));
 	infos.incLastSegmentId();
 	infos.save(dir.createFile("info_0"));
 
@@ -133,10 +133,10 @@ TEST(IndexInfoTest, WriteIntoStream)
 TEST(IndexInfoTest, Clear)
 {
 	IndexInfo infos;
-	infos.add(SegmentInfo(0, 42));
-	infos.add(SegmentInfo(1, 66));
+	infos.addSegment(SegmentInfo(0, 42));
+	infos.addSegment(SegmentInfo(1, 66));
 	ASSERT_EQ(2, infos.segmentCount());
-	infos.clear();
+	infos.clearSegments();
 	ASSERT_EQ(0, infos.segmentCount());
 }
 

@@ -19,16 +19,13 @@ class OutputStream;
 class IndexInfo
 {
 public:
-	typedef QList<SegmentInfo>::const_iterator const_iterator;
-	typedef QList<SegmentInfo>::iterator iterator;
-
 	IndexInfo() : m_nextSegmentNum(0), m_revision(-1)
 	{
 	}
 
-	IndexInfo(const IndexInfo &other)
+	IndexInfo(const IndexInfo& other)
 		: m_nextSegmentNum(other.lastSegmentId()),
-		  m_infos(other.infos()),
+		  m_segments(other.segments()),
 		  m_revision(other.revision())
 	{
 	}
@@ -51,44 +48,34 @@ public:
 		return ++m_revision;
 	}
 
-	iterator begin()
-	{
-		return m_infos.begin();
-	}
-
-	const_iterator begin() const
-	{
-		return m_infos.begin();
-	}
-
-	iterator end()
-	{
-		return m_infos.end();
-	}
-
-	const_iterator end() const
-	{
-		return m_infos.end();
-	}
-
-	size_t size() const 
-	{
-		return segmentCount();
-	}
-
 	size_t segmentCount() const
 	{
-		return m_infos.size();
+		return m_segments.size();
 	}
 
-	const SegmentInfo &info(size_t i) const
+	const SegmentInfo& segment(int idx) const
 	{
-		return m_infos[i];
+		return m_segments.at(idx);
 	}
 
-	const QList<SegmentInfo> &infos() const
+	const SegmentInfoList& segments() const
 	{
-		return m_infos;
+		return m_segments;
+	}
+
+	SegmentInfoList& segments()
+	{
+		return m_segments;
+	}
+
+	void clearSegments()
+	{
+		m_segments.clear();
+	}
+
+	void addSegment(const SegmentInfo& info)
+	{
+		m_segments.append(info);
 	}
 
 	size_t lastSegmentId() const
@@ -105,9 +92,6 @@ public:
 	{
 		m_nextSegmentNum = n;
 	}
-
-	void clear();
-	void add(const SegmentInfo &info);
 
 	// Load the latest index info from a directory
 	bool load(Directory* dir);
@@ -132,7 +116,7 @@ public:
 	static int indexInfoRevision(const QString &fileName);
 
 private:
-	QList<SegmentInfo> m_infos;
+	QList<SegmentInfo> m_segments;
 	size_t m_nextSegmentNum;
 	int m_revision;
 };

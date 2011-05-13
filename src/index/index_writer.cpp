@@ -58,7 +58,7 @@ void IndexWriter::maybeFlush()
 	}
 }
 
-SegmentDataWriter *IndexWriter::segmentDataWriter(const SegmentInfo &info)
+SegmentDataWriter *IndexWriter::segmentDataWriter(const SegmentInfo& info)
 {
 	OutputStream *indexOutput = m_dir->createFile(info.indexFileName());
 	OutputStream *dataOutput = m_dir->createFile(info.dataFileName());
@@ -68,38 +68,40 @@ SegmentDataWriter *IndexWriter::segmentDataWriter(const SegmentInfo &info)
 
 void IndexWriter::maybeMerge()
 {
-	QList<int> merge = m_mergePolicy->findMerges(m_infos);
+	const SegmentInfoList& segments = m_infos.segments();
+	QList<int> merge = m_mergePolicy->findMerges(segments);
 	if (merge.isEmpty()) {
 		return;
 	}
 	//qDebug() << "Merging segments" << merge;
 
-	SegmentInfo info(m_infos.incLastSegmentId());
+	SegmentInfo segment(m_infos.incLastSegmentId());
 	{
-		SegmentMerger merger(segmentDataWriter(info));
+		SegmentMerger merger(segmentDataWriter(segment));
 		for (size_t i = 0; i < merge.size(); i++) {
 			int j = merge.at(i);
 			merger.addSource(new SegmentEnum(segmentIndex(j), segmentDataReader(j)));
 		}
 		merger.merge();
-		info.setBlockCount(merger.writer()->blockCount());
-		info.setLastKey(merger.writer()->lastKey());
+		segment.setBlockCount(merger.writer()->blockCount());
+		segment.setLastKey(merger.writer()->lastKey());
 	}
 
-	IndexInfo infos;
-	infos.setLastSegmentId(m_infos.lastSegmentId());
+	IndexInfo info;
+	info.setRevision(m_infos.revision());
+	info.setLastSegmentId(m_infos.lastSegmentId());
 	QSet<int> merged = merge.toSet();
-	for (size_t i = 0; i < m_infos.size(); i++) {
+	for (size_t i = 0; i < segments.size(); i++) {
 		if (!merged.contains(i)) {
-			infos.add(m_infos.info(i));
+			info.addSegment(segments.at(i));
 		}
 		else {
 			closeSegmentIndex(i);
 		}
 	}
-	infos.add(info);
+	info.addSegment(segment);
 
-	m_infos = infos;
+	m_infos = info;
 }
 
 inline uint32_t itemKey(uint64_t item)
@@ -135,7 +137,7 @@ void IndexWriter::flush()
 	info.setBlockCount(writer->blockCount());
 	info.setLastKey(writer->lastKey());
 
-	m_infos.add(info);
+	m_infos.addSegment(info);
 	maybeMerge();
 
 	m_segmentBuffer.clear();

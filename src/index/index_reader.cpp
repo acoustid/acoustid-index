@@ -30,7 +30,7 @@ IndexReader::~IndexReader()
 
 SegmentIndexSharedPtr IndexReader::segmentIndex(int i)
 {
-	const SegmentInfo &info = m_infos.info(i);
+	const SegmentInfo &info = m_infos.segment(i);
 	SegmentIndexSharedPtr index(m_indexes.value(info.id()));
 	if (index.isNull()) {
 		index = SegmentIndexReader(m_dir->openFile(info.indexFileName()), info.blockCount()).read();
@@ -41,21 +41,21 @@ SegmentIndexSharedPtr IndexReader::segmentIndex(int i)
 
 SegmentDataReader *IndexReader::segmentDataReader(int i)
 {
-	const SegmentInfo &info = m_infos.info(i);
+	const SegmentInfo &info = m_infos.segment(i);
 	return new SegmentDataReader(m_dir->openFile(info.dataFileName()), BLOCK_SIZE);
 }
 
 void IndexReader::closeSegmentIndex(int i)
 {
-	const SegmentInfo &info = m_infos.info(i);
+	const SegmentInfo &info = m_infos.segment(i);
 	m_indexes.remove(info.id());
 }
 
 void IndexReader::search(uint32_t *fingerprint, size_t length, Collector *collector)
 {
 	std::sort(fingerprint, fingerprint + length);
-	for (int i = 0; i < m_infos.size(); i++) {
-		SegmentSearcher searcher(segmentIndex(i), segmentDataReader(i), m_infos.info(i).lastKey());
+	for (int i = 0; i < m_infos.segmentCount(); i++) {
+		SegmentSearcher searcher(segmentIndex(i), segmentDataReader(i), m_infos.segment(i).lastKey());
 		searcher.search(fingerprint, length, collector);
 	}
 }

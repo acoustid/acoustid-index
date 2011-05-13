@@ -67,6 +67,8 @@ private:
 	uint32_t m_lastKey;
 };
 
+typedef QList<SegmentInfo> SegmentInfoList;
+
 }
 
 #endif

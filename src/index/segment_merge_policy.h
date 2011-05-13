@@ -36,7 +36,7 @@ public:
 		return m_maxSegmentsPerTier;
 	}
 
-	QList<int> findMerges(const IndexInfo &infos);
+	QList<int> findMerges(const SegmentInfoList& infos);
 
 private:
 	int m_maxMergeAtOnce;

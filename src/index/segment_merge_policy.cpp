@@ -22,21 +22,21 @@ SegmentMergePolicy::~SegmentMergePolicy()
 class SegmentSizeLessThan
 {
 public:
-	SegmentSizeLessThan(const IndexInfo *infos)
+	SegmentSizeLessThan(const SegmentInfoList* infos)
 		: m_infos(infos)
 	{
 	}
 
 	bool operator()(int a, int b) const
 	{
-		return m_infos->info(a).blockCount() > m_infos->info(b).blockCount();
+		return m_infos->at(a).blockCount() > m_infos->at(b).blockCount();
 	}
 
 private:
-	const IndexInfo *m_infos;
+	const SegmentInfoList* m_infos;
 };
 
-QList<int> SegmentMergePolicy::findMerges(const IndexInfo &infos)
+QList<int> SegmentMergePolicy::findMerges(const SegmentInfoList& infos)
 {
 	if (!infos.size()) {
 		return QList<int>();
@@ -49,10 +49,10 @@ QList<int> SegmentMergePolicy::findMerges(const IndexInfo &infos)
 	qStableSort(segments.begin(), segments.end(), SegmentSizeLessThan(&infos));
 	//qDebug() << "Order after sorting is " << segments;
 
-	size_t minSegmentSize = infos.info(segments.last()).blockCount();
+	size_t minSegmentSize = infos.at(segments.last()).blockCount();
 	size_t totalIndexSize = 0;
 	for (size_t i = 0; i < infos.size(); i++) {
-		totalIndexSize += infos.info(i).blockCount();
+		totalIndexSize += infos.at(i).blockCount();
 	}
 	//qDebug() << "minSegmentSize =" << minSegmentSize;
 	//qDebug() << "totalIndexSize =" << totalIndexSize;
@@ -86,10 +86,10 @@ QList<int> SegmentMergePolicy::findMerges(const IndexInfo &infos)
 		for (size_t j = i; j < segments.size() && candidate.size() < m_maxMergeAtOnce; j++) {
 			int segment = segments.at(j);
 			candidate.append(segment);
-			mergeSize += infos.info(segment).blockCount();
+			mergeSize += infos.at(segment).blockCount();
 		}
 		if (candidate.size()) {
-			double score = double(infos.info(candidate.first()).blockCount()) / mergeSize;
+			double score = double(infos.at(candidate.first()).blockCount()) / mergeSize;
 			score *= pow(mergeSize, 0.05);
 			//qDebug() << "Evaluating merge " << candidate << " with score " << score;
 	 		if (score < bestScore) {

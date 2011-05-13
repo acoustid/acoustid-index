@@ -12,10 +12,10 @@ TEST(SegmentMergePolicyTest, TestFindMerges)
 {
 	SegmentMergePolicy policy(2, 2);
 
-	IndexInfo infos;
-	infos.add(SegmentInfo(0, 1));
-	infos.add(SegmentInfo(1, 1));
-	infos.add(SegmentInfo(2, 1));
+	SegmentInfoList infos;
+	infos.append(SegmentInfo(0, 1));
+	infos.append(SegmentInfo(1, 1));
+	infos.append(SegmentInfo(2, 1));
 
 	int expected[] = { 0, 1 };
 	QList<int> merge = policy.findMerges(infos);
@@ -27,12 +27,12 @@ TEST(SegmentMergePolicyTest, TestFindMerges2)
 {
 	SegmentMergePolicy policy(2, 2);
 
-	IndexInfo infos;
-	infos.add(SegmentInfo(0, 3));
-	infos.add(SegmentInfo(1, 2));
-	infos.add(SegmentInfo(2, 1));
-	infos.add(SegmentInfo(3, 1));
-	infos.add(SegmentInfo(4, 1));
+	SegmentInfoList infos;
+	infos.append(SegmentInfo(0, 3));
+	infos.append(SegmentInfo(1, 2));
+	infos.append(SegmentInfo(2, 1));
+	infos.append(SegmentInfo(3, 1));
+	infos.append(SegmentInfo(4, 1));
 
 	int expected[] = { 2, 3 };
 	QList<int> merge = policy.findMerges(infos);
@@ -44,11 +44,11 @@ TEST(SegmentMergePolicyTest, TestFindMerges3)
 {
 	SegmentMergePolicy policy(2, 2);
 
-	IndexInfo infos;
-	infos.add(SegmentInfo(0, 3));
-	infos.add(SegmentInfo(1, 2));
-	infos.add(SegmentInfo(4, 1));
-	infos.add(SegmentInfo(5, 2));
+	SegmentInfoList infos;
+	infos.append(SegmentInfo(0, 3));
+	infos.append(SegmentInfo(1, 2));
+	infos.append(SegmentInfo(4, 1));
+	infos.append(SegmentInfo(5, 2));
 
 	QList<int> merge = policy.findMerges(infos);
 	ASSERT_EQ(0, merge.size());
@@ -58,12 +58,12 @@ TEST(SegmentMergePolicyTest, TestFindMerges4)
 {
 	SegmentMergePolicy policy(2, 2);
 
-	IndexInfo infos;
-	infos.add(SegmentInfo(0, 3));
-	infos.add(SegmentInfo(1, 2));
-	infos.add(SegmentInfo(4, 1));
-	infos.add(SegmentInfo(5, 2));
-	infos.add(SegmentInfo(6, 1));
+	SegmentInfoList infos;
+	infos.append(SegmentInfo(0, 3));
+	infos.append(SegmentInfo(1, 2));
+	infos.append(SegmentInfo(4, 1));
+	infos.append(SegmentInfo(5, 2));
+	infos.append(SegmentInfo(6, 1));
 
 	int expected[] = { 2, 4 };
 	QList<int> merge = policy.findMerges(infos);
