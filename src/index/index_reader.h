@@ -24,7 +24,7 @@ public:
 
 	int revision()
 	{
-		return m_revision;
+		return m_infos.revision();
 	}
 
 	Directory *directory()
@@ -42,7 +42,7 @@ public:
 protected:
 	void setRevision(int revision)
 	{
-		m_revision = revision;
+		m_infos.setRevision(revision);
 	}
 
 	void setSegmentInfos(const IndexInfo &infos)
@@ -56,7 +56,6 @@ protected:
 
 	Directory *m_dir;
 	QHash<int, SegmentIndexSharedPtr> m_indexes;
-	int m_revision;
 	IndexInfo m_infos;
 };
 

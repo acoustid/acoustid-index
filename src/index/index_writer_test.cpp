@@ -15,19 +15,19 @@ TEST(IndexWriterTest, OpenEmpty)
 	RAMDirectory dir;
 
 	IndexWriter writer(&dir);
-	ASSERT_FALSE(dir.fileExists("segments_0"));
+	ASSERT_FALSE(dir.fileExists("info_0"));
 	ASSERT_THROW(writer.open(), IOException);
-	ASSERT_FALSE(dir.fileExists("segments_0"));
+	ASSERT_FALSE(dir.fileExists("info_0"));
 }
 
 TEST(IndexWriterTest, OpenEmptyCreate)
 {
 	RAMDirectory dir;
 
-	ASSERT_FALSE(dir.fileExists("segments_0"));
+	ASSERT_FALSE(dir.fileExists("info_0"));
 	IndexWriter writer(&dir);
 	writer.open(true);
-	ASSERT_TRUE(dir.fileExists("segments_0"));
+	ASSERT_TRUE(dir.fileExists("info_0"));
 	ASSERT_EQ(0, writer.revision());
 }
 
@@ -36,14 +36,14 @@ TEST(IndexWriterTest, AddDocument)
 	RAMDirectory dir;
 	IndexWriter writer(&dir);
 	writer.open(true);
-	ASSERT_TRUE(dir.fileExists("segments_0"));
+	ASSERT_TRUE(dir.fileExists("info_0"));
 	ASSERT_EQ(0, writer.revision());
 	ASSERT_EQ(0, writer.segmentInfos().segmentCount());
 
 	uint32_t fp[] = { 7, 9, 12 };
 	writer.addDocument(1, fp, 3);
 	writer.commit();
-	ASSERT_TRUE(dir.fileExists("segments_1"));
+	ASSERT_TRUE(dir.fileExists("info_1"));
 	ASSERT_TRUE(dir.fileExists("segment_0.fii"));
 	ASSERT_TRUE(dir.fileExists("segment_0.fid"));
 	ASSERT_EQ(1, writer.revision());
@@ -72,7 +72,7 @@ TEST(IndexWriterTest, Merge)
 	RAMDirectory dir;
 	IndexWriter writer(&dir);
 	writer.open(true);
-	ASSERT_TRUE(dir.fileExists("segments_0"));
+	ASSERT_TRUE(dir.fileExists("info_0"));
 	ASSERT_EQ(0, writer.revision());
 	ASSERT_EQ(0, writer.segmentInfos().segmentCount());
 

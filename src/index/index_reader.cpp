@@ -13,17 +13,13 @@
 using namespace Acoustid;
 
 IndexReader::IndexReader(Directory *dir)
-	: m_dir(dir), m_revision(-1)
+	: m_dir(dir)
 {
 }
 
 void IndexReader::open()
 {
-	m_revision = IndexInfo::findCurrentRevision(m_dir);
-	if (m_revision != -1) {
-		m_infos.read(m_dir->openFile(IndexInfo::segmentsFileName(m_revision)));
-	}
-	else {
+	if (!m_infos.load(m_dir)) {
 		throw IOException("there is no index in the directory");
 	}
 }

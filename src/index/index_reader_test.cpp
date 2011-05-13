@@ -17,7 +17,7 @@ TEST(IndexReaderTest, OpenEmpty)
 	RAMDirectory dir;
 
 	IndexReader reader(&dir);
-	ASSERT_FALSE(dir.fileExists("segments_0"));
+	ASSERT_FALSE(dir.fileExists("info_0"));
 	ASSERT_THROW(reader.open(), IOException);
 }
 

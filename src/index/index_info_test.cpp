@@ -17,24 +17,24 @@ TEST(IndexInfoTest, FindCurrentRevision)
 	int rev = IndexInfo::findCurrentRevision(&dir);
 	ASSERT_EQ(-1, rev);
 
-	delete dir.createFile("segments_0");
+	delete dir.createFile("info_0");
 	rev = IndexInfo::findCurrentRevision(&dir);
 	ASSERT_EQ(0, rev);
 
-	delete dir.createFile("segments_1");
+	delete dir.createFile("info_1");
 	rev = IndexInfo::findCurrentRevision(&dir);
 	ASSERT_EQ(1, rev);
 
-	delete dir.createFile("segments_8");
+	delete dir.createFile("info_8");
 	rev = IndexInfo::findCurrentRevision(&dir);
 	ASSERT_EQ(8, rev);
 }
 
-TEST(IndexInfoTest, Read)
+TEST(IndexInfoTest, ReadFromDir)
 {
 	RAMDirectory dir;
 
-	ScopedPtr<OutputStream> output(dir.createFile("segments_0"));
+	ScopedPtr<OutputStream> output(dir.createFile("info_0"));
 	output->writeVInt32(3);
 	output->writeVInt32(2);
 	output->writeVInt32(0);
@@ -46,7 +46,7 @@ TEST(IndexInfoTest, Read)
 	output.reset();
 
 	IndexInfo infos;
-	infos.read(dir.openFile("segments_0"));
+	infos.load(&dir);
 
 	ASSERT_EQ(3, infos.lastSegmentId());
 	ASSERT_EQ(2, infos.segmentCount());
@@ -58,7 +58,35 @@ TEST(IndexInfoTest, Read)
 	ASSERT_EQ(200, infos.info(1).lastKey());
 }
 
-TEST(IndexInfoTest, Write)
+TEST(IndexInfoTest, ReadFromStream)
+{
+	RAMDirectory dir;
+
+	ScopedPtr<OutputStream> output(dir.createFile("info_0"));
+	output->writeVInt32(3);
+	output->writeVInt32(2);
+	output->writeVInt32(0);
+	output->writeVInt32(42);
+	output->writeVInt32(100);
+	output->writeVInt32(2);
+	output->writeVInt32(66);
+	output->writeVInt32(200);
+	output.reset();
+
+	IndexInfo infos;
+	infos.load(dir.openFile("info_0"));
+
+	ASSERT_EQ(3, infos.lastSegmentId());
+	ASSERT_EQ(2, infos.segmentCount());
+	ASSERT_EQ("segment_0", infos.info(0).name());
+	ASSERT_EQ(42, infos.info(0).blockCount());
+	ASSERT_EQ(100, infos.info(0).lastKey());
+	ASSERT_EQ("segment_2", infos.info(1).name());
+	ASSERT_EQ(66, infos.info(1).blockCount());
+	ASSERT_EQ(200, infos.info(1).lastKey());
+}
+
+TEST(IndexInfoTest, WriteIntoDir)
 {
 	RAMDirectory dir;
 
@@ -67,11 +95,31 @@ TEST(IndexInfoTest, Write)
 	infos.incLastSegmentId();
 	infos.add(SegmentInfo(1, 66, 200));
 	infos.incLastSegmentId();
-	ScopedPtr<OutputStream> output(dir.createFile("segments_0"));
-	infos.write(output.get());
-	output.reset();
+	infos.save(&dir);
 
-	ScopedPtr<InputStream> input(dir.openFile("segments_0"));
+	ScopedPtr<InputStream> input(dir.openFile("info_0"));
+	ASSERT_EQ(2, input->readVInt32());
+	ASSERT_EQ(2, input->readVInt32());
+	ASSERT_EQ(0, input->readVInt32());
+	ASSERT_EQ(42, input->readVInt32());
+	ASSERT_EQ(100, input->readVInt32());
+	ASSERT_EQ(1, input->readVInt32());
+	ASSERT_EQ(66, input->readVInt32());
+	ASSERT_EQ(200, input->readVInt32());
+}
+
+TEST(IndexInfoTest, WriteIntoStream)
+{
+	RAMDirectory dir;
+
+	IndexInfo infos;
+	infos.add(SegmentInfo(0, 42, 100));
+	infos.incLastSegmentId();
+	infos.add(SegmentInfo(1, 66, 200));
+	infos.incLastSegmentId();
+	infos.save(dir.createFile("info_0"));
+
+	ScopedPtr<InputStream> input(dir.openFile("info_0"));
 	ASSERT_EQ(2, input->readVInt32());
 	ASSERT_EQ(2, input->readVInt32());
 	ASSERT_EQ(0, input->readVInt32());

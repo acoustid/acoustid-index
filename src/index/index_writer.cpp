@@ -22,15 +22,13 @@ IndexWriter::IndexWriter(Directory *dir)
 
 void IndexWriter::open(bool create)
 {
-	m_revision = IndexInfo::findCurrentRevision(m_dir);
-	if (m_revision != -1) {
-		m_infos.read(m_dir->openFile(IndexInfo::segmentsFileName(m_revision)));
-	}
-	else if (create) {
-		commit();
-	}
-	else {
-		throw IOException("there is no index in the directory");
+	if (!m_infos.load(m_dir)) {
+		if (create) {
+			commit();
+	 	}
+		else {
+			throw IOException("there is no index in the directory");
+		}
 	}
 }
 
@@ -50,9 +48,7 @@ void IndexWriter::addDocument(uint32_t id, uint32_t *terms, size_t length)
 void IndexWriter::commit()
 {
 	flush();
-	m_revision++;
-	ScopedPtr<OutputStream> segmentsFile(m_dir->createFile(IndexInfo::segmentsFileName(m_revision)));
-	m_infos.write(segmentsFile.get());
+	m_infos.save(m_dir);
 }
 
 void IndexWriter::maybeFlush()
