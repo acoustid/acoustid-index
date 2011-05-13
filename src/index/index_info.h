@@ -16,17 +16,17 @@ class Directory;
 class InputStream;
 class OutputStream;
 
-class SegmentInfoList
+class IndexInfo
 {
 public:
 	typedef QList<SegmentInfo>::const_iterator const_iterator;
 	typedef QList<SegmentInfo>::iterator iterator;
 
-	SegmentInfoList() : m_nextSegmentNum(0)
+	IndexInfo() : m_nextSegmentNum(0)
 	{
 	}
 
-	SegmentInfoList(const SegmentInfoList &other)
+	IndexInfo(const IndexInfo &other)
 		: m_nextSegmentNum(other.lastSegmentId()),
 		  m_infos(other.infos())
 	{

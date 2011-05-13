@@ -1,21 +1,21 @@
 #include "store/directory.h"
 #include "store/input_stream.h"
 #include "store/output_stream.h"
-#include "segment_info_list.h"
+#include "index_info.h"
 
 using namespace Acoustid;
 
-int SegmentInfoList::segmentsRevision(const QString &fileName)
+int IndexInfo::segmentsRevision(const QString &fileName)
 {
 	return fileName.mid(9).toInt();
 }
 
-QString SegmentInfoList::segmentsFileName(int revision)
+QString IndexInfo::segmentsFileName(int revision)
 {
 	return QString("segments_%1").arg(revision);
 }
 
-int SegmentInfoList::findCurrentRevision(Directory *dir)
+int IndexInfo::findCurrentRevision(Directory *dir)
 {
 	QStringList files = dir->listFiles();
 	int currentRev = -1;
@@ -34,17 +34,17 @@ int SegmentInfoList::findCurrentRevision(Directory *dir)
 	return currentRev;
 }
 
-void SegmentInfoList::clear()
+void IndexInfo::clear()
 {
 	m_infos.clear();
 }
 
-void SegmentInfoList::add(const SegmentInfo &info)
+void IndexInfo::add(const SegmentInfo &info)
 {
 	m_infos.append(info);
 }
 
-void SegmentInfoList::read(InputStream *input)
+void IndexInfo::read(InputStream *input)
 {
 	clear();
 	setLastSegmentId(input->readVInt32());
@@ -58,7 +58,7 @@ void SegmentInfoList::read(InputStream *input)
 	delete input;
 }
 
-void SegmentInfoList::write(OutputStream *output)
+void IndexInfo::write(OutputStream *output)
 {
 	output->writeVInt32(lastSegmentId());
 	output->writeVInt32(segmentCount());

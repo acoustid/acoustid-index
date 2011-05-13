@@ -22,7 +22,7 @@ SegmentMergePolicy::~SegmentMergePolicy()
 class SegmentSizeLessThan
 {
 public:
-	SegmentSizeLessThan(const SegmentInfoList *infos)
+	SegmentSizeLessThan(const IndexInfo *infos)
 		: m_infos(infos)
 	{
 	}
@@ -33,10 +33,10 @@ public:
 	}
 
 private:
-	const SegmentInfoList *m_infos;
+	const IndexInfo *m_infos;
 };
 
-QList<int> SegmentMergePolicy::findMerges(const SegmentInfoList &infos)
+QList<int> SegmentMergePolicy::findMerges(const IndexInfo &infos)
 {
 	if (!infos.size()) {
 		return QList<int>();

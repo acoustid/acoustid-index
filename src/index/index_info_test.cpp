@@ -6,31 +6,31 @@
 #include "store/ram_directory.h"
 #include "store/input_stream.h"
 #include "store/output_stream.h"
-#include "segment_info_list.h"
+#include "index_info.h"
 
 using namespace Acoustid;
 
-TEST(SegmentInfoListTest, FindCurrentRevision)
+TEST(IndexInfoTest, FindCurrentRevision)
 {
 	RAMDirectory dir;
 
-	int rev = SegmentInfoList::findCurrentRevision(&dir);
+	int rev = IndexInfo::findCurrentRevision(&dir);
 	ASSERT_EQ(-1, rev);
 
 	delete dir.createFile("segments_0");
-	rev = SegmentInfoList::findCurrentRevision(&dir);
+	rev = IndexInfo::findCurrentRevision(&dir);
 	ASSERT_EQ(0, rev);
 
 	delete dir.createFile("segments_1");
-	rev = SegmentInfoList::findCurrentRevision(&dir);
+	rev = IndexInfo::findCurrentRevision(&dir);
 	ASSERT_EQ(1, rev);
 
 	delete dir.createFile("segments_8");
-	rev = SegmentInfoList::findCurrentRevision(&dir);
+	rev = IndexInfo::findCurrentRevision(&dir);
 	ASSERT_EQ(8, rev);
 }
 
-TEST(SegmentInfoListTest, Read)
+TEST(IndexInfoTest, Read)
 {
 	RAMDirectory dir;
 
@@ -45,7 +45,7 @@ TEST(SegmentInfoListTest, Read)
 	output->writeVInt32(200);
 	output.reset();
 
-	SegmentInfoList infos;
+	IndexInfo infos;
 	infos.read(dir.openFile("segments_0"));
 
 	ASSERT_EQ(3, infos.lastSegmentId());
@@ -58,11 +58,11 @@ TEST(SegmentInfoListTest, Read)
 	ASSERT_EQ(200, infos.info(1).lastKey());
 }
 
-TEST(SegmentInfoListTest, Write)
+TEST(IndexInfoTest, Write)
 {
 	RAMDirectory dir;
 
-	SegmentInfoList infos;
+	IndexInfo infos;
 	infos.add(SegmentInfo(0, 42, 100));
 	infos.incLastSegmentId();
 	infos.add(SegmentInfo(1, 66, 200));
@@ -82,9 +82,9 @@ TEST(SegmentInfoListTest, Write)
 	ASSERT_EQ(200, input->readVInt32());
 }
 
-TEST(SegmentInfoListTest, Clear)
+TEST(IndexInfoTest, Clear)
 {
-	SegmentInfoList infos;
+	IndexInfo infos;
 	infos.add(SegmentInfo(0, 42));
 	infos.add(SegmentInfo(1, 66));
 	ASSERT_EQ(2, infos.segmentCount());

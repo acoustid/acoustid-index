@@ -7,7 +7,7 @@
 #include "common.h"
 #include "collector.h"
 #include "segment_index.h"
-#include "segment_info_list.h"
+#include "index_info.h"
 
 namespace Acoustid {
 
@@ -32,7 +32,7 @@ public:
 		return m_dir;
 	}
 
-	const SegmentInfoList &segmentInfos()
+	const IndexInfo &segmentInfos()
 	{
 		return m_infos;
 	}
@@ -45,7 +45,7 @@ protected:
 		m_revision = revision;
 	}
 
-	void setSegmentInfos(const SegmentInfoList &infos)
+	void setSegmentInfos(const IndexInfo &infos)
 	{
 		m_infos = infos;
 	}
@@ -57,7 +57,7 @@ protected:
 	Directory *m_dir;
 	QHash<int, SegmentIndexSharedPtr> m_indexes;
 	int m_revision;
-	SegmentInfoList m_infos;
+	IndexInfo m_infos;
 };
 
 }

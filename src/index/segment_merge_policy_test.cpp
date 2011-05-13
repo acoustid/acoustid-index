@@ -12,7 +12,7 @@ TEST(SegmentMergePolicyTest, TestFindMerges)
 {
 	SegmentMergePolicy policy(2, 2);
 
-	SegmentInfoList infos;
+	IndexInfo infos;
 	infos.add(SegmentInfo(0, 1));
 	infos.add(SegmentInfo(1, 1));
 	infos.add(SegmentInfo(2, 1));
@@ -27,7 +27,7 @@ TEST(SegmentMergePolicyTest, TestFindMerges2)
 {
 	SegmentMergePolicy policy(2, 2);
 
-	SegmentInfoList infos;
+	IndexInfo infos;
 	infos.add(SegmentInfo(0, 3));
 	infos.add(SegmentInfo(1, 2));
 	infos.add(SegmentInfo(2, 1));
@@ -44,7 +44,7 @@ TEST(SegmentMergePolicyTest, TestFindMerges3)
 {
 	SegmentMergePolicy policy(2, 2);
 
-	SegmentInfoList infos;
+	IndexInfo infos;
 	infos.add(SegmentInfo(0, 3));
 	infos.add(SegmentInfo(1, 2));
 	infos.add(SegmentInfo(4, 1));
@@ -58,7 +58,7 @@ TEST(SegmentMergePolicyTest, TestFindMerges4)
 {
 	SegmentMergePolicy policy(2, 2);
 
-	SegmentInfoList infos;
+	IndexInfo infos;
 	infos.add(SegmentInfo(0, 3));
 	infos.add(SegmentInfo(1, 2));
 	infos.add(SegmentInfo(4, 1));

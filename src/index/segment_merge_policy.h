@@ -6,7 +6,7 @@
 
 #include "common.h"
 #include "segment_info.h"
-#include "segment_info_list.h"
+#include "index_info.h"
 
 namespace Acoustid {
 
@@ -36,7 +36,7 @@ public:
 		return m_maxSegmentsPerTier;
 	}
 
-	QList<int> findMerges(const SegmentInfoList &infos);
+	QList<int> findMerges(const IndexInfo &infos);
 
 private:
 	int m_maxMergeAtOnce;

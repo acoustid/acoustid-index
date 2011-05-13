@@ -19,9 +19,9 @@ IndexReader::IndexReader(Directory *dir)
 
 void IndexReader::open()
 {
-	m_revision = SegmentInfoList::findCurrentRevision(m_dir);
+	m_revision = IndexInfo::findCurrentRevision(m_dir);
 	if (m_revision != -1) {
-		m_infos.read(m_dir->openFile(SegmentInfoList::segmentsFileName(m_revision)));
+		m_infos.read(m_dir->openFile(IndexInfo::segmentsFileName(m_revision)));
 	}
 	else {
 		throw IOException("there is no index in the directory");

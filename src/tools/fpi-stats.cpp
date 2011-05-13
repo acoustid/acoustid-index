@@ -36,7 +36,7 @@ int main(int argc, char **argv)
 
 	QTextStream out(stdout);
 	out << "Revision: " << reader.revision() << endl;
-	const SegmentInfoList& infos = reader.segmentInfos();
+	const IndexInfo& infos = reader.segmentInfos();
 	out << "Segments: " << infos.size() << endl;
 	for (int i = 0; i < infos.size(); i++) {
 		const SegmentInfo& info = infos.info(i);

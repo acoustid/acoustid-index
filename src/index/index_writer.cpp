@@ -22,9 +22,9 @@ IndexWriter::IndexWriter(Directory *dir)
 
 void IndexWriter::open(bool create)
 {
-	m_revision = SegmentInfoList::findCurrentRevision(m_dir);
+	m_revision = IndexInfo::findCurrentRevision(m_dir);
 	if (m_revision != -1) {
-		m_infos.read(m_dir->openFile(SegmentInfoList::segmentsFileName(m_revision)));
+		m_infos.read(m_dir->openFile(IndexInfo::segmentsFileName(m_revision)));
 	}
 	else if (create) {
 		commit();
@@ -51,7 +51,7 @@ void IndexWriter::commit()
 {
 	flush();
 	m_revision++;
-	ScopedPtr<OutputStream> segmentsFile(m_dir->createFile(SegmentInfoList::segmentsFileName(m_revision)));
+	ScopedPtr<OutputStream> segmentsFile(m_dir->createFile(IndexInfo::segmentsFileName(m_revision)));
 	m_infos.write(segmentsFile.get());
 }
 
@@ -90,7 +90,7 @@ void IndexWriter::maybeMerge()
 		info.setLastKey(merger.writer()->lastKey());
 	}
 
-	SegmentInfoList infos;
+	IndexInfo infos;
 	infos.setLastSegmentId(m_infos.lastSegmentId());
 	QSet<int> merged = merge.toSet();
 	for (size_t i = 0; i < m_infos.size(); i++) {

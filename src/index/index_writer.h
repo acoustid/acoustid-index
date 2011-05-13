@@ -5,7 +5,7 @@
 #define ACOUSTID_INDEX_WRITER_H_
 
 #include "common.h"
-#include "segment_info_list.h"
+#include "index_info.h"
 #include "segment_merge_policy.h"
 #include "index_reader.h"
 
