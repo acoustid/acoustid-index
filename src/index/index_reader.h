@@ -45,10 +45,11 @@ public:
 	void search(uint32_t *fingerprint, size_t length, Collector *collector);
 
 protected:
-	SegmentIndexSharedPtr segmentIndex(int i);
-	void closeSegmentIndex(int i);
-	SegmentDataReader *segmentDataReader(int i);
+	SegmentIndexSharedPtr segmentIndex(const SegmentInfo& segment);
+	void closeSegmentIndex(const SegmentInfo& segment);
+	SegmentDataReader *segmentDataReader(const SegmentInfo& segment);
 
+	QReadWriteLock m_indexLock;
 	QReadWriteLock m_infoLock;
 	Directory *m_dir;
 	QHash<int, SegmentIndexSharedPtr> m_indexes;

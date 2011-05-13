@@ -80,7 +80,8 @@ void IndexWriter::maybeMerge(IndexInfo* info)
 		SegmentMerger merger(segmentDataWriter(segment));
 		for (size_t i = 0; i < merge.size(); i++) {
 			int j = merge.at(i);
-			merger.addSource(new SegmentEnum(segmentIndex(j), segmentDataReader(j)));
+			const SegmentInfo& s = segments.at(j);
+			merger.addSource(new SegmentEnum(segmentIndex(s), segmentDataReader(s)));
 		}
 		merger.merge();
 		segment.setBlockCount(merger.writer()->blockCount());
@@ -90,11 +91,12 @@ void IndexWriter::maybeMerge(IndexInfo* info)
 	SegmentInfoList newSegments;
 	QSet<int> merged = merge.toSet();
 	for (size_t i = 0; i < segments.size(); i++) {
+		const SegmentInfo& s = segments.at(i);
 		if (!merged.contains(i)) {
-			newSegments.append(segments.at(i));
+			newSegments.append(s);
 		}
 		else {
-			closeSegmentIndex(i);
+			closeSegmentIndex(s);
 		}
 	}
 	newSegments.append(segment);

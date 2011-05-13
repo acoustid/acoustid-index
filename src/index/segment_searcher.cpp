@@ -45,7 +45,7 @@ void SegmentSearcher::search(uint32_t *fingerprint, size_t length, Collector *co
 			}
 		}
 		uint32_t firstKey = m_index->key(block);
-		uint32_t lastKey = block + 1 < m_index->blockCount() ? m_index->key(block + 1) : lastKey + 1;
+		uint32_t lastKey = block + 1 < m_index->blockCount() ? m_index->key(block + 1) : m_lastKey + 1;
 		ScopedPtr<BlockDataIterator> blockData(m_dataReader->readBlock(block, firstKey));
 		while (blockData->next()) {
 			uint32_t key = blockData->key();

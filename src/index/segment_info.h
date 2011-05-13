@@ -16,6 +16,12 @@ public:
 	{
 	}
 
+	SegmentInfo(const SegmentInfo& other)
+		: m_id(other.id()), m_blockCount(other.blockCount()),
+		  m_lastKey(other.lastKey())
+	{
+	}
+
 	QString name() const
 	{
 		return QString("segment_%1").arg(m_id);

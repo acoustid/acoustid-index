@@ -28,35 +28,37 @@ IndexReader::~IndexReader()
 {
 }
 
-SegmentIndexSharedPtr IndexReader::segmentIndex(int i)
+SegmentIndexSharedPtr IndexReader::segmentIndex(const SegmentInfo& segment)
 {
-	const SegmentInfo& segment = info().segment(i);
+	QReadLocker locker(&m_indexLock);
 	SegmentIndexSharedPtr index(m_indexes.value(segment.id()));
 	if (index.isNull()) {
+		locker.unlock();
+		QWriteLocker writeLocker(&m_indexLock);
 		index = SegmentIndexReader(m_dir->openFile(segment.indexFileName()), segment.blockCount()).read();
 		m_indexes.insert(segment.id(), index);
 	}
 	return index;
 }
 
-SegmentDataReader *IndexReader::segmentDataReader(int i)
+void IndexReader::closeSegmentIndex(const SegmentInfo& segment)
 {
-	const SegmentInfo& segment = info().segment(i);
-	return new SegmentDataReader(m_dir->openFile(segment.dataFileName()), BLOCK_SIZE);
-}
-
-void IndexReader::closeSegmentIndex(int i)
-{
-	const SegmentInfo& segment = info().segment(i);
+	QWriteLocker locker(&m_indexLock);
 	m_indexes.remove(segment.id());
 }
 
-void IndexReader::search(uint32_t *fingerprint, size_t length, Collector *collector)
+SegmentDataReader *IndexReader::segmentDataReader(const SegmentInfo& segment)
+{
+	return new SegmentDataReader(m_dir->openFile(segment.dataFileName()), BLOCK_SIZE);
+}
+
+void IndexReader::search(uint32_t* fingerprint, size_t length, Collector* collector)
 {
 	const SegmentInfoList& segments = info().segments();
 	std::sort(fingerprint, fingerprint + length);
 	for (int i = 0; i < segments.size(); i++) {
-		SegmentSearcher searcher(segmentIndex(i), segmentDataReader(i), segments.at(i).lastKey());
+		const SegmentInfo& s = segments.at(i);
+		SegmentSearcher searcher(segmentIndex(s), segmentDataReader(s), s.lastKey());
 		searcher.search(fingerprint, length, collector);
 	}
 }
