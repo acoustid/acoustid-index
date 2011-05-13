@@ -43,7 +43,7 @@ private:
 
 	void flush();
 	void maybeFlush();
-	void maybeMerge();
+	void maybeMerge(IndexInfo* info);
 
 	SegmentDataWriter *segmentDataWriter(const SegmentInfo &info);
 

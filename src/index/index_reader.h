@@ -4,6 +4,9 @@
 #ifndef ACOUSTID_INDEX_READER_H_
 #define ACOUSTID_INDEX_READER_H_
 
+#include <QReadLocker>
+#include <QReadWriteLock>
+#include <QWriteLocker>
 #include "common.h"
 #include "collector.h"
 #include "segment_index.h"
@@ -22,41 +25,34 @@ public:
 
 	void open();
 
-	int revision()
-	{
-		return m_infos.revision();
-	}
-
 	Directory *directory()
 	{
 		return m_dir;
 	}
 
-	const IndexInfo &segmentInfos()
+	const IndexInfo& info()
 	{
-		return m_infos;
+		QReadLocker locker(&m_infoLock);
+		return m_info;
+	}
+
+	void setInfo(const IndexInfo& info)
+	{
+		QWriteLocker locker(&m_infoLock);
+		m_info = info;
 	}
 
 	void search(uint32_t *fingerprint, size_t length, Collector *collector);
 
 protected:
-	void setRevision(int revision)
-	{
-		m_infos.setRevision(revision);
-	}
-
-	void setSegmentInfos(const IndexInfo &infos)
-	{
-		m_infos = infos;
-	}
-
 	SegmentIndexSharedPtr segmentIndex(int i);
 	void closeSegmentIndex(int i);
 	SegmentDataReader *segmentDataReader(int i);
 
+	QReadWriteLock m_infoLock;
 	Directory *m_dir;
 	QHash<int, SegmentIndexSharedPtr> m_indexes;
-	IndexInfo m_infos;
+	IndexInfo m_info;
 };
 
 }

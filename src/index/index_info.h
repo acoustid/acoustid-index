@@ -68,6 +68,11 @@ public:
 		return m_segments;
 	}
 
+	void setSegments(const SegmentInfoList& segments)
+	{
+		m_segments = segments;
+	}
+
 	void clearSegments()
 	{
 		m_segments.clear();

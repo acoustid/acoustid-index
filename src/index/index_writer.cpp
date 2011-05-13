@@ -22,7 +22,7 @@ IndexWriter::IndexWriter(Directory *dir)
 
 void IndexWriter::open(bool create)
 {
-	if (!m_infos.load(m_dir)) {
+	if (!m_info.load(m_dir)) {
 		if (create) {
 			commit();
 	 	}
@@ -48,7 +48,7 @@ void IndexWriter::addDocument(uint32_t id, uint32_t *terms, size_t length)
 void IndexWriter::commit()
 {
 	flush();
-	m_infos.save(m_dir);
+	m_info.save(m_dir);
 }
 
 void IndexWriter::maybeFlush()
@@ -66,16 +66,16 @@ SegmentDataWriter *IndexWriter::segmentDataWriter(const SegmentInfo& info)
 	return new SegmentDataWriter(dataOutput, indexWriter, BLOCK_SIZE);
 }
 
-void IndexWriter::maybeMerge()
+void IndexWriter::maybeMerge(IndexInfo* info)
 {
-	const SegmentInfoList& segments = m_infos.segments();
+	const SegmentInfoList& segments = info->segments();
 	QList<int> merge = m_mergePolicy->findMerges(segments);
 	if (merge.isEmpty()) {
 		return;
 	}
 	//qDebug() << "Merging segments" << merge;
 
-	SegmentInfo segment(m_infos.incLastSegmentId());
+	SegmentInfo segment(info->incLastSegmentId());
 	{
 		SegmentMerger merger(segmentDataWriter(segment));
 		for (size_t i = 0; i < merge.size(); i++) {
@@ -87,21 +87,18 @@ void IndexWriter::maybeMerge()
 		segment.setLastKey(merger.writer()->lastKey());
 	}
 
-	IndexInfo info;
-	info.setRevision(m_infos.revision());
-	info.setLastSegmentId(m_infos.lastSegmentId());
+	SegmentInfoList newSegments;
 	QSet<int> merged = merge.toSet();
 	for (size_t i = 0; i < segments.size(); i++) {
 		if (!merged.contains(i)) {
-			info.addSegment(segments.at(i));
+			newSegments.append(segments.at(i));
 		}
 		else {
 			closeSegmentIndex(i);
 		}
 	}
-	info.addSegment(segment);
-
-	m_infos = info;
+	newSegments.append(segment);
+	info->setSegments(newSegments);
 }
 
 inline uint32_t itemKey(uint64_t item)
@@ -122,8 +119,10 @@ void IndexWriter::flush()
 	//qDebug() << "Writing new segment" << (m_segmentBuffer.size() * 8.0 / 1024 / 1024);
 	qSort(m_segmentBuffer.begin(), m_segmentBuffer.end());
 
-	SegmentInfo info(m_infos.incLastSegmentId());
-	ScopedPtr<SegmentDataWriter> writer(segmentDataWriter(info));
+	IndexInfo newInfo(info());
+
+	SegmentInfo segment(newInfo.incLastSegmentId());
+	ScopedPtr<SegmentDataWriter> writer(segmentDataWriter(segment));
 	uint64_t lastItem = UINT64_MAX;
 	for (size_t i = 0; i < m_segmentBuffer.size(); i++) {
 		uint64_t item = m_segmentBuffer[i];
@@ -134,12 +133,13 @@ void IndexWriter::flush()
 		}
 	}
 	writer->close();
-	info.setBlockCount(writer->blockCount());
-	info.setLastKey(writer->lastKey());
+	segment.setBlockCount(writer->blockCount());
+	segment.setLastKey(writer->lastKey());
 
-	m_infos.addSegment(info);
-	maybeMerge();
+	newInfo.addSegment(segment);
+	maybeMerge(&newInfo);
 
+	setInfo(newInfo);
 	m_segmentBuffer.clear();
 }
 
