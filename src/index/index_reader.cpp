@@ -32,12 +32,17 @@ SegmentIndexSharedPtr IndexReader::segmentIndex(const SegmentInfo& segment)
 {
 	QReadLocker locker(&m_indexLock);
 	SegmentIndexSharedPtr index(m_indexes.value(segment.id()));
-	if (index.isNull()) {
-		locker.unlock();
-		QWriteLocker writeLocker(&m_indexLock);
-		index = SegmentIndexReader(m_dir->openFile(segment.indexFileName()), segment.blockCount()).read();
-		m_indexes.insert(segment.id(), index);
+	if (!index.isNull()) {
+		return index;
 	}
+	locker.unlock();
+	QWriteLocker writeLocker(&m_indexLock);
+	index = m_indexes.value(segment.id()); // we need to recheck again, now with a write lock
+	if (!index.isNull()) {
+		return index;
+	}
+	index = SegmentIndexReader(m_dir->openFile(segment.indexFileName()), segment.blockCount()).read();
+	m_indexes.insert(segment.id(), index);
 	return index;
 }
 
