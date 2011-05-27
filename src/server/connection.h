@@ -3,6 +3,7 @@
 
 #include <QTextStream>
 #include <QByteArray>
+#include "index/index.h"
 #include "index/index_writer.h"
 
 class QTcpSocket;
@@ -14,7 +15,7 @@ class Connection : public QObject
 	Q_OBJECT
 
 public:
-	Connection(Acoustid::IndexWriter *writer, QTcpSocket *socket, QObject *parent = 0);
+	Connection(Acoustid::Index* index, QTcpSocket *socket, QObject *parent = 0);
 	~Connection();
 
 	Listener *listener() const;
@@ -32,8 +33,9 @@ private:
 	QTcpSocket *m_socket;
 	QString m_buffer;
 	QTextStream m_output;
-    Acoustid::IndexWriter *m_writer;
-	Handler *m_handler;
+    Acoustid::Index* m_index;
+    Acoustid::IndexWriter* m_indexWriter;
+	Handler* m_handler;
 };
 
 #endif

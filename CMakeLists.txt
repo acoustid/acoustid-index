@@ -22,6 +22,7 @@ set(fpindexlib_SOURCES
 	src/index/segment_merger.cpp
 	src/index/segment_merge_policy.cpp
 	src/index/top_hits_collector.cpp
+	src/index/index.cpp
 	src/index/index_writer.cpp
 	src/index/index_reader.cpp
 	src/store/buffered_input_stream.cpp
@@ -58,10 +59,7 @@ include_directories(
     ${GTEST_INCLUDE_DIRS}
 )
 
-add_executable(fpserver
-    ${fpserver_SOURCES}
-    ${fpserver_MOC}
-)
+add_executable(fpserver ${fpserver_SOURCES} ${fpserver_MOC})
 target_link_libraries(fpserver ${QT_LIBRARIES} fpindexlib)
 
 #add_executable(fpindex src/tools/fpindex.cpp)
@@ -85,8 +83,8 @@ target_link_libraries(fpi-import ${QT_LIBRARIES} fpindexlib)
 add_executable(fpi-search src/tools/fpi-search.cpp)
 target_link_libraries(fpi-search ${QT_LIBRARIES} fpindexlib)
 
-add_executable(fpi-stats src/tools/fpi-stats.cpp)
-target_link_libraries(fpi-stats ${QT_LIBRARIES} fpindexlib)
+#add_executable(fpi-stats src/tools/fpi-stats.cpp)
+#target_link_libraries(fpi-stats ${QT_LIBRARIES} fpindexlib)
 
 set(tests_SOURCES
 	src/index/segment_data_writer_test.cpp
@@ -111,11 +109,11 @@ set(tests_SOURCES
 )
 
 if(GTEST_FOUND)
-	add_executable(tests ${tests_SOURCES})
-	target_link_libraries(tests
-		${GTEST_BOTH_LIBRARIES} -lpthread
-		${QT_LIBRARIES}
-		fpindexlib)
-	add_custom_target(check ./tests $ENV{GTEST_FLAGS} DEPENDS tests)
+	#add_executable(tests ${tests_SOURCES})
+	#target_link_libraries(tests
+	#	${GTEST_BOTH_LIBRARIES} -lpthread
+	#	${QT_LIBRARIES}
+	#	fpindexlib)
+	#add_custom_target(check ./tests $ENV{GTEST_FLAGS} DEPENDS tests)
 endif()
 

@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <QTextStream>
+#include "index/index.h"
 #include "index/index_writer.h"
 #include "store/fs_directory.h"
 #include "util/options.h"
@@ -24,14 +25,16 @@ int main(int argc, char **argv)
 	}
 
 	FSDirectory dir(path);
-	IndexWriter writer(&dir);
+	Index index(&dir);
 	try {
-		writer.open(opts->contains("create"));
+		index.open(opts->contains("create"));
 	}
 	catch (IOException &ex) {
 		qCritical() << "ERROR:" << ex.what();
 		return 1;
 	}
+
+	ScopedPtr<IndexWriter> writer(index.createWriter());
 
 	const size_t lineSize = 1024 * 1024;
 	char line[lineSize];
@@ -58,13 +61,13 @@ int main(int argc, char **argv)
 				continue;
 			}
 		}
-		writer.addDocument(id, (uint32_t *)fp, length);
+		writer->addDocument(id, (uint32_t *)fp, length);
 		if (counter % 1000 == 0) {
 			qDebug() << "Imported" << counter << "lines";
 		}
 		counter++;
 	}
-	writer.commit();
+	writer->commit();
 
 	return 0;
 }

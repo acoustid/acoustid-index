@@ -29,6 +29,10 @@ static const int BLOCK_SIZE = 512;
 static const int MAX_MERGE_AT_ONCE = 10;
 static const int MAX_SEGMENTS_PER_TIER = 10;
 
+#define ACOUSTID_DISABLE_COPY(ClassName)	\
+	ClassName(const ClassName &);			\
+	void operator=(const ClassName &);
+
 }
 
 #endif

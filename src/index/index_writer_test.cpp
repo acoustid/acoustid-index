@@ -7,26 +7,27 @@
 #include "store/input_stream.h"
 #include "store/output_stream.h"
 #include "index_writer.h"
+#include "index.h"
 
 using namespace Acoustid;
 
 TEST(IndexWriterTest, OpenEmpty)
 {
 	RAMDirectory dir;
+	Index index(&dir);
 
-	IndexWriter writer(&dir);
 	ASSERT_FALSE(dir.fileExists("info_0"));
-	ASSERT_THROW(writer.open(), IOException);
+	ASSERT_THROW(index.open(), IOException);
 	ASSERT_FALSE(dir.fileExists("info_0"));
 }
 
 TEST(IndexWriterTest, OpenEmptyCreate)
 {
 	RAMDirectory dir;
+	Index index(&dir);
 
 	ASSERT_FALSE(dir.fileExists("info_0"));
-	IndexWriter writer(&dir);
-	writer.open(true);
+	index.open(true);
 	ASSERT_TRUE(dir.fileExists("info_0"));
 	ASSERT_EQ(0, writer.info().revision());
 }

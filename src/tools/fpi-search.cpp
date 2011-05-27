@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
+#include "index/index.h"
 #include "index/index_reader.h"
 #include "index/top_hits_collector.h"
 #include "store/fs_directory.h"
@@ -23,21 +24,16 @@ int main(int argc, char **argv)
 	}
 
 	FSDirectory dir(path);
-	IndexReader reader(&dir);
+	Index index(&dir);
 	try {
-		reader.open();
+		index.open();
 	}
 	catch (IOException &ex) {
 		qCritical() << "ERROR:" << ex.what();
 		return 1;
 	}
 
-	{
-		// load segment indexes into memory
-		TopHitsCollector collector(1);
-		uint32_t fp[1] = { -1 };
-		reader.search(fp, 1, &collector);
-	}
+	ScopedPtr<IndexReader> reader(index.createReader());
 
 	QStringList args = opts->arguments();
 	for (int i = 0; i < args.size(); i++) {
@@ -49,7 +45,7 @@ int main(int argc, char **argv)
 		Timer timer;
 		timer.start();
 		TopHitsCollector collector(10);
-		reader.search((uint32_t *)fp, arg.size(), &collector);
+		reader->search((uint32_t *)fp, arg.size(), &collector);
 		qDebug() << "Search took" << timer.elapsed() << "ms";
 		QList<Result> results = collector.topResults();
 		for (int j = 0; j < results.size(); j++) {

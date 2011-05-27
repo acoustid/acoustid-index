@@ -10,26 +10,15 @@
 #include "segment_index_reader.h"
 #include "segment_data_reader.h"
 #include "segment_merger.h"
+#include "index.h"
 #include "index_writer.h"
 
 using namespace Acoustid;
 
-IndexWriter::IndexWriter(Directory *dir)
-	: IndexReader(dir), m_maxSegmentBufferSize(MAX_SEGMENT_BUFFER_SIZE)
+IndexWriter::IndexWriter(Directory *dir, const IndexInfo& info, const SegmentIndexMap& indexes, Index* index)
+	: IndexReader(dir, info, indexes), m_maxSegmentBufferSize(MAX_SEGMENT_BUFFER_SIZE), m_index(index)
 {
 	m_mergePolicy = new SegmentMergePolicy();
-}
-
-void IndexWriter::open(bool create)
-{
-	if (!m_info.load(m_dir)) {
-		if (create) {
-			commit();
-	 	}
-		else {
-			throw IOException("there is no index in the directory");
-		}
-	}
 }
 
 IndexWriter::~IndexWriter()
@@ -58,24 +47,23 @@ void IndexWriter::maybeFlush()
 	}
 }
 
-SegmentDataWriter *IndexWriter::segmentDataWriter(const SegmentInfo& info)
+SegmentDataWriter* IndexWriter::segmentDataWriter(const SegmentInfo& segment)
 {
-	OutputStream *indexOutput = m_dir->createFile(info.indexFileName());
-	OutputStream *dataOutput = m_dir->createFile(info.dataFileName());
-	SegmentIndexWriter *indexWriter = new SegmentIndexWriter(indexOutput);
+	OutputStream* indexOutput = m_dir->createFile(segment.indexFileName());
+	OutputStream* dataOutput = m_dir->createFile(segment.dataFileName());
+	SegmentIndexWriter* indexWriter = new SegmentIndexWriter(indexOutput);
 	return new SegmentDataWriter(dataOutput, indexWriter, BLOCK_SIZE);
 }
 
-void IndexWriter::maybeMerge(IndexInfo* info)
+void IndexWriter::maybeMerge()
 {
-	const SegmentInfoList& segments = info->segments();
+	const SegmentInfoList& segments = m_info.segments();
 	QList<int> merge = m_mergePolicy->findMerges(segments);
 	if (merge.isEmpty()) {
 		return;
 	}
-	//qDebug() << "Merging segments" << merge;
 
-	SegmentInfo segment(info->incLastSegmentId());
+	SegmentInfo segment(m_info.incLastSegmentId());
 	{
 		SegmentMerger merger(segmentDataWriter(segment));
 		for (size_t i = 0; i < merge.size(); i++) {
@@ -95,12 +83,9 @@ void IndexWriter::maybeMerge(IndexInfo* info)
 		if (!merged.contains(i)) {
 			newSegments.append(s);
 		}
-		else {
-			closeSegmentIndex(s);
-		}
 	}
 	newSegments.append(segment);
-	info->setSegments(newSegments);
+	m_info.setSegments(newSegments);
 }
 
 inline uint32_t itemKey(uint64_t item)
@@ -119,17 +104,14 @@ void IndexWriter::flush()
 		return;
 	}
 	//qDebug() << "Writing new segment" << (m_segmentBuffer.size() * 8.0 / 1024 / 1024);
-	qSort(m_segmentBuffer.begin(), m_segmentBuffer.end());
+	std::sort(m_segmentBuffer.begin(), m_segmentBuffer.end());
 
-	IndexInfo newInfo(info());
-
-	SegmentInfo segment(newInfo.incLastSegmentId());
+	SegmentInfo segment(m_info.incLastSegmentId());
 	ScopedPtr<SegmentDataWriter> writer(segmentDataWriter(segment));
 	uint64_t lastItem = UINT64_MAX;
 	for (size_t i = 0; i < m_segmentBuffer.size(); i++) {
 		uint64_t item = m_segmentBuffer[i];
 		if (item != lastItem) {
-			//qDebug() << "adding item" << key << value;
 			writer->addItem(itemKey(item), itemValue(item));
 			lastItem = item;
 		}
@@ -138,10 +120,13 @@ void IndexWriter::flush()
 	segment.setBlockCount(writer->blockCount());
 	segment.setLastKey(writer->lastKey());
 
-	newInfo.addSegment(segment);
-	maybeMerge(&newInfo);
+	m_info.addSegment(segment);
+	maybeMerge();
 
-	setInfo(newInfo);
 	m_segmentBuffer.clear();
+
+	if (m_index) {
+		m_index->refresh(m_info);
+	}
 }
 

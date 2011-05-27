@@ -12,16 +12,9 @@
 
 using namespace Acoustid;
 
-IndexReader::IndexReader(Directory *dir)
-	: m_dir(dir)
+IndexReader::IndexReader(Directory *dir, const IndexInfo& info, const SegmentIndexMap& indexes)
+	: m_dir(dir), m_info(info), m_indexes(indexes)
 {
-}
-
-void IndexReader::open()
-{
-	if (!m_info.load(m_dir)) {
-		throw IOException("there is no index in the directory");
-	}
 }
 
 IndexReader::~IndexReader()
@@ -30,37 +23,18 @@ IndexReader::~IndexReader()
 
 SegmentIndexSharedPtr IndexReader::segmentIndex(const SegmentInfo& segment)
 {
-	QReadLocker locker(&m_indexLock);
-	SegmentIndexSharedPtr index(m_indexes.value(segment.id()));
-	if (!index.isNull()) {
-		return index;
-	}
-	locker.unlock();
-	QWriteLocker writeLocker(&m_indexLock);
-	index = m_indexes.value(segment.id()); // we need to recheck again, now with a write lock
-	if (!index.isNull()) {
-		return index;
-	}
-	index = SegmentIndexReader(m_dir->openFile(segment.indexFileName()), segment.blockCount()).read();
-	m_indexes.insert(segment.id(), index);
-	return index;
+	return m_indexes.value(segment.id());
 }
 
-void IndexReader::closeSegmentIndex(const SegmentInfo& segment)
-{
-	QWriteLocker locker(&m_indexLock);
-	m_indexes.remove(segment.id());
-}
-
-SegmentDataReader *IndexReader::segmentDataReader(const SegmentInfo& segment)
+SegmentDataReader* IndexReader::segmentDataReader(const SegmentInfo& segment)
 {
 	return new SegmentDataReader(m_dir->openFile(segment.dataFileName()), BLOCK_SIZE);
 }
 
 void IndexReader::search(uint32_t* fingerprint, size_t length, Collector* collector)
 {
-	const SegmentInfoList& segments = info().segments();
 	std::sort(fingerprint, fingerprint + length);
+	const SegmentInfoList& segments = m_info.segments();
 	for (int i = 0; i < segments.size(); i++) {
 		const SegmentInfo& s = segments.at(i);
 		SegmentSearcher searcher(segmentIndex(s), segmentDataReader(s), s.lastKey());

@@ -11,12 +11,13 @@
 
 namespace Acoustid {
 
+class Index;
 class SegmentDataWriter;
 
 class IndexWriter : public IndexReader
 {
 public:
-	IndexWriter(Directory *dir);
+	IndexWriter(Directory *dir, const IndexInfo& info, const SegmentIndexMap& indexes, Index* index = NULL);
 	virtual ~IndexWriter();
 
 	size_t maxSegmentBufferSize() const
@@ -29,11 +30,19 @@ public:
 		m_maxSegmentBufferSize = maxSegmentBufferSize;
 	}
 
-	void open(bool create = false);
-
-	SegmentMergePolicy *segmentMergePolicy()
+	SegmentMergePolicy* segmentMergePolicy()
 	{
 		return m_mergePolicy;
+	}
+
+	Index* index()
+	{
+		return m_index;
+	}
+
+	void setIndex(Index* index)
+	{
+		m_index = index;
 	}
 
 	void addDocument(uint32_t id, uint32_t *terms, size_t length);
@@ -43,13 +52,14 @@ private:
 
 	void flush();
 	void maybeFlush();
-	void maybeMerge(IndexInfo* info);
+	void maybeMerge();
 
-	SegmentDataWriter *segmentDataWriter(const SegmentInfo &info);
+	SegmentDataWriter *segmentDataWriter(const SegmentInfo& info);
 
 	size_t m_maxSegmentBufferSize;
 	std::vector<uint64_t> m_segmentBuffer;
 	SegmentMergePolicy *m_mergePolicy;
+	Index* m_index;
 };
 
 }

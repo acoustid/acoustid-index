@@ -1,10 +1,13 @@
-#ifndef ACOUSTID_LISTENER_H_
-#define ACOUSTID_LISTENER_H_
+// Copyright (C) 2011  Lukas Lalinsky
+// Distributed under the MIT license, see the LICENSE file for details.
+
+#ifndef ACOUSTID_SERVER_LISTENER_H_
+#define ACOUSTID_SERVER_LISTENER_H_
 
 #include <QTcpServer>
 #include <QTcpSocket>
-#include "store/fs_directory.h"
-#include "index/index_writer.h"
+#include "index/index.h"
+#include "store/directory.h"
 
 class Connection;
 
@@ -23,12 +26,12 @@ signals:
 
 protected slots:
 	void acceptNewConnection();
-	void removeConnection(Connection *);
+	void removeConnection(Connection*);
 
 private:
-	Acoustid::FSDirectory *m_dir;
-	Acoustid::IndexWriter *m_writer;
-	QList<Connection *> m_connections;
+	Acoustid::Directory* m_dir;
+	Acoustid::Index* m_index;
+	QList<Connection*> m_connections;
 };
 
 #endif

@@ -34,6 +34,7 @@ private:
 
 typedef QWeakPointer<SegmentIndex> SegmentIndexWeakPtr;
 typedef QSharedPointer<SegmentIndex> SegmentIndexSharedPtr;
+typedef QHash<int, SegmentIndexSharedPtr> SegmentIndexMap;
 
 }
 
