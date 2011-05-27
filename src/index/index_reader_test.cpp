@@ -13,15 +13,6 @@
 
 using namespace Acoustid;
 
-TEST(IndexReaderTest, OpenEmpty)
-{
-	RAMDirectory dir;
-	Index index(&dir);
-
-	ASSERT_FALSE(dir.fileExists("info_0"));
-	ASSERT_THROW(index.open(), IOException);
-}
-
 TEST(IndexReaderTest, Search)
 {
 	RAMDirectory dir;

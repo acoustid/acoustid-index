@@ -20,6 +20,8 @@ public:
 	IndexReader(Directory* dir, const IndexInfo& info, const SegmentIndexMap& indexes);
 	virtual ~IndexReader();
 
+	const IndexInfo& info() const { return m_info; }
+
 	void search(uint32_t *fingerprint, size_t length, Collector *collector);
 
 protected:

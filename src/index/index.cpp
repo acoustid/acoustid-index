@@ -52,7 +52,6 @@ SegmentIndexMap Index::loadSegmentIndexes(Directory* dir, const IndexInfo& info,
 		const SegmentInfo& segment = segments.at(i);
 		SegmentIndexSharedPtr index = oldIndexes.value(segment.id());
 		if (index.isNull()) {
-			qDebug() << "loading index " << segment.indexFileName();
 			index = SegmentIndexReader(dir->openFile(segment.indexFileName()), segment.blockCount()).read();
 		}
 		indexes.insert(segment.id(), index);

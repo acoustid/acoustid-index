@@ -91,6 +91,7 @@ set(tests_SOURCES
 	src/index/segment_index_test.cpp
 	src/index/segment_index_reader_test.cpp
 	src/index/segment_index_writer_test.cpp
+	src/index/index_test.cpp
 	src/index/index_info_test.cpp
 	src/index/index_reader_test.cpp
 	src/index/index_writer_test.cpp
@@ -109,11 +110,11 @@ set(tests_SOURCES
 )
 
 if(GTEST_FOUND)
-	#add_executable(tests ${tests_SOURCES})
-	#target_link_libraries(tests
-	#	${GTEST_BOTH_LIBRARIES} -lpthread
-	#	${QT_LIBRARIES}
-	#	fpindexlib)
-	#add_custom_target(check ./tests $ENV{GTEST_FLAGS} DEPENDS tests)
+	add_executable(tests ${tests_SOURCES})
+	target_link_libraries(tests
+		${GTEST_BOTH_LIBRARIES} -lpthread
+		${QT_LIBRARIES}
+		fpindexlib)
+	add_custom_target(check ./tests $ENV{GTEST_FLAGS} DEPENDS tests)
 endif()
 
