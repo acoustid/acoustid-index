@@ -14,6 +14,7 @@ namespace Acoustid {
 namespace Server {
 
 class Listener;
+class Handler;
 
 class Connection : public QObject
 {
@@ -26,11 +27,23 @@ public:
 	Listener *listener() const;
 	void close();
 
+	Index* index() { return m_index; }
+	IndexWriter* indexWriter() { return m_indexWriter; }
+
+	void setIndexWriter(IndexWriter* indexWriter)
+	{
+		if (m_indexWriter) {
+			delete m_indexWriter;
+		}
+		m_indexWriter = indexWriter;
+	}
+
 signals:
 	void closed(Connection *connection);
 
 protected slots:
 	void readIncomingData();
+	void sendResponse(const QString& response, bool next = true);
 
 	void handleLine(const QString& line);
 
@@ -38,8 +51,9 @@ private:
 	QTcpSocket *m_socket;
 	QString m_buffer;
 	QTextStream m_output;
-    Acoustid::Index* m_index;
-    Acoustid::IndexWriter* m_indexWriter;
+    Index* m_index;
+    IndexWriter* m_indexWriter;
+	Handler* m_handler;
 };
 
 }

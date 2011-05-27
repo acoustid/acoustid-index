@@ -44,10 +44,12 @@ add_library(fpindexlib ${fpindexlib_SOURCES})
 set(fpserver_HEADERS
 	src/server/listener.h
 	src/server/connection.h
+	src/server/handler.h
 )
 set(fpserver_SOURCES
 	src/server/listener.cpp
 	src/server/connection.cpp
+	src/server/handler.cpp
 	src/server/main.cpp
 )
 
