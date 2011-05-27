@@ -33,9 +33,9 @@ int IndexInfo::findCurrentRevision(Directory* dir)
 
 bool IndexInfo::load(Directory* dir)
 {
-	m_revision = IndexInfo::findCurrentRevision(dir);
-	if (m_revision != -1) {
-		load(dir->openFile(indexInfoFileName(m_revision)));
+	d->revision = IndexInfo::findCurrentRevision(dir);
+	if (d->revision != -1) {
+		load(dir->openFile(indexInfoFileName(d->revision)));
 		return true;
 	}
 	return false;
@@ -57,8 +57,8 @@ void IndexInfo::load(InputStream* input)
 
 void IndexInfo::save(Directory* dir)
 {
-	m_revision++;
-	QString fileName = indexInfoFileName(m_revision);
+	d->revision++;
+	QString fileName = indexInfoFileName(d->revision);
 	QString tempFileName = fileName + ".tmp";
 	save(dir->createFile(tempFileName));
 	dir->renameFile(tempFileName, fileName);
@@ -70,9 +70,9 @@ void IndexInfo::save(OutputStream *output)
 	output->writeVInt32(lastSegmentId());
 	output->writeVInt32(segmentCount());
 	for (size_t i = 0; i < segmentCount(); i++) {
-		output->writeVInt32(m_segments.at(i).id());
-		output->writeVInt32(m_segments.at(i).blockCount());
-		output->writeVInt32(m_segments.at(i).lastKey());
+		output->writeVInt32(d->segments.at(i).id());
+		output->writeVInt32(d->segments.at(i).blockCount());
+		output->writeVInt32(d->segments.at(i).lastKey());
 	}
 }
 

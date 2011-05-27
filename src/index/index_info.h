@@ -6,6 +6,8 @@
 
 #include <QList>
 #include <QStringList>
+#include <QSharedData>
+#include <QSharedDataPointer>
 #include <algorithm>
 #include "common.h"
 #include "segment_info.h"
@@ -16,86 +18,96 @@ class Directory;
 class InputStream;
 class OutputStream;
 
+// Internal, do not use.
+class IndexInfoData : public QSharedData
+{
+public:
+	IndexInfoData() : nextSegmentNum(0), revision(-1) { }
+	IndexInfoData(const IndexInfoData& other)
+		: QSharedData(other),
+		segments(other.segments),
+		nextSegmentNum(other.nextSegmentNum),
+		revision(other.revision) { }
+	~IndexInfoData() { }
+
+	QList<SegmentInfo> segments;
+	size_t nextSegmentNum;
+	int revision;
+};
+
+// Information about the index structure. Implicitly shared, can be very
+// efficiently copied.
 class IndexInfo
 {
 public:
-	IndexInfo() : m_nextSegmentNum(0), m_revision(-1)
-	{
-	}
-
-	IndexInfo(const IndexInfo& other)
-		: m_nextSegmentNum(other.lastSegmentId()),
-		  m_segments(other.segments()),
-		  m_revision(other.revision())
-	{
-	}
+	IndexInfo() : d(new IndexInfoData()) {}
 
 	// Return the current index revision
 	int revision() const
 	{
-		return m_revision;
+		return d->revision;
 	}
 
 	// Set the index revision
 	void setRevision(int revision)
 	{
-		m_revision = revision;
+		d->revision = revision;
 	}
 
 	// Increment the index revision by one and return it
 	int incRevision()
 	{
-		return ++m_revision;
+		return ++d->revision;
 	}
 
 	size_t segmentCount() const
 	{
-		return m_segments.size();
+		return d->segments.size();
 	}
 
 	const SegmentInfo& segment(int idx) const
 	{
-		return m_segments.at(idx);
+		return d->segments.at(idx);
 	}
 
 	const SegmentInfoList& segments() const
 	{
-		return m_segments;
+		return d->segments;
 	}
 
 	SegmentInfoList& segments()
 	{
-		return m_segments;
+		return d->segments;
 	}
 
 	void setSegments(const SegmentInfoList& segments)
 	{
-		m_segments = segments;
+		d->segments = segments;
 	}
 
 	void clearSegments()
 	{
-		m_segments.clear();
+		d->segments.clear();
 	}
 
 	void addSegment(const SegmentInfo& info)
 	{
-		m_segments.append(info);
+		d->segments.append(info);
 	}
 
 	size_t lastSegmentId() const
 	{
-		return m_nextSegmentNum;
+		return d->nextSegmentNum;
 	}
 
 	size_t incLastSegmentId()
 	{
-		return m_nextSegmentNum++;
+		return d->nextSegmentNum++;
 	}
 
 	void setLastSegmentId(size_t n)
 	{
-		m_nextSegmentNum = n;
+		d->nextSegmentNum = n;
 	}
 
 	// Load the latest index info from a directory
@@ -121,9 +133,7 @@ public:
 	static int indexInfoRevision(const QString &fileName);
 
 private:
-	QList<SegmentInfo> m_segments;
-	size_t m_nextSegmentNum;
-	int m_revision;
+	QSharedDataPointer<IndexInfoData> d;
 };
 
 }
