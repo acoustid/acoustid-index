@@ -23,12 +23,14 @@ public:
 	Option &setArgument(ArgumentType type = StringArgument);
 	Option &setHelp(const QString &help);
 	Option &setMetaVar(const QString &metaVar);
+	Option &setDefaultValue(const QString &value);
 
 	char shortName() const { return m_shortName; };
 	const QString &longName() const { return m_longName; };
 	const QString &metaVar() const { return m_metaVar; };
 	const QString &help() const { return m_help; };
 	ArgumentType argument() const { return m_argument; };
+	const QString &defaultValue() const { return m_default; };
 
 private:
 	QString m_longName;
@@ -36,6 +38,7 @@ private:
 	ArgumentType m_argument;
 	QString m_help;
 	QString m_metaVar;
+	QString m_default;
 };
 
 class Options

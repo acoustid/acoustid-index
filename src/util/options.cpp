@@ -28,6 +28,12 @@ Option &Option::setArgument(ArgumentType type)
 	return *this;
 }
 
+Option &Option::setDefaultValue(const QString &def)
+{
+	m_default = def;
+	return *this;
+}
+
 Option &Option::setHelp(const QString &help)
 {
 	m_help = help;
@@ -144,6 +150,9 @@ Options *OptionParser::parse(int argc, char *const argv[])
 				shortOptions += ':';
 			}
 			shortIndexes[option->shortName()] = i;
+		}
+		if (!option->defaultValue().isNull()) {
+			options->addOption(name, option->defaultValue());
 		}
 	}
 	longOptions[i].name = 0;
