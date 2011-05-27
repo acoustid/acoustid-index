@@ -4,27 +4,41 @@
 #ifndef ACOUSTID_SEGMENT_INFO_H_
 #define ACOUSTID_SEGMENT_INFO_H_
 
+#include <QSharedData>
+#include <QSharedDataPointer>
 #include "common.h"
 
 namespace Acoustid {
+
+// Internal, do not use.
+class SegmentInfoData : public QSharedData
+{
+public:
+	SegmentInfoData(int id = 0, size_t blockCount = 0, uint32_t lastKey = 0) :
+		id(id),
+		blockCount(blockCount),
+		lastKey(lastKey) { }
+	SegmentInfoData(const SegmentInfoData& other) :
+		QSharedData(other),
+		id(other.id),
+		blockCount(other.blockCount),
+		lastKey(other.lastKey) { }
+	~SegmentInfoData() { }
+
+	int id;
+	size_t blockCount;
+	uint32_t lastKey;
+};
 
 class SegmentInfo
 {
 public:
 	SegmentInfo(int id = 0, size_t blockCount = 0, uint32_t lastKey = 0)
-		: m_id(id), m_blockCount(blockCount), m_lastKey(lastKey)
-	{
-	}
-
-	SegmentInfo(const SegmentInfo& other)
-		: m_id(other.id()), m_blockCount(other.blockCount()),
-		  m_lastKey(other.lastKey())
-	{
-	}
+		: d(new SegmentInfoData(id, blockCount, lastKey)) {	}
 
 	QString name() const
 	{
-		return QString("segment_%1").arg(m_id);
+		return QString("segment_%1").arg(id());
 	}
 
 	QString indexFileName() const
@@ -39,38 +53,36 @@ public:
 
 	void setId(int id)
 	{
-		m_id = id;
+		d->id = id;
 	}
 
 	int id() const
 	{
-		return m_id;
+		return d->id;
 	}
 
 	uint32_t lastKey() const
 	{
-		return m_lastKey;
+		return d->lastKey;
 	}
 
 	void setLastKey(uint32_t lastKey)
 	{
-		m_lastKey = lastKey;
+		d->lastKey = lastKey;
 	}
 
 	size_t blockCount() const
 	{
-		return m_blockCount;
+		return d->blockCount;
 	}
 
 	void setBlockCount(size_t blockCount)
 	{
-		m_blockCount = blockCount;
+		d->blockCount = blockCount;
 	}
 
 private:
-	int m_id;
-	size_t m_blockCount;
-	uint32_t m_lastKey;
+	QSharedDataPointer<SegmentInfoData> d;
 };
 
 typedef QList<SegmentInfo> SegmentInfoList;
