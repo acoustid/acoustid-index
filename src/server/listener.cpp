@@ -8,8 +8,9 @@
 #include "connection.h"
 
 using namespace Acoustid;
+using namespace Acoustid::Server;
 
-Listener::Listener(const QString &path, QObject *parent)
+Listener::Listener(const QString& path, QObject* parent)
 	: QTcpServer(parent)
 {
 	connect(this, SIGNAL(newConnection()), SLOT(acceptNewConnection()));
@@ -27,7 +28,7 @@ void Listener::stop()
 	qDebug() << "Stopping" << this;
 	connect(this, SIGNAL(lastConnectionClosed()), qApp, SLOT(quit()));
 	close();
-	foreach (Connection *connection, m_connections) {
+	foreach (Connection* connection, m_connections) {
 		connection->close();
 	}
 }
@@ -43,8 +44,8 @@ void Listener::removeConnection(Connection *connection)
 
 void Listener::acceptNewConnection()
 {
-	QTcpSocket *socket = nextPendingConnection();
-	Connection *connection = new Connection(m_index, socket, this);
+	QTcpSocket* socket = nextPendingConnection();
+	Connection* connection = new Connection(m_index, socket, this);
 	m_connections.append(connection);
 	qDebug() << "Adding connection" << connection;
 	connect(connection, SIGNAL(closed(Connection *)), SLOT(removeConnection(Connection *)));

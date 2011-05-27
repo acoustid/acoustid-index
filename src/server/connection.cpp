@@ -1,5 +1,6 @@
-#include <QDebug>
-#include <QTcpSocket>
+// Copyright (C) 2011  Lukas Lalinsky
+// Distributed under the MIT license, see the LICENSE file for details.
+
 #include <QHostAddress>
 #include "listener.h"
 #include "connection.h"
@@ -7,12 +8,13 @@
 #include "index/top_hits_collector.h"
 
 using namespace Acoustid;
+using namespace Acoustid::Server;
 
 static const char* kCRLF = "\r\n";
 static const int kMaxLineSize = 1024 * 32;
 
 Connection::Connection(Index* index, QTcpSocket *socket, QObject *parent)
-	: QObject(parent), m_socket(socket), m_handler(0), m_output(socket), m_index(index), m_indexWriter(NULL)
+	: QObject(parent), m_socket(socket), m_output(socket), m_index(index), m_indexWriter(NULL)
 {
 	qDebug() << "Connected to client" << m_socket->peerAddress().toString() << "on port" << m_socket->peerPort();
 	m_socket->setParent(this);
@@ -131,10 +133,10 @@ void Connection::handleLine(const QString& line)
 
 void Connection::readIncomingData()
 {
-	if (m_handler) {
+	/*if (m_handler) {
 		qWarning() << "Got data while still handling the previous command";
 		return;
-	}
+	}*/
 
 	m_buffer += m_output.readAll();
 	while (true) {

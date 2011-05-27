@@ -1,13 +1,18 @@
-#ifndef ACOUSTID_CONNECTION_H_
-#define ACOUSTID_CONNECTION_H_
+// Copyright (C) 2011  Lukas Lalinsky
+// Distributed under the MIT license, see the LICENSE file for details.
+
+#ifndef ACOUSTID_SERVER_CONNECTION_H_
+#define ACOUSTID_SERVER_CONNECTION_H_
 
 #include <QTextStream>
 #include <QByteArray>
+#include <QTcpSocket>
 #include "index/index.h"
 #include "index/index_writer.h"
 
-class QTcpSocket;
-class Handler;
+namespace Acoustid {
+namespace Server {
+
 class Listener;
 
 class Connection : public QObject
@@ -35,8 +40,10 @@ private:
 	QTextStream m_output;
     Acoustid::Index* m_index;
     Acoustid::IndexWriter* m_indexWriter;
-	Handler* m_handler;
 };
+
+}
+}
 
 #endif
 

@@ -9,6 +9,9 @@
 #include "index/index.h"
 #include "store/directory.h"
 
+namespace Acoustid {
+namespace Server {
+
 class Connection;
 
 class Listener : public QTcpServer
@@ -29,9 +32,12 @@ protected slots:
 	void removeConnection(Connection*);
 
 private:
-	Acoustid::Directory* m_dir;
-	Acoustid::Index* m_index;
+	Directory* m_dir;
+	Index* m_index;
 	QList<Connection*> m_connections;
 };
+
+}
+}
 
 #endif

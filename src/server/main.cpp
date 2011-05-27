@@ -1,8 +1,12 @@
+// Copyright (C) 2011  Lukas Lalinsky
+// Distributed under the MIT license, see the LICENSE file for details.
+
 #include <QCoreApplication>
 #include "util/options.h"
 #include "listener.h"
 
 using namespace Acoustid;
+using namespace Acoustid::Server;
 
 int main(int argc, char **argv)
 {
