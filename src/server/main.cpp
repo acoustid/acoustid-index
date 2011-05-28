@@ -31,6 +31,7 @@ int main(int argc, char **argv)
 	int port = opts->option("port").toInt();
 
 	QCoreApplication app(argc, argv);
+	Listener::setupSignalHandlers();
 	Listener listener(path);
 	listener.listen(QHostAddress(address), port);
 	qDebug() << "Listening on" << address << "port" << port;
