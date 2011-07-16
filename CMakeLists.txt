@@ -61,8 +61,8 @@ include_directories(
     ${GTEST_INCLUDE_DIRS}
 )
 
-add_executable(fpserver ${fpserver_SOURCES} ${fpserver_MOC})
-target_link_libraries(fpserver ${QT_LIBRARIES} fpindexlib)
+add_executable(fpi-server ${fpserver_SOURCES} ${fpserver_MOC})
+target_link_libraries(fpi-server ${QT_LIBRARIES} fpindexlib)
 
 #add_executable(fpindex src/tools/fpindex.cpp)
 #target_link_libraries(fpindex ${QT_LIBRARIES} fpindexlib)
