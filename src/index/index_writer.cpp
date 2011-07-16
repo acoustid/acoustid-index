@@ -38,6 +38,9 @@ void IndexWriter::commit()
 {
 	flush();
 	m_info.save(m_dir);
+	if (m_index) {
+		m_index->refresh(m_info);
+	}
 }
 
 void IndexWriter::maybeFlush()
@@ -131,9 +134,6 @@ void IndexWriter::flush()
 
 	m_segmentBuffer.clear();
 
-	if (m_index) {
-		m_index->refresh(m_info);
-	}
 }
 
 void IndexWriter::optimize()
@@ -147,11 +147,10 @@ void IndexWriter::optimize()
 	}
 	merge(merges);
 
+	m_info.save(m_dir);
 	if (m_index) {
 		m_index->refresh(m_info);
 	}
-
-	m_info.save(m_dir);
 }
 
 void IndexWriter::cleanup()
