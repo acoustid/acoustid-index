@@ -17,6 +17,10 @@ int main(int argc, char **argv)
 		.setMetaVar("DIR");
 	parser.addOption("create", 'c')
 		.setHelp("create an index in the directory");
+	parser.addOption("cleanup", 'n')
+		.setHelp("cleanup the index directory after importing the data");
+	parser.addOption("optimize", 'o')
+		.setHelp("optimize the index after importing the data");
 	Options *opts = parser.parse(argc, argv);
 
 	QString path = ".";
@@ -68,6 +72,16 @@ int main(int argc, char **argv)
 		counter++;
 	}
 	writer->commit();
+
+	if (opts->contains("optimize")) {
+		qDebug() << "Optimizing the index";
+		writer->optimize();
+	}
+
+	if (opts->contains("cleanup")) {
+		qDebug() << "Cleaning up the index directory";
+		writer->cleanup();
+	}
 
 	return 0;
 }

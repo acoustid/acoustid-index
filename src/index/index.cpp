@@ -36,9 +36,9 @@ void Index::open(bool create)
 	m_open = true;
 }
 
-void Index::refresh(const IndexInfo& info)
+void Index::refresh(const IndexInfo& info, const SegmentIndexMap& oldIndexes)
 {
-	SegmentIndexMap indexes = loadSegmentIndexes(m_dir, info, m_indexes);
+	SegmentIndexMap indexes = loadSegmentIndexes(m_dir, info, oldIndexes.isEmpty() ? m_indexes : oldIndexes);
 	QMutexLocker locker(&m_mutex);
 	m_info = info;
 	m_indexes = indexes;

@@ -47,12 +47,15 @@ public:
 
 	void addDocument(uint32_t id, uint32_t *terms, size_t length);
 	void commit();
+	void cleanup();
+	void optimize();
 
 private:
 
 	void flush();
 	void maybeFlush();
 	void maybeMerge();
+	void merge(const QList<int>& merge);
 
 	SegmentDataWriter *segmentDataWriter(const SegmentInfo& info);
 

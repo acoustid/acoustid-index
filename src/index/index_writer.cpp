@@ -55,14 +55,13 @@ SegmentDataWriter* IndexWriter::segmentDataWriter(const SegmentInfo& segment)
 	return new SegmentDataWriter(dataOutput, indexWriter, BLOCK_SIZE);
 }
 
-void IndexWriter::maybeMerge()
+void IndexWriter::merge(const QList<int>& merge)
 {
-	const SegmentInfoList& segments = m_info.segments();
-	QList<int> merge = m_mergePolicy->findMerges(segments);
 	if (merge.isEmpty()) {
 		return;
 	}
 
+	const SegmentInfoList& segments = m_info.segments();
 	SegmentInfo segment(m_info.incLastSegmentId());
 	{
 		SegmentMerger merger(segmentDataWriter(segment));
@@ -86,6 +85,12 @@ void IndexWriter::maybeMerge()
 	}
 	newSegments.append(segment);
 	m_info.setSegments(newSegments);
+}
+
+void IndexWriter::maybeMerge()
+{
+	const SegmentInfoList& segments = m_info.segments();
+	merge(m_mergePolicy->findMerges(segments));
 }
 
 inline uint32_t itemKey(uint64_t item)
@@ -121,12 +126,52 @@ void IndexWriter::flush()
 	segment.setLastKey(writer->lastKey());
 
 	m_info.addSegment(segment);
+	m_indexes = Index::loadSegmentIndexes(m_dir, m_info, m_indexes);
 	maybeMerge();
 
 	m_segmentBuffer.clear();
 
 	if (m_index) {
 		m_index->refresh(m_info);
+	}
+}
+
+void IndexWriter::optimize()
+{
+	flush();
+
+	const SegmentInfoList& segments = m_info.segments();
+	QList<int> merges;
+	for (int i = 0; i < segments.size(); i++) {
+		merges.append(i);
+	}
+	merge(merges);
+
+	if (m_index) {
+		m_index->refresh(m_info);
+	}
+
+	m_info.save(m_dir);
+}
+
+void IndexWriter::cleanup()
+{
+	flush();
+
+	QSet<QString> usedFileNames;
+	usedFileNames.insert(m_info.indexInfoFileName(m_info.revision()));
+	const SegmentInfoList& segments = m_info.segments();
+	for (int i = 0; i < segments.size(); i++) {
+		const SegmentInfo& segment = segments.at(i);
+		usedFileNames.insert(segment.indexFileName());
+		usedFileNames.insert(segment.dataFileName());
+	}
+
+	QList<QString> allFileNames = m_dir->listFiles();
+	for (int i = 0; i < allFileNames.size(); i++) {
+		if (!usedFileNames.contains(allFileNames.at(i))) {
+			m_dir->deleteFile(allFileNames.at(i));
+		}
 	}
 }
 

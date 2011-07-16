@@ -29,7 +29,7 @@ public:
 	void open(bool create = false);
 
 	// 
-	void refresh(const IndexInfo& info);
+	void refresh(const IndexInfo& info, const SegmentIndexMap &oldIndexes = SegmentIndexMap());
 
 	// Return the directory which contains the index data
 	Directory *directory()

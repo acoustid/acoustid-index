@@ -80,7 +80,8 @@ QList<int> SegmentMergePolicy::findMerges(const SegmentInfoList& infos)
 
 	QList<int> best;
 	double bestScore = 1.0;
-	for (size_t i = 0; i <= segments.size() - m_maxMergeAtOnce; i++) {
+	size_t numPossibleCandidates = qMax(0, segments.size() - m_maxMergeAtOnce);
+	for (size_t i = 0; i <= numPossibleCandidates; i++) {
 		size_t mergeSize = 0;
 		QList<int> candidate;
 		for (size_t j = i; j < segments.size() && candidate.size() < m_maxMergeAtOnce; j++) {

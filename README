@@ -12,3 +12,8 @@ integer arrays.
 
   [1] http://acoustid.org/chromaprint
 
+Reindexing from the Acoustid database:
+
+ $ echo "COPY (SELECT id, extract_fp_query(fingerprint) FROM fingerprint) TO stdout DELIMITER '|' " \
+       | psql -U acoustid acoustid | ./fpi-import -d idx/ -c
+
