@@ -108,7 +108,6 @@ void Connection::readIncomingData()
 	}
 
 	m_buffer += m_output.readAll();
-	qDebug() << "reading more data" << m_buffer;
 	int pos = m_buffer.indexOf(kCRLF);
 	if (pos == -1) {
 		if (m_buffer.size() > kMaxLineSize) {
