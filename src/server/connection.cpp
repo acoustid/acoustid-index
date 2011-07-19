@@ -16,8 +16,9 @@ static const int kMaxLineSize = 1024 * 32;
 Connection::Connection(Index* index, QTcpSocket *socket, QObject *parent)
 	: QObject(parent), m_socket(socket), m_output(socket), m_index(index), m_indexWriter(NULL), m_handler(NULL)
 {
-	qDebug() << "Connected to client" << m_socket->peerAddress().toString() << "on port" << m_socket->peerPort();
 	m_socket->setParent(this);
+	m_client = QString("%1:%2").arg(m_socket->peerAddress().toString()).arg(m_socket->peerPort());
+	qDebug() << "Connected to" << m_client;
 	connect(m_socket, SIGNAL(readyRead()), SLOT(readIncomingData()));
 	connect(m_socket, SIGNAL(disconnected()), SLOT(deleteLater()));
 }
@@ -25,7 +26,7 @@ Connection::Connection(Index* index, QTcpSocket *socket, QObject *parent)
 Connection::~Connection()
 {
 	emit closed(this);
-	qDebug() << "Disconnected";
+	qDebug() << "Disconnected from" << m_client;
 }
 
 Listener *Connection::listener() const
@@ -49,7 +50,7 @@ void Connection::sendResponse(const QString& response, bool next)
 
 void Connection::handleLine(const QString& line)
 {
-	qDebug() << "Got line" << line;
+	qDebug() << "Got line" << line << "from" << m_client;
 
 	QString command;
 	QStringList args;

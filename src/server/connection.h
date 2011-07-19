@@ -48,6 +48,7 @@ protected slots:
 	void handleLine(const QString& line);
 
 private:
+	QString m_client;
 	QTcpSocket *m_socket;
 	QString m_buffer;
 	QTextStream m_output;

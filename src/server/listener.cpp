@@ -139,7 +139,7 @@ void Listener::handleSigTerm()
 
 void Listener::stop()
 {
-	qDebug() << "Stopping" << this;
+	qDebug() << "Stopping the listener";
 	close();
 	if (m_connections.isEmpty()) {
 		qApp->quit();
@@ -154,7 +154,6 @@ void Listener::stop()
 
 void Listener::removeConnection(Connection *connection)
 {
-	qDebug() << "Removing connection" << connection;
 	m_connections.removeAll(connection);
 	if (m_connections.isEmpty()) {
 		emit lastConnectionClosed();
@@ -166,7 +165,6 @@ void Listener::acceptNewConnection()
 	QTcpSocket* socket = nextPendingConnection();
 	Connection* connection = new Connection(m_index, socket, this);
 	m_connections.append(connection);
-	qDebug() << "Adding connection" << connection;
 	connect(connection, SIGNAL(closed(Connection *)), SLOT(removeConnection(Connection *)));
 }
 
