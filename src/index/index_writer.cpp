@@ -63,6 +63,7 @@ void IndexWriter::merge(const QList<int>& merge)
 	if (merge.isEmpty()) {
 		return;
 	}
+	qDebug() << "Merging segments" << merge;
 
 	const SegmentInfoList& segments = m_info.segments();
 	SegmentInfo segment(m_info.incLastSegmentId());
