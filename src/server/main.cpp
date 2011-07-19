@@ -24,6 +24,8 @@ int main(int argc, char **argv)
 		.setArgument()
 		.setHelp("listen on this port (default: 6000)")
 		.setDefaultValue("6000");
+	parser.addOption("syslog", 's')
+		.setHelp("log to syslog");
 	Options *opts = parser.parse(argc, argv);
 
 	QString path = opts->option("directory");
@@ -32,6 +34,7 @@ int main(int argc, char **argv)
 
 	QCoreApplication app(argc, argv);
 	Listener::setupSignalHandlers();
+	Listener::setupLogging(opts->contains("syslog"));
 	Listener listener(path);
 	listener.listen(QHostAddress(address), port);
 	qDebug() << "Listening on" << address << "port" << port;

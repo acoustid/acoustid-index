@@ -3,6 +3,7 @@
 
 #include <signal.h>
 #include <sys/socket.h>
+#include <syslog.h>
 #include <QCoreApplication>
 #include "store/fs_directory.h"
 #include "listener.h"
@@ -41,6 +42,33 @@ void Listener::sigTermHandler(int signal)
 {
 	char tmp = 1;
 	::write(m_sigTermFd[0], &tmp, sizeof(tmp));
+}
+
+static void syslogMessageHandler(QtMsgType type, const char *msg)
+{
+	switch (type) {
+	case QtDebugMsg:
+		syslog(LOG_DEBUG, "%s", msg);
+		break;
+	case QtWarningMsg:
+		syslog(LOG_WARNING, "%s", msg);
+		break;
+	case QtCriticalMsg:
+		syslog(LOG_CRIT, "%s", msg);
+		break;
+	case QtFatalMsg:
+		syslog(LOG_CRIT, "%s", msg);
+		abort();
+	}
+}
+
+void Listener::setupLogging(bool syslog)
+{
+	if (syslog) {
+		openlog("fpi-server", LOG_PID, LOG_LOCAL1);
+		setlogmask(LOG_UPTO(LOG_DEBUG));
+		qInstallMsgHandler(syslogMessageHandler);
+	}
 }
 
 void Listener::setupSignalHandlers()

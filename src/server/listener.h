@@ -26,6 +26,7 @@ public:
 	void stop();
 
 	static void setupSignalHandlers();
+	static void setupLogging(bool syslog);
 
 signals:
 	void lastConnectionClosed();
