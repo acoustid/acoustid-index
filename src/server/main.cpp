@@ -26,6 +26,11 @@ int main(int argc, char **argv)
 		.setDefaultValue("6000");
 	parser.addOption("syslog", 's')
 		.setHelp("log to syslog");
+	parser.addOption("syslog-facility", 'f')
+		.setArgument()
+		.setMetaVar("FACILITY")
+		.setHelp("syslog facility to use (default: user)")
+		.setDefaultValue("user");
 	Options *opts = parser.parse(argc, argv);
 
 	QString path = opts->option("directory");
@@ -34,7 +39,7 @@ int main(int argc, char **argv)
 
 	QCoreApplication app(argc, argv);
 	Listener::setupSignalHandlers();
-	Listener::setupLogging(opts->contains("syslog"));
+	Listener::setupLogging(opts->contains("syslog"), opts->option("syslog-facility"));
 	Listener listener(path);
 	listener.listen(QHostAddress(address), port);
 	qDebug() << "Listening on" << address << "port" << port;

@@ -26,7 +26,7 @@ public:
 	void stop();
 
 	static void setupSignalHandlers();
-	static void setupLogging(bool syslog);
+	static void setupLogging(bool syslog, const QString& facility);
 
 signals:
 	void lastConnectionClosed();
