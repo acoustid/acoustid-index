@@ -18,11 +18,12 @@ public:
 
 	void incRef(const IndexInfo& info);
 	void decRef(const IndexInfo& info);
+	void incRef(const QString& file);
+	void decRef(const QString& file);
 
 protected:
 	ACOUSTID_DISABLE_COPY(IndexFileDeleter);
 
-	QMutex m_mutex;
 	Directory* m_dir;
 	QMap<QString, int> m_refCounts;
 };
