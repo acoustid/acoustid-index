@@ -86,6 +86,12 @@ void Connection::handleLine(const QString& line)
 	else if (command == "insert") {
 		m_handler = new InsertHandler(this, args);
 	}
+	else if (command == "cleanup") {
+		m_handler = new CleanupHandler(this, args);
+	}
+	else if (command == "optimize") {
+		m_handler = new OptimizeHandler(this, args);
+	}
 	else if (command == "begin") {
 		m_handler = new BeginHandler(this, args);
 	}
