@@ -7,6 +7,7 @@
 #include "segment_index_reader.h"
 #include "segment_data_reader.h"
 #include "segment_searcher.h"
+#include "index_file_deleter.h"
 #include "index_reader.h"
 #include "index_writer.h"
 #include "index.h"
@@ -16,10 +17,12 @@ using namespace Acoustid;
 Index::Index(Directory *dir)
 	: m_mutex(QMutex::Recursive), m_dir(dir), m_open(false)
 {
+	m_deleter = new IndexFileDeleter(m_dir);
 }
 
 Index::~Index()
 {
+	delete m_deleter;
 }
 
 void Index::open(bool create)
@@ -32,6 +35,7 @@ void Index::open(bool create)
 	 	}
 		throw IOException("there is no index in the directory");
 	}
+	m_deleter->incRef(m_info);
 	m_indexes = loadSegmentIndexes(m_dir, m_info);
 	m_open = true;
 }
@@ -40,6 +44,12 @@ void Index::refresh(const IndexInfo& info, const SegmentIndexMap& oldIndexes)
 {
 	SegmentIndexMap indexes = loadSegmentIndexes(m_dir, info, oldIndexes.isEmpty() ? m_indexes : oldIndexes);
 	QMutexLocker locker(&m_mutex);
+	if (m_open) {
+		m_deleter->incRef(info);
+		m_deleter->incRef(info);
+		m_deleter->decRef(m_info);
+		m_deleter->decRef(m_info);
+	}
 	m_info = info;
 	m_indexes = indexes;
 }
@@ -62,12 +72,29 @@ SegmentIndexMap Index::loadSegmentIndexes(Directory* dir, const IndexInfo& info,
 IndexReader* Index::createReader()
 {
 	QMutexLocker locker(&m_mutex);;
-	return new IndexReader(m_dir, m_info, m_indexes);
+	if (m_open) {
+		m_deleter->incRef(m_info);
+	}
+	return new IndexReader(m_dir, m_info, m_indexes, this);
 }
 
 IndexWriter* Index::createWriter()
 {
 	QMutexLocker locker(&m_mutex);;
+	if (m_open) {
+		m_deleter->incRef(m_info);
+	}
 	return new IndexWriter(m_dir, m_info, m_indexes, this);
+}
+
+void Index::onReaderDeleted(IndexReader* reader)
+{
+	if (m_open) {
+		m_deleter->decRef(reader->info());
+	}
+}
+
+void Index::onWriterDeleted(IndexWriter* writer)
+{
 }
 

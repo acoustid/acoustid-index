@@ -10,6 +10,7 @@
 
 namespace Acoustid {
 
+class Index;
 class SegmentIndex;
 class SegmentDataReader;
 class Collector;
@@ -17,7 +18,7 @@ class Collector;
 class IndexReader
 {
 public:
-	IndexReader(Directory* dir, const IndexInfo& info, const SegmentIndexMap& indexes);
+	IndexReader(Directory* dir, const IndexInfo& info, const SegmentIndexMap& indexes, Index* index = NULL);
 	virtual ~IndexReader();
 
 	const IndexInfo& info() const { return m_info; }
@@ -31,6 +32,7 @@ protected:
 	Directory* m_dir;
 	IndexInfo m_info;
 	SegmentIndexMap m_indexes;
+	Index* m_index;
 };
 
 }

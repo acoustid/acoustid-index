@@ -40,6 +40,7 @@ void IndexFileDeleter::decRef(const QString& file)
 {
 	int count = m_refCounts.value(file) - 1;
 	if (count <= 0) {
+		qDebug() << "Deleting file" << file;
 		m_dir->deleteFile(file);
 		m_refCounts.remove(file);
 	}

@@ -8,6 +8,9 @@ using namespace Acoustid;
 QList<QString> IndexInfo::files() const
 {
 	QList<QString> files;
+	if (d->revision < 0) {
+		return files;
+	}
 	files.append(indexInfoFileName(d->revision));
 	for (size_t i = 0; i < d->segments.size(); i++) {
 		const SegmentInfo& segment = d->segments.at(i);
