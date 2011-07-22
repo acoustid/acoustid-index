@@ -98,6 +98,7 @@ set(tests_SOURCES
 	src/index/index_info_test.cpp
 	src/index/index_reader_test.cpp
 	src/index/index_writer_test.cpp
+	src/index/index_file_deleter_test.cpp
 	src/index/segment_enum_test.cpp
 	src/index/segment_merger_test.cpp
 	src/index/segment_merge_policy_test.cpp
