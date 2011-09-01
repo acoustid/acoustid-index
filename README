@@ -14,9 +14,13 @@ integer arrays.
 
 Reindexing from the Acoustid database:
 
-$ echo "COPY (SELECT id, extract_fp_query(fingerprint) FROM fingerprint) TO stdout DELIMITER '|' " \
-       | psql -U acoustid acoustid | ./fpi-import -d idx/ -c
+ $ echo "COPY (SELECT id, extract_fp_query(fingerprint) FROM fingerprint) TO stdout DELIMITER '|' " \
+       | psql -U acoustid acoustid | ./fpi-import -d idx/ -c -o
 
+ 1. Stop importing
+ 2. UPDATE fingerprint_index_queue SET fingerprint_id = (SELECT max(id) FROM fingerprint);
+ 3. Index the database
+ 4. Start importing
 
 Running the server:
 
