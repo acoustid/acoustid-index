@@ -46,12 +46,30 @@ public:
 		return m_maxSegmentBlocks;
 	}
 
+	void setFloorSegmentBlocks(int floorSegmentBlocks)
+	{
+		m_floorSegmentBlocks = floorSegmentBlocks;
+	}
+
+	int floorSegmentBlocks() const
+	{
+		return m_floorSegmentBlocks;
+	}
+
 	QList<int> findMerges(const SegmentInfoList& infos);
+
+protected:
+
+	int floorSize(int size) const
+	{
+		return std::max(size, m_floorSegmentBlocks);
+	}
 
 private:
 	int m_maxMergeAtOnce;
 	int m_maxSegmentsPerTier;
 	int m_maxSegmentBlocks;
+	int m_floorSegmentBlocks;
 };
 
 }

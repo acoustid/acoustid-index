@@ -14,6 +14,7 @@ SegmentMergePolicy::SegmentMergePolicy(int maxMergeAtOnce, int maxSegmentsPerTie
 	setMaxMergeAtOnce(maxMergeAtOnce);
 	setMaxSegmentsPerTier(maxSegmentsPerTier);
 	setMaxSegmentBlocks(maxSegmentBlocks);
+	setFloorSegmentBlocks(FLOOR_SEGMENT_BLOCKS);
 }
 
 SegmentMergePolicy::~SegmentMergePolicy()
@@ -65,7 +66,7 @@ QList<int> SegmentMergePolicy::findMerges(const SegmentInfoList& infos)
 	//qDebug() << "minSegmentSize =" << minSegmentSize;
 	//qDebug() << "totalIndexSize =" << totalIndexSize;
 
-	size_t levelSize = minSegmentSize;
+	size_t levelSize = floorSize(minSegmentSize);
 	size_t indexSize = totalIndexSize;
 	size_t allowedSegmentCount = 0;
 	while (true) {
@@ -91,6 +92,7 @@ QList<int> SegmentMergePolicy::findMerges(const SegmentInfoList& infos)
 	size_t numPossibleCandidates = qMax(0, segments.size() - m_maxMergeAtOnce);
 	for (size_t i = tooBigCount; i <= numPossibleCandidates; i++) {
 		size_t mergeSize = 0;
+		size_t mergeSizeFloored = 0;
 		QList<int> candidate;
 		for (size_t j = i; j < segments.size() && candidate.size() < m_maxMergeAtOnce; j++) {
 			int segment = segments.at(j);
@@ -100,9 +102,10 @@ QList<int> SegmentMergePolicy::findMerges(const SegmentInfoList& infos)
 			}
 			candidate.append(segment);
 			mergeSize += segBlockCount;
+			mergeSizeFloored += floorSize(segBlockCount);
 		}
 		if (candidate.size()) {
-			double score = double(infos.at(candidate.first()).blockCount()) / mergeSize;
+			double score = double(floorSize(infos.at(candidate.first()).blockCount())) / mergeSizeFloored;
 			score *= pow(mergeSize, 0.05);
 			//qDebug() << "Evaluating merge " << candidate << " with score " << score;
 	 		if (score < bestScore) {

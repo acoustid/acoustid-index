@@ -62,6 +62,7 @@ TEST(IndexWriterTest, Merge)
 
 	writer->segmentMergePolicy()->setMaxMergeAtOnce(2);
 	writer->segmentMergePolicy()->setMaxSegmentsPerTier(2);
+	writer->segmentMergePolicy()->setFloorSegmentBlocks(0);
 
 	uint32_t fp[] = { 7, 9, 12 };
 	writer->addDocument(1, fp, 3);
@@ -71,6 +72,7 @@ TEST(IndexWriterTest, Merge)
 	writer.reset(index.createWriter());
 	writer->segmentMergePolicy()->setMaxMergeAtOnce(2);
 	writer->segmentMergePolicy()->setMaxSegmentsPerTier(2);
+	writer->segmentMergePolicy()->setFloorSegmentBlocks(0);
 	writer->addDocument(2, fp, 3);
 	writer->commit();
 	ASSERT_EQ(2, writer->info().segmentCount());
@@ -79,6 +81,7 @@ TEST(IndexWriterTest, Merge)
 	writer.reset(index.createWriter());
 	writer->segmentMergePolicy()->setMaxMergeAtOnce(2);
 	writer->segmentMergePolicy()->setMaxSegmentsPerTier(2);
+	writer->segmentMergePolicy()->setFloorSegmentBlocks(0);
 	writer->addDocument(3, fp, 3);
 	writer->commit();
 	ASSERT_EQ(2, writer->info().segmentCount());
@@ -87,6 +90,7 @@ TEST(IndexWriterTest, Merge)
 	writer.reset(index.createWriter());
 	writer->segmentMergePolicy()->setMaxMergeAtOnce(2);
 	writer->segmentMergePolicy()->setMaxSegmentsPerTier(2);
+	writer->segmentMergePolicy()->setFloorSegmentBlocks(0);
 	writer->addDocument(4, fp, 3);
 	writer->commit();
 	ASSERT_EQ(2, writer->info().segmentCount());
@@ -95,6 +99,7 @@ TEST(IndexWriterTest, Merge)
 	writer.reset(index.createWriter());
 	writer->segmentMergePolicy()->setMaxMergeAtOnce(2);
 	writer->segmentMergePolicy()->setMaxSegmentsPerTier(2);
+	writer->segmentMergePolicy()->setFloorSegmentBlocks(0);
 	writer->addDocument(5, fp, 3);
 	writer->commit();
 	ASSERT_EQ(2, writer->info().segmentCount());

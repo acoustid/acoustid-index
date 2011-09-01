@@ -11,6 +11,7 @@ using namespace Acoustid;
 TEST(SegmentMergePolicyTest, TestFindMerges)
 {
 	SegmentMergePolicy policy(2, 2);
+	policy.setFloorSegmentBlocks(0);
 
 	SegmentInfoList infos;
 	infos.append(SegmentInfo(0, 1));
@@ -26,6 +27,7 @@ TEST(SegmentMergePolicyTest, TestFindMerges)
 TEST(SegmentMergePolicyTest, TestFindMerges2)
 {
 	SegmentMergePolicy policy(2, 2);
+	policy.setFloorSegmentBlocks(0);
 
 	SegmentInfoList infos;
 	infos.append(SegmentInfo(0, 3));
@@ -43,6 +45,7 @@ TEST(SegmentMergePolicyTest, TestFindMerges2)
 TEST(SegmentMergePolicyTest, TestFindMerges3)
 {
 	SegmentMergePolicy policy(2, 2);
+	policy.setFloorSegmentBlocks(0);
 
 	SegmentInfoList infos;
 	infos.append(SegmentInfo(0, 3));
@@ -57,6 +60,7 @@ TEST(SegmentMergePolicyTest, TestFindMerges3)
 TEST(SegmentMergePolicyTest, TestFindMerges4)
 {
 	SegmentMergePolicy policy(2, 2);
+	policy.setFloorSegmentBlocks(0);
 
 	SegmentInfoList infos;
 	infos.append(SegmentInfo(0, 3));
@@ -74,6 +78,7 @@ TEST(SegmentMergePolicyTest, TestFindMerges4)
 TEST(SegmentMergePolicyTest, TestFindMergesTooLarge)
 {
 	SegmentMergePolicy policy(2, 2);
+	policy.setFloorSegmentBlocks(0);
 
 	SegmentInfoList infos;
 	infos.append(SegmentInfo(0, 3));
@@ -87,5 +92,23 @@ TEST(SegmentMergePolicyTest, TestFindMergesTooLarge)
 	QList<int> merge = policy.findMerges(infos);
 	ASSERT_EQ(2, merge.size());
 	ASSERT_INTARRAY_EQ(expected, merge, 2);
+}
+
+TEST(SegmentMergePolicyTest, TestFindMergesFlooredSize)
+{
+	SegmentMergePolicy policy(4, 4);
+	policy.setFloorSegmentBlocks(10);
+
+	SegmentInfoList infos;
+	infos.append(SegmentInfo(0, 3));
+	infos.append(SegmentInfo(1, 2));
+	infos.append(SegmentInfo(4, 1));
+	infos.append(SegmentInfo(5, 2));
+	infos.append(SegmentInfo(6, 1));
+
+	int expected[] = { 1, 3, 2, 4 };
+	QList<int> merge = policy.findMerges(infos);
+	ASSERT_EQ(4, merge.size());
+	ASSERT_INTARRAY_EQ(expected, merge, 4);
 }
 
