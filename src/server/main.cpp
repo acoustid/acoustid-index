@@ -22,8 +22,8 @@ int main(int argc, char **argv)
 		.setDefaultValue("127.0.0.1");
 	parser.addOption("port", 'p')
 		.setArgument()
-		.setHelp("listen on this port (default: 6000)")
-		.setDefaultValue("6000");
+		.setHelp("listen on this port (default: 6080)")
+		.setDefaultValue("6080");
 	parser.addOption("syslog", 's')
 		.setHelp("log to syslog");
 	parser.addOption("syslog-facility", 'f')

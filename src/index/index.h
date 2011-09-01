@@ -13,6 +13,7 @@ namespace Acoustid {
 
 class IndexReader;
 class IndexWriter;
+class IndexFileDeleter;
 
 // Class for working with an on-disk index.
 //
@@ -46,11 +47,15 @@ public:
 	// Load all segment indexes
 	static SegmentIndexMap loadSegmentIndexes(Directory* dir, const IndexInfo& info, const SegmentIndexMap &oldIndexes = SegmentIndexMap());
 
+	void onReaderDeleted(IndexReader* reader);
+	void onWriterDeleted(IndexWriter* writer);
+
 private:
 	ACOUSTID_DISABLE_COPY(Index);
 
 	QMutex m_mutex;
-	Directory *m_dir;
+	Directory* m_dir;
+	IndexFileDeleter* m_deleter;
 	IndexInfo m_info;
 	SegmentIndexMap m_indexes;
 	bool m_open;

@@ -23,6 +23,9 @@ IndexWriter::IndexWriter(Directory *dir, const IndexInfo& info, const SegmentInd
 
 IndexWriter::~IndexWriter()
 {
+	if (m_index) {
+		m_index->onReaderDeleted(this);
+	}
 	delete m_mergePolicy;
 }
 
@@ -38,6 +41,7 @@ void IndexWriter::commit()
 {
 	flush();
 	m_info.save(m_dir);
+	qDebug() << "Committed revision" << m_info.revision();
 	if (m_index) {
 		m_index->refresh(m_info);
 	}
@@ -63,7 +67,6 @@ void IndexWriter::merge(const QList<int>& merge)
 	if (merge.isEmpty()) {
 		return;
 	}
-	qDebug() << "Merging segments" << merge;
 
 	const SegmentInfoList& segments = m_info.segments();
 	SegmentInfo segment(m_info.incLastSegmentId());
@@ -72,6 +75,7 @@ void IndexWriter::merge(const QList<int>& merge)
 		for (size_t i = 0; i < merge.size(); i++) {
 			int j = merge.at(i);
 			const SegmentInfo& s = segments.at(j);
+			qDebug() << "Merging segment" << s.id();
 			merger.addSource(new SegmentEnum(segmentIndex(s), segmentDataReader(s)));
 		}
 		merger.merge();

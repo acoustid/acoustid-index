@@ -5,6 +5,21 @@
 
 using namespace Acoustid;
 
+QList<QString> IndexInfo::files() const
+{
+	QList<QString> files;
+	if (d->revision < 0) {
+		return files;
+	}
+	files.append(indexInfoFileName(d->revision));
+	for (size_t i = 0; i < d->segments.size(); i++) {
+		const SegmentInfo& segment = d->segments.at(i);
+		files.append(segment.indexFileName());
+		files.append(segment.dataFileName());
+	}
+	return files;
+}
+
 int IndexInfo::indexInfoRevision(const QString& fileName)
 {
 	return fileName.mid(5).toInt();

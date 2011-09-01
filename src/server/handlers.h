@@ -122,6 +122,38 @@ public:
 	}
 };
 
+class CleanupHandler : public Handler
+{
+public:
+	ACOUSTID_HANDLER_CONSTRUCTOR(CleanupHandler)
+
+	QString handle()
+	{
+		IndexWriter* writer = connection()->indexWriter();
+		if (!writer) {
+			throw HandlerException("not in transaction");
+		}
+		writer->cleanup();
+		return QString();
+	}
+};
+
+class OptimizeHandler : public Handler
+{
+public:
+	ACOUSTID_HANDLER_CONSTRUCTOR(OptimizeHandler)
+
+	QString handle()
+	{
+		IndexWriter* writer = connection()->indexWriter();
+		if (!writer) {
+			throw HandlerException("not in transaction");
+		}
+		writer->optimize();
+		return QString();
+	}
+};
+
 }
 }
 

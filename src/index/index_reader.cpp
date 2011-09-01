@@ -8,17 +8,21 @@
 #include "segment_index_reader.h"
 #include "segment_data_reader.h"
 #include "segment_searcher.h"
+#include "index.h"
 #include "index_reader.h"
 
 using namespace Acoustid;
 
-IndexReader::IndexReader(Directory *dir, const IndexInfo& info, const SegmentIndexMap& indexes)
-	: m_dir(dir), m_info(info), m_indexes(indexes)
+IndexReader::IndexReader(Directory *dir, const IndexInfo& info, const SegmentIndexMap& indexes, Index* index)
+	: m_dir(dir), m_info(info), m_indexes(indexes), m_index(index)
 {
 }
 
 IndexReader::~IndexReader()
 {
+	if (m_index) {
+		m_index->onReaderDeleted(this);
+	}
 }
 
 SegmentIndexSharedPtr IndexReader::segmentIndex(const SegmentInfo& segment)
