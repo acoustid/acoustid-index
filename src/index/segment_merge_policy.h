@@ -13,7 +13,7 @@ namespace Acoustid {
 class SegmentMergePolicy
 {
 public:
-	SegmentMergePolicy(int maxMergeAtOnce = MAX_MERGE_AT_ONCE, int maxSegmentsPerTier = MAX_SEGMENTS_PER_TIER);
+	SegmentMergePolicy(int maxMergeAtOnce = MAX_MERGE_AT_ONCE, int maxSegmentsPerTier = MAX_SEGMENTS_PER_TIER, int maxSegmentBlocks = MAX_SEGMENT_BLOCKS);
 	virtual ~SegmentMergePolicy();
 
 	void setMaxMergeAtOnce(int maxMergeAtOnce)
@@ -36,11 +36,22 @@ public:
 		return m_maxSegmentsPerTier;
 	}
 
+	void setMaxSegmentBlocks(int maxSegmentBlocks)
+	{
+		m_maxSegmentBlocks = maxSegmentBlocks;
+	}
+
+	int maxSegmentBlocks() const
+	{
+		return m_maxSegmentBlocks;
+	}
+
 	QList<int> findMerges(const SegmentInfoList& infos);
 
 private:
 	int m_maxMergeAtOnce;
 	int m_maxSegmentsPerTier;
+	int m_maxSegmentBlocks;
 };
 
 }

@@ -9,10 +9,11 @@
 
 using namespace Acoustid;
 
-SegmentMergePolicy::SegmentMergePolicy(int maxMergeAtOnce, int maxSegmentsPerTier)
+SegmentMergePolicy::SegmentMergePolicy(int maxMergeAtOnce, int maxSegmentsPerTier, int maxSegmentBlocks)
 {
 	setMaxMergeAtOnce(maxMergeAtOnce);
 	setMaxSegmentsPerTier(maxSegmentsPerTier);
+	setMaxSegmentBlocks(maxSegmentBlocks);
 }
 
 SegmentMergePolicy::~SegmentMergePolicy()
@@ -51,8 +52,15 @@ QList<int> SegmentMergePolicy::findMerges(const SegmentInfoList& infos)
 
 	size_t minSegmentSize = infos.at(segments.last()).blockCount();
 	size_t totalIndexSize = 0;
+	size_t tooBigCount = 0;
 	for (size_t i = 0; i < infos.size(); i++) {
-		totalIndexSize += infos.at(i).blockCount();
+		size_t blockCount = infos.at(i).blockCount();
+		if (blockCount <= m_maxSegmentBlocks / 2) {
+			totalIndexSize += blockCount;
+		}
+		else {
+			tooBigCount++;
+		}
 	}
 	//qDebug() << "minSegmentSize =" << minSegmentSize;
 	//qDebug() << "totalIndexSize =" << totalIndexSize;
@@ -81,13 +89,17 @@ QList<int> SegmentMergePolicy::findMerges(const SegmentInfoList& infos)
 	QList<int> best;
 	double bestScore = 1.0;
 	size_t numPossibleCandidates = qMax(0, segments.size() - m_maxMergeAtOnce);
-	for (size_t i = 0; i <= numPossibleCandidates; i++) {
+	for (size_t i = tooBigCount; i <= numPossibleCandidates; i++) {
 		size_t mergeSize = 0;
 		QList<int> candidate;
 		for (size_t j = i; j < segments.size() && candidate.size() < m_maxMergeAtOnce; j++) {
 			int segment = segments.at(j);
+			size_t segBlockCount = infos.at(segment).blockCount();
+			if (mergeSize + segBlockCount > m_maxSegmentBlocks) {
+				continue;
+			}
 			candidate.append(segment);
-			mergeSize += infos.at(segment).blockCount();
+			mergeSize += segBlockCount;
 		}
 		if (candidate.size()) {
 			double score = double(infos.at(candidate.first()).blockCount()) / mergeSize;

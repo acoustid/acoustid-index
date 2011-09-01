@@ -71,3 +71,21 @@ TEST(SegmentMergePolicyTest, TestFindMerges4)
 	ASSERT_INTARRAY_EQ(expected, merge, 2);
 }
 
+TEST(SegmentMergePolicyTest, TestFindMergesTooLarge)
+{
+	SegmentMergePolicy policy(2, 2);
+
+	SegmentInfoList infos;
+	infos.append(SegmentInfo(0, 3));
+	infos.append(SegmentInfo(1, 2));
+	infos.append(SegmentInfo(4, 1));
+	infos.append(SegmentInfo(5, 2));
+	infos.append(SegmentInfo(6, 1));
+	infos.append(SegmentInfo(7, 2 * 1024 * 1024));
+
+	int expected[] = { 2, 4 };
+	QList<int> merge = policy.findMerges(infos);
+	ASSERT_EQ(2, merge.size());
+	ASSERT_INTARRAY_EQ(expected, merge, 2);
+}
+
