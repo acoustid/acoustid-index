@@ -33,7 +33,7 @@ public:
 			throw HandlerException("expected 1 argument");
 		}
 		QStringList fingerprint = args().first().split(',');
-		int32_t *fp = new int32_t[fingerprint.size()];
+		ScopedArrayPtr<int32_t> fp(new int32_t[fingerprint.size()]);
 		size_t fpsize = 0;
 		for (int j = 0; j < fingerprint.size(); j++) {
 			bool ok;
@@ -47,7 +47,7 @@ public:
 		}
 		TopHitsCollector collector(10);
 		ScopedPtr<IndexReader> reader(index()->createReader());
-		reader->search((uint32_t *)fp, fpsize, &collector);
+		reader->search(reinterpret_cast<uint32_t*>(fp.get()), fpsize, &collector);
 		QList<Result> results = collector.topResults();
 		QStringList output;
 		for (int j = 0; j < results.size(); j++) {
@@ -105,7 +105,7 @@ public:
 		}
 		int32_t id = args().at(0).toInt();
 		QStringList fingerprint = args().at(1).split(',');
-		int32_t *fp = new int32_t[fingerprint.size()];
+		ScopedArrayPtr<int32_t> fp(new int32_t[fingerprint.size()]);
 		size_t fpsize = 0;
 		for (int j = 0; j < fingerprint.size(); j++) {
 			bool ok;
@@ -117,7 +117,7 @@ public:
 		if (!fpsize) {
 			throw HandlerException("empty fingerprint");
 		}
-		writer->addDocument(id, (uint32_t*)fp, fpsize);
+		writer->addDocument(id, reinterpret_cast<uint32_t*>(fp.get()), fpsize);
 		return QString();
 	}
 };

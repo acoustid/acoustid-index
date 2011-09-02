@@ -31,7 +31,7 @@ int main(int argc, char **argv)
 		.setMetaVar("FACILITY")
 		.setHelp("syslog facility to use (default: user)")
 		.setDefaultValue("user");
-	Options *opts = parser.parse(argc, argv);
+	ScopedPtr<Options> opts(parser.parse(argc, argv));
 
 	QString path = opts->option("directory");
 	QString address = opts->option("address");

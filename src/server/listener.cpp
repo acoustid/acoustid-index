@@ -30,6 +30,8 @@ Listener::Listener(const QString& path, QObject* parent)
 
 Listener::~Listener()
 {
+	delete m_index;
+	delete m_dir;
 }
 
 void Listener::sigIntHandler(int signal)
