@@ -32,17 +32,7 @@ public:
 
 	SegmentMergePolicy* segmentMergePolicy()
 	{
-		return m_mergePolicy;
-	}
-
-	Index* index()
-	{
-		return m_index;
-	}
-
-	void setIndex(Index* index)
-	{
-		m_index = index;
+		return m_mergePolicy.get();
 	}
 
 	void addDocument(uint32_t id, uint32_t *terms, size_t length);
@@ -61,8 +51,7 @@ private:
 
 	size_t m_maxSegmentBufferSize;
 	std::vector<uint64_t> m_segmentBuffer;
-	SegmentMergePolicy *m_mergePolicy;
-	Index* m_index;
+	ScopedPtr<SegmentMergePolicy> m_mergePolicy;
 };
 
 }

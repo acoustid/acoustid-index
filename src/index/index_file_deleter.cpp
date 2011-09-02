@@ -18,6 +18,7 @@ IndexFileDeleter::~IndexFileDeleter()
 void IndexFileDeleter::incRef(const IndexInfo& info)
 {
 	QList<QString> files = info.files();
+	qDebug() << "IncRef" << files;
 	for (int i = 0; i < files.size(); i++) {
 		incRef(files.at(i));
 	}
@@ -31,6 +32,7 @@ void IndexFileDeleter::incRef(const QString& file)
 void IndexFileDeleter::decRef(const IndexInfo& info)
 {
 	QList<QString> files = info.files();
+	qDebug() << "DecRef" << files;
 	for (int i = 0; i < files.size(); i++) {
 		decRef(files.at(i));
 	}

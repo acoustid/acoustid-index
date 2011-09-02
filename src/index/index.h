@@ -55,7 +55,7 @@ private:
 
 	QMutex m_mutex;
 	Directory* m_dir;
-	IndexFileDeleter* m_deleter;
+	ScopedPtr<IndexFileDeleter> m_deleter;
 	IndexInfo m_info;
 	SegmentIndexMap m_indexes;
 	bool m_open;

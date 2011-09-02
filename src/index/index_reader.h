@@ -23,6 +23,16 @@ public:
 
 	const IndexInfo& info() const { return m_info; }
 
+	Index* index()
+	{
+		return m_index;
+	}
+
+	void setIndex(Index* index)
+	{
+		m_index = index;
+	}
+
 	void search(uint32_t *fingerprint, size_t length, Collector *collector);
 
 protected:

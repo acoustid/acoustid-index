@@ -16,17 +16,17 @@
 using namespace Acoustid;
 
 IndexWriter::IndexWriter(Directory *dir, const IndexInfo& info, const SegmentIndexMap& indexes, Index* index)
-	: IndexReader(dir, info, indexes), m_maxSegmentBufferSize(MAX_SEGMENT_BUFFER_SIZE), m_index(index)
+	: IndexReader(dir, info, indexes, index), m_maxSegmentBufferSize(MAX_SEGMENT_BUFFER_SIZE)
 {
-	m_mergePolicy = new SegmentMergePolicy();
+	m_mergePolicy.reset(new SegmentMergePolicy());
 }
 
 IndexWriter::~IndexWriter()
 {
+	qDebug() << "IndexWriter closed" << this << m_index;
 	if (m_index) {
-		m_index->onReaderDeleted(this);
+		m_index->onWriterDeleted(this);
 	}
-	delete m_mergePolicy;
 }
 
 void IndexWriter::addDocument(uint32_t id, uint32_t *terms, size_t length)
