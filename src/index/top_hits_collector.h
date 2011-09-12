@@ -28,7 +28,7 @@ private:
 class TopHitsCollector : public Collector
 {
 public:
-	TopHitsCollector(size_t numHits);
+	TopHitsCollector(size_t numHits, int topScorePercent = 0);
 	~TopHitsCollector();
 	void collect(uint32_t id);
 
@@ -37,6 +37,7 @@ public:
 private:
 	QHash<uint32_t, unsigned int> m_counts;
 	size_t m_numHits;
+	int m_topScorePercent;
 };
 
 }

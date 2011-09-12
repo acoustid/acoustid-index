@@ -45,7 +45,7 @@ public:
 		if (!fpsize) {
 			throw HandlerException("empty fingerprint");
 		}
-		TopHitsCollector collector(10);
+		TopHitsCollector collector(500, 10);
 		ScopedPtr<IndexReader> reader(index()->createReader());
 		reader->search(reinterpret_cast<uint32_t*>(fp.get()), fpsize, &collector);
 		QList<Result> results = collector.topResults();

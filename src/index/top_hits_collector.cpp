@@ -6,8 +6,8 @@
 
 using namespace Acoustid;
 
-TopHitsCollector::TopHitsCollector(size_t numHits)
-	: m_numHits(numHits)
+TopHitsCollector::TopHitsCollector(size_t numHits, int topScorePercent)
+	: m_numHits(numHits), m_topScorePercent(topScorePercent)
 {
 }
 
@@ -33,11 +33,19 @@ struct CompareByCount
 QList<Result> TopHitsCollector::topResults()
 {
 	QList<uint32_t> ids = m_counts.keys();
-	std::sort(ids.begin(), ids.end(), CompareByCount(m_counts));
 	QList<Result> results;
+	if (ids.isEmpty()) {
+		return results;
+	}
+	std::sort(ids.begin(), ids.end(), CompareByCount(m_counts));
+	unsigned int minScore = (50 + m_counts[ids.first()] * m_topScorePercent) / 100;
 	for (int i = 0; i < std::min(m_numHits, size_t(ids.size())); i++) {
 		uint32_t id = ids.at(i);
-		results.append(Result(id, m_counts[id]));
+		unsigned int score = m_counts[id];
+		if (score < minScore) {
+			break;
+		}
+		results.append(Result(id, score));
 	}
 	return results;
 }
