@@ -14,7 +14,7 @@ integer arrays.
 
 Reindexing from the Acoustid database:
 
- $ echo "COPY (SELECT id, extract_fp_query(fingerprint) FROM fingerprint) TO stdout DELIMITER '|' " \
+ $ echo "COPY (SELECT id, acoustid_extract_query(fingerprint) FROM fingerprint) TO stdout DELIMITER '|' " \
        | psql -U acoustid acoustid | ./fpi-import -d idx/ -c -o
 
  1. Stop importing
