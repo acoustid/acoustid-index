@@ -37,12 +37,12 @@ public:
 		return true;
 	}
 
-	size_t key()
+	uint32_t key()
 	{
 		return m_currentBlock->key();
 	}
 
-	size_t value()
+	uint32_t value()
 	{
 		return m_currentBlock->value();
 	}
