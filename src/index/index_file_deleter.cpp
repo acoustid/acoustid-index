@@ -26,7 +26,7 @@ void IndexFileDeleter::incRef(const IndexInfo& info)
 void IndexFileDeleter::incRef(const QString& file)
 {
 	m_refCounts[file] = m_refCounts.value(file) + 1;
-	qDebug() << "IncRef" << file << m_refCounts[file];
+	//qDebug() << "IncRef" << file << m_refCounts[file];
 }
 
 void IndexFileDeleter::decRef(const IndexInfo& info)
@@ -40,7 +40,7 @@ void IndexFileDeleter::decRef(const IndexInfo& info)
 void IndexFileDeleter::decRef(const QString& file)
 {
 	int count = m_refCounts.value(file) - 1;
-	qDebug() << "DecRef" << file << count;
+	//qDebug() << "DecRef" << file << count;
 	if (count <= 0) {
 		qDebug() << "Deleting file" << file;
 		m_dir->deleteFile(file);
