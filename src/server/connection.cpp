@@ -98,6 +98,9 @@ void Connection::handleLine(const QString& line)
 	else if (command == "commit") {
 		m_handler = new CommitHandler(this, args);
 	}
+	else if (command == "rollback") {
+		m_handler = new RollbackHandler(this, args);
+	}
 	else {
 		sendResponse("ERR unknown command");
 		return;

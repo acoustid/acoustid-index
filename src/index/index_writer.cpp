@@ -26,10 +26,10 @@ IndexWriter::~IndexWriter()
 {
 	qDebug() << "IndexWriter closed" << this << m_index;
 	if (m_index) {
-		m_index->onWriterDeleted(this);
 		for (int i = 0; i < m_newSegments.size(); i++) {
 			m_index->fileDeleter()->decRef(m_newSegments.at(i));
 		}
+		m_index->onWriterDeleted(this);
 	}
 }
 

@@ -89,6 +89,22 @@ public:
 	}
 };
 
+class RollbackHandler : public Handler
+{
+public:
+	ACOUSTID_HANDLER_CONSTRUCTOR(RollbackHandler)
+
+	QString handle()
+	{
+		IndexWriter* writer = connection()->indexWriter();
+		if (!writer) {
+			throw HandlerException("not in transaction");
+		}
+		connection()->setIndexWriter(NULL);
+		return QString();
+	}
+};
+
 class InsertHandler : public Handler
 {
 public:
