@@ -61,6 +61,8 @@ private:
     IndexWriter* m_indexWriter;
 	QMutex m_indexWriterMutex;
 	Handler* m_handler;
+	int m_topScorePercent;
+	int m_maxResults;
 };
 
 }

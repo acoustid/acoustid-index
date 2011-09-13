@@ -14,7 +14,9 @@ static const char* kCRLF = "\r\n";
 static const int kMaxLineSize = 1024 * 32;
 
 Connection::Connection(Index* index, QTcpSocket *socket, QObject *parent)
-	: QObject(parent), m_socket(socket), m_output(socket), m_index(index), m_indexWriter(NULL), m_handler(NULL)
+	: QObject(parent), m_socket(socket), m_output(socket), m_index(index),
+		m_indexWriter(NULL), m_handler(NULL),
+		m_topScorePercent(10), m_maxResults(500)
 {
 	m_socket->setParent(this);
 	m_client = QString("%1:%2").arg(m_socket->peerAddress().toString()).arg(m_socket->peerPort());
@@ -50,7 +52,7 @@ void Connection::sendResponse(const QString& response, bool next)
 
 void Connection::handleLine(const QString& line)
 {
-	qDebug() << "Got line" << line << "from" << m_client;
+	//qDebug() << "Got line" << line << "from" << m_client;
 
 	QString command;
 	QStringList args;
@@ -77,11 +79,45 @@ void Connection::handleLine(const QString& line)
 		close();
 		return;
 	}
+	else if (command == "set") {
+		if (args.size() < 2) {
+			sendResponse("ERR expected 2 arguments");
+			return;
+		}
+		if (args[0] == "max_results") {
+			m_maxResults = args[1].toInt();
+		}
+		else if (args[0] == "top_score_percent") {
+			m_topScorePercent = args[1].toInt();
+		}
+		else {
+			sendResponse("ERR unknown parameter");
+			return;
+		}
+		sendResponse("OK");
+		return;
+	}
+	else if (command == "get") {
+		if (args.size() < 1) {
+			sendResponse("ERR expected 1 argument");
+			return;
+		}
+		if (args[0] == "max_results") {
+			sendResponse(QString("OK %1 %2").arg(args[0]).arg(m_maxResults));
+		}
+		else if (args[0] == "top_score_percent") {
+			sendResponse(QString("OK %1 %2").arg(args[0]).arg(m_topScorePercent));
+		}
+		else {
+			sendResponse("ERR unknown parameter");
+		}
+		return;
+	}
 	else if (command == "echo") {
 		m_handler = new EchoHandler(this, args);
 	}
 	else if (command == "search") {
-		m_handler = new SearchHandler(this, args);
+		m_handler = new SearchHandler(this, args, m_maxResults, m_topScorePercent);
 	}
 	else if (command == "insert") {
 		m_handler = new InsertHandler(this, args);
