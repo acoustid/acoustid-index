@@ -81,6 +81,8 @@ public:
 		d->blockCount = blockCount;
 	}
 
+	QList<QString> files() const;
+
 private:
 	QSharedDataPointer<SegmentInfoData> d;
 };

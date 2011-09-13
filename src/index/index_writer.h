@@ -52,6 +52,7 @@ private:
 	size_t m_maxSegmentBufferSize;
 	std::vector<uint64_t> m_segmentBuffer;
 	ScopedPtr<SegmentMergePolicy> m_mergePolicy;
+	QList<SegmentInfo> m_newSegments;
 };
 
 }

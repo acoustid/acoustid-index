@@ -5,7 +5,7 @@
 #define ACOUSTID_INDEX_FILE_DELETER_H_
 
 #include "common.h"
-#include "segment_index.h"
+#include "segment_info.h"
 #include "index_info.h"
 
 namespace Acoustid {
@@ -18,6 +18,8 @@ public:
 
 	void incRef(const IndexInfo& info);
 	void decRef(const IndexInfo& info);
+	void incRef(const SegmentInfo& info);
+	void decRef(const SegmentInfo& info);
 	void incRef(const QString& file);
 	void decRef(const QString& file);
 

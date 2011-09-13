@@ -33,9 +33,20 @@ public:
 	void refresh(const IndexInfo& info, const SegmentIndexMap &oldIndexes = SegmentIndexMap());
 
 	// Return the directory which contains the index data
-	Directory *directory()
+	Directory* directory()
 	{
 		return m_dir;
+	}
+
+	// Return the file deleted controlling this index's directory
+	IndexFileDeleter* fileDeleter()
+	{
+		return m_deleter.get();
+	}
+
+	IndexInfo info()
+	{
+		return m_info;
 	}
 
 	// Create a new searcher

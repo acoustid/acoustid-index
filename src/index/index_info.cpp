@@ -1,3 +1,6 @@
+// Copyright (C) 2011  Lukas Lalinsky
+// Distributed under the MIT license, see the LICENSE file for details.
+
 #include "store/directory.h"
 #include "store/input_stream.h"
 #include "store/output_stream.h"
@@ -14,8 +17,7 @@ QList<QString> IndexInfo::files() const
 	files.append(indexInfoFileName(d->revision));
 	for (size_t i = 0; i < d->segments.size(); i++) {
 		const SegmentInfo& segment = d->segments.at(i);
-		files.append(segment.indexFileName());
-		files.append(segment.dataFileName());
+		files.append(segment.files());
 	}
 	return files;
 }

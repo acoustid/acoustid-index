@@ -23,6 +23,14 @@ void IndexFileDeleter::incRef(const IndexInfo& info)
 	}
 }
 
+void IndexFileDeleter::incRef(const SegmentInfo& info)
+{
+	QList<QString> files = info.files();
+	for (int i = 0; i < files.size(); i++) {
+		incRef(files.at(i));
+	}
+}
+
 void IndexFileDeleter::incRef(const QString& file)
 {
 	m_refCounts[file] = m_refCounts.value(file) + 1;
@@ -30,6 +38,14 @@ void IndexFileDeleter::incRef(const QString& file)
 }
 
 void IndexFileDeleter::decRef(const IndexInfo& info)
+{
+	QList<QString> files = info.files();
+	for (int i = 0; i < files.size(); i++) {
+		decRef(files.at(i));
+	}
+}
+
+void IndexFileDeleter::decRef(const SegmentInfo& info)
 {
 	QList<QString> files = info.files();
 	for (int i = 0; i < files.size(); i++) {

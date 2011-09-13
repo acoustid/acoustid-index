@@ -11,6 +11,7 @@
 #include "segment_data_reader.h"
 #include "segment_merger.h"
 #include "index.h"
+#include "index_file_deleter.h"
 #include "index_writer.h"
 
 using namespace Acoustid;
@@ -26,6 +27,9 @@ IndexWriter::~IndexWriter()
 	qDebug() << "IndexWriter closed" << this << m_index;
 	if (m_index) {
 		m_index->onWriterDeleted(this);
+		for (int i = 0; i < m_newSegments.size(); i++) {
+			m_index->fileDeleter()->decRef(m_newSegments.at(i));
+		}
 	}
 }
 
@@ -44,7 +48,11 @@ void IndexWriter::commit()
 	qDebug() << "Committed revision" << m_info.revision();
 	if (m_index) {
 		m_index->refresh(m_info);
+		for (int i = 0; i < m_newSegments.size(); i++) {
+			m_index->fileDeleter()->decRef(m_newSegments.at(i));
+		}
 	}
+	m_newSegments.clear();
 }
 
 void IndexWriter::maybeFlush()
@@ -75,12 +83,18 @@ void IndexWriter::merge(const QList<int>& merge)
 		for (size_t i = 0; i < merge.size(); i++) {
 			int j = merge.at(i);
 			const SegmentInfo& s = segments.at(j);
-			qDebug() << "Merging segment" << s.id();
+			qDebug() << "Merging segment" << s.id() << "into" << segment.id();
 			merger.addSource(new SegmentEnum(segmentIndex(s), segmentDataReader(s)));
 		}
 		merger.merge();
 		segment.setBlockCount(merger.writer()->blockCount());
 		segment.setLastKey(merger.writer()->lastKey());
+	}
+
+	qDebug() << "New segment" << segment.id();
+	m_newSegments.append(segment);
+	if (m_index) {
+		m_index->fileDeleter()->incRef(segment);
 	}
 
 	SegmentInfoList newSegments;
@@ -133,6 +147,12 @@ void IndexWriter::flush()
 	segment.setBlockCount(writer->blockCount());
 	segment.setLastKey(writer->lastKey());
 
+	qDebug() << "New segment" << segment.id();
+	m_newSegments.append(segment);
+	if (m_index) {
+		m_index->fileDeleter()->incRef(segment);
+	}
+
 	m_info.addSegment(segment);
 	m_indexes = Index::loadSegmentIndexes(m_dir, m_info, m_indexes);
 	maybeMerge();
@@ -151,11 +171,6 @@ void IndexWriter::optimize()
 		merges.append(i);
 	}
 	merge(merges);
-
-	m_info.save(m_dir);
-	if (m_index) {
-		m_index->refresh(m_info);
-	}
 }
 
 void IndexWriter::cleanup()
