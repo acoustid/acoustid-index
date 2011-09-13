@@ -103,6 +103,8 @@ void Index::onReaderDeleted(IndexReader* reader)
 void Index::onWriterDeleted(IndexWriter* writer)
 {
 	QMutexLocker locker(&m_mutex);;
+	assert(m_indexWriter != NULL);
+	assert(m_indexWriter == writer);
 	qDebug() << "Writer deleted" << writer;
 	m_indexWriter = NULL;
 }
