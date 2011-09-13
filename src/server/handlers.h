@@ -64,6 +64,7 @@ public:
 
 	QString handle()
 	{
+		QMutexLocker locker(connection()->indexWriterMutex());
 		if (connection()->indexWriter()) {
 			throw HandlerException("already in transaction");
 		}
@@ -79,6 +80,7 @@ public:
 
 	QString handle()
 	{
+		QMutexLocker locker(connection()->indexWriterMutex());
 		IndexWriter* writer = connection()->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
@@ -96,6 +98,7 @@ public:
 
 	QString handle()
 	{
+		QMutexLocker locker(connection()->indexWriterMutex());
 		IndexWriter* writer = connection()->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
@@ -112,6 +115,7 @@ public:
 
 	QString handle()
 	{
+		QMutexLocker locker(connection()->indexWriterMutex());
 		IndexWriter* writer = connection()->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
@@ -145,6 +149,7 @@ public:
 
 	QString handle()
 	{
+		QMutexLocker locker(connection()->indexWriterMutex());
 		IndexWriter* writer = connection()->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
@@ -161,6 +166,7 @@ public:
 
 	QString handle()
 	{
+		QMutexLocker locker(connection()->indexWriterMutex());
 		IndexWriter* writer = connection()->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");

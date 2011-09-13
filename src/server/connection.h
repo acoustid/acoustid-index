@@ -38,6 +38,11 @@ public:
 		m_indexWriter = indexWriter;
 	}
 
+	QMutex* indexWriterMutex()
+	{
+		return &m_indexWriterMutex;
+	}
+
 signals:
 	void closed(Connection *connection);
 
@@ -54,6 +59,7 @@ private:
 	QTextStream m_output;
     Index* m_index;
     IndexWriter* m_indexWriter;
+	QMutex m_indexWriterMutex;
 	Handler* m_handler;
 };
 
