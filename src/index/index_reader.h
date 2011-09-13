@@ -35,10 +35,10 @@ public:
 
 	void search(uint32_t *fingerprint, size_t length, Collector *collector);
 
-protected:
 	SegmentIndexSharedPtr segmentIndex(const SegmentInfo& segment);
 	SegmentDataReader* segmentDataReader(const SegmentInfo& segment);
 
+protected:
 	Directory* m_dir;
 	IndexInfo m_info;
 	SegmentIndexMap m_indexes;
