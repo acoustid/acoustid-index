@@ -66,6 +66,7 @@ private:
 
 	QMutex m_mutex;
 	Directory* m_dir;
+	IndexWriter* m_indexWriter;
 	ScopedPtr<IndexFileDeleter> m_deleter;
 	IndexInfo m_info;
 	SegmentIndexMap m_indexes;

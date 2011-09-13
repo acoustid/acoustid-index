@@ -70,6 +70,7 @@ TEST(IndexWriterTest, Merge)
 	writer->commit();
 	ASSERT_EQ(1, writer->info().segmentCount());
 	ASSERT_EQ(1, writer->info().segment(0).blockCount());
+	writer.reset(NULL);
 	writer.reset(index.createWriter());
 	ASSERT_EQ(3, dir.listFiles().size());
 	qDebug() << dir.listFiles();
@@ -81,6 +82,7 @@ TEST(IndexWriterTest, Merge)
 	ASSERT_EQ(2, writer->info().segmentCount());
 	ASSERT_EQ(1, writer->info().segment(0).blockCount());
 	ASSERT_EQ(1, writer->info().segment(1).blockCount());
+	writer.reset(NULL);
 	writer.reset(index.createWriter());
 	ASSERT_EQ(5, dir.listFiles().size());
 	qDebug() << dir.listFiles();
@@ -92,6 +94,7 @@ TEST(IndexWriterTest, Merge)
 	ASSERT_EQ(2, writer->info().segmentCount());
 	ASSERT_EQ(1, writer->info().segment(0).blockCount());
 	ASSERT_EQ(1, writer->info().segment(1).blockCount());
+	writer.reset(NULL);
 	writer.reset(index.createWriter());
 	ASSERT_EQ(5, dir.listFiles().size());
 	qDebug() << dir.listFiles();
@@ -103,6 +106,7 @@ TEST(IndexWriterTest, Merge)
 	ASSERT_EQ(2, writer->info().segmentCount());
 	ASSERT_EQ(1, writer->info().segment(0).blockCount());
 	ASSERT_EQ(1, writer->info().segment(1).blockCount());
+	writer.reset(NULL);
 	writer.reset(index.createWriter());
 	ASSERT_EQ(5, dir.listFiles().size());
 	qDebug() << dir.listFiles();
@@ -113,7 +117,7 @@ TEST(IndexWriterTest, Merge)
 	writer->commit();
 	ASSERT_EQ(1, writer->info().segmentCount());
 	ASSERT_EQ(1, writer->info().segment(0).blockCount());
-	writer.reset(index.createWriter());
+	writer.reset(NULL);
 	ASSERT_EQ(3, dir.listFiles().size());
 	qDebug() << dir.listFiles();
 }

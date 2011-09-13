@@ -15,7 +15,7 @@
 using namespace Acoustid;
 
 Index::Index(Directory *dir)
-	: m_mutex(QMutex::Recursive), m_dir(dir), m_open(false)
+	: m_mutex(QMutex::Recursive), m_dir(dir), m_open(false), m_indexWriter(NULL)
 {
 	m_deleter.reset(new IndexFileDeleter(m_dir));
 }
@@ -81,10 +81,14 @@ IndexReader* Index::createReader()
 IndexWriter* Index::createWriter()
 {
 	QMutexLocker locker(&m_mutex);;
+	if (m_indexWriter) {
+		throw IOException("there already is an index writer open");
+	}
 	if (m_open) {
 		m_deleter->incRef(m_info);
 	}
-	return new IndexWriter(m_dir, m_info, m_indexes, this);
+	m_indexWriter = new IndexWriter(m_dir, m_info, m_indexes, this);
+	return m_indexWriter;
 }
 
 void Index::onReaderDeleted(IndexReader* reader)
@@ -98,6 +102,8 @@ void Index::onReaderDeleted(IndexReader* reader)
 
 void Index::onWriterDeleted(IndexWriter* writer)
 {
+	QMutexLocker locker(&m_mutex);;
 	qDebug() << "Writer deleted" << writer;
+	m_indexWriter = NULL;
 }
 
