@@ -35,6 +35,11 @@ public:
 		m_indexWriter.reset(indexWriter);
 	}
 
+	QMutex* indexWriterMutex()
+	{
+		return &m_indexWriterMutex;
+	}
+
 signals:
 	void closed(Connection *connection);
 
@@ -51,7 +56,10 @@ private:
 	QTextStream m_output;
     Index* m_index;
     ScopedPtr<IndexWriter> m_indexWriter;
+	QMutex m_indexWriterMutex;
 	Handler* m_handler;
+	int m_topScorePercent;
+	int m_maxResults;
 };
 
 }

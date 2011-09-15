@@ -25,7 +25,18 @@ public:
 class SearchHandler : public Handler
 {
 public:
-	ACOUSTID_HANDLER_CONSTRUCTOR(SearchHandler)
+	SearchHandler(Connection* connection, const QStringList& args, int maxResults = 500, int topScorePercent = 10)
+		: Handler(connection, args), m_topScorePercent(topScorePercent), m_maxResults(maxResults) { }
+
+	void setTopScorePercent(int v)
+	{
+		m_topScorePercent = v;
+	}
+
+	void setMaxResults(int v)
+	{
+		m_maxResults = v;
+	}
 
 	QString handle()
 	{
@@ -45,7 +56,7 @@ public:
 		if (!fpsize) {
 			throw HandlerException("empty fingerprint");
 		}
-		TopHitsCollector collector(500, 10);
+		TopHitsCollector collector(m_maxResults, m_topScorePercent);
 		ScopedPtr<IndexReader> reader(index()->createReader());
 		reader->search(reinterpret_cast<uint32_t*>(fp.get()), fpsize, &collector);
 		QList<Result> results = collector.topResults();
@@ -55,6 +66,10 @@ public:
 		}
 		return output.join(" ");
 	}
+
+private:
+	int m_topScorePercent;
+	int m_maxResults;
 };
 
 class BeginHandler : public Handler
@@ -64,6 +79,7 @@ public:
 
 	QString handle()
 	{
+		QMutexLocker locker(connection()->indexWriterMutex());
 		if (connection()->indexWriter()) {
 			throw HandlerException("already in transaction");
 		}
@@ -79,6 +95,7 @@ public:
 
 	QString handle()
 	{
+		QMutexLocker locker(connection()->indexWriterMutex());
 		IndexWriter* writer = connection()->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
@@ -96,6 +113,7 @@ public:
 
 	QString handle()
 	{
+		QMutexLocker locker(connection()->indexWriterMutex());
 		IndexWriter* writer = connection()->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
@@ -112,6 +130,7 @@ public:
 
 	QString handle()
 	{
+		QMutexLocker locker(connection()->indexWriterMutex());
 		IndexWriter* writer = connection()->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
@@ -145,6 +164,7 @@ public:
 
 	QString handle()
 	{
+		QMutexLocker locker(connection()->indexWriterMutex());
 		IndexWriter* writer = connection()->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
@@ -161,6 +181,7 @@ public:
 
 	QString handle()
 	{
+		QMutexLocker locker(connection()->indexWriterMutex());
 		IndexWriter* writer = connection()->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
