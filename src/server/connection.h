@@ -28,14 +28,11 @@ public:
 	void close();
 
 	Index* index() { return m_index; }
-	IndexWriter* indexWriter() { return m_indexWriter; }
+	IndexWriter* indexWriter() { return m_indexWriter.get(); }
 
 	void setIndexWriter(IndexWriter* indexWriter)
 	{
-		if (m_indexWriter) {
-			delete m_indexWriter;
-		}
-		m_indexWriter = indexWriter;
+		m_indexWriter.reset(indexWriter);
 	}
 
 signals:
@@ -53,7 +50,7 @@ private:
 	QString m_buffer;
 	QTextStream m_output;
     Index* m_index;
-    IndexWriter* m_indexWriter;
+    ScopedPtr<IndexWriter> m_indexWriter;
 	Handler* m_handler;
 };
 
