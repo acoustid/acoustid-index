@@ -18,6 +18,7 @@ Handler::~Handler()
 
 void Handler::run()
 {
+	QMutexLocker locker(m_connection->mutex());
 	QString result;
 	try {
 		result = QString("OK %1").arg(handle());

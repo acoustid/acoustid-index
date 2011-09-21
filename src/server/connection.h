@@ -35,9 +35,9 @@ public:
 		m_indexWriter.reset(indexWriter);
 	}
 
-	QMutex* indexWriterMutex()
+	QMutex* mutex()
 	{
-		return &m_indexWriterMutex;
+		return &m_mutex;
 	}
 
 signals:
@@ -48,6 +48,7 @@ protected slots:
 	void sendResponse(const QString& response, bool next = true);
 
 	void handleLine(const QString& line);
+	bool maybeDelete();
 
 private:
 	QString m_client;
@@ -56,10 +57,11 @@ private:
 	QTextStream m_output;
     Index* m_index;
     ScopedPtr<IndexWriter> m_indexWriter;
-	QMutex m_indexWriterMutex;
+	QMutex m_mutex;
 	Handler* m_handler;
 	int m_topScorePercent;
 	int m_maxResults;
+	int m_refs;
 };
 
 }

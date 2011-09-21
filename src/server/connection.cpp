@@ -15,14 +15,14 @@ static const int kMaxLineSize = 1024 * 32;
 
 Connection::Connection(Index* index, QTcpSocket *socket, QObject *parent)
 	: QObject(parent), m_socket(socket), m_output(socket), m_index(index),
-		m_indexWriter(NULL), m_handler(NULL),
+		m_indexWriter(NULL), m_handler(NULL), m_refs(1),
 		m_topScorePercent(10), m_maxResults(500)
 {
 	m_socket->setParent(this);
 	m_client = QString("%1:%2").arg(m_socket->peerAddress().toString()).arg(m_socket->peerPort());
 	qDebug() << "Connected to" << m_client;
 	connect(m_socket, SIGNAL(readyRead()), SLOT(readIncomingData()));
-	connect(m_socket, SIGNAL(disconnected()), SLOT(deleteLater()));
+	connect(m_socket, SIGNAL(disconnected()), SLOT(maybeDelete()));
 }
 
 Connection::~Connection()
@@ -36,6 +36,16 @@ Listener *Connection::listener() const
 	return qobject_cast<Listener *>(parent());
 }
 
+bool Connection::maybeDelete()
+{
+	m_refs--;
+	if (!m_refs) {
+		deleteLater();
+		return true;
+	}
+	return false;
+}
+
 void Connection::close()
 {
 	m_socket->disconnectFromHost();
@@ -45,8 +55,10 @@ void Connection::sendResponse(const QString& response, bool next)
 {
 	m_output << response << kCRLF << flush;
 	m_handler = NULL;
-	if (next) {
-		readIncomingData();
+	if (!maybeDelete()) {
+		if (next) {
+			readIncomingData();
+		}
 	}
 }
 
@@ -142,6 +154,7 @@ void Connection::handleLine(const QString& line)
 		return;
 	}
 
+	m_refs++;
 	connect(m_handler, SIGNAL(finished(QString)), SLOT(sendResponse(QString)), Qt::QueuedConnection);
 	QThreadPool::globalInstance()->start(m_handler);
 }
