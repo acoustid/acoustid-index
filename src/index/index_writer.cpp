@@ -24,7 +24,7 @@ IndexWriter::IndexWriter(Directory *dir, const IndexInfo& info, const SegmentInd
 
 IndexWriter::~IndexWriter()
 {
-	qDebug() << "IndexWriter closed" << this << m_index;
+	//qDebug() << "IndexWriter closed" << this << m_index;
 	if (m_index) {
 		for (int i = 0; i < m_newSegments.size(); i++) {
 			m_index->fileDeleter()->decRef(m_newSegments.at(i));
@@ -85,7 +85,7 @@ void IndexWriter::merge(const QList<int>& merge)
 			int j = merge.at(i);
 			const SegmentInfo& s = segments.at(j);
 			expectedChecksum ^= s.checksum();
-			qDebug() << "Merging segment" << s.id() << "into" << segment.id();
+			qDebug() << "Merging segment" << s.id() << "with checksum" << s.checksum() << "into segment" << segment.id();
 			merger.addSource(new SegmentEnum(segmentIndex(s), segmentDataReader(s)));
 		}
 		merger.merge();
@@ -94,13 +94,13 @@ void IndexWriter::merge(const QList<int>& merge)
 		segment.setChecksum(merger.writer()->checksum());
 	}
 
+	qDebug() << "New segment" << segment.id() << "with checksum" << segment.checksum() << "(merge)";
+	m_newSegments.append(segment);
+
 	if (segment.checksum() != expectedChecksum) {
-		qDebug() << "Checksum mismatch after merge, got" << segment.checksum() << ", expected" << expectedChecksum;
 		qFatal("Checksum mismatch after merge");
 	}
 
-	qDebug() << "New segment" << segment.id();
-	m_newSegments.append(segment);
 	if (m_index) {
 		m_index->fileDeleter()->incRef(segment);
 	}
@@ -157,7 +157,7 @@ void IndexWriter::flush()
 	segment.setLastKey(writer->lastKey());
 	segment.setChecksum(writer->checksum());
 
-	qDebug() << "New segment" << segment.id();
+	qDebug() << "New segment" << segment.id() << "with checksum" << segment.checksum();
 	m_newSegments.append(segment);
 	if (m_index) {
 		m_index->fileDeleter()->incRef(segment);

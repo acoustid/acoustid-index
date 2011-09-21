@@ -94,7 +94,7 @@ IndexWriter* Index::createWriter()
 void Index::onReaderDeleted(IndexReader* reader)
 {
 	QMutexLocker locker(&m_mutex);;
-	qDebug() << "Reader deleted" << reader;
+	//qDebug() << "Reader deleted" << reader;
 	if (m_open) {
 		m_deleter->decRef(reader->info());
 	}
@@ -105,7 +105,7 @@ void Index::onWriterDeleted(IndexWriter* writer)
 	QMutexLocker locker(&m_mutex);;
 	assert(m_indexWriter != NULL);
 	assert(m_indexWriter == writer);
-	qDebug() << "Writer deleted" << writer;
+	//qDebug() << "Writer deleted" << writer;
 	m_indexWriter = NULL;
 }
 

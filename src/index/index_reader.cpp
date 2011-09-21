@@ -20,7 +20,7 @@ IndexReader::IndexReader(Directory *dir, const IndexInfo& info, const SegmentInd
 
 IndexReader::~IndexReader()
 {
-	qDebug() << "IndexReader closed" << this << m_index;
+//	qDebug() << "IndexReader closed" << this << m_index;
 	if (m_index) {
 		m_index->onReaderDeleted(this);
 	}
