@@ -34,6 +34,7 @@ TEST_F(SegmentDataWriterTest, Write)
 	writer.addItem(202, 303);
 	writer.close();
 	ASSERT_EQ(2, writer.blockCount());
+	ASSERT_EQ(2, writer.checksum());
 
 	ScopedPtr<FSInputStream> input(FSInputStream::open(stream->fileName()));
 

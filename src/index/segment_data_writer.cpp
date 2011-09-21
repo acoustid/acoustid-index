@@ -10,7 +10,8 @@ using namespace Acoustid;
 
 SegmentDataWriter::SegmentDataWriter(OutputStream *output, SegmentIndexWriter *indexWriter, size_t blockSize)
 	: m_output(output), m_indexWriter(indexWriter), m_blockSize(blockSize),
-	  m_buffer(0), m_ptr(0), m_itemCount(0), m_lastKey(0), m_lastValue(0), m_blockCount(0)
+	  m_buffer(0), m_ptr(0), m_itemCount(0), m_lastKey(0), m_lastValue(0),
+	  m_blockCount(0), m_checksum(0)
 {
 }
 
@@ -40,13 +41,20 @@ void SegmentDataWriter::writeBlock()
 
 void SegmentDataWriter::addItem(uint32_t key, uint32_t value)
 {
+	assert(key >= m_lastKey);
+	assert(key == m_lastKey ? value >= m_lastValue : 1);
+
+	//qDebug() << "Adding" << key << "to checksum =" << m_checksum;
+	m_checksum ^= key;
+	m_checksum ^= value;
+
 	if (!m_buffer) {
 		m_buffer.reset(new uint8_t[m_blockSize]);
 		memset(m_buffer.get(), 0, m_blockSize);
 		m_ptr = m_buffer.get();
 	}
 
-	uint32_t keyDelta = m_itemCount ? key - m_lastKey : ~0;
+	uint32_t keyDelta = m_itemCount ? key - m_lastKey : UINT32_MAX;
 	uint32_t valueDelta = keyDelta ? value : value - m_lastValue;
 
 	size_t currentSize = m_ptr - m_buffer.get();
@@ -60,7 +68,7 @@ void SegmentDataWriter::addItem(uint32_t key, uint32_t value)
 		valueDelta = value;
 	}
 
-	if (m_itemCount > 0) {
+	if (m_itemCount) {
 		m_ptr += writeVInt32ToArray(m_ptr, keyDelta);
 	}
 	else if (m_indexWriter) {

@@ -76,6 +76,7 @@ void IndexWriter::merge(const QList<int>& merge)
 		return;
 	}
 
+	uint32_t expectedChecksum = 0;
 	const SegmentInfoList& segments = m_info.segments();
 	SegmentInfo segment(m_info.incLastSegmentId());
 	{
@@ -83,12 +84,19 @@ void IndexWriter::merge(const QList<int>& merge)
 		for (size_t i = 0; i < merge.size(); i++) {
 			int j = merge.at(i);
 			const SegmentInfo& s = segments.at(j);
+			expectedChecksum ^= s.checksum();
 			qDebug() << "Merging segment" << s.id() << "into" << segment.id();
 			merger.addSource(new SegmentEnum(segmentIndex(s), segmentDataReader(s)));
 		}
 		merger.merge();
 		segment.setBlockCount(merger.writer()->blockCount());
 		segment.setLastKey(merger.writer()->lastKey());
+		segment.setChecksum(merger.writer()->checksum());
+	}
+
+	if (segment.checksum() != expectedChecksum) {
+		qDebug() << "Checksum mismatch after merge, got" << segment.checksum() << ", expected" << expectedChecksum;
+		qFatal("Checksum mismatch after merge");
 	}
 
 	qDebug() << "New segment" << segment.id();
@@ -139,13 +147,15 @@ void IndexWriter::flush()
 	for (size_t i = 0; i < m_segmentBuffer.size(); i++) {
 		uint64_t item = m_segmentBuffer[i];
 		if (item != lastItem) {
-			writer->addItem(itemKey(item), itemValue(item));
+			uint32_t value = itemValue(item);
+			writer->addItem(itemKey(item), value);
 			lastItem = item;
 		}
 	}
 	writer->close();
 	segment.setBlockCount(writer->blockCount());
 	segment.setLastKey(writer->lastKey());
+	segment.setChecksum(writer->checksum());
 
 	qDebug() << "New segment" << segment.id();
 	m_newSegments.append(segment);
@@ -158,7 +168,6 @@ void IndexWriter::flush()
 	maybeMerge();
 
 	m_segmentBuffer.clear();
-
 }
 
 void IndexWriter::optimize()

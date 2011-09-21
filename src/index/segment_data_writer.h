@@ -25,6 +25,8 @@ public:
 	// Last key written into the file.
 	uint32_t lastKey() const { return m_lastKey; }
 
+	uint32_t checksum() const { return m_checksum; }
+
 	size_t blockSize() { return m_blockSize; }
 	void setBlockSize(size_t blockSize);
 
@@ -39,6 +41,7 @@ private:
 	size_t m_blockSize;
 	uint32_t m_lastKey;
 	uint32_t m_lastValue;
+	uint32_t m_checksum;
 	size_t m_itemCount;
 	size_t m_blockCount;
 	uint8_t *m_ptr;

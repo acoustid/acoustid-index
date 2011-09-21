@@ -27,10 +27,10 @@ size_t SegmentMerger::merge()
 		}
 	}
 	QSet<int> docs;
-	uint64_t lastMinItem = ~0;
+	uint64_t lastMinItem = UINT64_MAX;
 	while (!readers.isEmpty()) {
 		size_t minItemIndex = 0;
-		uint64_t minItem = ~0;
+		uint64_t minItem = UINT64_MAX;
 		for (size_t i = 0; i < readers.size(); i++) {
 			SegmentEnum *reader = readers[i];
 			uint64_t item = (uint64_t(reader->key()) << 32) | reader->value();

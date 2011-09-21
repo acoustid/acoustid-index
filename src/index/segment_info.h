@@ -14,27 +14,30 @@ namespace Acoustid {
 class SegmentInfoData : public QSharedData
 {
 public:
-	SegmentInfoData(int id = 0, size_t blockCount = 0, uint32_t lastKey = 0) :
+	SegmentInfoData(int id = 0, size_t blockCount = 0, uint32_t lastKey = 0, uint32_t checksum = 0) :
 		id(id),
 		blockCount(blockCount),
-		lastKey(lastKey) { }
+		lastKey(lastKey),
+		checksum(checksum) { }
 	SegmentInfoData(const SegmentInfoData& other) :
 		QSharedData(other),
 		id(other.id),
 		blockCount(other.blockCount),
-		lastKey(other.lastKey) { }
+		lastKey(other.lastKey),
+		checksum(other.checksum) { }
 	~SegmentInfoData() { }
 
 	int id;
 	size_t blockCount;
 	uint32_t lastKey;
+	uint32_t checksum;
 };
 
 class SegmentInfo
 {
 public:
-	SegmentInfo(int id = 0, size_t blockCount = 0, uint32_t lastKey = 0)
-		: d(new SegmentInfoData(id, blockCount, lastKey)) {	}
+	SegmentInfo(int id = 0, size_t blockCount = 0, uint32_t lastKey = 0, uint32_t checksum = 0)
+		: d(new SegmentInfoData(id, blockCount, lastKey, checksum)) { }
 
 	QString name() const
 	{
@@ -69,6 +72,16 @@ public:
 	void setLastKey(uint32_t lastKey)
 	{
 		d->lastKey = lastKey;
+	}
+
+	uint32_t checksum() const
+	{
+		return d->checksum;
+	}
+
+	void setChecksum(uint32_t checksum)
+	{
+		d->checksum = checksum;
 	}
 
 	size_t blockCount() const

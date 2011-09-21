@@ -32,6 +32,7 @@ TEST(IndexWriterTest, AddDocument)
 	ASSERT_EQ(1, writer->info().segmentCount());
 	ASSERT_EQ("segment_0", writer->info().segment(0).name());
 	ASSERT_EQ(1, writer->info().segment(0).blockCount());
+	ASSERT_EQ(3, writer->info().segment(0).checksum());
 
 	{
 		ScopedPtr<InputStream> input(dir.openFile("segment_0.fii"));

@@ -68,7 +68,8 @@ void IndexInfo::load(InputStream* input)
 		uint32_t id = input->readVInt32();
 		uint32_t blockCount = input->readVInt32();
 		uint32_t lastKey = input->readVInt32();
-		addSegment(SegmentInfo(id, blockCount, lastKey));
+		uint32_t checksum = input->readVInt32();
+		addSegment(SegmentInfo(id, blockCount, lastKey, checksum));
 	}
 }
 
@@ -90,6 +91,7 @@ void IndexInfo::save(OutputStream *output)
 		output->writeVInt32(d->segments.at(i).id());
 		output->writeVInt32(d->segments.at(i).blockCount());
 		output->writeVInt32(d->segments.at(i).lastKey());
+		output->writeVInt32(d->segments.at(i).checksum());
 	}
 }
 
