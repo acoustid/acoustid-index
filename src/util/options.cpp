@@ -6,6 +6,7 @@
 #include <QDebug>
 #include <QStringList>
 #include <QHash>
+#include "common.h"
 #include "options.h"
 
 using namespace Acoustid;
@@ -130,7 +131,7 @@ Options *OptionParser::parse(int argc, char *const argv[])
 	QByteArray shortOptions;
 	int shortIndexes[256];
 	std::fill(shortIndexes, shortIndexes + 256, -1);
-	struct option *longOptions = new struct option[m_options.size() + 1];
+	ScopedArrayPtr<struct option> longOptions(new struct option[m_options.size() + 1]);
 	int i;
 	for (i = 0; i < m_options.size(); i++) {
 		const Option *option = m_options.at(i);
@@ -163,7 +164,7 @@ Options *OptionParser::parse(int argc, char *const argv[])
 	m_prog = argv[0];
 	int longIndex = 0;
 	while (true) {
-		int c = getopt_long(argc, argv, shortOptions.constData(), longOptions, &longIndex);
+		int c = getopt_long(argc, argv, shortOptions.constData(), longOptions.get(), &longIndex);
 		if (c == -1) {
 			break;
 		}
@@ -187,7 +188,6 @@ Options *OptionParser::parse(int argc, char *const argv[])
 	for (i = 0; i < m_options.size(); i++) {
 		free((void *) longOptions[i].name);
 	}
-	delete[] longOptions;
 	return options;
 }
 

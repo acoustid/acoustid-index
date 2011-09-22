@@ -23,7 +23,7 @@ public:
 private:
 	void maybeWriteHeader();
 
-	OutputStream *m_output;
+	ScopedPtr<OutputStream> m_output;
 };
 
 }

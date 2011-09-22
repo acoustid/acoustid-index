@@ -13,7 +13,6 @@ SegmentDataReader::SegmentDataReader(InputStream *input, size_t blockSize)
 
 SegmentDataReader::~SegmentDataReader()
 {
-	delete m_input;
 }
 
 void SegmentDataReader::setBlockSize(size_t blockSize)
@@ -25,5 +24,5 @@ BlockDataIterator *SegmentDataReader::readBlock(size_t n, uint32_t key)
 {
 	m_input->seek(m_blockSize * n);
 	size_t length = m_input->readInt16();
-	return new BlockDataIterator(m_input, length, key);
+	return new BlockDataIterator(m_input.get(), length, key);
 }

@@ -23,14 +23,14 @@ public:
 
 	SegmentDataWriter *writer()
 	{
-		return m_writer;
+		return m_writer.get();
 	}
 
 	size_t merge();
 
 private:
 	QList<SegmentEnum *> m_readers;
-	SegmentDataWriter *m_writer;
+	ScopedPtr<SegmentDataWriter> m_writer;
 };
 
 }

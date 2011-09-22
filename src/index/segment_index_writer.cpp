@@ -14,7 +14,6 @@ SegmentIndexWriter::SegmentIndexWriter(OutputStream *output)
 SegmentIndexWriter::~SegmentIndexWriter()
 {
 	close();
-	delete m_output;
 }
 
 void SegmentIndexWriter::addItem(uint32_t key)

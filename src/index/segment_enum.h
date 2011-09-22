@@ -18,11 +18,6 @@ public:
 		  m_currentBlock(0)
 	{}
 
-	~SegmentEnum()
-	{
-		delete m_dataReader;
-	}
-
 	bool next()
 	{
 		if (!m_currentBlock.get() || !m_currentBlock->next()) {
@@ -50,7 +45,7 @@ public:
 private:
 	size_t m_block;
 	SegmentIndexSharedPtr m_index;
-	SegmentDataReader *m_dataReader;
+	ScopedPtr<SegmentDataReader> m_dataReader;
 	ScopedPtr<BlockDataIterator> m_currentBlock;
 };
 

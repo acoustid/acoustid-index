@@ -36,8 +36,8 @@ public:
 private:
 	void writeBlock();
 
-	OutputStream *m_output;
-	SegmentIndexWriter *m_indexWriter;
+	ScopedPtr<OutputStream> m_output;
+	ScopedPtr<SegmentIndexWriter> m_indexWriter;
 	size_t m_blockSize;
 	uint32_t m_lastKey;
 	uint32_t m_lastValue;

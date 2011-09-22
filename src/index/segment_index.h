@@ -17,7 +17,7 @@ public:
 
 	size_t blockCount() { return m_blockCount; }
 
-	uint32_t *keys() { return m_keys; }
+	uint32_t *keys() { return m_keys.get(); }
 
 	uint32_t key(size_t block)
 	{
@@ -29,7 +29,7 @@ public:
 
 private:
 	size_t m_blockCount;
-	uint32_t* m_keys;
+	ScopedArrayPtr<uint32_t> m_keys;
 };
 
 typedef QWeakPointer<SegmentIndex> SegmentIndexWeakPtr;

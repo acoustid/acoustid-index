@@ -27,7 +27,7 @@ public:
 
 private:
 	SegmentIndexSharedPtr m_index;
-	SegmentDataReader *m_dataReader;
+	ScopedPtr<SegmentDataReader> m_dataReader;
 	uint32_t m_lastKey;
 };
 

@@ -14,7 +14,6 @@ SegmentMerger::SegmentMerger(SegmentDataWriter *writer)
 SegmentMerger::~SegmentMerger()
 {
 	qDeleteAll(m_readers);
-	delete m_writer;
 }
 
 size_t SegmentMerger::merge()

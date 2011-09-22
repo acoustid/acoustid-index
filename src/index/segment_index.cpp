@@ -9,19 +9,18 @@
 using namespace Acoustid;
 
 SegmentIndex::SegmentIndex(size_t blockCount)
-	: m_blockCount(blockCount)
+	: m_blockCount(blockCount),
+	  m_keys(new uint32_t[blockCount])
 {
-	m_keys = new uint32_t[blockCount];
 }
 
 SegmentIndex::~SegmentIndex()
 {
-	delete[] m_keys;
 }
 
 bool SegmentIndex::search(uint32_t key, size_t *firstBlock, size_t *lastBlock)
 {
-	ssize_t pos = searchFirstSmaller(m_keys, 0, m_blockCount, key);
+	ssize_t pos = searchFirstSmaller(m_keys.get(), 0, m_blockCount, key);
 	if (pos == -1) {
 		if (m_keys[0] > key) {
 			return false;
@@ -29,7 +28,7 @@ bool SegmentIndex::search(uint32_t key, size_t *firstBlock, size_t *lastBlock)
 		pos = 0;
 	}
 	*firstBlock = pos;
-	*lastBlock = scanFirstGreater(m_keys, *firstBlock, m_blockCount, key) - 1;
+	*lastBlock = scanFirstGreater(m_keys.get(), *firstBlock, m_blockCount, key) - 1;
 	return true;
 }
 

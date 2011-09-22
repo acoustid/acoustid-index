@@ -14,7 +14,6 @@ SegmentIndexReader::SegmentIndexReader(InputStream *input, size_t blockCount)
 
 SegmentIndexReader::~SegmentIndexReader()
 {
-	delete m_input;
 }
 
 SegmentIndexSharedPtr SegmentIndexReader::read()
