@@ -62,6 +62,9 @@ public:
 	void onReaderDeleted(IndexReader* reader);
 	void onWriterDeleted(IndexWriter* writer);
 
+	void incFileRef(const SegmentInfo& segment);
+	void decFileRef(const SegmentInfoList& segments);
+
 private:
 	ACOUSTID_DISABLE_COPY(Index);
 

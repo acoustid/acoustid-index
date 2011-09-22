@@ -110,3 +110,21 @@ void Index::onWriterDeleted(IndexWriter* writer)
 	m_indexWriter = NULL;
 }
 
+void Index::incFileRef(const SegmentInfo& segment)
+{
+	QMutexLocker locker(&m_mutex);
+	if (m_open) {
+		m_deleter->incRef(segment);
+	}
+}
+
+void Index::decFileRef(const SegmentInfoList& segments)
+{
+	QMutexLocker locker(&m_mutex);
+	if (m_open) {
+		for (int i = 0; i < segments.size(); i++) {
+			m_deleter->decRef(segments.at(i));
+		}
+	}
+}
+

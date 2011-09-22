@@ -27,9 +27,7 @@ IndexWriter::~IndexWriter()
 {
 	//qDebug() << "IndexWriter closed" << this << m_index;
 	if (m_index) {
-		for (int i = 0; i < m_newSegments.size(); i++) {
-			m_index->fileDeleter()->decRef(m_newSegments.at(i));
-		}
+		m_index->decFileRef(m_newSegments);
 		m_index->onWriterDeleted(this);
 	}
 }
@@ -49,9 +47,7 @@ void IndexWriter::commit()
 	qDebug() << "Committed revision" << m_info.revision();
 	if (m_index) {
 		m_index->refresh(m_info);
-		for (int i = 0; i < m_newSegments.size(); i++) {
-			m_index->fileDeleter()->decRef(m_newSegments.at(i));
-		}
+		m_index->decFileRef(m_newSegments);
 	}
 	m_newSegments.clear();
 }
@@ -103,7 +99,7 @@ void IndexWriter::merge(const QList<int>& merge)
 	}
 
 	if (m_index) {
-		m_index->fileDeleter()->incRef(segment);
+		m_index->incFileRef(segment);
 	}
 
 	SegmentInfoList newSegments;
@@ -151,7 +147,7 @@ void IndexWriter::flush()
 	qDebug() << "New segment" << segment.id() << "with checksum" << segment.checksum();
 	m_newSegments.append(segment);
 	if (m_index) {
-		m_index->fileDeleter()->incRef(segment);
+		m_index->incFileRef(segment);
 	}
 
 	m_info.addSegment(segment);

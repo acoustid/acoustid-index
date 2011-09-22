@@ -30,7 +30,7 @@ public:
 		revision(other.revision) { }
 	~IndexInfoData() { }
 
-	QList<SegmentInfo> segments;
+	SegmentInfoList segments;
 	size_t nextSegmentNum;
 	int revision;
 };
