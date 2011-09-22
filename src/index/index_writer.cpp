@@ -12,6 +12,7 @@
 #include "segment_merger.h"
 #include "index.h"
 #include "index_file_deleter.h"
+#include "index_utils.h"
 #include "index_writer.h"
 
 using namespace Acoustid;
@@ -36,7 +37,7 @@ IndexWriter::~IndexWriter()
 void IndexWriter::addDocument(uint32_t id, uint32_t *terms, size_t length)
 {
 	for (size_t i = 0; i < length; i++) {
-		m_segmentBuffer.push_back((uint64_t(terms[i]) << 32) | id);
+		m_segmentBuffer.push_back(packItem(terms[i], id));
 	}
 	maybeFlush();
 }
@@ -123,16 +124,6 @@ void IndexWriter::maybeMerge()
 	merge(m_mergePolicy->findMerges(segments));
 }
 
-inline uint32_t itemKey(uint64_t item)
-{
-	return item >> 32;
-}
-
-inline uint32_t itemValue(uint64_t item)
-{
-	return item & 0xFFFFFFFF;
-}
-
 void IndexWriter::flush()
 {
 	if (m_segmentBuffer.empty()) {
@@ -147,8 +138,8 @@ void IndexWriter::flush()
 	for (size_t i = 0; i < m_segmentBuffer.size(); i++) {
 		uint64_t item = m_segmentBuffer[i];
 		if (item != lastItem) {
-			uint32_t value = itemValue(item);
-			writer->addItem(itemKey(item), value);
+			uint32_t value = unpackItemValue(item);
+			writer->addItem(unpackItemKey(item), value);
 			lastItem = item;
 		}
 	}

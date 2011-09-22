@@ -1,6 +1,7 @@
 // Copyright (C) 2011  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
+#include "index_utils.h"
 #include "segment_merger.h"
 
 using namespace Acoustid;
@@ -26,14 +27,13 @@ size_t SegmentMerger::merge()
 			iter.remove();
 		}
 	}
-	QSet<int> docs;
 	uint64_t lastMinItem = UINT64_MAX;
 	while (!readers.isEmpty()) {
 		size_t minItemIndex = 0;
 		uint64_t minItem = UINT64_MAX;
 		for (size_t i = 0; i < readers.size(); i++) {
 			SegmentEnum *reader = readers[i];
-			uint64_t item = (uint64_t(reader->key()) << 32) | reader->value();
+			uint64_t item = packItem(reader->key(), reader->value());
 			if (item < minItem) {
 				minItem = item;
 				minItemIndex = i;
@@ -43,9 +43,8 @@ size_t SegmentMerger::merge()
 			readers.removeAt(minItemIndex);
 		}
 		if (minItem != lastMinItem) {
-			uint32_t key = (minItem >> 32) & 0xffffffff;
-			uint32_t value = minItem & 0xffffffff;
-			docs.insert(value);
+			uint32_t key = unpackItemKey(minItem);
+			uint32_t value = unpackItemValue(minItem);
 			m_writer->addItem(key, value);
 			lastMinItem = minItem;
 		}
