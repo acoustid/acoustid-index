@@ -8,8 +8,8 @@ using namespace Acoustid;
 
 int main(int argc, char **argv)
 {
-	FSDirectory dir(".");
-	Index index(&dir);
+	DirectorySharedPtr dir(new FSDirectory("."));
+	Index index(dir);
 	index.open(true);
 
 	ScopedPtr<IndexWriter> writer(index.createWriter());

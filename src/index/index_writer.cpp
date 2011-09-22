@@ -17,7 +17,7 @@
 
 using namespace Acoustid;
 
-IndexWriter::IndexWriter(Directory *dir, const IndexInfo& info, const SegmentIndexMap& indexes, Index* index)
+IndexWriter::IndexWriter(DirectorySharedPtr dir, const IndexInfo& info, const SegmentIndexMap& indexes, Index* index)
 	: IndexReader(dir, info, indexes, index), m_maxSegmentBufferSize(MAX_SEGMENT_BUFFER_SIZE)
 {
 	m_mergePolicy.reset(new SegmentMergePolicy());
@@ -45,7 +45,7 @@ void IndexWriter::addDocument(uint32_t id, uint32_t *terms, size_t length)
 void IndexWriter::commit()
 {
 	flush();
-	m_info.save(m_dir);
+	m_info.save(m_dir.data());
 	qDebug() << "Committed revision" << m_info.revision();
 	if (m_index) {
 		m_index->refresh(m_info);
@@ -155,7 +155,7 @@ void IndexWriter::flush()
 	}
 
 	m_info.addSegment(segment);
-	m_indexes = Index::loadSegmentIndexes(m_dir, m_info, m_indexes);
+	m_indexes = Index::loadSegmentIndexes(m_dir.data(), m_info, m_indexes);
 	maybeMerge();
 
 	m_segmentBuffer.clear();

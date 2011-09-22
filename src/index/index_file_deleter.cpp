@@ -6,7 +6,7 @@
 
 using namespace Acoustid;
 
-IndexFileDeleter::IndexFileDeleter(Directory *dir)
+IndexFileDeleter::IndexFileDeleter(DirectorySharedPtr dir)
 	: m_dir(dir)
 {
 }

@@ -13,21 +13,21 @@ using namespace Acoustid;
 
 TEST(IndexWriterTest, AddDocument)
 {
-	RAMDirectory dir;
-	Index index(&dir);
+	DirectorySharedPtr dir(new RAMDirectory());
+	Index index(dir);
 	index.open(true);
 
 	ScopedPtr<IndexWriter> writer(index.createWriter());
-	ASSERT_TRUE(dir.fileExists("info_0"));
+	ASSERT_TRUE(index.directory()->fileExists("info_0"));
 	ASSERT_EQ(0, writer->info().revision());
 	ASSERT_EQ(0, writer->info().segmentCount());
 
 	uint32_t fp[] = { 7, 9, 12 };
 	writer->addDocument(1, fp, 3);
 	writer->commit();
-	ASSERT_TRUE(dir.fileExists("info_1"));
-	ASSERT_TRUE(dir.fileExists("segment_0.fii"));
-	ASSERT_TRUE(dir.fileExists("segment_0.fid"));
+	ASSERT_TRUE(index.directory()->fileExists("info_1"));
+	ASSERT_TRUE(index.directory()->fileExists("segment_0.fii"));
+	ASSERT_TRUE(index.directory()->fileExists("segment_0.fid"));
 	ASSERT_EQ(1, writer->info().revision());
 	ASSERT_EQ(1, writer->info().segmentCount());
 	ASSERT_EQ("segment_0", writer->info().segment(0).name());
@@ -35,12 +35,12 @@ TEST(IndexWriterTest, AddDocument)
 	ASSERT_EQ(3, writer->info().segment(0).checksum());
 
 	{
-		ScopedPtr<InputStream> input(dir.openFile("segment_0.fii"));
+		ScopedPtr<InputStream> input(index.directory()->openFile("segment_0.fii"));
 		ASSERT_EQ(7, input->readInt32());
 	}
 
 	{
-		ScopedPtr<InputStream> input(dir.openFile("segment_0.fid"));
+		ScopedPtr<InputStream> input(index.directory()->openFile("segment_0.fid"));
 		ASSERT_EQ(3, input->readInt16());
 		ASSERT_EQ(1, input->readVInt32());
 		ASSERT_EQ(2, input->readVInt32());
@@ -52,15 +52,15 @@ TEST(IndexWriterTest, AddDocument)
 
 TEST(IndexWriterTest, Merge)
 {
-	RAMDirectory dir;
-	Index index(&dir);
+	DirectorySharedPtr dir(new RAMDirectory());
+	Index index(dir);
 	index.open(true);
 
 	ScopedPtr<IndexWriter> writer(index.createWriter());
-	ASSERT_TRUE(dir.fileExists("info_0"));
+	ASSERT_TRUE(index.directory()->fileExists("info_0"));
 	ASSERT_EQ(0, writer->info().revision());
 	ASSERT_EQ(0, writer->info().segmentCount());
-	ASSERT_EQ(1, dir.listFiles().size());
+	ASSERT_EQ(1, index.directory()->listFiles().size());
 
 	writer->segmentMergePolicy()->setMaxMergeAtOnce(2);
 	writer->segmentMergePolicy()->setMaxSegmentsPerTier(2);
@@ -73,8 +73,8 @@ TEST(IndexWriterTest, Merge)
 	ASSERT_EQ(1, writer->info().segment(0).blockCount());
 	writer.reset(NULL);
 	writer.reset(index.createWriter());
-	ASSERT_EQ(3, dir.listFiles().size());
-	qDebug() << dir.listFiles();
+	ASSERT_EQ(3, index.directory()->listFiles().size());
+	qDebug() << index.directory()->listFiles();
 	writer->segmentMergePolicy()->setMaxMergeAtOnce(2);
 	writer->segmentMergePolicy()->setMaxSegmentsPerTier(2);
 	writer->segmentMergePolicy()->setFloorSegmentBlocks(0);
@@ -85,8 +85,8 @@ TEST(IndexWriterTest, Merge)
 	ASSERT_EQ(1, writer->info().segment(1).blockCount());
 	writer.reset(NULL);
 	writer.reset(index.createWriter());
-	ASSERT_EQ(5, dir.listFiles().size());
-	qDebug() << dir.listFiles();
+	ASSERT_EQ(5, index.directory()->listFiles().size());
+	qDebug() << index.directory()->listFiles();
 	writer->segmentMergePolicy()->setMaxMergeAtOnce(2);
 	writer->segmentMergePolicy()->setMaxSegmentsPerTier(2);
 	writer->segmentMergePolicy()->setFloorSegmentBlocks(0);
@@ -97,8 +97,8 @@ TEST(IndexWriterTest, Merge)
 	ASSERT_EQ(1, writer->info().segment(1).blockCount());
 	writer.reset(NULL);
 	writer.reset(index.createWriter());
-	ASSERT_EQ(5, dir.listFiles().size());
-	qDebug() << dir.listFiles();
+	ASSERT_EQ(5, index.directory()->listFiles().size());
+	qDebug() << index.directory()->listFiles();
 	writer->segmentMergePolicy()->setMaxMergeAtOnce(2);
 	writer->segmentMergePolicy()->setMaxSegmentsPerTier(2);
 	writer->segmentMergePolicy()->setFloorSegmentBlocks(0);
@@ -109,8 +109,8 @@ TEST(IndexWriterTest, Merge)
 	ASSERT_EQ(1, writer->info().segment(1).blockCount());
 	writer.reset(NULL);
 	writer.reset(index.createWriter());
-	ASSERT_EQ(5, dir.listFiles().size());
-	qDebug() << dir.listFiles();
+	ASSERT_EQ(5, index.directory()->listFiles().size());
+	qDebug() << index.directory()->listFiles();
 	writer->segmentMergePolicy()->setMaxMergeAtOnce(3);
 	writer->segmentMergePolicy()->setMaxSegmentsPerTier(1);
 	writer->segmentMergePolicy()->setFloorSegmentBlocks(0);
@@ -119,7 +119,7 @@ TEST(IndexWriterTest, Merge)
 	ASSERT_EQ(1, writer->info().segmentCount());
 	ASSERT_EQ(1, writer->info().segment(0).blockCount());
 	writer.reset(NULL);
-	ASSERT_EQ(3, dir.listFiles().size());
-	qDebug() << dir.listFiles();
+	ASSERT_EQ(3, index.directory()->listFiles().size());
+	qDebug() << index.directory()->listFiles();
 }
 

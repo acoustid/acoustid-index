@@ -13,7 +13,7 @@
 
 using namespace Acoustid;
 
-IndexReader::IndexReader(Directory *dir, const IndexInfo& info, const SegmentIndexMap& indexes, Index* index)
+IndexReader::IndexReader(DirectorySharedPtr dir, const IndexInfo& info, const SegmentIndexMap& indexes, Index* index)
 	: m_dir(dir), m_info(info), m_indexes(indexes), m_index(index)
 {
 }

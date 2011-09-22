@@ -12,34 +12,34 @@ using namespace Acoustid;
 
 TEST(IndexFileDeleterTest, DeleteOnDec)
 {
-	RAMDirectory dir;
-	delete dir.createFile("test.txt");
+	DirectorySharedPtr dir(new RAMDirectory());
+	delete dir->createFile("test.txt");
 
-	ASSERT_TRUE(dir.fileExists("test.txt"));
-	IndexFileDeleter deleter(&dir);
+	ASSERT_TRUE(dir->fileExists("test.txt"));
+	IndexFileDeleter deleter(dir);
 	deleter.decRef("test.txt");
-	ASSERT_FALSE(dir.fileExists("test.txt"));
+	ASSERT_FALSE(dir->fileExists("test.txt"));
 }
 
 TEST(IndexFileDeleterTest, DeleteOnIncDec)
 {
-	RAMDirectory dir;
-	delete dir.createFile("test.txt");
+	DirectorySharedPtr dir(new RAMDirectory());
+	delete dir->createFile("test.txt");
 
-	ASSERT_TRUE(dir.fileExists("test.txt"));
-	IndexFileDeleter deleter(&dir);
+	ASSERT_TRUE(dir->fileExists("test.txt"));
+	IndexFileDeleter deleter(dir);
 	deleter.incRef("test.txt");
 	deleter.decRef("test.txt");
-	ASSERT_FALSE(dir.fileExists("test.txt"));
+	ASSERT_FALSE(dir->fileExists("test.txt"));
 }
 
 TEST(IndexFileDeleterTest, KeepOnInc)
 {
-	RAMDirectory dir;
-	delete dir.createFile("test.txt");
+	DirectorySharedPtr dir(new RAMDirectory());
+	delete dir->createFile("test.txt");
 
-	ASSERT_TRUE(dir.fileExists("test.txt"));
-	IndexFileDeleter deleter(&dir);
+	ASSERT_TRUE(dir->fileExists("test.txt"));
+	IndexFileDeleter deleter(dir);
 	deleter.incRef("test.txt");
-	ASSERT_TRUE(dir.fileExists("test.txt"));
+	ASSERT_TRUE(dir->fileExists("test.txt"));
 }

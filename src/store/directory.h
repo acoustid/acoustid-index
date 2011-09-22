@@ -6,6 +6,7 @@
 
 #include <QString>
 #include <QStringList>
+#include "common.h"
 
 namespace Acoustid {
 
@@ -27,6 +28,9 @@ public:
 	virtual bool fileExists(const QString &name);
 
 };
+
+typedef QWeakPointer<Directory> DirectoryWeakPtr;
+typedef QSharedPointer<Directory> DirectorySharedPtr;
 
 }
 

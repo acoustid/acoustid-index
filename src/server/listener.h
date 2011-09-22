@@ -44,8 +44,8 @@ private:
 	static void sigIntHandler(int unused);
 	static void sigTermHandler(int unused);
 
-	Directory* m_dir;
-	Index* m_index;
+	DirectorySharedPtr m_dir;
+	IndexSharedPtr m_index;
 	QList<Connection*> m_connections;
 	QSocketNotifier *m_sigIntNotifier;
 	QSocketNotifier *m_sigTermNotifier;

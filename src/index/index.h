@@ -7,6 +7,7 @@
 #include <QMutex>
 #include "common.h"
 #include "index_info.h"
+#include "store/directory.h"
 #include "segment_index.h"
 
 namespace Acoustid {
@@ -23,7 +24,7 @@ class Index
 {
 public:
 	// Build a new instance using the given directory
-	Index(Directory *dir);
+	Index(DirectorySharedPtr dir);
 	virtual ~Index();
 
 	// Open the index
@@ -33,7 +34,7 @@ public:
 	void refresh(const IndexInfo& info, const SegmentIndexMap &oldIndexes = SegmentIndexMap());
 
 	// Return the directory which contains the index data
-	Directory* directory()
+	DirectorySharedPtr directory()
 	{
 		return m_dir;
 	}
@@ -65,13 +66,16 @@ private:
 	ACOUSTID_DISABLE_COPY(Index);
 
 	QMutex m_mutex;
-	Directory* m_dir;
+	DirectorySharedPtr m_dir;
 	IndexWriter* m_indexWriter;
 	ScopedPtr<IndexFileDeleter> m_deleter;
 	IndexInfo m_info;
 	SegmentIndexMap m_indexes;
 	bool m_open;
 };
+
+typedef QWeakPointer<Index> IndexWeakPtr;
+typedef QSharedPointer<Index> IndexSharedPtr;
 
 }
 

@@ -23,8 +23,8 @@ int main(int argc, char **argv)
 		path = opts->option("directory");
 	}
 
-	FSDirectory dir(path);
-	Index index(&dir);
+	DirectorySharedPtr dir(new FSDirectory(path));
+	Index index(dir);
 	try {
 		index.open();
 	}

@@ -14,10 +14,11 @@
 
 using namespace Acoustid;
 
-Index::Index(Directory *dir)
-	: m_mutex(QMutex::Recursive), m_dir(dir), m_open(false), m_indexWriter(NULL)
+Index::Index(DirectorySharedPtr dir)
+	: m_mutex(QMutex::Recursive), m_dir(dir), m_open(false),
+	  m_indexWriter(NULL),
+	  m_deleter(new IndexFileDeleter(dir))
 {
-	m_deleter.reset(new IndexFileDeleter(m_dir));
 }
 
 Index::~Index()
@@ -27,7 +28,7 @@ Index::~Index()
 void Index::open(bool create)
 {
 	QMutexLocker locker(&m_mutex);
-	if (!m_info.load(m_dir)) {
+	if (!m_info.load(m_dir.data())) {
 		if (create) {
 			ScopedPtr<IndexWriter>(createWriter())->commit();
 			return open(false);
@@ -35,13 +36,13 @@ void Index::open(bool create)
 		throw IOException("there is no index in the directory");
 	}
 	m_deleter->incRef(m_info);
-	m_indexes = loadSegmentIndexes(m_dir, m_info);
+	m_indexes = loadSegmentIndexes(m_dir.data(), m_info);
 	m_open = true;
 }
 
 void Index::refresh(const IndexInfo& info, const SegmentIndexMap& oldIndexes)
 {
-	SegmentIndexMap indexes = loadSegmentIndexes(m_dir, info, oldIndexes.isEmpty() ? m_indexes : oldIndexes);
+	SegmentIndexMap indexes = loadSegmentIndexes(m_dir.data(), info, oldIndexes.isEmpty() ? m_indexes : oldIndexes);
 	QMutexLocker locker(&m_mutex);
 	if (m_open) {
 		// the infos are opened twice (index + writer), so we need to inc/dec-ref them twice too

@@ -18,7 +18,7 @@ class Collector;
 class IndexReader
 {
 public:
-	IndexReader(Directory* dir, const IndexInfo& info, const SegmentIndexMap& indexes, Index* index = NULL);
+	IndexReader(DirectorySharedPtr dir, const IndexInfo& info, const SegmentIndexMap& indexes, Index* index = NULL);
 	virtual ~IndexReader();
 
 	const IndexInfo& info() const { return m_info; }
@@ -39,7 +39,7 @@ public:
 	SegmentDataReader* segmentDataReader(const SegmentInfo& segment);
 
 protected:
-	Directory* m_dir;
+	DirectorySharedPtr m_dir;
 	IndexInfo m_info;
 	SegmentIndexMap m_indexes;
 	Index* m_index;

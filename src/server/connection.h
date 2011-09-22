@@ -21,13 +21,13 @@ class Connection : public QObject
 	Q_OBJECT
 
 public:
-	Connection(Acoustid::Index* index, QTcpSocket *socket, QObject *parent = 0);
+	Connection(IndexSharedPtr index, QTcpSocket *socket, QObject *parent = 0);
 	~Connection();
 
 	Listener *listener() const;
 	void close();
 
-	Index* index() { return m_index; }
+	IndexSharedPtr index() { return m_index; }
 	IndexWriter* indexWriter() { return m_indexWriter.get(); }
 
 	void setIndexWriter(IndexWriter* indexWriter)
@@ -55,7 +55,7 @@ private:
 	QTcpSocket *m_socket;
 	QString m_buffer;
 	QTextStream m_output;
-    Index* m_index;
+    IndexSharedPtr m_index;
     ScopedPtr<IndexWriter> m_indexWriter;
 	QMutex m_mutex;
 	Handler* m_handler;

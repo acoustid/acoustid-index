@@ -17,6 +17,7 @@
 
 #include <QString>
 #include <QDebug>
+#include <QSharedPointer>
 
 #include "util/exceptions.h"
 #include "util/scoped_ptr.h"

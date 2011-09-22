@@ -37,7 +37,7 @@ public:
 	virtual QString handle() = 0;
 
 	Connection* connection() { return m_connection; }
-	Index* index() { return m_connection->index(); }
+	IndexSharedPtr index() { return m_connection->index(); }
 	QStringList args() { return m_args; }
 
 signals:

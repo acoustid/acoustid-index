@@ -15,8 +15,8 @@ using namespace Acoustid;
 
 TEST(IndexReaderTest, Search)
 {
-	RAMDirectory dir;
-	Index index(&dir);
+	DirectorySharedPtr dir(new RAMDirectory());
+	Index index(dir);
 	index.open(true);
 
 	IndexWriter* writer = index.createWriter();

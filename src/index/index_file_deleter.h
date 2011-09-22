@@ -13,7 +13,7 @@ namespace Acoustid {
 class IndexFileDeleter
 {
 public:
-	IndexFileDeleter(Directory* dir);
+	IndexFileDeleter(DirectorySharedPtr dir);
 	virtual ~IndexFileDeleter();
 
 	void incRef(const IndexInfo& info);
@@ -26,7 +26,7 @@ public:
 protected:
 	ACOUSTID_DISABLE_COPY(IndexFileDeleter);
 
-	Directory* m_dir;
+	DirectorySharedPtr m_dir;
 	QMap<QString, int> m_refCounts;
 };
 

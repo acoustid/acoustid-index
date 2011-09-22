@@ -13,37 +13,36 @@ using namespace Acoustid;
 
 TEST(IndexTest, OpenEmpty)
 {
-	RAMDirectory dir;
-	Index index(&dir);
+	DirectorySharedPtr dir(new RAMDirectory());
+	Index index(dir);
 
-	ASSERT_FALSE(dir.fileExists("info_0"));
+	ASSERT_FALSE(index.directory()->fileExists("info_0"));
 	ASSERT_THROW(index.open(), IOException);
 }
 
 TEST(IndexTest, OpenEmptyCreate)
 {
-	RAMDirectory dir;
-	Index index(&dir);
+	DirectorySharedPtr dir(new RAMDirectory());
+	Index index(dir);
 
-	ASSERT_FALSE(dir.fileExists("info_0"));
+	ASSERT_FALSE(index.directory()->fileExists("info_0"));
 	index.open(true);
-	ASSERT_TRUE(dir.fileExists("info_0"));
+	ASSERT_TRUE(index.directory()->fileExists("info_0"));
 }
 
 TEST(IndexTest, DeleteUnusedFiled)
 {
-	RAMDirectory dir;
-	Index index(&dir);
+	DirectorySharedPtr dir(new RAMDirectory());
+	Index index(dir);
 	index.open(true);
 
-	ASSERT_TRUE(dir.fileExists("info_0"));
+	ASSERT_TRUE(index.directory()->fileExists("info_0"));
 	{
 		ScopedPtr<IndexWriter> writer(index.createWriter());
 		uint32_t fp[] = { 1, 2, 3 };
 		writer->addDocument(1, fp, 3);
 		writer->commit();
 	}
-	qDebug() << dir.listFiles();
-	ASSERT_TRUE(dir.fileExists("info_1"));
-	ASSERT_FALSE(dir.fileExists("info_0"));
+	ASSERT_TRUE(index.directory()->fileExists("info_1"));
+	ASSERT_FALSE(index.directory()->fileExists("info_0"));
 }

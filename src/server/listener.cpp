@@ -16,22 +16,20 @@ int Listener::m_sigIntFd[2];
 int Listener::m_sigTermFd[2];
 
 Listener::Listener(const QString& path, QObject* parent)
-	: QTcpServer(parent)
+	: QTcpServer(parent),
+	  m_dir(new FSDirectory(path)),
+	  m_index(new Index(m_dir))
 {
 	m_sigIntNotifier = new QSocketNotifier(m_sigIntFd[1], QSocketNotifier::Read, this);
 	connect(m_sigIntNotifier, SIGNAL(activated(int)), this, SLOT(handleSigInt()));
 	m_sigTermNotifier = new QSocketNotifier(m_sigTermFd[1], QSocketNotifier::Read, this);
 	connect(m_sigTermNotifier, SIGNAL(activated(int)), this, SLOT(handleSigTerm()));
 	connect(this, SIGNAL(newConnection()), SLOT(acceptNewConnection()));
-	m_dir = new FSDirectory(path);
-    m_index = new Index(m_dir);
     m_index->open(true);
 }
 
 Listener::~Listener()
 {
-	delete m_index;
-	delete m_dir;
 }
 
 void Listener::sigIntHandler(int signal)
