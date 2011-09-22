@@ -31,7 +31,7 @@ public:
 	void open(bool create = false);
 
 	// 
-	void refresh(const IndexInfo& info, const SegmentIndexMap &oldIndexes = SegmentIndexMap());
+	void refresh(const IndexInfo& info, const SegmentIndexMap &indexes);
 
 	// Return the directory which contains the index data
 	DirectorySharedPtr directory()

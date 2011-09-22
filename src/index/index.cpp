@@ -40,10 +40,12 @@ void Index::open(bool create)
 	m_open = true;
 }
 
-void Index::refresh(const IndexInfo& info, const SegmentIndexMap& oldIndexes)
+void Index::refresh(const IndexInfo& info, const SegmentIndexMap& indexes)
 {
-	SegmentIndexMap indexes = loadSegmentIndexes(m_dir.data(), info, oldIndexes.isEmpty() ? m_indexes : oldIndexes);
 	QMutexLocker locker(&m_mutex);
+	for (int i = 0; i < info.segmentCount(); i++) {
+		assert(indexes.contains(info.segment(i).id()));
+	}
 	if (m_open) {
 		// the infos are opened twice (index + writer), so we need to inc/dec-ref them twice too
 		m_deleter->incRef(info);

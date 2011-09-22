@@ -5,6 +5,7 @@
 #define ACOUSTID_INDEX_SEGMENT_DATA_WRITER_H_
 
 #include "common.h"
+#include "segment_index.h"
 
 namespace Acoustid {
 
@@ -27,6 +28,8 @@ public:
 
 	uint32_t checksum() const { return m_checksum; }
 
+	SegmentIndexSharedPtr index() const { return m_index; }
+
 	size_t blockSize() { return m_blockSize; }
 	void setBlockSize(size_t blockSize);
 
@@ -38,6 +41,8 @@ private:
 
 	ScopedPtr<OutputStream> m_output;
 	ScopedPtr<SegmentIndexWriter> m_indexWriter;
+	SegmentIndexSharedPtr m_index;
+	std::vector<uint32_t> m_indexData;
 	size_t m_blockSize;
 	uint32_t m_lastKey;
 	uint32_t m_lastValue;

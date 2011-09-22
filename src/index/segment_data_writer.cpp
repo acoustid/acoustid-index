@@ -69,8 +69,11 @@ void SegmentDataWriter::addItem(uint32_t key, uint32_t value)
 	if (m_itemCount) {
 		m_ptr += writeVInt32ToArray(m_ptr, keyDelta);
 	}
-	else if (m_indexWriter) {
-		m_indexWriter->addItem(key);
+	else {
+		m_indexData.push_back(key);
+		if (m_indexWriter) {
+			m_indexWriter->addItem(key);
+		}
 	}
 	m_ptr += writeVInt32ToArray(m_ptr, valueDelta);
 
@@ -88,6 +91,9 @@ void SegmentDataWriter::close()
 	if (m_itemCount) {
 		writeBlock();
 	}
+	m_index = SegmentIndexSharedPtr(new SegmentIndex(m_blockCount));
+	std::copy(m_indexData.begin(), m_indexData.end(), m_index->keys());
+	m_indexData.clear();
 	m_output->flush();
 	m_indexWriter->close();
 }

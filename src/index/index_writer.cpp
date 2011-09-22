@@ -46,7 +46,7 @@ void IndexWriter::commit()
 	m_info.save(m_dir.data());
 	qDebug() << "Committed revision" << m_info.revision();
 	if (m_index) {
-		m_index->refresh(m_info);
+		m_index->refresh(m_info, m_indexes);
 		m_index->decFileRef(m_newSegments);
 	}
 	m_newSegments.clear();
@@ -89,6 +89,7 @@ void IndexWriter::merge(const QList<int>& merge)
 		segment.setBlockCount(merger.writer()->blockCount());
 		segment.setLastKey(merger.writer()->lastKey());
 		segment.setChecksum(merger.writer()->checksum());
+		m_indexes.insert(segment.id(), merger.writer()->index());
 	}
 
 	qDebug() << "New segment" << segment.id() << "with checksum" << segment.checksum() << "(merge)";
@@ -108,6 +109,9 @@ void IndexWriter::merge(const QList<int>& merge)
 		const SegmentInfo& s = segments.at(i);
 		if (!merged.contains(i)) {
 			newSegments.append(s);
+		}
+		else {
+			m_indexes.remove(s.id());
 		}
 	}
 	newSegments.append(segment);
@@ -129,20 +133,23 @@ void IndexWriter::flush()
 	std::sort(m_segmentBuffer.begin(), m_segmentBuffer.end());
 
 	SegmentInfo segment(m_info.incLastSegmentId());
-	ScopedPtr<SegmentDataWriter> writer(segmentDataWriter(segment));
-	uint64_t lastItem = UINT64_MAX;
-	for (size_t i = 0; i < m_segmentBuffer.size(); i++) {
-		uint64_t item = m_segmentBuffer[i];
-		if (item != lastItem) {
-			uint32_t value = unpackItemValue(item);
-			writer->addItem(unpackItemKey(item), value);
-			lastItem = item;
+	{
+		ScopedPtr<SegmentDataWriter> writer(segmentDataWriter(segment));
+		uint64_t lastItem = UINT64_MAX;
+		for (size_t i = 0; i < m_segmentBuffer.size(); i++) {
+			uint64_t item = m_segmentBuffer[i];
+			if (item != lastItem) {
+				uint32_t value = unpackItemValue(item);
+				writer->addItem(unpackItemKey(item), value);
+				lastItem = item;
+			}
 		}
+		writer->close();
+		segment.setBlockCount(writer->blockCount());
+		segment.setLastKey(writer->lastKey());
+		segment.setChecksum(writer->checksum());
+		m_indexes.insert(segment.id(), writer->index());
 	}
-	writer->close();
-	segment.setBlockCount(writer->blockCount());
-	segment.setLastKey(writer->lastKey());
-	segment.setChecksum(writer->checksum());
 
 	qDebug() << "New segment" << segment.id() << "with checksum" << segment.checksum();
 	m_newSegments.append(segment);
@@ -151,7 +158,6 @@ void IndexWriter::flush()
 	}
 
 	m_info.addSegment(segment);
-	m_indexes = Index::loadSegmentIndexes(m_dir.data(), m_info, m_indexes);
 	maybeMerge();
 
 	m_segmentBuffer.clear();
