@@ -6,11 +6,11 @@
 
 #include "common.h"
 #include "segment_index.h"
+#include "index.h"
 #include "index_info.h"
 
 namespace Acoustid {
 
-class Index;
 class SegmentIndex;
 class SegmentDataReader;
 class Collector;
@@ -18,19 +18,15 @@ class Collector;
 class IndexReader
 {
 public:
-	IndexReader(DirectorySharedPtr dir, const IndexInfo& info, Index* index = NULL);
+	IndexReader(DirectorySharedPtr dir, const IndexInfo& info);
+	IndexReader(IndexSharedPtr index);
 	virtual ~IndexReader();
 
 	const IndexInfo& info() const { return m_info; }
 
-	Index* index()
+	IndexSharedPtr index()
 	{
 		return m_index;
-	}
-
-	void setIndex(Index* index)
-	{
-		m_index = index;
 	}
 
 	void search(uint32_t *fingerprint, size_t length, Collector *collector);
@@ -40,7 +36,7 @@ public:
 protected:
 	DirectorySharedPtr m_dir;
 	IndexInfo m_info;
-	Index* m_index;
+	IndexSharedPtr m_index;
 };
 
 }

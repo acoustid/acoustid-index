@@ -29,16 +29,16 @@ int main(int argc, char **argv)
 	}
 
 	DirectorySharedPtr dir(new FSDirectory(path));
-	Index index(dir);
+	IndexSharedPtr index(new Index(dir));
 	try {
-		index.open(opts->contains("create"));
+		index->open(opts->contains("create"));
 	}
 	catch (IOException &ex) {
 		qCritical() << "ERROR:" << ex.what();
 		return 1;
 	}
 
-	ScopedPtr<IndexWriter> writer(index.createWriter());
+	ScopedPtr<IndexWriter> writer(new IndexWriter(index));
 
 	const size_t lineSize = 1024 * 1024;
 	char line[lineSize];

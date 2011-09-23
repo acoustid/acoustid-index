@@ -16,25 +16,28 @@ using namespace Acoustid;
 TEST(IndexReaderTest, Search)
 {
 	DirectorySharedPtr dir(new RAMDirectory());
-	Index index(dir);
-	index.open(true);
+	IndexSharedPtr index(new Index(dir));
+	index->open(true);
 
-	IndexWriter* writer = index.createWriter();
 	uint32_t fp[] = { 7, 9, 12 };
-	writer->addDocument(1, fp, 3);
-	writer->commit();
-	writer->addDocument(2, fp, 3);
-	writer->commit();
-	delete writer;
 
-	IndexReader* reader = index.createReader();
-	TopHitsCollector collector(100);
-	reader->search(fp, 3, &collector);
-	ASSERT_EQ(2, collector.topResults().size());
-	ASSERT_EQ(1, collector.topResults().at(0).id());
-	ASSERT_EQ(3, collector.topResults().at(0).score());
-	ASSERT_EQ(2, collector.topResults().at(1).id());
-	ASSERT_EQ(3, collector.topResults().at(1).score());
-	delete reader;
+	{
+		IndexWriter writer(index);
+		writer.addDocument(1, fp, 3);
+		writer.commit();
+		writer.addDocument(2, fp, 3);
+		writer.commit();
+	}
+
+	{
+		IndexReader reader(index);
+		TopHitsCollector collector(100);
+		reader.search(fp, 3, &collector);
+		ASSERT_EQ(2, collector.topResults().size());
+		ASSERT_EQ(1, collector.topResults().at(0).id());
+		ASSERT_EQ(3, collector.topResults().at(0).score());
+		ASSERT_EQ(2, collector.topResults().at(1).id());
+		ASSERT_EQ(3, collector.topResults().at(1).score());
+	}
 }
 

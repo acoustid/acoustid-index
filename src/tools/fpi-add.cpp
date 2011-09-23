@@ -9,10 +9,10 @@ using namespace Acoustid;
 int main(int argc, char **argv)
 {
 	DirectorySharedPtr dir(new FSDirectory("."));
-	Index index(dir);
-	index.open(true);
+	IndexSharedPtr index(new Index(dir));
+	index->open(true);
 
-	ScopedPtr<IndexWriter> writer(index.createWriter());
+	ScopedPtr<IndexWriter> writer(new IndexWriter(index));
 
 	size_t length = argc - 2;
 	uint32_t id = strtoul(argv[1], NULL, 10);

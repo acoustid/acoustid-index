@@ -15,7 +15,7 @@ static const int kMaxLineSize = 1024 * 32;
 
 Connection::Connection(IndexSharedPtr index, QTcpSocket *socket, QObject *parent)
 	: QObject(parent), m_socket(socket), m_output(socket), m_index(index),
-		m_indexWriter(NULL), m_handler(NULL), m_refs(1),
+		m_handler(NULL), m_refs(1),
 		m_topScorePercent(10), m_maxResults(500)
 {
 	m_socket->setParent(this);

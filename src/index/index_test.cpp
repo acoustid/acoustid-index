@@ -33,16 +33,16 @@ TEST(IndexTest, OpenEmptyCreate)
 TEST(IndexTest, DeleteUnusedFiled)
 {
 	DirectorySharedPtr dir(new RAMDirectory());
-	Index index(dir);
-	index.open(true);
+	IndexSharedPtr index(new Index(dir));
+	index->open(true);
 
-	ASSERT_TRUE(index.directory()->fileExists("info_0"));
+	ASSERT_TRUE(index->directory()->fileExists("info_0"));
 	{
-		ScopedPtr<IndexWriter> writer(index.createWriter());
+		ScopedPtr<IndexWriter> writer(new IndexWriter(index));
 		uint32_t fp[] = { 1, 2, 3 };
 		writer->addDocument(1, fp, 3);
 		writer->commit();
 	}
-	ASSERT_TRUE(index.directory()->fileExists("info_1"));
-	ASSERT_FALSE(index.directory()->fileExists("info_0"));
+	ASSERT_TRUE(index->directory()->fileExists("info_1"));
+	ASSERT_FALSE(index->directory()->fileExists("info_0"));
 }

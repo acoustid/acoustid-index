@@ -6,14 +6,13 @@
 
 #include <QMutex>
 #include "common.h"
+#include "index.h"
 #include "index_info.h"
 #include "store/directory.h"
 #include "segment_index.h"
 
 namespace Acoustid {
 
-class IndexReader;
-class IndexWriter;
 class IndexFileDeleter;
 
 // Class for working with an on-disk index.
@@ -30,19 +29,10 @@ public:
 	// Open the index
 	void open(bool create = false);
 
-	// 
-	void refresh(const IndexInfo& info);
-
 	// Return the directory which contains the index data
 	DirectorySharedPtr directory()
 	{
 		return m_dir;
-	}
-
-	// Return the file deleted controlling this index's directory
-	IndexFileDeleter* fileDeleter()
-	{
-		return m_deleter.get();
 	}
 
 	IndexInfo info()
@@ -50,24 +40,19 @@ public:
 		return m_info;
 	}
 
-	// Create a new searcher
-	IndexReader* createReader();
+	void acquireWriterLock();
+	void releaseWriterLock();
 
-	// Create a new writer, there can be only one writer at a time
-	IndexWriter* createWriter();
-
-	void onReaderDeleted(IndexReader* reader);
-	void onWriterDeleted(IndexWriter* writer);
-
-	void incFileRef(const SegmentInfo& segment);
-	void decFileRef(const SegmentInfoList& segments);
+	IndexInfo acquireInfo();
+	void releaseInfo(const IndexInfo& info);
+	void updateInfo(const IndexInfo& oldInfo, const IndexInfo& newInfo, bool updateIndex = false);
 
 private:
 	ACOUSTID_DISABLE_COPY(Index);
 
 	QMutex m_mutex;
 	DirectorySharedPtr m_dir;
-	IndexWriter* m_indexWriter;
+	bool m_hasWriter;
 	ScopedPtr<IndexFileDeleter> m_deleter;
 	IndexInfo m_info;
 	bool m_open;

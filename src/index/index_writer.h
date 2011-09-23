@@ -17,7 +17,8 @@ class SegmentDataWriter;
 class IndexWriter : public IndexReader
 {
 public:
-	IndexWriter(DirectorySharedPtr dir, const IndexInfo& info, Index* index = NULL);
+	IndexWriter(DirectorySharedPtr dir, const IndexInfo& info);
+	IndexWriter(IndexSharedPtr index);
 	virtual ~IndexWriter();
 
 	size_t maxSegmentBufferSize() const
@@ -52,8 +53,10 @@ private:
 	size_t m_maxSegmentBufferSize;
 	std::vector<uint64_t> m_segmentBuffer;
 	ScopedPtr<SegmentMergePolicy> m_mergePolicy;
-	QList<SegmentInfo> m_newSegments;
 };
+
+typedef QWeakPointer<IndexWriter> IndexWriterWeakPtr;
+typedef QSharedPointer<IndexWriter> IndexWriterSharedPtr;
 
 }
 

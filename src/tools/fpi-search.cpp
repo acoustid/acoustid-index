@@ -24,16 +24,16 @@ int main(int argc, char **argv)
 	}
 
 	DirectorySharedPtr dir(new FSDirectory(path));
-	Index index(dir);
+	IndexSharedPtr index(new Index(dir));
 	try {
-		index.open();
+		index->open();
 	}
 	catch (IOException &ex) {
 		qCritical() << "ERROR:" << ex.what();
 		return 1;
 	}
 
-	ScopedPtr<IndexReader> reader(index.createReader());
+	ScopedPtr<IndexReader> reader(new IndexReader(index));
 
 	QStringList args = opts->arguments();
 	for (int i = 0; i < args.size(); i++) {

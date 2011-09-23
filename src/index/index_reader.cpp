@@ -13,16 +13,21 @@
 
 using namespace Acoustid;
 
-IndexReader::IndexReader(DirectorySharedPtr dir, const IndexInfo& info, Index* index)
-	: m_dir(dir), m_info(info), m_index(index)
+IndexReader::IndexReader(DirectorySharedPtr dir, const IndexInfo& info)
+	: m_dir(dir), m_info(info)
 {
+}
+
+IndexReader::IndexReader(IndexSharedPtr index)
+	: m_dir(index->directory()), m_index(index)
+{
+	m_info = m_index->acquireInfo();
 }
 
 IndexReader::~IndexReader()
 {
-//	qDebug() << "IndexReader closed" << this << m_index;
 	if (m_index) {
-		m_index->onReaderDeleted(this);
+		m_index->releaseInfo(m_info);
 	}
 }
 

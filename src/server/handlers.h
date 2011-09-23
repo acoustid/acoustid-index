@@ -57,7 +57,7 @@ public:
 			throw HandlerException("empty fingerprint");
 		}
 		TopHitsCollector collector(m_maxResults, m_topScorePercent);
-		ScopedPtr<IndexReader> reader(index()->createReader());
+		ScopedPtr<IndexReader> reader(new IndexReader(index()));
 		reader->search(reinterpret_cast<uint32_t*>(fp.get()), fpsize, &collector);
 		QList<Result> results = collector.topResults();
 		QStringList output;
@@ -82,7 +82,8 @@ public:
 		if (connection()->indexWriter()) {
 			throw HandlerException("already in transaction");
 		}
-		connection()->setIndexWriter(index()->createWriter());
+		IndexWriterSharedPtr writer(new IndexWriter(index()));
+		connection()->setIndexWriter(writer);
 		return QString();
 	}
 };
@@ -94,12 +95,12 @@ public:
 
 	QString handle()
 	{
-		IndexWriter* writer = connection()->indexWriter();
+		IndexWriterSharedPtr writer = connection()->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
 		}
 		writer->commit();
-		connection()->setIndexWriter(NULL);
+		connection()->setIndexWriter(IndexWriterSharedPtr());
 		return QString();
 	}
 };
@@ -111,11 +112,11 @@ public:
 
 	QString handle()
 	{
-		IndexWriter* writer = connection()->indexWriter();
+		IndexWriterSharedPtr writer = connection()->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
 		}
-		connection()->setIndexWriter(NULL);
+		connection()->setIndexWriter(IndexWriterSharedPtr());
 		return QString();
 	}
 };
@@ -127,7 +128,7 @@ public:
 
 	QString handle()
 	{
-		IndexWriter* writer = connection()->indexWriter();
+		IndexWriterSharedPtr writer = connection()->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
 		}
@@ -160,7 +161,7 @@ public:
 
 	QString handle()
 	{
-		IndexWriter* writer = connection()->indexWriter();
+		IndexWriterSharedPtr writer = connection()->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
 		}
@@ -176,7 +177,7 @@ public:
 
 	QString handle()
 	{
-		IndexWriter* writer = connection()->indexWriter();
+		IndexWriterSharedPtr writer = connection()->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
 		}

@@ -17,18 +17,23 @@
 
 using namespace Acoustid;
 
-IndexWriter::IndexWriter(DirectorySharedPtr dir, const IndexInfo& info, Index* index)
-	: IndexReader(dir, info, index), m_maxSegmentBufferSize(MAX_SEGMENT_BUFFER_SIZE)
+IndexWriter::IndexWriter(DirectorySharedPtr dir, const IndexInfo& info)
+	: IndexReader(dir, info), m_maxSegmentBufferSize(MAX_SEGMENT_BUFFER_SIZE)
 {
+	m_mergePolicy.reset(new SegmentMergePolicy());
+}
+
+IndexWriter::IndexWriter(IndexSharedPtr index)
+	: IndexReader(index), m_maxSegmentBufferSize(MAX_SEGMENT_BUFFER_SIZE)
+{
+	m_index->acquireWriterLock();
 	m_mergePolicy.reset(new SegmentMergePolicy());
 }
 
 IndexWriter::~IndexWriter()
 {
-	//qDebug() << "IndexWriter closed" << this << m_index;
 	if (m_index) {
-		m_index->decFileRef(m_newSegments);
-		m_index->onWriterDeleted(this);
+		m_index->releaseWriterLock();
 	}
 }
 
@@ -43,13 +48,13 @@ void IndexWriter::addDocument(uint32_t id, uint32_t *terms, size_t length)
 void IndexWriter::commit()
 {
 	flush();
-	m_info.save(m_dir.data());
-	qDebug() << "Committed revision" << m_info.revision();
+	IndexInfo info(m_info);
+	info.save(m_dir.data());
 	if (m_index) {
-		m_index->refresh(m_info);
-		m_index->decFileRef(m_newSegments);
+		m_index->updateInfo(m_info, info, true);
 	}
-	m_newSegments.clear();
+	m_info = info;
+	qDebug() << "Committed revision" << m_info.revision() << m_info.segments().size();
 }
 
 void IndexWriter::maybeFlush()
@@ -75,7 +80,8 @@ void IndexWriter::merge(const QList<int>& merge)
 
 	uint32_t expectedChecksum = 0;
 	const SegmentInfoList& segments = m_info.segments();
-	SegmentInfo segment(m_info.incLastSegmentId());
+	IndexInfo info(m_info);
+	SegmentInfo segment(info.incLastSegmentId());
 	{
 		SegmentMerger merger(segmentDataWriter(segment));
 		for (size_t i = 0; i < merge.size(); i++) {
@@ -93,26 +99,24 @@ void IndexWriter::merge(const QList<int>& merge)
 	}
 
 	qDebug() << "New segment" << segment.id() << "with checksum" << segment.checksum() << "(merge)";
-	m_newSegments.append(segment);
 
 	if (segment.checksum() != expectedChecksum) {
 		qFatal("Checksum mismatch after merge");
 	}
 
-	if (m_index) {
-		m_index->incFileRef(segment);
-	}
-
-	SegmentInfoList newSegments;
 	QSet<int> merged = merge.toSet();
+	info.clearSegments();
 	for (size_t i = 0; i < segments.size(); i++) {
 		const SegmentInfo& s = segments.at(i);
 		if (!merged.contains(i)) {
-			newSegments.append(s);
+			info.addSegment(s);
 		}
 	}
-	newSegments.append(segment);
-	m_info.setSegments(newSegments);
+	info.addSegment(segment);
+	if (m_index) {
+		m_index->updateInfo(m_info, info);
+	}
+	m_info = info;
 }
 
 void IndexWriter::maybeMerge()
@@ -129,7 +133,8 @@ void IndexWriter::flush()
 	//qDebug() << "Writing new segment" << (m_segmentBuffer.size() * 8.0 / 1024 / 1024);
 	std::sort(m_segmentBuffer.begin(), m_segmentBuffer.end());
 
-	SegmentInfo segment(m_info.incLastSegmentId());
+	IndexInfo info(m_info);
+	SegmentInfo segment(info.incLastSegmentId());
 	{
 		ScopedPtr<SegmentDataWriter> writer(segmentDataWriter(segment));
 		uint64_t lastItem = UINT64_MAX;
@@ -149,14 +154,13 @@ void IndexWriter::flush()
 	}
 
 	qDebug() << "New segment" << segment.id() << "with checksum" << segment.checksum();
-	m_newSegments.append(segment);
+	info.addSegment(segment);
 	if (m_index) {
-		m_index->incFileRef(segment);
+		m_index->updateInfo(m_info, info);
 	}
+	m_info = info;
 
-	m_info.addSegment(segment);
 	maybeMerge();
-
 	m_segmentBuffer.clear();
 }
 

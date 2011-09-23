@@ -28,11 +28,11 @@ public:
 	void close();
 
 	IndexSharedPtr index() { return m_index; }
-	IndexWriter* indexWriter() { return m_indexWriter.get(); }
+	IndexWriterSharedPtr indexWriter() { return m_indexWriter; }
 
-	void setIndexWriter(IndexWriter* indexWriter)
+	void setIndexWriter(IndexWriterSharedPtr indexWriter)
 	{
-		m_indexWriter.reset(indexWriter);
+		m_indexWriter = indexWriter;
 	}
 
 	QMutex* mutex()
@@ -56,7 +56,7 @@ private:
 	QString m_buffer;
 	QTextStream m_output;
     IndexSharedPtr m_index;
-    ScopedPtr<IndexWriter> m_indexWriter;
+    IndexWriterSharedPtr m_indexWriter;
 	QMutex m_mutex;
 	Handler* m_handler;
 	int m_topScorePercent;
