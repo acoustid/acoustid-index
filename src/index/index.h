@@ -23,11 +23,8 @@ class Index
 {
 public:
 	// Build a new instance using the given directory
-	Index(DirectorySharedPtr dir);
+	Index(DirectorySharedPtr dir, bool create = false);
 	virtual ~Index();
-
-	// Open the index
-	void open(bool create = false);
 
 	// Return the directory which contains the index data
 	DirectorySharedPtr directory()
@@ -49,6 +46,8 @@ public:
 
 private:
 	ACOUSTID_DISABLE_COPY(Index);
+
+	void open(bool create);
 
 	QMutex m_mutex;
 	DirectorySharedPtr m_dir;

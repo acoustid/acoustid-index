@@ -16,8 +16,7 @@ using namespace Acoustid;
 TEST(IndexReaderTest, Search)
 {
 	DirectorySharedPtr dir(new RAMDirectory());
-	IndexSharedPtr index(new Index(dir));
-	index->open(true);
+	IndexSharedPtr index(new Index(dir, true));
 
 	uint32_t fp[] = { 7, 9, 12 };
 

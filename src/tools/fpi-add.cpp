@@ -9,8 +9,7 @@ using namespace Acoustid;
 int main(int argc, char **argv)
 {
 	DirectorySharedPtr dir(new FSDirectory("."));
-	IndexSharedPtr index(new Index(dir));
-	index->open(true);
+	IndexSharedPtr index(new Index(dir, true));
 
 	ScopedPtr<IndexWriter> writer(new IndexWriter(index));
 

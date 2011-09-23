@@ -24,9 +24,9 @@ int main(int argc, char **argv)
 	}
 
 	DirectorySharedPtr dir(new FSDirectory(path));
-	IndexSharedPtr index(new Index(dir));
+	IndexSharedPtr index;
 	try {
-		index->open();
+		index = IndexSharedPtr(new Index(dir));
 	}
 	catch (IOException &ex) {
 		qCritical() << "ERROR:" << ex.what();

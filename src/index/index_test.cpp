@@ -14,27 +14,22 @@ using namespace Acoustid;
 TEST(IndexTest, OpenEmpty)
 {
 	DirectorySharedPtr dir(new RAMDirectory());
-	Index index(dir);
-
-	ASSERT_FALSE(index.directory()->fileExists("info_0"));
-	ASSERT_THROW(index.open(), IOException);
+	ASSERT_FALSE(dir->fileExists("info_0"));
+	ASSERT_THROW({ Index index(dir); }, IOException);
 }
 
 TEST(IndexTest, OpenEmptyCreate)
 {
 	DirectorySharedPtr dir(new RAMDirectory());
-	Index index(dir);
-
-	ASSERT_FALSE(index.directory()->fileExists("info_0"));
-	index.open(true);
-	ASSERT_TRUE(index.directory()->fileExists("info_0"));
+	ASSERT_FALSE(dir->fileExists("info_0"));
+	Index index(dir, true);
+	ASSERT_TRUE(dir->fileExists("info_0"));
 }
 
 TEST(IndexTest, DeleteUnusedFiled)
 {
 	DirectorySharedPtr dir(new RAMDirectory());
-	IndexSharedPtr index(new Index(dir));
-	index->open(true);
+	IndexSharedPtr index(new Index(dir, true));
 
 	ASSERT_TRUE(index->directory()->fileExists("info_0"));
 	{

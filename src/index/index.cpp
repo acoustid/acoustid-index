@@ -14,11 +14,12 @@
 
 using namespace Acoustid;
 
-Index::Index(DirectorySharedPtr dir)
+Index::Index(DirectorySharedPtr dir, bool create)
 	: m_mutex(QMutex::Recursive), m_dir(dir), m_open(false),
 	  m_hasWriter(false),
 	  m_deleter(new IndexFileDeleter(dir))
 {
+	open(create);
 }
 
 Index::~Index()
@@ -27,7 +28,6 @@ Index::~Index()
 
 void Index::open(bool create)
 {
-	QMutexLocker locker(&m_mutex);
 	if (!m_info.load(m_dir.data(), true)) {
 		if (create) {
 			IndexWriter(m_dir, m_info).commit();

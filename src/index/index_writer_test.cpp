@@ -14,8 +14,7 @@ using namespace Acoustid;
 TEST(IndexWriterTest, AddDocument)
 {
 	DirectorySharedPtr dir(new RAMDirectory());
-	IndexSharedPtr index(new Index(dir));
-	index->open(true);
+	IndexSharedPtr index(new Index(dir, true));
 
 	ScopedPtr<IndexWriter> writer(new IndexWriter(index));
 	ASSERT_TRUE(index->directory()->fileExists("info_0"));
@@ -53,8 +52,7 @@ TEST(IndexWriterTest, AddDocument)
 TEST(IndexWriterTest, Merge)
 {
 	DirectorySharedPtr dir(new RAMDirectory());
-	IndexSharedPtr index(new Index(dir));
-	index->open(true);
+	IndexSharedPtr index(new Index(dir, true));
 
 	ScopedPtr<IndexWriter> writer(new IndexWriter(index));
 	ASSERT_TRUE(index->directory()->fileExists("info_0"));
