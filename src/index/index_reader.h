@@ -18,7 +18,7 @@ class Collector;
 class IndexReader
 {
 public:
-	IndexReader(DirectorySharedPtr dir, const IndexInfo& info, const SegmentIndexMap& indexes, Index* index = NULL);
+	IndexReader(DirectorySharedPtr dir, const IndexInfo& info, Index* index = NULL);
 	virtual ~IndexReader();
 
 	const IndexInfo& info() const { return m_info; }
@@ -35,13 +35,11 @@ public:
 
 	void search(uint32_t *fingerprint, size_t length, Collector *collector);
 
-	SegmentIndexSharedPtr segmentIndex(const SegmentInfo& segment);
 	SegmentDataReader* segmentDataReader(const SegmentInfo& segment);
 
 protected:
 	DirectorySharedPtr m_dir;
 	IndexInfo m_info;
-	SegmentIndexMap m_indexes;
 	Index* m_index;
 };
 

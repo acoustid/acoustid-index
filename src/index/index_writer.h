@@ -17,7 +17,7 @@ class SegmentDataWriter;
 class IndexWriter : public IndexReader
 {
 public:
-	IndexWriter(DirectorySharedPtr dir, const IndexInfo& info, const SegmentIndexMap& indexes, Index* index = NULL);
+	IndexWriter(DirectorySharedPtr dir, const IndexInfo& info, Index* index = NULL);
 	virtual ~IndexWriter();
 
 	size_t maxSegmentBufferSize() const

@@ -31,7 +31,7 @@ public:
 	void open(bool create = false);
 
 	// 
-	void refresh(const IndexInfo& info, const SegmentIndexMap &indexes);
+	void refresh(const IndexInfo& info);
 
 	// Return the directory which contains the index data
 	DirectorySharedPtr directory()
@@ -56,9 +56,6 @@ public:
 	// Create a new writer, there can be only one writer at a time
 	IndexWriter* createWriter();
 
-	// Load all segment indexes
-	static SegmentIndexMap loadSegmentIndexes(Directory* dir, const IndexInfo& info, const SegmentIndexMap &oldIndexes = SegmentIndexMap());
-
 	void onReaderDeleted(IndexReader* reader);
 	void onWriterDeleted(IndexWriter* writer);
 
@@ -73,7 +70,6 @@ private:
 	IndexWriter* m_indexWriter;
 	ScopedPtr<IndexFileDeleter> m_deleter;
 	IndexInfo m_info;
-	SegmentIndexMap m_indexes;
 	bool m_open;
 };
 

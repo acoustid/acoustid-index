@@ -6,6 +6,7 @@
 
 #include <QSharedData>
 #include <QSharedDataPointer>
+#include "segment_index.h"
 #include "common.h"
 
 namespace Acoustid {
@@ -14,30 +15,33 @@ namespace Acoustid {
 class SegmentInfoData : public QSharedData
 {
 public:
-	SegmentInfoData(int id = 0, size_t blockCount = 0, uint32_t lastKey = 0, uint32_t checksum = 0) :
+	SegmentInfoData(int id = 0, size_t blockCount = 0, uint32_t lastKey = 0, uint32_t checksum = 0, SegmentIndexSharedPtr index = SegmentIndexSharedPtr()) :
 		id(id),
 		blockCount(blockCount),
 		lastKey(lastKey),
-		checksum(checksum) { }
+		checksum(checksum),
+		index(index) { }
 	SegmentInfoData(const SegmentInfoData& other) :
 		QSharedData(other),
 		id(other.id),
 		blockCount(other.blockCount),
 		lastKey(other.lastKey),
-		checksum(other.checksum) { }
+		checksum(other.checksum),
+		index(other.index) { }
 	~SegmentInfoData() { }
 
 	int id;
 	size_t blockCount;
 	uint32_t lastKey;
 	uint32_t checksum;
+	SegmentIndexSharedPtr index;
 };
 
 class SegmentInfo
 {
 public:
-	SegmentInfo(int id = 0, size_t blockCount = 0, uint32_t lastKey = 0, uint32_t checksum = 0)
-		: d(new SegmentInfoData(id, blockCount, lastKey, checksum)) { }
+	SegmentInfo(int id = 0, size_t blockCount = 0, uint32_t lastKey = 0, uint32_t checksum = 0, SegmentIndexSharedPtr index = SegmentIndexSharedPtr())
+		: d(new SegmentInfoData(id, blockCount, lastKey, checksum, index)) { }
 
 	QString name() const
 	{
@@ -92,6 +96,16 @@ public:
 	void setBlockCount(size_t blockCount)
 	{
 		d->blockCount = blockCount;
+	}
+
+	SegmentIndexSharedPtr index() const
+	{
+		return d->index;
+	}
+
+	void setIndex(SegmentIndexSharedPtr index)
+	{
+		d->index = index;
 	}
 
 	QList<QString> files() const;

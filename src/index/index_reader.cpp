@@ -13,8 +13,8 @@
 
 using namespace Acoustid;
 
-IndexReader::IndexReader(DirectorySharedPtr dir, const IndexInfo& info, const SegmentIndexMap& indexes, Index* index)
-	: m_dir(dir), m_info(info), m_indexes(indexes), m_index(index)
+IndexReader::IndexReader(DirectorySharedPtr dir, const IndexInfo& info, Index* index)
+	: m_dir(dir), m_info(info), m_index(index)
 {
 }
 
@@ -24,11 +24,6 @@ IndexReader::~IndexReader()
 	if (m_index) {
 		m_index->onReaderDeleted(this);
 	}
-}
-
-SegmentIndexSharedPtr IndexReader::segmentIndex(const SegmentInfo& segment)
-{
-	return m_indexes.value(segment.id());
 }
 
 SegmentDataReader* IndexReader::segmentDataReader(const SegmentInfo& segment)
@@ -42,7 +37,7 @@ void IndexReader::search(uint32_t* fingerprint, size_t length, Collector* collec
 	const SegmentInfoList& segments = m_info.segments();
 	for (int i = 0; i < segments.size(); i++) {
 		const SegmentInfo& s = segments.at(i);
-		SegmentSearcher searcher(segmentIndex(s), segmentDataReader(s), s.lastKey());
+		SegmentSearcher searcher(s.index(), segmentDataReader(s), s.lastKey());
 		searcher.search(fingerprint, length, collector);
 	}
 }

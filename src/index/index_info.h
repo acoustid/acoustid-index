@@ -113,16 +113,10 @@ public:
 	QList<QString> files() const;
 
 	// Load the latest index info from a directory
-	bool load(Directory* dir);
-
-	// Load the index info from a specific file
-	void load(InputStream* input);
+	bool load(Directory* dir, bool loadIndexes = false);
 
 	// Save a new index info revision into a directory
 	void save(Directory* dir);
-
-	// Save the index info into a specific file
-	void save(OutputStream* output);
 
 	// Find the last index info revision in a directory, returns -1 if
 	// there is no index info file
@@ -135,6 +129,13 @@ public:
 	static int indexInfoRevision(const QString &fileName);
 
 private:
+
+	// Load the index info from a specific file
+	void load(InputStream* input, bool loadIndexes, Directory* dir);
+
+	// Save the index info into a specific file
+	void save(OutputStream* output);
+
 	QSharedDataPointer<IndexInfoData> d;
 };
 

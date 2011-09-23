@@ -4,6 +4,7 @@
 #include "store/directory.h"
 #include "store/input_stream.h"
 #include "store/output_stream.h"
+#include "segment_index_reader.h"
 #include "index_info.h"
 
 using namespace Acoustid;
@@ -48,17 +49,17 @@ int IndexInfo::findCurrentRevision(Directory* dir)
 	return currentRev;
 }
 
-bool IndexInfo::load(Directory* dir)
+bool IndexInfo::load(Directory* dir, bool loadIndexes)
 {
 	d->revision = IndexInfo::findCurrentRevision(dir);
 	if (d->revision != -1) {
-		load(dir->openFile(indexInfoFileName(d->revision)));
+		load(dir->openFile(indexInfoFileName(d->revision)), loadIndexes, dir);
 		return true;
 	}
 	return false;
 }
 
-void IndexInfo::load(InputStream* input)
+void IndexInfo::load(InputStream* input, bool loadIndexes, Directory* dir)
 {
 	ScopedPtr<InputStream> guard(input);
 	setLastSegmentId(input->readVInt32());
@@ -69,7 +70,11 @@ void IndexInfo::load(InputStream* input)
 		uint32_t blockCount = input->readVInt32();
 		uint32_t lastKey = input->readVInt32();
 		uint32_t checksum = input->readVInt32();
-		addSegment(SegmentInfo(id, blockCount, lastKey, checksum));
+		SegmentInfo segment(id, blockCount, lastKey, checksum);
+		if (loadIndexes) {
+			segment.setIndex(SegmentIndexReader(dir->openFile(segment.indexFileName()), segment.blockCount()).read());
+		}
+		addSegment(segment);
 	}
 }
 

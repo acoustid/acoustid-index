@@ -17,8 +17,8 @@
 
 using namespace Acoustid;
 
-IndexWriter::IndexWriter(DirectorySharedPtr dir, const IndexInfo& info, const SegmentIndexMap& indexes, Index* index)
-	: IndexReader(dir, info, indexes, index), m_maxSegmentBufferSize(MAX_SEGMENT_BUFFER_SIZE)
+IndexWriter::IndexWriter(DirectorySharedPtr dir, const IndexInfo& info, Index* index)
+	: IndexReader(dir, info, index), m_maxSegmentBufferSize(MAX_SEGMENT_BUFFER_SIZE)
 {
 	m_mergePolicy.reset(new SegmentMergePolicy());
 }
@@ -46,7 +46,7 @@ void IndexWriter::commit()
 	m_info.save(m_dir.data());
 	qDebug() << "Committed revision" << m_info.revision();
 	if (m_index) {
-		m_index->refresh(m_info, m_indexes);
+		m_index->refresh(m_info);
 		m_index->decFileRef(m_newSegments);
 	}
 	m_newSegments.clear();
@@ -83,13 +83,13 @@ void IndexWriter::merge(const QList<int>& merge)
 			const SegmentInfo& s = segments.at(j);
 			expectedChecksum ^= s.checksum();
 			qDebug() << "Merging segment" << s.id() << "with checksum" << s.checksum() << "into segment" << segment.id();
-			merger.addSource(new SegmentEnum(segmentIndex(s), segmentDataReader(s)));
+			merger.addSource(new SegmentEnum(s.index(), segmentDataReader(s)));
 		}
 		merger.merge();
 		segment.setBlockCount(merger.writer()->blockCount());
 		segment.setLastKey(merger.writer()->lastKey());
 		segment.setChecksum(merger.writer()->checksum());
-		m_indexes.insert(segment.id(), merger.writer()->index());
+		segment.setIndex(merger.writer()->index());
 	}
 
 	qDebug() << "New segment" << segment.id() << "with checksum" << segment.checksum() << "(merge)";
@@ -109,9 +109,6 @@ void IndexWriter::merge(const QList<int>& merge)
 		const SegmentInfo& s = segments.at(i);
 		if (!merged.contains(i)) {
 			newSegments.append(s);
-		}
-		else {
-			m_indexes.remove(s.id());
 		}
 	}
 	newSegments.append(segment);
@@ -148,7 +145,7 @@ void IndexWriter::flush()
 		segment.setBlockCount(writer->blockCount());
 		segment.setLastKey(writer->lastKey());
 		segment.setChecksum(writer->checksum());
-		m_indexes.insert(segment.id(), writer->index());
+		segment.setIndex(writer->index());
 	}
 
 	qDebug() << "New segment" << segment.id() << "with checksum" << segment.checksum();

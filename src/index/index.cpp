@@ -28,7 +28,7 @@ Index::~Index()
 void Index::open(bool create)
 {
 	QMutexLocker locker(&m_mutex);
-	if (!m_info.load(m_dir.data())) {
+	if (!m_info.load(m_dir.data(), true)) {
 		if (create) {
 			ScopedPtr<IndexWriter>(createWriter())->commit();
 			return open(false);
@@ -36,15 +36,14 @@ void Index::open(bool create)
 		throw IOException("there is no index in the directory");
 	}
 	m_deleter->incRef(m_info);
-	m_indexes = loadSegmentIndexes(m_dir.data(), m_info);
 	m_open = true;
 }
 
-void Index::refresh(const IndexInfo& info, const SegmentIndexMap& indexes)
+void Index::refresh(const IndexInfo& info)
 {
 	QMutexLocker locker(&m_mutex);
 	for (int i = 0; i < info.segmentCount(); i++) {
-		assert(indexes.contains(info.segment(i).id()));
+		assert(!info.segment(i).index().isNull());
 	}
 	if (m_open) {
 		// the infos are opened twice (index + writer), so we need to inc/dec-ref them twice too
@@ -54,22 +53,6 @@ void Index::refresh(const IndexInfo& info, const SegmentIndexMap& indexes)
 		m_deleter->decRef(m_info);
 	}
 	m_info = info;
-	m_indexes = indexes;
-}
-
-SegmentIndexMap Index::loadSegmentIndexes(Directory* dir, const IndexInfo& info, const SegmentIndexMap& oldIndexes)
-{
-	SegmentIndexMap indexes;
-	const SegmentInfoList& segments = info.segments();
-	for (int i = 0; i < segments.size(); i++) {
-		const SegmentInfo& segment = segments.at(i);
-		SegmentIndexSharedPtr index = oldIndexes.value(segment.id());
-		if (index.isNull()) {
-			index = SegmentIndexReader(dir->openFile(segment.indexFileName()), segment.blockCount()).read();
-		}
-		indexes.insert(segment.id(), index);
-	}
-	return indexes;
 }
 
 IndexReader* Index::createReader()
@@ -78,7 +61,7 @@ IndexReader* Index::createReader()
 	if (m_open) {
 		m_deleter->incRef(m_info);
 	}
-	return new IndexReader(m_dir, m_info, m_indexes, this);
+	return new IndexReader(m_dir, m_info, this);
 }
 
 IndexWriter* Index::createWriter()
@@ -90,7 +73,7 @@ IndexWriter* Index::createWriter()
 	if (m_open) {
 		m_deleter->incRef(m_info);
 	}
-	m_indexWriter = new IndexWriter(m_dir, m_info, m_indexes, this);
+	m_indexWriter = new IndexWriter(m_dir, m_info, this);
 	return m_indexWriter;
 }
 
