@@ -78,7 +78,7 @@ void IndexInfo::load(InputStream* rawInput)
 	uint32_t expectedChecksum = input->checksum();
 	uint32_t checksum = input->readInt32();
 	if (checksum != expectedChecksum) {
-		throw IOException(QString("checksum mismatch %1 != %2").arg(expectedChecksum).arg(checksum));
+		throw CorruptIndexException(QString("checksum mismatch %1 != %2").arg(expectedChecksum).arg(checksum));
 	}
 }
 

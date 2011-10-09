@@ -95,7 +95,7 @@ void IndexWriter::merge(const QList<int>& merge)
 	m_newSegments.append(segment);
 
 	if (segment.checksum() != expectedChecksum) {
-		qFatal("Checksum mismatch after merge");
+		throw CorruptIndexException("checksum mismatch after merge");
 	}
 
 	if (m_index) {
