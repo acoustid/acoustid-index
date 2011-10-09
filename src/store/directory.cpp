@@ -19,3 +19,9 @@ bool Directory::fileExists(const QString &name)
 	}
 	return false;
 }
+
+void Directory::sync(const QStringList& names)
+{
+	// noop
+}
+

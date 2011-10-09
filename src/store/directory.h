@@ -27,6 +27,14 @@ public:
 	virtual QStringList listFiles() = 0;
 	virtual bool fileExists(const QString &name);
 
+	/***
+	 * Ensure that any writes to these files are moved to
+	 * stable storage. This is used to properly commit
+	 * changes to the index, to prevent a machine/OS
+	 * crash from corrupting the index.
+	 */
+	virtual void sync(const QStringList& names);
+
 };
 
 typedef QWeakPointer<Directory> DirectoryWeakPtr;

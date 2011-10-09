@@ -110,7 +110,7 @@ public:
 		d->nextSegmentNum = n;
 	}
 
-	QList<QString> files() const;
+	QList<QString> files(bool includeIndexInfo = true) const;
 
 	// Load the latest index info from a directory
 	bool load(Directory* dir);

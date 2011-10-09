@@ -8,13 +8,15 @@
 
 using namespace Acoustid;
 
-QList<QString> IndexInfo::files() const
+QList<QString> IndexInfo::files(bool includeIndexInfo) const
 {
 	QList<QString> files;
 	if (d->revision < 0) {
 		return files;
 	}
-	files.append(indexInfoFileName(d->revision));
+	if (includeIndexInfo) {
+		files.append(indexInfoFileName(d->revision));
+	}
 	for (size_t i = 0; i < d->segments.size(); i++) {
 		const SegmentInfo& segment = d->segments.at(i);
 		files.append(segment.files());
@@ -75,11 +77,14 @@ void IndexInfo::load(InputStream* input)
 
 void IndexInfo::save(Directory* dir)
 {
+	dir->sync(files(false));
 	d->revision++;
 	QString fileName = indexInfoFileName(d->revision);
 	QString tempFileName = fileName + ".tmp";
 	save(dir->createFile(tempFileName));
+	dir->sync(QStringList() << tempFileName);
 	dir->renameFile(tempFileName, fileName);
+	dir->sync(QStringList() << fileName);
 }
 
 void IndexInfo::save(OutputStream *output)

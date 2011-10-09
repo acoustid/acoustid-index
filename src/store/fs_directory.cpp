@@ -1,6 +1,7 @@
 // Copyright (C) 2011  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
+#include <errno.h>
 #include <QString>
 #include <QByteArray>
 #include <QFile>
@@ -74,5 +75,22 @@ bool FSDirectory::fileExists(const QString &name)
 {
 	QMutexLocker locker(&m_mutex);
 	QFile::exists(filePath(name));
+}
+
+void FSDirectory::sync(const QStringList& names)
+{
+	for (size_t i = 0; i < names.size(); i++) {
+		fsync(names.at(i));
+	}
+}
+
+void FSDirectory::fsync(const QString& name)
+{
+	QString fileName = filePath(name);
+	ScopedPtr<FSInputStream> input(FSInputStream::open(fileName));
+	int ret = ::fsync(input->fileDescriptor());
+	if (ret == -1) {
+		throw IOException(QString("Couldn't synchronize file '%1' (errno %2)").arg(fileName).arg(errno));
+	}
 }
 
