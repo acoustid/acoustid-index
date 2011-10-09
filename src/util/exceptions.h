@@ -25,6 +25,12 @@ public:
 	IOException(const QString &msg) : Exception(msg) { }
 };
 
+class CorruptIndexException : public IOException
+{
+public:
+	CorruptIndexException(const QString &msg) : IOException(msg) { }
+};
+
 }
 
 #endif

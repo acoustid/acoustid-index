@@ -29,8 +29,11 @@ public:
 	virtual void renameFile(const QString &oldName, const QString &newName);
 	QStringList listFiles();
 	bool fileExists(const QString &name);
+	virtual void sync(const QStringList& names);
 
 private:
+
+	void fsync(const QString& name);
 
 	QString filePath(const QString &name)
 	{

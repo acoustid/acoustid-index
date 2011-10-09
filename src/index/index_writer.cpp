@@ -101,7 +101,7 @@ void IndexWriter::merge(const QList<int>& merge)
 	qDebug() << "New segment" << segment.id() << "with checksum" << segment.checksum() << "(merge)";
 
 	if (segment.checksum() != expectedChecksum) {
-		qFatal("Checksum mismatch after merge");
+		throw CorruptIndexException("checksum mismatch after merge");
 	}
 
 	QSet<int> merged = merge.toSet();

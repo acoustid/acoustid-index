@@ -5,17 +5,21 @@
 #include "store/input_stream.h"
 #include "store/output_stream.h"
 #include "segment_index_reader.h"
+#include "store/checksum_input_stream.h"
+#include "store/checksum_output_stream.h"
 #include "index_info.h"
 
 using namespace Acoustid;
 
-QList<QString> IndexInfo::files() const
+QList<QString> IndexInfo::files(bool includeIndexInfo) const
 {
 	QList<QString> files;
 	if (d->revision < 0) {
 		return files;
 	}
-	files.append(indexInfoFileName(d->revision));
+	if (includeIndexInfo) {
+		files.append(indexInfoFileName(d->revision));
+	}
 	for (size_t i = 0; i < d->segments.size(); i++) {
 		const SegmentInfo& segment = d->segments.at(i);
 		files.append(segment.files());
@@ -33,7 +37,7 @@ QString IndexInfo::indexInfoFileName(int revision)
 	return QString("info_%1").arg(revision);
 }
 
-int IndexInfo::findCurrentRevision(Directory* dir)
+int IndexInfo::findCurrentRevision(Directory* dir, int maxRevision)
 {
 	const QStringList& fileNames = dir->listFiles();
 	int currentRev = -1;
@@ -41,7 +45,7 @@ int IndexInfo::findCurrentRevision(Directory* dir)
 		const QString& fileName = fileNames.at(i);
 		if (fileName.startsWith("info_")) {
 			int rev = indexInfoRevision(fileName);
-			if (rev > currentRev) {
+			if (rev > currentRev && (!maxRevision || rev < maxRevision)) {
 				currentRev = rev;
 			}
 		}
@@ -51,17 +55,31 @@ int IndexInfo::findCurrentRevision(Directory* dir)
 
 bool IndexInfo::load(Directory* dir, bool loadIndexes)
 {
-	d->revision = IndexInfo::findCurrentRevision(dir);
-	if (d->revision != -1) {
-		load(dir->openFile(indexInfoFileName(d->revision)), loadIndexes, dir);
-		return true;
+	int revision = 0;
+	while (true) {
+		revision = IndexInfo::findCurrentRevision(dir, revision);
+		if (revision < 0) {
+			break;
+		}
+		try {
+			load(dir->openFile(indexInfoFileName(revision)), loadIndexes, dir);
+			d->revision = revision;
+			return true;
+		}
+		catch (IOException& ex) {
+			qDebug() << "Corrupt index info" << revision;
+			if (revision > 0) {
+				continue;
+			}
+			throw;
+		}
 	}
 	return false;
 }
 
-void IndexInfo::load(InputStream* input, bool loadIndexes, Directory* dir)
+void IndexInfo::load(InputStream* rawInput, bool loadIndexes, Directory* dir)
 {
-	ScopedPtr<InputStream> guard(input);
+	ScopedPtr<ChecksumInputStream> input(new ChecksumInputStream(rawInput));
 	setLastSegmentId(input->readVInt32());
 	clearSegments();
 	size_t segmentCount = input->readVInt32();
@@ -76,20 +94,28 @@ void IndexInfo::load(InputStream* input, bool loadIndexes, Directory* dir)
 		}
 		addSegment(segment);
 	}
+	uint32_t expectedChecksum = input->checksum();
+	uint32_t checksum = input->readInt32();
+	if (checksum != expectedChecksum) {
+		throw CorruptIndexException(QString("checksum mismatch %1 != %2").arg(expectedChecksum).arg(checksum));
+	}
 }
 
 void IndexInfo::save(Directory* dir)
 {
+	dir->sync(files(false));
 	d->revision++;
 	QString fileName = indexInfoFileName(d->revision);
 	QString tempFileName = fileName + ".tmp";
 	save(dir->createFile(tempFileName));
+	dir->sync(QStringList() << tempFileName);
 	dir->renameFile(tempFileName, fileName);
+	dir->sync(QStringList() << fileName);
 }
 
-void IndexInfo::save(OutputStream *output)
+void IndexInfo::save(OutputStream *rawOutput)
 {
-	ScopedPtr<OutputStream> guard(output);
+	ScopedPtr<ChecksumOutputStream> output(new ChecksumOutputStream(rawOutput));
 	output->writeVInt32(lastSegmentId());
 	output->writeVInt32(segmentCount());
 	for (size_t i = 0; i < segmentCount(); i++) {
@@ -98,5 +124,7 @@ void IndexInfo::save(OutputStream *output)
 		output->writeVInt32(d->segments.at(i).lastKey());
 		output->writeVInt32(d->segments.at(i).checksum());
 	}
+	output->flush();
+	output->writeInt32(output->checksum());
 }
 

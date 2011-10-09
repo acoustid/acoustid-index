@@ -110,7 +110,7 @@ public:
 		d->nextSegmentNum = n;
 	}
 
-	QList<QString> files() const;
+	QList<QString> files(bool includeIndexInfo = true) const;
 
 	// Load the latest index info from a directory
 	bool load(Directory* dir, bool loadIndexes = false);
@@ -120,7 +120,7 @@ public:
 
 	// Find the last index info revision in a directory, returns -1 if
 	// there is no index info file
-	static int findCurrentRevision(Directory *dir);
+	static int findCurrentRevision(Directory *dir, int maxRevision = 0);
 
 	// Generate the index info file name
 	static QString indexInfoFileName(int revision);
