@@ -35,28 +35,29 @@ TEST(IndexInfoTest, ReadFromDir)
 	RAMDirectory dir;
 
 	ScopedPtr<OutputStream> output(dir.createFile("info_0"));
-	output->writeVInt32(3);
+	output->writeVInt32(2);
 	output->writeVInt32(2);
 	output->writeVInt32(0);
 	output->writeVInt32(42);
 	output->writeVInt32(100);
 	output->writeVInt32(123);
-	output->writeVInt32(2);
+	output->writeVInt32(1);
 	output->writeVInt32(66);
 	output->writeVInt32(200);
 	output->writeVInt32(456);
+	output->writeInt32(3627580765u);
 	output.reset();
 
 	IndexInfo infos;
 	infos.load(&dir);
 
-	ASSERT_EQ(3, infos.lastSegmentId());
+	ASSERT_EQ(2, infos.lastSegmentId());
 	ASSERT_EQ(2, infos.segmentCount());
 	ASSERT_EQ("segment_0", infos.segment(0).name());
 	ASSERT_EQ(42, infos.segment(0).blockCount());
 	ASSERT_EQ(100, infos.segment(0).lastKey());
 	ASSERT_EQ(123, infos.segment(0).checksum());
-	ASSERT_EQ("segment_2", infos.segment(1).name());
+	ASSERT_EQ("segment_1", infos.segment(1).name());
 	ASSERT_EQ(66, infos.segment(1).blockCount());
 	ASSERT_EQ(200, infos.segment(1).lastKey());
 	ASSERT_EQ(456, infos.segment(1).checksum());
@@ -67,28 +68,29 @@ TEST(IndexInfoTest, ReadFromStream)
 	RAMDirectory dir;
 
 	ScopedPtr<OutputStream> output(dir.createFile("info_0"));
-	output->writeVInt32(3);
+	output->writeVInt32(2);
 	output->writeVInt32(2);
 	output->writeVInt32(0);
 	output->writeVInt32(42);
 	output->writeVInt32(100);
 	output->writeVInt32(123);
-	output->writeVInt32(2);
+	output->writeVInt32(1);
 	output->writeVInt32(66);
 	output->writeVInt32(200);
 	output->writeVInt32(456);
+	output->writeInt32(3627580765u);
 	output.reset();
 
 	IndexInfo infos;
 	infos.load(dir.openFile("info_0"));
 
-	ASSERT_EQ(3, infos.lastSegmentId());
+	ASSERT_EQ(2, infos.lastSegmentId());
 	ASSERT_EQ(2, infos.segmentCount());
 	ASSERT_EQ("segment_0", infos.segment(0).name());
 	ASSERT_EQ(42, infos.segment(0).blockCount());
 	ASSERT_EQ(100, infos.segment(0).lastKey());
 	ASSERT_EQ(123, infos.segment(0).checksum());
-	ASSERT_EQ("segment_2", infos.segment(1).name());
+	ASSERT_EQ("segment_1", infos.segment(1).name());
 	ASSERT_EQ(66, infos.segment(1).blockCount());
 	ASSERT_EQ(200, infos.segment(1).lastKey());
 	ASSERT_EQ(123, infos.segment(0).checksum());
@@ -116,6 +118,7 @@ TEST(IndexInfoTest, WriteIntoDir)
 	ASSERT_EQ(66, input->readVInt32());
 	ASSERT_EQ(200, input->readVInt32());
 	ASSERT_EQ(456, input->readVInt32());
+	ASSERT_EQ(3627580765u, input->readInt32());
 }
 
 TEST(IndexInfoTest, WriteIntoStream)
@@ -140,6 +143,7 @@ TEST(IndexInfoTest, WriteIntoStream)
 	ASSERT_EQ(66, input->readVInt32());
 	ASSERT_EQ(200, input->readVInt32());
 	ASSERT_EQ(456, input->readVInt32());
+	ASSERT_EQ(3627580765u, input->readInt32());
 }
 
 TEST(IndexInfoTest, Clear)

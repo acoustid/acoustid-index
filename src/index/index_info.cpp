@@ -4,6 +4,8 @@
 #include "store/directory.h"
 #include "store/input_stream.h"
 #include "store/output_stream.h"
+#include "store/checksum_input_stream.h"
+#include "store/checksum_output_stream.h"
 #include "index_info.h"
 
 using namespace Acoustid;
@@ -60,9 +62,9 @@ bool IndexInfo::load(Directory* dir)
 	return false;
 }
 
-void IndexInfo::load(InputStream* input)
+void IndexInfo::load(InputStream* rawInput)
 {
-	ScopedPtr<InputStream> guard(input);
+	ScopedPtr<ChecksumInputStream> input(new ChecksumInputStream(rawInput));
 	setLastSegmentId(input->readVInt32());
 	clearSegments();
 	size_t segmentCount = input->readVInt32();
@@ -72,6 +74,11 @@ void IndexInfo::load(InputStream* input)
 		uint32_t lastKey = input->readVInt32();
 		uint32_t checksum = input->readVInt32();
 		addSegment(SegmentInfo(id, blockCount, lastKey, checksum));
+	}
+	uint32_t expectedChecksum = input->checksum();
+	uint32_t checksum = input->readInt32();
+	if (checksum != expectedChecksum) {
+		throw IOException(QString("checksum mismatch %1 != %2").arg(expectedChecksum).arg(checksum));
 	}
 }
 
@@ -87,9 +94,9 @@ void IndexInfo::save(Directory* dir)
 	dir->sync(QStringList() << fileName);
 }
 
-void IndexInfo::save(OutputStream *output)
+void IndexInfo::save(OutputStream *rawOutput)
 {
-	ScopedPtr<OutputStream> guard(output);
+	ScopedPtr<ChecksumOutputStream> output(new ChecksumOutputStream(rawOutput));
 	output->writeVInt32(lastSegmentId());
 	output->writeVInt32(segmentCount());
 	for (size_t i = 0; i < segmentCount(); i++) {
@@ -98,5 +105,7 @@ void IndexInfo::save(OutputStream *output)
 		output->writeVInt32(d->segments.at(i).lastKey());
 		output->writeVInt32(d->segments.at(i).checksum());
 	}
+	output->flush();
+	output->writeInt32(output->checksum());
 }
 

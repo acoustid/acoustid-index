@@ -12,33 +12,36 @@ add_definitions(
 )
 
 set(fpindexlib_SOURCES
+	src/index/index.cpp
+	src/index/index_file_deleter.cpp
+	src/index/index_info.cpp
+	src/index/index_reader.cpp
+	src/index/index_writer.cpp
 	src/index/segment_data_reader.cpp
 	src/index/segment_data_writer.cpp
 	src/index/segment_index.cpp
 	src/index/segment_index_reader.cpp
 	src/index/segment_index_writer.cpp
-	src/index/index_info.cpp
 	src/index/segment_info.cpp
-	src/index/segment_searcher.cpp
-	src/index/segment_merger.cpp
 	src/index/segment_merge_policy.cpp
+	src/index/segment_merger.cpp
+	src/index/segment_searcher.cpp
 	src/index/top_hits_collector.cpp
-	src/index/index.cpp
-	src/index/index_file_deleter.cpp
-	src/index/index_writer.cpp
-	src/index/index_reader.cpp
 	src/store/buffered_input_stream.cpp
 	src/store/buffered_output_stream.cpp
-	src/store/input_stream.cpp
-	src/store/output_stream.cpp
+	src/store/checksum_output_stream.cpp
+	src/store/checksum_input_stream.cpp
 	src/store/directory.cpp
 	src/store/fs_directory.cpp
 	src/store/fs_input_stream.cpp
 	src/store/fs_output_stream.cpp
-	src/store/mmap_input_stream.cpp
+	src/store/input_stream.cpp
 	src/store/memory_input_stream.cpp
+	src/store/mmap_input_stream.cpp
+	src/store/output_stream.cpp
 	src/store/ram_directory.cpp
 	src/store/ram_output_stream.cpp
+	src/util/crc.c
 	src/util/options.cpp
 )
 add_library(fpindexlib ${fpindexlib_SOURCES})
