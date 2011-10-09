@@ -126,7 +126,7 @@ public:
 
 	// Find the last index info revision in a directory, returns -1 if
 	// there is no index info file
-	static int findCurrentRevision(Directory *dir);
+	static int findCurrentRevision(Directory *dir, int maxRevision = 0);
 
 	// Generate the index info file name
 	static QString indexInfoFileName(int revision);

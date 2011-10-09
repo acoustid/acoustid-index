@@ -63,6 +63,109 @@ TEST(IndexInfoTest, ReadFromDir)
 	ASSERT_EQ(456, infos.segment(1).checksum());
 }
 
+TEST(IndexInfoTest, ReadFromDirCorruptRecover)
+{
+	RAMDirectory dir;
+
+	{
+		ScopedPtr<OutputStream> output(dir.createFile("info_0"));
+		output->writeVInt32(2);
+		output->writeVInt32(2);
+		output->writeVInt32(0);
+		output->writeVInt32(42);
+		output->writeVInt32(100);
+		output->writeVInt32(123);
+		output->writeVInt32(1);
+		output->writeVInt32(66);
+		output->writeVInt32(200);
+		output->writeVInt32(456);
+		output->writeInt32(3627580765u);
+	}
+
+	{
+		ScopedPtr<OutputStream> output(dir.createFile("info_1"));
+		output->writeVInt32(3);
+	}
+
+	IndexInfo infos;
+	infos.load(&dir);
+
+	ASSERT_EQ(0, infos.revision());
+	ASSERT_EQ(2, infos.lastSegmentId());
+	ASSERT_EQ(2, infos.segmentCount());
+	ASSERT_EQ("segment_0", infos.segment(0).name());
+	ASSERT_EQ(42, infos.segment(0).blockCount());
+	ASSERT_EQ(100, infos.segment(0).lastKey());
+	ASSERT_EQ(123, infos.segment(0).checksum());
+	ASSERT_EQ("segment_1", infos.segment(1).name());
+	ASSERT_EQ(66, infos.segment(1).blockCount());
+	ASSERT_EQ(200, infos.segment(1).lastKey());
+	ASSERT_EQ(456, infos.segment(1).checksum());
+}
+
+TEST(IndexInfoTest, ReadFromDirCorruptRecover2)
+{
+	RAMDirectory dir;
+
+	{
+		ScopedPtr<OutputStream> output(dir.createFile("info_0"));
+		output->writeVInt32(2);
+		output->writeVInt32(2);
+		output->writeVInt32(0);
+		output->writeVInt32(42);
+		output->writeVInt32(100);
+		output->writeVInt32(123);
+		output->writeVInt32(1);
+		output->writeVInt32(66);
+		output->writeVInt32(200);
+		output->writeVInt32(456);
+		output->writeInt32(3627580765u);
+	}
+
+	{
+		ScopedPtr<OutputStream> output(dir.createFile("info_1"));
+		output->writeVInt32(3);
+	}
+
+	{
+		ScopedPtr<OutputStream> output(dir.createFile("info_2"));
+		output->writeVInt32(4);
+	}
+
+	IndexInfo infos;
+	infos.load(&dir);
+
+	ASSERT_EQ(0, infos.revision());
+	ASSERT_EQ(2, infos.lastSegmentId());
+	ASSERT_EQ(2, infos.segmentCount());
+	ASSERT_EQ("segment_0", infos.segment(0).name());
+	ASSERT_EQ(42, infos.segment(0).blockCount());
+	ASSERT_EQ(100, infos.segment(0).lastKey());
+	ASSERT_EQ(123, infos.segment(0).checksum());
+	ASSERT_EQ("segment_1", infos.segment(1).name());
+	ASSERT_EQ(66, infos.segment(1).blockCount());
+	ASSERT_EQ(200, infos.segment(1).lastKey());
+	ASSERT_EQ(456, infos.segment(1).checksum());
+}
+
+TEST(IndexInfoTest, ReadFromDirCorruptFail)
+{
+	RAMDirectory dir;
+
+	{
+		ScopedPtr<OutputStream> output(dir.createFile("info_0"));
+		output->writeVInt32(2);
+	}
+
+	{
+		ScopedPtr<OutputStream> output(dir.createFile("info_1"));
+		output->writeVInt32(3);
+	}
+
+	IndexInfo infos;
+	ASSERT_THROW(infos.load(&dir), CorruptIndexException);
+}
+
 TEST(IndexInfoTest, ReadFromStream)
 {
 	RAMDirectory dir;

@@ -36,7 +36,7 @@ QString IndexInfo::indexInfoFileName(int revision)
 	return QString("info_%1").arg(revision);
 }
 
-int IndexInfo::findCurrentRevision(Directory* dir)
+int IndexInfo::findCurrentRevision(Directory* dir, int maxRevision)
 {
 	const QStringList& fileNames = dir->listFiles();
 	int currentRev = -1;
@@ -44,7 +44,7 @@ int IndexInfo::findCurrentRevision(Directory* dir)
 		const QString& fileName = fileNames.at(i);
 		if (fileName.startsWith("info_")) {
 			int rev = indexInfoRevision(fileName);
-			if (rev > currentRev) {
+			if (rev > currentRev && (!maxRevision || rev < maxRevision)) {
 				currentRev = rev;
 			}
 		}
@@ -54,10 +54,24 @@ int IndexInfo::findCurrentRevision(Directory* dir)
 
 bool IndexInfo::load(Directory* dir)
 {
-	d->revision = IndexInfo::findCurrentRevision(dir);
-	if (d->revision != -1) {
-		load(dir->openFile(indexInfoFileName(d->revision)));
-		return true;
+	int revision = 0;
+	while (true) {
+		revision = IndexInfo::findCurrentRevision(dir, revision);
+		if (revision < 0) {
+			break;
+		}
+		try {
+			load(dir->openFile(indexInfoFileName(revision)));
+			d->revision = revision;
+			return true;
+		}
+		catch (IOException& ex) {
+			qDebug() << "Corrupt index info" << revision;
+			if (revision > 0) {
+				continue;
+			}
+			throw;
+		}
 	}
 	return false;
 }
