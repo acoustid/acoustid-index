@@ -12,11 +12,13 @@ namespace Acoustid {
 class Exception : public std::exception
 {
 public:
-	Exception(const QString &msg) : m_msg(msg.toLocal8Bit()) { }
+	Exception(const QString& msg) : m_msg(msg), m_msgEncoded(msg.toLocal8Bit()) { }
 	~Exception() throw() { }
-	const char *what() const throw() { return m_msg.constData(); }
+	const QString message() const throw() { return m_msg; }
+	const char *what() const throw() { return m_msgEncoded.constData(); }
 private:
-	QByteArray m_msg;
+	QString m_msg;
+	QByteArray m_msgEncoded;
 };
 
 class IOException : public Exception

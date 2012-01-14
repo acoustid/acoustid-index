@@ -45,7 +45,10 @@ TEST(IndexInfoTest, ReadFromDir)
 	output->writeVInt32(66);
 	output->writeVInt32(200);
 	output->writeVInt32(456);
-	output->writeInt32(3627580765u);
+	output->writeVInt32(1);
+	output->writeString("foo");
+	output->writeString("bar");
+	output->writeInt32(3656423981u);
 	output.reset();
 
 	IndexInfo infos;
@@ -61,6 +64,8 @@ TEST(IndexInfoTest, ReadFromDir)
 	ASSERT_EQ(66, infos.segment(1).blockCount());
 	ASSERT_EQ(200, infos.segment(1).lastKey());
 	ASSERT_EQ(456, infos.segment(1).checksum());
+	ASSERT_EQ(1, infos.attributes().size());
+	ASSERT_EQ("bar", infos.attribute("foo"));
 }
 
 TEST(IndexInfoTest, ReadFromDirCorruptRecover)
@@ -79,7 +84,10 @@ TEST(IndexInfoTest, ReadFromDirCorruptRecover)
 		output->writeVInt32(66);
 		output->writeVInt32(200);
 		output->writeVInt32(456);
-		output->writeInt32(3627580765u);
+		output->writeVInt32(1);
+		output->writeString("foo");
+		output->writeString("bar");
+		output->writeInt32(3656423981u);
 	}
 
 	{
@@ -101,6 +109,8 @@ TEST(IndexInfoTest, ReadFromDirCorruptRecover)
 	ASSERT_EQ(66, infos.segment(1).blockCount());
 	ASSERT_EQ(200, infos.segment(1).lastKey());
 	ASSERT_EQ(456, infos.segment(1).checksum());
+	ASSERT_EQ(1, infos.attributes().size());
+	ASSERT_EQ("bar", infos.attribute("foo"));
 }
 
 TEST(IndexInfoTest, ReadFromDirCorruptRecover2)
@@ -119,7 +129,10 @@ TEST(IndexInfoTest, ReadFromDirCorruptRecover2)
 		output->writeVInt32(66);
 		output->writeVInt32(200);
 		output->writeVInt32(456);
-		output->writeInt32(3627580765u);
+		output->writeVInt32(1);
+		output->writeString("foo");
+		output->writeString("bar");
+		output->writeInt32(3656423981u);
 	}
 
 	{
@@ -146,6 +159,8 @@ TEST(IndexInfoTest, ReadFromDirCorruptRecover2)
 	ASSERT_EQ(66, infos.segment(1).blockCount());
 	ASSERT_EQ(200, infos.segment(1).lastKey());
 	ASSERT_EQ(456, infos.segment(1).checksum());
+	ASSERT_EQ(1, infos.attributes().size());
+	ASSERT_EQ("bar", infos.attribute("foo"));
 }
 
 TEST(IndexInfoTest, ReadFromDirCorruptFail)
@@ -175,6 +190,7 @@ TEST(IndexInfoTest, WriteIntoDir)
 	infos.incLastSegmentId();
 	infos.addSegment(SegmentInfo(1, 66, 200, 456));
 	infos.incLastSegmentId();
+	infos.setAttribute("foo", "bar");
 	infos.save(&dir);
 
 	ScopedPtr<InputStream> input(dir.openFile("info_0"));
@@ -188,7 +204,10 @@ TEST(IndexInfoTest, WriteIntoDir)
 	ASSERT_EQ(66, input->readVInt32());
 	ASSERT_EQ(200, input->readVInt32());
 	ASSERT_EQ(456, input->readVInt32());
-	ASSERT_EQ(3627580765u, input->readInt32());
+	ASSERT_EQ(1, input->readVInt32());
+	ASSERT_EQ("foo", input->readString());
+	ASSERT_EQ("bar", input->readString());
+	ASSERT_EQ(3656423981u, input->readInt32());
 }
 
 TEST(IndexInfoTest, Clear)
@@ -199,5 +218,19 @@ TEST(IndexInfoTest, Clear)
 	ASSERT_EQ(2, infos.segmentCount());
 	infos.clearSegments();
 	ASSERT_EQ(0, infos.segmentCount());
+}
+
+TEST(IndexInfoTest, GetSetAttributes)
+{
+	IndexInfo info;
+
+	QString value;
+	
+	value = info.attribute("last_fingerprint_id");
+	ASSERT_EQ(value, QString());
+
+	info.setAttribute("last_fingerprint_id", "12345");
+	value = info.attribute("last_fingerprint_id");
+	ASSERT_EQ(value, QString("12345"));
 }
 

@@ -71,7 +71,7 @@ bool IndexInfo::load(Directory* dir, bool loadIndexes)
 			if (revision > 0) {
 				continue;
 			}
-			throw;
+			throw CorruptIndexException(ex.message());
 		}
 	}
 	return false;
@@ -93,6 +93,12 @@ void IndexInfo::load(InputStream* rawInput, bool loadIndexes, Directory* dir)
 			segment.setIndex(SegmentIndexReader(dir->openFile(segment.indexFileName()), segment.blockCount()).read());
 		}
 		addSegment(segment);
+	}
+	size_t attribsCount = input->readVInt32();
+	for (size_t i = 0; i < attribsCount; i++) {
+		QString name = input->readString();
+		QString value = input->readString();
+		setAttribute(name, value);
 	}
 	uint32_t expectedChecksum = input->checksum();
 	uint32_t checksum = input->readInt32();
@@ -123,6 +129,15 @@ void IndexInfo::save(OutputStream *rawOutput)
 		output->writeVInt32(d->segments.at(i).blockCount());
 		output->writeVInt32(d->segments.at(i).lastKey());
 		output->writeVInt32(d->segments.at(i).checksum());
+	}
+	{
+		QMapIterator<QString, QString> i(d->attribs);
+		output->writeVInt32(d->attribs.size());
+		while (i.hasNext()) {
+			i.next();
+			output->writeString(i.key());
+			output->writeString(i.value());
+		}
 	}
 	output->flush();
 	output->writeInt32(output->checksum());

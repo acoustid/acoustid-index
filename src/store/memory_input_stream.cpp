@@ -31,6 +31,9 @@ void MemoryInputStream::seek(size_t position)
 
 uint8_t MemoryInputStream::readByte()
 {
+	if (m_position >= m_length) {
+		throw IOException("reading past the end of data");
+	}
 	return m_addr[m_position++];
 }
 

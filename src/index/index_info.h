@@ -27,12 +27,14 @@ public:
 		: QSharedData(other),
 		segments(other.segments),
 		nextSegmentNum(other.nextSegmentNum),
-		revision(other.revision) { }
+		revision(other.revision),
+		attribs(other.attribs) { }
 	~IndexInfoData() { }
 
 	SegmentInfoList segments;
 	size_t nextSegmentNum;
 	int revision;
+	QMap<QString, QString> attribs;
 };
 
 // Information about the index structure. Implicitly shared, can be very
@@ -108,6 +110,26 @@ public:
 	void setLastSegmentId(size_t n)
 	{
 		d->nextSegmentNum = n;
+	}
+
+	const QMap<QString, QString>& attributes() const
+	{
+		return d->attribs;
+	}
+
+	QMap<QString, QString>& attributes()
+	{
+		return d->attribs;
+	}
+
+	QString attribute(const QString& name) const
+	{
+		return d->attribs.value(name);
+	}
+
+	void setAttribute(const QString& name, const QString& value)
+	{
+		d->attribs.insert(name, value);
 	}
 
 	QList<QString> files(bool includeIndexInfo = true) const;
