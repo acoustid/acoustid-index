@@ -4,7 +4,6 @@
 #ifndef ACOUSTID_FS_INPUT_STREAM_H_
 #define ACOUSTID_FS_INPUT_STREAM_H_
 
-#include <QSharedPointer>
 #include "fs_file.h"
 #include "buffered_input_stream.h"
 

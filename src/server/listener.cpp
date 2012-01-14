@@ -15,9 +15,9 @@ using namespace Acoustid::Server;
 int Listener::m_sigIntFd[2];
 int Listener::m_sigTermFd[2];
 
-Listener::Listener(const QString& path, QObject* parent)
+Listener::Listener(const QString& path, bool mmap, QObject* parent)
 	: QTcpServer(parent),
-	  m_dir(new FSDirectory(path)),
+	  m_dir(new FSDirectory(path, mmap)),
 	  m_index(new Index(m_dir, true))
 {
 	m_sigIntNotifier = new QSocketNotifier(m_sigIntFd[1], QSocketNotifier::Read, this);

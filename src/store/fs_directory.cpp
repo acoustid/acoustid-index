@@ -8,14 +8,15 @@
 #include <QDir>
 #include <QMutexLocker>
 #include "common.h"
+#include "mmap_input_stream.h"
 #include "fs_input_stream.h"
 #include "fs_output_stream.h"
 #include "fs_directory.h"
 
 using namespace Acoustid;
 
-FSDirectory::FSDirectory(const QString &path)
-	: m_path(path)
+FSDirectory::FSDirectory(const QString &path, bool mmap)
+	: m_path(path), m_mmap(mmap)
 {
 }
 
@@ -40,16 +41,20 @@ InputStream *FSDirectory::openFile(const QString &name)
 	QMutexLocker locker(&m_mutex);
 	QString path = filePath(name);
 	FSFileSharedPtr file = m_openInputFiles.value(path);
-	FSInputStream *input;
+	if (m_mmap) {
+		if (file.isNull()) {
+			MMapInputStream* input = MMapInputStream::open(path);
+			m_openInputFiles.insert(path, input->file());
+			return input;
+		}
+		return new MMapInputStream(file);
+	}
 	if (file.isNull()) {
-		m_openInputFiles.remove(path);
-		input = FSInputStream::open(path);
+		FSInputStream* input = FSInputStream::open(path);
 		m_openInputFiles.insert(path, input->file());
+		return input;
 	}
-	else {
-		input = new FSInputStream(file);
-	}
-	return input;
+	return new FSInputStream(file);
 }
 
 void FSDirectory::deleteFile(const QString &name)

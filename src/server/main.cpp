@@ -24,6 +24,8 @@ int main(int argc, char **argv)
 		.setArgument()
 		.setHelp("listen on this port (default: 6080)")
 		.setDefaultValue("6080");
+	parser.addOption("mmap", 'm')
+		.setHelp("use mmap to read index files");
 	parser.addOption("syslog", 's')
 		.setHelp("log to syslog");
 	parser.addOption("syslog-facility", 'f')
@@ -40,7 +42,7 @@ int main(int argc, char **argv)
 	QCoreApplication app(argc, argv);
 	Listener::setupSignalHandlers();
 	Listener::setupLogging(opts->contains("syslog"), opts->option("syslog-facility"));
-	Listener listener(path);
+	Listener listener(path, opts->contains("mmap"));
 	listener.listen(QHostAddress(address), port);
 	qDebug() << "Listening on" << address << "port" << port;
 	return app.exec();

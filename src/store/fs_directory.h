@@ -18,7 +18,7 @@ class OutputStream;
 class FSDirectory : public Directory
 {
 public:
-	FSDirectory(const QString &path);
+	FSDirectory(const QString &path, bool mmap = false);
 	virtual ~FSDirectory();
 
 	virtual void close();
@@ -40,6 +40,7 @@ private:
 		return m_path + "/" + name;
 	}
 
+	bool m_mmap;
 	QMutex m_mutex;
 	QHash<QString, FSFileSharedPtr> m_openInputFiles;
 	QString m_path;

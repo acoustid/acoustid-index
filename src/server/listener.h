@@ -20,7 +20,7 @@ class Listener : public QTcpServer
 	Q_OBJECT
 
 public:
-	Listener(const QString &path, QObject *parent = 0);
+	Listener(const QString &path, bool mmap = false, QObject *parent = 0);
 	~Listener();
 
 	void stop();
