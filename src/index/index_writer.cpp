@@ -18,13 +18,13 @@
 using namespace Acoustid;
 
 IndexWriter::IndexWriter(DirectorySharedPtr dir, const IndexInfo& info)
-	: IndexReader(dir, info), m_maxSegmentBufferSize(MAX_SEGMENT_BUFFER_SIZE)
+	: IndexReader(dir, info), m_maxSegmentBufferSize(MAX_SEGMENT_BUFFER_SIZE), m_maxDocumentId(0)
 {
 	m_mergePolicy.reset(new SegmentMergePolicy());
 }
 
 IndexWriter::IndexWriter(IndexSharedPtr index)
-	: IndexReader(index), m_maxSegmentBufferSize(MAX_SEGMENT_BUFFER_SIZE)
+	: IndexReader(index), m_maxSegmentBufferSize(MAX_SEGMENT_BUFFER_SIZE), m_maxDocumentId(0)
 {
 	m_index->acquireWriterLock();
 	m_mergePolicy.reset(new SegmentMergePolicy());
@@ -41,6 +41,9 @@ void IndexWriter::addDocument(uint32_t id, uint32_t *terms, size_t length)
 {
 	for (size_t i = 0; i < length; i++) {
 		m_segmentBuffer.push_back(packItem(terms[i], id));
+	}
+	if (id > m_maxDocumentId) {
+		m_maxDocumentId = id;
 	}
 	maybeFlush();
 }
@@ -160,6 +163,9 @@ void IndexWriter::flush()
 
 	qDebug() << "New segment" << segment.id() << "with checksum" << segment.checksum();
 	info.addSegment(segment);
+	if (info.attribute("max_document_id").toInt() < m_maxDocumentId) {
+		info.setAttribute("max_document_id", QString::number(m_maxDocumentId));
+	}
 	if (m_index) {
 		m_index->updateInfo(m_info, info);
 	}

@@ -51,6 +51,7 @@ private:
 
 	SegmentDataWriter *segmentDataWriter(const SegmentInfo& info);
 
+	uint32_t m_maxDocumentId;
 	size_t m_maxSegmentBufferSize;
 	std::vector<uint64_t> m_segmentBuffer;
 	ScopedPtr<SegmentMergePolicy> m_mergePolicy;
