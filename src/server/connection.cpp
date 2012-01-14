@@ -102,12 +102,17 @@ void Connection::handleLine(const QString& line)
 		else if (args[0] == "top_score_percent") {
 			m_topScorePercent = args[1].toInt();
 		}
+		else if (args[0] == "attrib" || args[0] == "attribute") {
+			if (args.size() < 3) {
+				sendResponse("ERR expected 3 arguments");
+				return;
+			}
+			m_handler = new SetAttributeHandler(this, args);
+		}
 		else {
 			sendResponse("ERR unknown parameter");
 			return;
 		}
-		sendResponse("OK");
-		return;
 	}
 	else if (command == "get") {
 		if (args.size() < 1) {
@@ -116,14 +121,23 @@ void Connection::handleLine(const QString& line)
 		}
 		if (args[0] == "max_results") {
 			sendResponse(QString("OK %1 %2").arg(args[0]).arg(m_maxResults));
+			return;
 		}
 		else if (args[0] == "top_score_percent") {
 			sendResponse(QString("OK %1 %2").arg(args[0]).arg(m_topScorePercent));
+			return;
+		}
+		else if (args[0] == "attrib" || args[0] == "attribute") {
+			if (args.size() < 2) {
+				sendResponse("ERR expected 2 arguments");
+				return;
+			}
+			m_handler = new GetAttributeHandler(this, args);
 		}
 		else {
 			sendResponse("ERR unknown parameter");
+			return;
 		}
-		return;
 	}
 	else if (command == "echo") {
 		m_handler = new EchoHandler(this, args);

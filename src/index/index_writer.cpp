@@ -45,6 +45,11 @@ void IndexWriter::addDocument(uint32_t id, uint32_t *terms, size_t length)
 	maybeFlush();
 }
 
+void IndexWriter::setAttribute(const QString& name, const QString& value)
+{
+	m_info.setAttribute(name, value);
+}
+
 void IndexWriter::commit()
 {
 	flush();

@@ -37,6 +37,7 @@ public:
 	}
 
 	void addDocument(uint32_t id, uint32_t *terms, size_t length);
+	void setAttribute(const QString &name, const QString &value);
 	void commit();
 	void cleanup();
 	void optimize();

@@ -154,6 +154,37 @@ public:
 	}
 };
 
+class SetAttributeHandler : public Handler
+{
+public:
+	ACOUSTID_HANDLER_CONSTRUCTOR(SetAttributeHandler)
+
+	QString handle()
+	{
+		IndexWriterSharedPtr writer = connection()->indexWriter();
+		if (!writer) {
+			throw HandlerException("not in transaction");
+		}
+		writer->setAttribute(args().at(1), args().at(2));
+		return QString();
+	}
+};
+
+class GetAttributeHandler : public Handler
+{
+public:
+	ACOUSTID_HANDLER_CONSTRUCTOR(GetAttributeHandler)
+
+	QString handle()
+	{
+		IndexWriterSharedPtr writer = connection()->indexWriter();
+		if (writer) {
+			return writer->info().attribute(args().at(1));
+		}
+		return index()->info().attribute(args().at(1));
+	}
+};
+
 class CleanupHandler : public Handler
 {
 public:
