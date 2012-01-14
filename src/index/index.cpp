@@ -61,7 +61,7 @@ IndexInfo Index::acquireInfo()
 	if (m_open) {
 		m_deleter->incRef(info);
 	}
-	qDebug() << "acquireInfo" << info.files();
+	//qDebug() << "acquireInfo" << info.files();
 	return info;
 }
 
@@ -71,7 +71,7 @@ void Index::releaseInfo(const IndexInfo& info)
 	if (m_open) {
 		m_deleter->decRef(info);
 	}
-	qDebug() << "releaseInfo" << info.files();
+	//qDebug() << "releaseInfo" << info.files();
 }
 
 void Index::updateInfo(const IndexInfo& oldInfo, const IndexInfo& newInfo, bool updateIndex)
