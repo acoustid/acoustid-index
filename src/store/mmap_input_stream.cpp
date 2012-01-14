@@ -39,6 +39,7 @@ MMapInputStream *MMapInputStream::open(const QString &fileName)
 		::close(fd);
 		throw IOException(QString("Couldn't map the file '%1' to memory (errno %2)").arg(fileName).arg(errno));
 	}
+	::madvise(addr, sb.st_size, MADV_RANDOM | MADV_WILLNEED);
 	return new MMapInputStream(FSFileSharedPtr(new FSFile(fd, addr, sb.st_size)));
 }
 
