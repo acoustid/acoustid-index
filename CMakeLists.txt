@@ -68,7 +68,6 @@ include_directories(
 
 add_executable(fpi-server ${fpserver_SOURCES} ${fpserver_MOC})
 target_link_libraries(fpi-server ${QT_LIBRARIES} fpindexlib)
-
 #add_executable(fpindex src/tools/fpindex.cpp)
 #target_link_libraries(fpindex ${QT_LIBRARIES} fpindexlib)
 
@@ -116,6 +115,15 @@ set(tests_SOURCES
 	src/util/options_test.cpp
 	src/util/exceptions_test.cpp
 	src/util/tests.cpp
+)
+
+install(
+	TARGETS
+		fpi-add
+		fpi-import
+		fpi-search
+		fpi-server
+	RUNTIME DESTINATION bin
 )
 
 if(GTEST_FOUND)
