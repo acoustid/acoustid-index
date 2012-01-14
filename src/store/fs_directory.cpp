@@ -39,7 +39,7 @@ InputStream *FSDirectory::openFile(const QString &name)
 {
 	QMutexLocker locker(&m_mutex);
 	QString path = filePath(name);
-	FSFileSharedPtr file = m_openInputFiles.value(path).toStrongRef();
+	FSFileSharedPtr file = m_openInputFiles.value(path);
 	FSInputStream *input;
 	if (file.isNull()) {
 		m_openInputFiles.remove(path);
@@ -55,7 +55,9 @@ InputStream *FSDirectory::openFile(const QString &name)
 void FSDirectory::deleteFile(const QString &name)
 {
 	QMutexLocker locker(&m_mutex);
-	QFile::remove(filePath(name));
+	QString path = filePath(name);
+	m_openInputFiles.remove(path);
+	QFile::remove(path);
 }
 
 void FSDirectory::renameFile(const QString &oldName, const QString &newName)

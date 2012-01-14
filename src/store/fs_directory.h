@@ -41,7 +41,7 @@ private:
 	}
 
 	QMutex m_mutex;
-	QHash<QString, FSFileWeakPtr> m_openInputFiles;
+	QHash<QString, FSFileSharedPtr> m_openInputFiles;
 	QString m_path;
 };
 
