@@ -27,11 +27,16 @@ int FSOutputStream::fileDescriptor() const
 
 size_t FSOutputStream::write(const uint8_t *data, size_t offset, size_t length)
 {
-	ssize_t result = pwrite(fileDescriptor(), (void *)data, length, offset);
-	if (result == -1) {
-		throw IOException(QString("Couldn't write to a file (errno %1)").arg(errno));
+	while (true) {
+		ssize_t result = pwrite(fileDescriptor(), (void *)data, length, offset);
+		if (result == -1) {
+			if (errno == EINTR) {
+				continue;
+			}
+			throw IOException(QString("Couldn't write to a file (errno %1)").arg(errno));
+		}
+		return result;
 	}
-	return result;
 }
 
 FSOutputStream *FSOutputStream::open(const QString &fileName)

@@ -30,11 +30,16 @@ const FSFileSharedPtr &FSInputStream::file() const
 
 size_t FSInputStream::read(uint8_t *data, size_t offset, size_t length)
 {
-	ssize_t result = pread(fileDescriptor(), (void *)data, length, offset);
-	if (result == -1) {
-		throw IOException(QString("Couldn't read from a file (errno %1)").arg(errno));
+	while (true) {
+		ssize_t result = pread(fileDescriptor(), (void *)data, length, offset);
+		if (result == -1) {
+			if (errno == EINTR) {
+				continue;
+			}
+			throw IOException(QString("Couldn't read from a file (errno %1)").arg(errno));
+		}
+		return result;
 	}
-	return result;
 }
 
 FSInputStream *FSInputStream::open(const QString &fileName)
