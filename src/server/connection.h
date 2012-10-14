@@ -40,12 +40,15 @@ public:
 		return &m_mutex;
 	}
 
+protected:
+	void sendResponse(const QString& response, bool next = true);
+
 signals:
 	void closed(Connection *connection);
 
 protected slots:
 	void readIncomingData();
-	void sendResponse(const QString& response, bool next = true);
+	void sendHandlerResponse(const QString& response, bool next = true);
 
 	void handleLine(const QString& line);
 	bool maybeDelete();

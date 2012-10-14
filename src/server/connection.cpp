@@ -54,6 +54,14 @@ void Connection::close()
 void Connection::sendResponse(const QString& response, bool next)
 {
 	m_output << response << kCRLF << flush;
+	if (next) {
+		readIncomingData();
+	}
+}
+
+void Connection::sendHandlerResponse(const QString& response, bool next)
+{
+	m_output << response << kCRLF << flush;
 	m_handler = NULL;
 	if (!maybeDelete()) {
 		if (next) {
@@ -169,7 +177,7 @@ void Connection::handleLine(const QString& line)
 	}
 
 	m_refs++;
-	connect(m_handler, SIGNAL(finished(QString)), SLOT(sendResponse(QString)), Qt::QueuedConnection);
+	connect(m_handler, SIGNAL(finished(QString)), SLOT(sendHandlerResponse(QString)), Qt::QueuedConnection);
 	QThreadPool::globalInstance()->start(m_handler);
 }
 
