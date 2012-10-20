@@ -86,7 +86,7 @@ TEST(SegmentMergePolicyTest, TestFindMergesTooLarge)
 	infos.append(SegmentInfo(4, 1));
 	infos.append(SegmentInfo(5, 2));
 	infos.append(SegmentInfo(6, 1));
-	infos.append(SegmentInfo(7, 2 * 1024 * 1024));
+	infos.append(SegmentInfo(7, 2 * 1024 * 1024 + 100));
 
 	int expected[] = { 2, 4 };
 	QList<int> merge = policy.findMerges(infos);
