@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 2.6)
 
 project(fpserver)
 
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules)
+
 find_package(GTest)
 find_package(Qt4 COMPONENTS QtCore QtNetwork REQUIRED)
 include(${QT_USE_FILE})
@@ -127,11 +129,15 @@ install(
 )
 
 if(GTEST_FOUND)
+	include_directories(${GTEST_INCLUDE_DIRS})
+	add_subdirectory(${GTEST_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/gtest_build)
 	add_executable(tests ${tests_SOURCES})
 	target_link_libraries(tests
 		${GTEST_BOTH_LIBRARIES} -lpthread
 		${QT_LIBRARIES}
 		fpindexlib)
-	add_custom_target(check ./tests $ENV{GTEST_FLAGS} DEPENDS tests)
+	enable_testing(true)
+	add_test(IndexTests tests)
+	add_custom_target(check ${CMAKE_CURRENT_BINARY_DIR}/tests $ENV{GTEST_FLAGS} DEPENDS tests)
 endif()
 
