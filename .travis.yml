@@ -1,0 +1,6 @@
+language: cpp
+compiler:
+  - gcc
+install: sudo apt-get install libqt4-dev libgtest-dev
+script: cmake . && make && make check
+
