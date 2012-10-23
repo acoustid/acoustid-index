@@ -106,9 +106,13 @@ void Connection::handleLine(const QString& line)
 		}
 		if (args[0] == "max_results") {
 			m_maxResults = args[1].toInt();
+			sendResponse("OK");
+			return;
 		}
 		else if (args[0] == "top_score_percent") {
 			m_topScorePercent = args[1].toInt();
+			sendResponse("OK");
+			return;
 		}
 		else if (args[0] == "attrib" || args[0] == "attribute") {
 			if (args.size() < 3) {
