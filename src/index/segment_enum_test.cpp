@@ -7,8 +7,8 @@
 #include "store/ram_directory.h"
 #include "store/input_stream.h"
 #include "store/output_stream.h"
-#include "segment_data_reader.h"
-#include "segment_data_writer.h"
+#include "segment_index_data_reader.h"
+#include "segment_index_data_writer.h"
 #include "segment_index.h"
 #include "segment_index_reader.h"
 #include "segment_index_writer.h"
@@ -26,7 +26,7 @@ TEST(SegmentEnumTest, Iterate)
 		SegmentIndexWriter *indexWriter = new SegmentIndexWriter(indexOutput);
 
 		OutputStream *dataOutput = dir.createFile("segment_0.fid");
-		SegmentDataWriter writer(dataOutput, indexWriter, 8);
+		SegmentIndexDataWriter writer(dataOutput, indexWriter, 8);
 		writer.addItem(200, 300);
 		writer.addItem(201, 301);
 		writer.addItem(201, 302);
@@ -38,7 +38,7 @@ TEST(SegmentEnumTest, Iterate)
 	InputStream *indexInput = dir.openFile("segment_0.fii");
 	InputStream *dataInput = dir.openFile("segment_0.fid");
 	SegmentIndexSharedPtr index = SegmentIndexReader(indexInput, blockCount).read();
-	SegmentDataReader *dataReader = new SegmentDataReader(dataInput, 8);
+	SegmentIndexDataReader *dataReader = new SegmentIndexDataReader(dataInput, 8);
 
 	SegmentEnum reader(index, dataReader);
 	ASSERT_TRUE(reader.next());

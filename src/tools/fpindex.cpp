@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "index/segment_data_writer.h"
+#include "index/segment_index_data_writer.h"
 #include "index/segment_index_writer.h"
 #include "store/fs_output_stream.h"
 
@@ -19,7 +19,7 @@ int main(int argc, char **argv)
 	SegmentIndexWriter indexWriter(indexStream.get());
 	indexWriter.setBlockSize(512);
 
-	SegmentDataWriter dataWriter(dataStream.get(), &indexWriter, indexWriter.blockSize());
+	SegmentIndexDataWriter dataWriter(dataStream.get(), &indexWriter, indexWriter.blockSize());
 
 	size_t itemCount = 0;
 	QTextStream in(stdin);

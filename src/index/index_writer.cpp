@@ -6,9 +6,9 @@
 #include "store/input_stream.h"
 #include "store/output_stream.h"
 #include "segment_index_writer.h"
-#include "segment_data_writer.h"
+#include "segment_index_data_writer.h"
 #include "segment_index_reader.h"
-#include "segment_data_reader.h"
+#include "segment_index_data_reader.h"
 #include "segment_merger.h"
 #include "index.h"
 #include "index_file_deleter.h"
@@ -72,12 +72,12 @@ void IndexWriter::maybeFlush()
 	}
 }
 
-SegmentDataWriter* IndexWriter::segmentDataWriter(const SegmentInfo& segment)
+SegmentIndexDataWriter* IndexWriter::segmentDataWriter(const SegmentInfo& segment)
 {
 	OutputStream* indexOutput = m_dir->createFile(segment.indexFileName());
 	OutputStream* dataOutput = m_dir->createFile(segment.dataFileName());
 	SegmentIndexWriter* indexWriter = new SegmentIndexWriter(indexOutput);
-	return new SegmentDataWriter(dataOutput, indexWriter, BLOCK_SIZE);
+	return new SegmentIndexDataWriter(dataOutput, indexWriter, BLOCK_SIZE);
 }
 
 void IndexWriter::merge(const QList<int>& merge)
@@ -144,7 +144,7 @@ void IndexWriter::flush()
 	IndexInfo info(m_info);
 	SegmentInfo segment(info.incLastSegmentId());
 	{
-		ScopedPtr<SegmentDataWriter> writer(segmentDataWriter(segment));
+		ScopedPtr<SegmentIndexDataWriter> writer(segmentDataWriter(segment));
 		uint64_t lastItem = UINT64_MAX;
 		for (size_t i = 0; i < m_segmentBuffer.size(); i++) {
 			uint64_t item = m_segmentBuffer[i];

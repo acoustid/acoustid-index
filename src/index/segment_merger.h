@@ -6,14 +6,14 @@
 
 #include "common.h"
 #include "segment_enum.h"
-#include "segment_data_writer.h"
+#include "segment_index_data_writer.h"
 
 namespace Acoustid {
 
 class SegmentMerger
 {
 public:
-	SegmentMerger(SegmentDataWriter *target);
+	SegmentMerger(SegmentIndexDataWriter *target);
 	virtual ~SegmentMerger();
 
 	void addSource(SegmentEnum *reader)
@@ -21,7 +21,7 @@ public:
 		m_readers.append(reader);
 	}
 
-	SegmentDataWriter *writer()
+	SegmentIndexDataWriter *writer()
 	{
 		return m_writer.get();
 	}
@@ -30,7 +30,7 @@ public:
 
 private:
 	QList<SegmentEnum *> m_readers;
-	ScopedPtr<SegmentDataWriter> m_writer;
+	ScopedPtr<SegmentIndexDataWriter> m_writer;
 };
 
 }

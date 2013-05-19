@@ -14,11 +14,11 @@ class SegmentIndexWriter;
 
 typedef QPair<uint32_t, uint32_t> Int32Pair;
 
-class SegmentDataWriter
+class SegmentIndexDataWriter
 {
 public:
-	SegmentDataWriter(OutputStream *output, SegmentIndexWriter *indexWriter, size_t blockSize);
-	virtual ~SegmentDataWriter();
+	SegmentIndexDataWriter(OutputStream *output, SegmentIndexWriter *indexWriter, size_t blockSize);
+	virtual ~SegmentIndexDataWriter();
 
 	// Number of blocks written into the file.
 	size_t blockCount() const { return m_blockCount; }

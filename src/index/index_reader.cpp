@@ -6,7 +6,7 @@
 #include "store/input_stream.h"
 #include "store/output_stream.h"
 #include "segment_index_reader.h"
-#include "segment_data_reader.h"
+#include "segment_index_data_reader.h"
 #include "segment_searcher.h"
 #include "index.h"
 #include "index_reader.h"
@@ -31,9 +31,9 @@ IndexReader::~IndexReader()
 	}
 }
 
-SegmentDataReader* IndexReader::segmentDataReader(const SegmentInfo& segment)
+SegmentIndexDataReader* IndexReader::segmentDataReader(const SegmentInfo& segment)
 {
-	return new SegmentDataReader(m_dir->openFile(segment.dataFileName()), BLOCK_SIZE);
+	return new SegmentIndexDataReader(m_dir->openFile(segment.dataFileName()), BLOCK_SIZE);
 }
 
 void IndexReader::search(uint32_t* fingerprint, size_t length, Collector* collector)

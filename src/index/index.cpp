@@ -5,7 +5,7 @@
 #include "store/input_stream.h"
 #include "store/output_stream.h"
 #include "segment_index_reader.h"
-#include "segment_data_reader.h"
+#include "segment_index_data_reader.h"
 #include "segment_searcher.h"
 #include "index_file_deleter.h"
 #include "index_reader.h"

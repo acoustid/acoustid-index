@@ -2,25 +2,25 @@
 // Distributed under the MIT license, see the LICENSE file for details.
 
 #include "store/output_stream.h"
-#include "segment_data_reader.h"
+#include "segment_index_data_reader.h"
 
 using namespace Acoustid;
 
-SegmentDataReader::SegmentDataReader(InputStream *input, size_t blockSize)
+SegmentIndexDataReader::SegmentIndexDataReader(InputStream *input, size_t blockSize)
 	: m_input(input), m_blockSize(blockSize)
 {
 }
 
-SegmentDataReader::~SegmentDataReader()
+SegmentIndexDataReader::~SegmentIndexDataReader()
 {
 }
 
-void SegmentDataReader::setBlockSize(size_t blockSize)
+void SegmentIndexDataReader::setBlockSize(size_t blockSize)
 {
 	m_blockSize = blockSize;
 }
 
-BlockDataIterator *SegmentDataReader::readBlock(size_t n, uint32_t key)
+BlockDataIterator *SegmentIndexDataReader::readBlock(size_t n, uint32_t key)
 {
 	m_input->seek(m_blockSize * n);
 	size_t length = m_input->readInt16();

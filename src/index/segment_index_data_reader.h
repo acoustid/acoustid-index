@@ -49,11 +49,11 @@ private:
 	uint32_t m_key, m_value;
 };
 
-class SegmentDataReader
+class SegmentIndexDataReader
 {
 public:
-	SegmentDataReader(InputStream *input, size_t blockSize);
-	virtual ~SegmentDataReader();
+	SegmentIndexDataReader(InputStream *input, size_t blockSize);
+	virtual ~SegmentIndexDataReader();
 
 	size_t blockSize() { return m_blockSize; }
 	void setBlockSize(size_t blockSize);

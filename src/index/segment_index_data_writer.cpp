@@ -3,30 +3,30 @@
 
 #include "store/output_stream.h"
 #include "util/vint.h"
-#include "segment_data_writer.h"
+#include "segment_index_data_writer.h"
 #include "segment_index_writer.h"
 
 using namespace Acoustid;
 
-SegmentDataWriter::SegmentDataWriter(OutputStream *output, SegmentIndexWriter *indexWriter, size_t blockSize)
+SegmentIndexDataWriter::SegmentIndexDataWriter(OutputStream *output, SegmentIndexWriter *indexWriter, size_t blockSize)
 	: m_output(output), m_indexWriter(indexWriter), m_blockSize(blockSize),
 	  m_buffer(0), m_ptr(0), m_itemCount(0), m_lastKey(0), m_lastValue(0),
 	  m_blockCount(0), m_checksum(0)
 {
 }
 
-SegmentDataWriter::~SegmentDataWriter()
+SegmentIndexDataWriter::~SegmentIndexDataWriter()
 {
 	close();
 }
 
-void SegmentDataWriter::setBlockSize(size_t blockSize)
+void SegmentIndexDataWriter::setBlockSize(size_t blockSize)
 {
 	m_buffer.reset();
 	m_blockSize = blockSize;
 }
 
-void SegmentDataWriter::writeBlock()
+void SegmentIndexDataWriter::writeBlock()
 {
 	assert(m_itemCount < (1 << 16));
 	m_output->writeInt16(m_itemCount);
@@ -37,7 +37,7 @@ void SegmentDataWriter::writeBlock()
 	memset(m_buffer.get(), 0, m_blockSize);
 }
 
-void SegmentDataWriter::addItem(uint32_t key, uint32_t value)
+void SegmentIndexDataWriter::addItem(uint32_t key, uint32_t value)
 {
 	assert(key >= m_lastKey);
 	assert(key == m_lastKey ? value >= m_lastValue : 1);
@@ -86,7 +86,7 @@ void SegmentDataWriter::addItem(uint32_t key, uint32_t value)
 	}
 }
 
-void SegmentDataWriter::close()
+void SegmentIndexDataWriter::close()
 {
 	if (m_itemCount) {
 		writeBlock();

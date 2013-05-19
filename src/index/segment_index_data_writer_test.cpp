@@ -6,12 +6,12 @@
 #include "util/test_utils.h"
 #include "store/fs_input_stream.h"
 #include "store/fs_output_stream.h"
-#include "segment_data_writer.h"
+#include "segment_index_data_writer.h"
 #include "segment_index_writer.h"
 
 using namespace Acoustid;
 
-class SegmentDataWriterTest : public ::testing::Test
+class SegmentIndexDataWriterTest : public ::testing::Test
 {
 protected:
 	void SetUp()
@@ -23,11 +23,11 @@ protected:
 	NamedFSOutputStream *indexStream;
 };
 
-TEST_F(SegmentDataWriterTest, Write)
+TEST_F(SegmentIndexDataWriterTest, Write)
 {
 	SegmentIndexWriter *indexWriter = new SegmentIndexWriter(indexStream);
 
-	SegmentDataWriter writer(stream, indexWriter, 8);
+	SegmentIndexDataWriter writer(stream, indexWriter, 8);
 	writer.addItem(200, 300);
 	writer.addItem(201, 301);
 	writer.addItem(201, 302);

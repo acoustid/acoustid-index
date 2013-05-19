@@ -19,8 +19,8 @@ set(fpindexlib_SOURCES
 	src/index/index_info.cpp
 	src/index/index_reader.cpp
 	src/index/index_writer.cpp
-	src/index/segment_data_reader.cpp
-	src/index/segment_data_writer.cpp
+	src/index/segment_index_data_reader.cpp
+	src/index/segment_index_data_writer.cpp
 	src/index/segment_index.cpp
 	src/index/segment_index_reader.cpp
 	src/index/segment_index_writer.cpp
@@ -95,7 +95,7 @@ target_link_libraries(fpi-search ${QT_LIBRARIES} fpindexlib)
 #target_link_libraries(fpi-stats ${QT_LIBRARIES} fpindexlib)
 
 set(tests_SOURCES
-	src/index/segment_data_writer_test.cpp
+	src/index/segment_index_data_writer_test.cpp
 	src/index/segment_index_test.cpp
 	src/index/segment_index_reader_test.cpp
 	src/index/segment_index_writer_test.cpp

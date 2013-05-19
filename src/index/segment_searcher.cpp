@@ -3,12 +3,12 @@
 
 #include <algorithm>
 #include "collector.h"
-#include "segment_data_reader.h"
+#include "segment_index_data_reader.h"
 #include "segment_searcher.h"
 
 using namespace Acoustid;
 
-SegmentSearcher::SegmentSearcher(SegmentIndexSharedPtr index, SegmentDataReader *dataReader, uint32_t lastKey)
+SegmentSearcher::SegmentSearcher(SegmentIndexSharedPtr index, SegmentIndexDataReader *dataReader, uint32_t lastKey)
 	: m_index(index), m_dataReader(dataReader), m_lastKey(lastKey)
 {
 }

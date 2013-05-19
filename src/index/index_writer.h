@@ -12,7 +12,7 @@
 namespace Acoustid {
 
 class Index;
-class SegmentDataWriter;
+class SegmentIndexDataWriter;
 
 class IndexWriter : public IndexReader
 {
@@ -49,7 +49,7 @@ private:
 	void maybeMerge();
 	void merge(const QList<int>& merge);
 
-	SegmentDataWriter *segmentDataWriter(const SegmentInfo& info);
+	SegmentIndexDataWriter *segmentDataWriter(const SegmentInfo& info);
 
 	uint32_t m_maxDocumentId;
 	size_t m_maxSegmentBufferSize;

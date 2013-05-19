@@ -6,14 +6,14 @@
 
 #include "common.h"
 #include "segment_index.h"
-#include "segment_data_reader.h"
+#include "segment_index_data_reader.h"
 
 namespace Acoustid {
 
 class SegmentEnum
 {
 public:
-	SegmentEnum(SegmentIndexSharedPtr index, SegmentDataReader *dataReader)
+	SegmentEnum(SegmentIndexSharedPtr index, SegmentIndexDataReader *dataReader)
 		: m_index(index), m_dataReader(dataReader), m_block(0),
 		  m_currentBlock(0)
 	{}
@@ -45,7 +45,7 @@ public:
 private:
 	size_t m_block;
 	SegmentIndexSharedPtr m_index;
-	ScopedPtr<SegmentDataReader> m_dataReader;
+	ScopedPtr<SegmentIndexDataReader> m_dataReader;
 	ScopedPtr<BlockDataIterator> m_currentBlock;
 };
 

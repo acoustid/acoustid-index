@@ -9,13 +9,13 @@
 
 namespace Acoustid {
 
-class SegmentDataReader;
+class SegmentIndexDataReader;
 class Collector;
 
 class SegmentSearcher
 {
 public:
-	SegmentSearcher(SegmentIndexSharedPtr index, SegmentDataReader *dataReader, uint32_t lastKey = UINT32_MAX);
+	SegmentSearcher(SegmentIndexSharedPtr index, SegmentIndexDataReader *dataReader, uint32_t lastKey = UINT32_MAX);
 	virtual ~SegmentSearcher();
 
 	/**
@@ -27,7 +27,7 @@ public:
 
 private:
 	SegmentIndexSharedPtr m_index;
-	ScopedPtr<SegmentDataReader> m_dataReader;
+	ScopedPtr<SegmentIndexDataReader> m_dataReader;
 	uint32_t m_lastKey;
 };
 

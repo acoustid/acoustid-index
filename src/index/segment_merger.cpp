@@ -6,7 +6,7 @@
 
 using namespace Acoustid;
 
-SegmentMerger::SegmentMerger(SegmentDataWriter *writer)
+SegmentMerger::SegmentMerger(SegmentIndexDataWriter *writer)
 	: m_writer(writer)
 {
 }
