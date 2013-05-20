@@ -72,6 +72,41 @@ private:
 	int m_maxResults;
 };
 
+class SelectHandler : public Handler
+{
+public:
+	SelectHandler(Connection* connection, const QStringList& args)
+		: Handler(connection, args) { }
+
+	QString handle()
+	{
+		if (args().size() < 1) {
+			throw HandlerException("expected 1 argument");
+		}
+
+		uint32_t id = args().first().toInt();
+
+
+		ScopedPtr<IndexReader> reader(new IndexReader(index()));
+
+		uint32_t *data;
+		size_t length;
+		if (!reader->get(id, &data, &length)) {
+			throw HandlerException("document not found");
+		}
+
+		QStringList output;
+		for (size_t j = 0; j < length; j++) {
+			output.append(QString("%1").arg(data[j]));
+		}
+		return output.join(",");
+	}
+
+private:
+	int m_topScorePercent;
+	int m_maxResults;
+};
+
 class BeginHandler : public Handler
 {
 public:

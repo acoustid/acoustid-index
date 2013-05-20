@@ -160,6 +160,9 @@ void Connection::handleLine(const QString& line)
 	else if (command == "insert") {
 		m_handler = new InsertHandler(this, args);
 	}
+	else if (command == "select") {
+		m_handler = new SelectHandler(this, args);
+	}
 	else if (command == "cleanup") {
 		m_handler = new CleanupHandler(this, args);
 	}
