@@ -22,6 +22,9 @@ public:
 	uint32_t *ids() { return m_ids.get(); }
 	size_t *positions() { return m_positions.get(); }
 
+	uint32_t id(size_t i) { return m_ids[i]; }
+	uint32_t position(size_t i) { return m_positions[i]; }
+
 	// Find position of the given document ID
 	bool findPosition(uint32_t id, size_t *position);
 

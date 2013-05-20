@@ -6,6 +6,7 @@
 #include "store/input_stream.h"
 #include "store/output_stream.h"
 #include "segment_document_writer.h"
+#include "segment_document_merger.h"
 #include "segment_index_data_writer.h"
 #include "segment_merger.h"
 #include "index.h"
@@ -78,6 +79,13 @@ SegmentIndexDataWriter* IndexWriter::segmentIndexDataWriter(const SegmentInfo& s
 	return new SegmentIndexDataWriter(indexOutput, dataOutput, BLOCK_SIZE);
 }
 
+SegmentDocumentWriter* IndexWriter::segmentDocumentWriter(const SegmentInfo& segment)
+{
+	OutputStream* indexOutput = m_dir->createFile(segment.documentIndexFileName());
+	OutputStream* dataOutput = m_dir->createFile(segment.documentDataFileName());
+	return new SegmentDocumentWriter(indexOutput, dataOutput);
+}
+
 void IndexWriter::merge(const QList<int>& merge)
 {
 	if (merge.isEmpty()) {
@@ -88,6 +96,19 @@ void IndexWriter::merge(const QList<int>& merge)
 	const SegmentInfoList& segments = m_info.segments();
 	IndexInfo info(m_info);
 	SegmentInfo segment(info.incLastSegmentId());
+
+	{
+		SegmentDocumentMerger merger(segmentDocumentWriter(segment));
+		for (size_t i = 0; i < merge.size(); i++) {
+			int j = merge.at(i);
+			const SegmentInfo& s = segments.at(j);
+			merger.addSource(new SegmentDocumentEnum(s.documentIndex(), segmentDocumentReader(s)));
+		}
+		merger.merge();
+		segment.setDocumentCount(merger.writer()->documentCount());
+		segment.setDocumentIndex(merger.writer()->index());
+	}
+
 	{
 		SegmentMerger merger(segmentIndexDataWriter(segment));
 		for (size_t i = 0; i < merge.size(); i++) {
@@ -143,9 +164,7 @@ void IndexWriter::flush()
 	SegmentInfo segment(info.incLastSegmentId());
 
 	{
-		OutputStream* indexOutput = m_dir->createFile(segment.documentIndexFileName());
-		OutputStream* dataOutput = m_dir->createFile(segment.documentDataFileName());
-		SegmentDocumentWriter* writer = new SegmentDocumentWriter(indexOutput, dataOutput);
+		ScopedPtr<SegmentDocumentWriter> writer(segmentDocumentWriter(segment));
 		for (std::map<uint32_t, std::vector<uint32_t> >::iterator it = m_segmentFingerprints.begin(); it != m_segmentFingerprints.end(); ++it) {
 			writer->addDocument(it->first, it->second.data(), it->second.size());
 		}

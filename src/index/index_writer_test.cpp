@@ -73,7 +73,7 @@ TEST(IndexWriterTest, Merge)
 	ASSERT_EQ(1, writer->info().segment(0).blockCount());
 	writer.reset(NULL);
 	writer.reset(new IndexWriter(index));
-	ASSERT_EQ(3, index->directory()->listFiles().size());
+	ASSERT_EQ(5, index->directory()->listFiles().size());
 	qDebug() << index->directory()->listFiles();
 	writer->segmentMergePolicy()->setMaxMergeAtOnce(2);
 	writer->segmentMergePolicy()->setMaxSegmentsPerTier(2);
@@ -85,7 +85,7 @@ TEST(IndexWriterTest, Merge)
 	ASSERT_EQ(1, writer->info().segment(1).blockCount());
 	writer.reset(NULL);
 	writer.reset(new IndexWriter(index));
-	ASSERT_EQ(5, index->directory()->listFiles().size());
+	ASSERT_EQ(9, index->directory()->listFiles().size());
 	qDebug() << index->directory()->listFiles();
 	writer->segmentMergePolicy()->setMaxMergeAtOnce(2);
 	writer->segmentMergePolicy()->setMaxSegmentsPerTier(2);
@@ -98,7 +98,7 @@ TEST(IndexWriterTest, Merge)
 	ASSERT_EQ(1, writer->info().segment(1).blockCount());
 	writer.reset(NULL);
 	writer.reset(new IndexWriter(index));
-	ASSERT_EQ(5, index->directory()->listFiles().size());
+	ASSERT_EQ(9, index->directory()->listFiles().size());
 	qDebug() << index->directory()->listFiles();
 	writer->segmentMergePolicy()->setMaxMergeAtOnce(2);
 	writer->segmentMergePolicy()->setMaxSegmentsPerTier(2);
@@ -110,7 +110,7 @@ TEST(IndexWriterTest, Merge)
 	ASSERT_EQ(1, writer->info().segment(1).blockCount());
 	writer.reset(NULL);
 	writer.reset(new IndexWriter(index));
-	ASSERT_EQ(5, index->directory()->listFiles().size());
+	ASSERT_EQ(9, index->directory()->listFiles().size());
 	qDebug() << index->directory()->listFiles();
 	writer->segmentMergePolicy()->setMaxMergeAtOnce(3);
 	writer->segmentMergePolicy()->setMaxSegmentsPerTier(1);
@@ -120,7 +120,7 @@ TEST(IndexWriterTest, Merge)
 	ASSERT_EQ(1, writer->info().segmentCount());
 	ASSERT_EQ(1, writer->info().segment(0).blockCount());
 	writer.reset(NULL);
-	ASSERT_EQ(3, index->directory()->listFiles().size());
+	ASSERT_EQ(5, index->directory()->listFiles().size());
 	qDebug() << index->directory()->listFiles();
 }
 
