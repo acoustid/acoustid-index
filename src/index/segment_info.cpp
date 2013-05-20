@@ -10,5 +10,7 @@ QList<QString> SegmentInfo::files() const
 	QList<QString> files;
 	files.append(indexFileName());
 	files.append(indexDataFileName());
+	files.append(documentIndexFileName());
+	files.append(documentDataFileName());
 	return files;
 }
