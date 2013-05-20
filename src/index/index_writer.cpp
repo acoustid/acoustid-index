@@ -6,10 +6,7 @@
 #include "store/input_stream.h"
 #include "store/output_stream.h"
 #include "segment_document_writer.h"
-#include "segment_index_writer.h"
 #include "segment_index_data_writer.h"
-#include "segment_index_reader.h"
-#include "segment_index_data_reader.h"
 #include "segment_merger.h"
 #include "index.h"
 #include "index_file_deleter.h"
@@ -78,8 +75,7 @@ SegmentIndexDataWriter* IndexWriter::segmentIndexDataWriter(const SegmentInfo& s
 {
 	OutputStream* indexOutput = m_dir->createFile(segment.indexFileName());
 	OutputStream* dataOutput = m_dir->createFile(segment.indexDataFileName());
-	SegmentIndexWriter* indexWriter = new SegmentIndexWriter(indexOutput);
-	return new SegmentIndexDataWriter(dataOutput, indexWriter, BLOCK_SIZE);
+	return new SegmentIndexDataWriter(indexOutput, dataOutput, BLOCK_SIZE);
 }
 
 void IndexWriter::merge(const QList<int>& merge)

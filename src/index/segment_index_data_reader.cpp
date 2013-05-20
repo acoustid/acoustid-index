@@ -26,3 +26,14 @@ BlockDataIterator *SegmentIndexDataReader::readBlock(size_t n, uint32_t key)
 	size_t length = m_input->readInt16();
 	return new BlockDataIterator(m_input.get(), length, key);
 }
+
+SegmentIndexSharedPtr SegmentIndexDataReader::readIndex(InputStream *input, size_t blockCount)
+{
+    SegmentIndexSharedPtr index(new SegmentIndex(blockCount));
+    uint32_t *keys = index->keys();
+    for (size_t i = 0; i < blockCount; i++) {
+        *keys++ = input->readInt32();
+    }
+    return index;
+}
+

@@ -17,7 +17,7 @@ typedef QPair<uint32_t, uint32_t> Int32Pair;
 class SegmentIndexDataWriter
 {
 public:
-	SegmentIndexDataWriter(OutputStream *output, SegmentIndexWriter *indexWriter, size_t blockSize);
+	SegmentIndexDataWriter(OutputStream *indexOutput, OutputStream *dataOutput, size_t blockSize);
 	virtual ~SegmentIndexDataWriter();
 
 	// Number of blocks written into the file.
@@ -39,8 +39,8 @@ public:
 private:
 	void writeBlock();
 
-	ScopedPtr<OutputStream> m_output;
-	ScopedPtr<SegmentIndexWriter> m_indexWriter;
+	ScopedPtr<OutputStream> m_indexOutput;
+	ScopedPtr<OutputStream> m_dataOutput;
 	SegmentIndexSharedPtr m_index;
 	std::vector<uint32_t> m_indexData;
 	size_t m_blockSize;

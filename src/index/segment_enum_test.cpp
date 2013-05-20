@@ -10,8 +10,6 @@
 #include "segment_index_data_reader.h"
 #include "segment_index_data_writer.h"
 #include "segment_index.h"
-#include "segment_index_reader.h"
-#include "segment_index_writer.h"
 #include "segment_enum.h"
 
 using namespace Acoustid;
@@ -23,10 +21,8 @@ TEST(SegmentEnumTest, Iterate)
 
 	{
 		OutputStream *indexOutput = dir.createFile("segment_0.fii");
-		SegmentIndexWriter *indexWriter = new SegmentIndexWriter(indexOutput);
-
 		OutputStream *dataOutput = dir.createFile("segment_0.fid");
-		SegmentIndexDataWriter writer(dataOutput, indexWriter, 8);
+		SegmentIndexDataWriter writer(indexOutput, dataOutput, 8);
 		writer.addItem(200, 300);
 		writer.addItem(201, 301);
 		writer.addItem(201, 302);
@@ -37,7 +33,7 @@ TEST(SegmentEnumTest, Iterate)
 
 	InputStream *indexInput = dir.openFile("segment_0.fii");
 	InputStream *dataInput = dir.openFile("segment_0.fid");
-	SegmentIndexSharedPtr index = SegmentIndexReader(indexInput, blockCount).read();
+	SegmentIndexSharedPtr index = SegmentIndexDataReader::readIndex(indexInput, blockCount);
 	SegmentIndexDataReader *dataReader = new SegmentIndexDataReader(dataInput, 8);
 
 	SegmentEnum reader(index, dataReader);

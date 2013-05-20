@@ -5,7 +5,7 @@
 #include "store/input_stream.h"
 #include "store/output_stream.h"
 #include "segment_document_reader.h"
-#include "segment_index_reader.h"
+#include "segment_index_data_reader.h"
 #include "store/checksum_input_stream.h"
 #include "store/checksum_output_stream.h"
 #include "index_info.h"
@@ -92,7 +92,9 @@ void IndexInfo::load(InputStream* rawInput, bool loadIndexes, Directory* dir)
 		uint32_t checksum = input->readVInt32();
 		SegmentInfo segment(id, blockCount, fingerprintCount, lastKey, checksum);
 		if (loadIndexes) {
-			segment.setIndex(SegmentIndexReader(dir->openFile(segment.indexFileName()), segment.blockCount()).read());
+			segment.setIndex(SegmentIndexDataReader::readIndex(
+				dir->openFile(segment.indexFileName()),
+				blockCount));
 			segment.setDocumentIndex(SegmentDocumentReader::readIndex(
 				dir->openFile(segment.documentIndexFileName()),
 				fingerprintCount));

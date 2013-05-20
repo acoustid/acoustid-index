@@ -6,6 +6,7 @@
 
 #include "common.h"
 #include "store/input_stream.h"
+#include "segment_index.h"
 
 namespace Acoustid {
 
@@ -42,6 +43,8 @@ public:
 	uint32_t key() { return m_key; }
 	uint32_t value() { return m_value; }
 
+	size_t length() { return m_length; }
+
 private:
 	InputStream *m_input;
 	size_t m_position;
@@ -59,6 +62,8 @@ public:
 	void setBlockSize(size_t blockSize);
 
 	BlockDataIterator *readBlock(size_t n, uint32_t key);
+
+	static SegmentIndexSharedPtr readIndex(InputStream *input, size_t blockCount);
 
 private:
 	ScopedPtr<InputStream> m_input;
