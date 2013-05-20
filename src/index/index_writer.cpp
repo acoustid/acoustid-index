@@ -181,7 +181,7 @@ void IndexWriter::flush()
 		info.setAttribute("max_document_id", QString::number(m_maxDocumentId));
 	}
 	if (m_index) {
-		m_index->updateInfo(m_info, info);
+		m_index->updateInfo(m_info, info, false);
 	}
 	m_info = info;
 
