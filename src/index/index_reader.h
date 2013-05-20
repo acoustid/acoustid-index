@@ -13,6 +13,7 @@ namespace Acoustid {
 
 class SegmentIndex;
 class SegmentIndexDataReader;
+class SegmentDocumentReader;
 class Collector;
 
 class IndexReader
@@ -29,9 +30,12 @@ public:
 		return m_index;
 	}
 
+    bool get(uint32_t id, uint32_t **fingerprint, size_t *length);
+
 	void search(uint32_t *fingerprint, size_t length, Collector *collector);
 
-	SegmentIndexDataReader* segmentDataReader(const SegmentInfo& segment);
+	SegmentDocumentReader* segmentDocumentReader(const SegmentInfo& segment);
+	SegmentIndexDataReader* segmentIndexDataReader(const SegmentInfo& segment);
 
 protected:
 	DirectorySharedPtr m_dir;

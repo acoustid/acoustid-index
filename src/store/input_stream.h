@@ -39,6 +39,19 @@ public:
 		return i;
 	}
 
+	virtual uint64_t readVInt64()
+	{
+		uint8_t b = readByte();
+		uint64_t i = b & 0x7f;
+		int shift = 7;
+		while (b & 0x80) {
+			b = readByte();
+			i |= (b & 0x7f) << shift;
+			shift += 7;
+		}
+		return i;
+	}
+
 	virtual QString readString();
 
 	virtual size_t position() = 0;

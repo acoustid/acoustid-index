@@ -13,6 +13,40 @@
 
 using namespace Acoustid;
 
+TEST(IndexReaderTest, Get)
+{
+	DirectorySharedPtr dir(new RAMDirectory());
+	IndexSharedPtr index(new Index(dir, true));
+
+	uint32_t fp[] = { 7, 9, 12 };
+
+	{
+		IndexWriter writer(index);
+		writer.addDocument(1, fp, 3);
+		writer.commit();
+	}
+
+	{
+		IndexReader reader(index);
+		uint32_t *fp2;
+		size_t length;
+		bool result = reader.get(1, &fp2, &length);
+		ASSERT_TRUE(result);
+		ASSERT_EQ(3, length);
+		ASSERT_INTARRAY_EQ(fp, fp2, length);
+		delete fp2;
+	}
+
+	{
+		IndexReader reader(index);
+		uint32_t *fp2;
+		size_t length;
+		bool result = reader.get(2, &fp2, &length);
+		ASSERT_FALSE(result);
+		delete fp2;
+	}
+}
+
 TEST(IndexReaderTest, Search)
 {
 	DirectorySharedPtr dir(new RAMDirectory());

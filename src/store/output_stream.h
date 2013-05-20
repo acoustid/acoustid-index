@@ -18,6 +18,7 @@ public:
 	virtual void writeInt16(uint16_t value);
 	virtual void writeInt32(uint32_t value);
 	virtual void writeVInt32(uint32_t value);
+	virtual void writeVInt64(uint64_t value);
 	virtual void writeString(const QString &value);
 
 	virtual size_t position() = 0;

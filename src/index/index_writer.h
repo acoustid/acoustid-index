@@ -49,11 +49,12 @@ private:
 	void maybeMerge();
 	void merge(const QList<int>& merge);
 
-	SegmentIndexDataWriter *segmentDataWriter(const SegmentInfo& info);
+	SegmentIndexDataWriter *segmentIndexDataWriter(const SegmentInfo& info);
 
 	uint32_t m_maxDocumentId;
 	size_t m_maxSegmentBufferSize;
 	std::vector<uint64_t> m_segmentBuffer;
+	std::map<uint32_t, std::vector<uint32_t> > m_segmentFingerprints;
 	ScopedPtr<SegmentMergePolicy> m_mergePolicy;
 };
 

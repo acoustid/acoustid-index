@@ -2,7 +2,6 @@
 // Distributed under the MIT license, see the LICENSE file for details.
 
 #include "store/input_stream.h"
-#include "segment_index.h"
 #include "segment_index_reader.h"
 
 using namespace Acoustid;

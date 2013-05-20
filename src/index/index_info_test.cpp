@@ -39,16 +39,18 @@ TEST(IndexInfoTest, ReadFromDir)
 	output->writeVInt32(2);
 	output->writeVInt32(0);
 	output->writeVInt32(42);
+	output->writeVInt32(1);
 	output->writeVInt32(100);
 	output->writeVInt32(123);
 	output->writeVInt32(1);
 	output->writeVInt32(66);
+	output->writeVInt32(1);
 	output->writeVInt32(200);
 	output->writeVInt32(456);
 	output->writeVInt32(1);
 	output->writeString("foo");
 	output->writeString("bar");
-	output->writeInt32(3656423981u);
+	output->writeInt32(298812802u);
 	output.reset();
 
 	IndexInfo infos;
@@ -58,10 +60,12 @@ TEST(IndexInfoTest, ReadFromDir)
 	ASSERT_EQ(2, infos.segmentCount());
 	ASSERT_EQ("segment_0", infos.segment(0).name());
 	ASSERT_EQ(42, infos.segment(0).blockCount());
+	ASSERT_EQ(1, infos.segment(0).documentCount());
 	ASSERT_EQ(100, infos.segment(0).lastKey());
 	ASSERT_EQ(123, infos.segment(0).checksum());
 	ASSERT_EQ("segment_1", infos.segment(1).name());
 	ASSERT_EQ(66, infos.segment(1).blockCount());
+	ASSERT_EQ(1, infos.segment(1).documentCount());
 	ASSERT_EQ(200, infos.segment(1).lastKey());
 	ASSERT_EQ(456, infos.segment(1).checksum());
 	ASSERT_EQ(1, infos.attributes().size());
@@ -78,16 +82,18 @@ TEST(IndexInfoTest, ReadFromDirCorruptRecover)
 		output->writeVInt32(2);
 		output->writeVInt32(0);
 		output->writeVInt32(42);
+		output->writeVInt32(1);
 		output->writeVInt32(100);
 		output->writeVInt32(123);
 		output->writeVInt32(1);
 		output->writeVInt32(66);
+		output->writeVInt32(1);
 		output->writeVInt32(200);
 		output->writeVInt32(456);
 		output->writeVInt32(1);
 		output->writeString("foo");
 		output->writeString("bar");
-		output->writeInt32(3656423981u);
+		output->writeInt32(298812802u);
 	}
 
 	{
@@ -103,10 +109,12 @@ TEST(IndexInfoTest, ReadFromDirCorruptRecover)
 	ASSERT_EQ(2, infos.segmentCount());
 	ASSERT_EQ("segment_0", infos.segment(0).name());
 	ASSERT_EQ(42, infos.segment(0).blockCount());
+	ASSERT_EQ(1, infos.segment(0).documentCount());
 	ASSERT_EQ(100, infos.segment(0).lastKey());
 	ASSERT_EQ(123, infos.segment(0).checksum());
 	ASSERT_EQ("segment_1", infos.segment(1).name());
 	ASSERT_EQ(66, infos.segment(1).blockCount());
+	ASSERT_EQ(1, infos.segment(1).documentCount());
 	ASSERT_EQ(200, infos.segment(1).lastKey());
 	ASSERT_EQ(456, infos.segment(1).checksum());
 	ASSERT_EQ(1, infos.attributes().size());
@@ -123,16 +131,18 @@ TEST(IndexInfoTest, ReadFromDirCorruptRecover2)
 		output->writeVInt32(2);
 		output->writeVInt32(0);
 		output->writeVInt32(42);
+		output->writeVInt32(1);
 		output->writeVInt32(100);
 		output->writeVInt32(123);
 		output->writeVInt32(1);
 		output->writeVInt32(66);
+		output->writeVInt32(1);
 		output->writeVInt32(200);
 		output->writeVInt32(456);
 		output->writeVInt32(1);
 		output->writeString("foo");
 		output->writeString("bar");
-		output->writeInt32(3656423981u);
+		output->writeInt32(298812802u);
 	}
 
 	{
@@ -153,10 +163,12 @@ TEST(IndexInfoTest, ReadFromDirCorruptRecover2)
 	ASSERT_EQ(2, infos.segmentCount());
 	ASSERT_EQ("segment_0", infos.segment(0).name());
 	ASSERT_EQ(42, infos.segment(0).blockCount());
+	ASSERT_EQ(1, infos.segment(0).documentCount());
 	ASSERT_EQ(100, infos.segment(0).lastKey());
 	ASSERT_EQ(123, infos.segment(0).checksum());
 	ASSERT_EQ("segment_1", infos.segment(1).name());
 	ASSERT_EQ(66, infos.segment(1).blockCount());
+	ASSERT_EQ(1, infos.segment(1).documentCount());
 	ASSERT_EQ(200, infos.segment(1).lastKey());
 	ASSERT_EQ(456, infos.segment(1).checksum());
 	ASSERT_EQ(1, infos.attributes().size());
@@ -186,9 +198,9 @@ TEST(IndexInfoTest, WriteIntoDir)
 	RAMDirectory dir;
 
 	IndexInfo infos;
-	infos.addSegment(SegmentInfo(0, 42, 100, 123));
+	infos.addSegment(SegmentInfo(0, 42, 1, 100, 123));
 	infos.incLastSegmentId();
-	infos.addSegment(SegmentInfo(1, 66, 200, 456));
+	infos.addSegment(SegmentInfo(1, 66, 1, 200, 456));
 	infos.incLastSegmentId();
 	infos.setAttribute("foo", "bar");
 	infos.save(&dir);
@@ -198,16 +210,18 @@ TEST(IndexInfoTest, WriteIntoDir)
 	ASSERT_EQ(2, input->readVInt32());
 	ASSERT_EQ(0, input->readVInt32());
 	ASSERT_EQ(42, input->readVInt32());
+	ASSERT_EQ(1, input->readVInt32());
 	ASSERT_EQ(100, input->readVInt32());
 	ASSERT_EQ(123, input->readVInt32());
 	ASSERT_EQ(1, input->readVInt32());
 	ASSERT_EQ(66, input->readVInt32());
+	ASSERT_EQ(1, input->readVInt32());
 	ASSERT_EQ(200, input->readVInt32());
 	ASSERT_EQ(456, input->readVInt32());
 	ASSERT_EQ(1, input->readVInt32());
 	ASSERT_EQ("foo", input->readString());
 	ASSERT_EQ("bar", input->readString());
-	ASSERT_EQ(3656423981u, input->readInt32());
+	ASSERT_EQ(298812802u, input->readInt32());
 }
 
 TEST(IndexInfoTest, Clear)

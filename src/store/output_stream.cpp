@@ -39,6 +39,15 @@ void OutputStream::writeVInt32(uint32_t i)
 	writeByte(i);
 }
 
+void OutputStream::writeVInt64(uint64_t i)
+{
+	while (i & ~0x7f) {
+		writeByte((i & 0x7f) | 0x80);
+		i >>= 7;
+	}
+	writeByte(i);
+}
+
 void OutputStream::writeString(const QString &s)
 {
 	QByteArray data = s.toUtf8();

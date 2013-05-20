@@ -24,6 +24,9 @@ set(fpindexlib_SOURCES
 	src/index/segment_index.cpp
 	src/index/segment_index_reader.cpp
 	src/index/segment_index_writer.cpp
+	src/index/segment_document_index.cpp
+	src/index/segment_document_reader.cpp
+	src/index/segment_document_writer.cpp
 	src/index/segment_info.cpp
 	src/index/segment_merge_policy.cpp
 	src/index/segment_merger.cpp

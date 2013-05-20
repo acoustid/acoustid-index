@@ -6,6 +6,7 @@
 #include "store/input_stream.h"
 #include "store/output_stream.h"
 #include "segment_index_reader.h"
+#include "segment_document_reader.h"
 #include "segment_index_data_reader.h"
 #include "segment_searcher.h"
 #include "index.h"
@@ -31,9 +32,31 @@ IndexReader::~IndexReader()
 	}
 }
 
-SegmentIndexDataReader* IndexReader::segmentDataReader(const SegmentInfo& segment)
+SegmentIndexDataReader* IndexReader::segmentIndexDataReader(const SegmentInfo& segment)
 {
-	return new SegmentIndexDataReader(m_dir->openFile(segment.dataFileName()), BLOCK_SIZE);
+	return new SegmentIndexDataReader(m_dir->openFile(segment.indexDataFileName()), BLOCK_SIZE);
+}
+
+SegmentDocumentReader* IndexReader::segmentDocumentReader(const SegmentInfo& segment)
+{
+	return new SegmentDocumentReader(m_dir->openFile(segment.documentDataFileName()));
+}
+
+bool IndexReader::get(uint32_t id, uint32_t **data, size_t *length)
+{
+	const SegmentInfoList& segments = m_info.segments();
+	for (int i = 0; i < segments.size(); i++) {
+		const SegmentInfo& s = segments.at(i);
+		size_t position;
+		if (s.documentIndex()->findPosition(id, &position)) {
+			segmentDocumentReader(s)->readDocument(position, data, length);
+			return true;
+		}
+	}
+
+	*data = NULL;
+	*length = 0;
+	return false;
 }
 
 void IndexReader::search(uint32_t* fingerprint, size_t length, Collector* collector)
@@ -42,7 +65,7 @@ void IndexReader::search(uint32_t* fingerprint, size_t length, Collector* collec
 	const SegmentInfoList& segments = m_info.segments();
 	for (int i = 0; i < segments.size(); i++) {
 		const SegmentInfo& s = segments.at(i);
-		SegmentSearcher searcher(s.index(), segmentDataReader(s), s.lastKey());
+		SegmentSearcher searcher(s.index(), segmentIndexDataReader(s), s.lastKey());
 		searcher.search(fingerprint, length, collector);
 	}
 }

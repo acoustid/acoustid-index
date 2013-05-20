@@ -4,6 +4,7 @@
 #include "store/directory.h"
 #include "store/input_stream.h"
 #include "store/output_stream.h"
+#include "segment_document_reader.h"
 #include "segment_index_reader.h"
 #include "store/checksum_input_stream.h"
 #include "store/checksum_output_stream.h"
@@ -86,11 +87,15 @@ void IndexInfo::load(InputStream* rawInput, bool loadIndexes, Directory* dir)
 	for (size_t i = 0; i < segmentCount; i++) {
 		uint32_t id = input->readVInt32();
 		uint32_t blockCount = input->readVInt32();
+		uint32_t fingerprintCount = input->readVInt32();
 		uint32_t lastKey = input->readVInt32();
 		uint32_t checksum = input->readVInt32();
-		SegmentInfo segment(id, blockCount, lastKey, checksum);
+		SegmentInfo segment(id, blockCount, fingerprintCount, lastKey, checksum);
 		if (loadIndexes) {
 			segment.setIndex(SegmentIndexReader(dir->openFile(segment.indexFileName()), segment.blockCount()).read());
+			segment.setDocumentIndex(SegmentDocumentReader::readIndex(
+				dir->openFile(segment.documentIndexFileName()),
+				fingerprintCount));
 		}
 		addSegment(segment);
 	}
@@ -127,6 +132,7 @@ void IndexInfo::save(OutputStream *rawOutput)
 	for (size_t i = 0; i < segmentCount(); i++) {
 		output->writeVInt32(d->segments.at(i).id());
 		output->writeVInt32(d->segments.at(i).blockCount());
+		output->writeVInt32(d->segments.at(i).documentCount());
 		output->writeVInt32(d->segments.at(i).lastKey());
 		output->writeVInt32(d->segments.at(i).checksum());
 	}

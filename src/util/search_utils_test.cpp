@@ -14,6 +14,7 @@ TEST(SearchUtilsTest, SearchFirstSmaller)
 	ASSERT_EQ(2, searchFirstSmaller(data, 0, 4, 6));
 	ASSERT_EQ(3, searchFirstSmaller(data, 0, 4, 7));
 	ASSERT_EQ(3, searchFirstSmaller(data, 0, 4, 100));
+	ASSERT_EQ(0, searchFirstSmaller(data, 0, 1, 4));
 }
 
 TEST(SearchUtilsTest, ScanLastGreater)

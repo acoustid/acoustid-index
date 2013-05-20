@@ -5,6 +5,7 @@
 #include "store/directory.h"
 #include "store/input_stream.h"
 #include "store/output_stream.h"
+#include "segment_document_writer.h"
 #include "segment_index_writer.h"
 #include "segment_index_data_writer.h"
 #include "segment_index_reader.h"
@@ -39,6 +40,7 @@ IndexWriter::~IndexWriter()
 
 void IndexWriter::addDocument(uint32_t id, uint32_t *terms, size_t length)
 {
+	m_segmentFingerprints[id] = std::vector<uint32_t>(terms, terms + length);
 	for (size_t i = 0; i < length; i++) {
 		m_segmentBuffer.push_back(packItem(terms[i], id));
 	}
@@ -72,10 +74,10 @@ void IndexWriter::maybeFlush()
 	}
 }
 
-SegmentIndexDataWriter* IndexWriter::segmentDataWriter(const SegmentInfo& segment)
+SegmentIndexDataWriter* IndexWriter::segmentIndexDataWriter(const SegmentInfo& segment)
 {
 	OutputStream* indexOutput = m_dir->createFile(segment.indexFileName());
-	OutputStream* dataOutput = m_dir->createFile(segment.dataFileName());
+	OutputStream* dataOutput = m_dir->createFile(segment.indexDataFileName());
 	SegmentIndexWriter* indexWriter = new SegmentIndexWriter(indexOutput);
 	return new SegmentIndexDataWriter(dataOutput, indexWriter, BLOCK_SIZE);
 }
@@ -91,13 +93,13 @@ void IndexWriter::merge(const QList<int>& merge)
 	IndexInfo info(m_info);
 	SegmentInfo segment(info.incLastSegmentId());
 	{
-		SegmentMerger merger(segmentDataWriter(segment));
+		SegmentMerger merger(segmentIndexDataWriter(segment));
 		for (size_t i = 0; i < merge.size(); i++) {
 			int j = merge.at(i);
 			const SegmentInfo& s = segments.at(j);
 			expectedChecksum ^= s.checksum();
 			qDebug() << "Merging segment" << s.id() << "with checksum" << s.checksum() << "into segment" << segment.id();
-			merger.addSource(new SegmentEnum(s.index(), segmentDataReader(s)));
+			merger.addSource(new SegmentEnum(s.index(), segmentIndexDataReader(s)));
 		}
 		merger.merge();
 		segment.setBlockCount(merger.writer()->blockCount());
@@ -122,7 +124,7 @@ void IndexWriter::merge(const QList<int>& merge)
 	}
 	info.addSegment(segment);
 	if (m_index) {
-		m_index->updateInfo(m_info, info);
+		m_index->updateInfo(m_info, info, false);
 	}
 	m_info = info;
 }
@@ -143,8 +145,21 @@ void IndexWriter::flush()
 
 	IndexInfo info(m_info);
 	SegmentInfo segment(info.incLastSegmentId());
+
 	{
-		ScopedPtr<SegmentIndexDataWriter> writer(segmentDataWriter(segment));
+		OutputStream* indexOutput = m_dir->createFile(segment.documentIndexFileName());
+		OutputStream* dataOutput = m_dir->createFile(segment.documentDataFileName());
+		SegmentDocumentWriter* writer = new SegmentDocumentWriter(indexOutput, dataOutput);
+		for (std::map<uint32_t, std::vector<uint32_t> >::iterator it = m_segmentFingerprints.begin(); it != m_segmentFingerprints.end(); ++it) {
+			writer->addDocument(it->first, it->second.data(), it->second.size());
+		}
+		writer->close();
+		segment.setDocumentCount(writer->documentCount());
+		segment.setDocumentIndex(writer->index());
+	}
+
+	{
+		ScopedPtr<SegmentIndexDataWriter> writer(segmentIndexDataWriter(segment));
 		uint64_t lastItem = UINT64_MAX;
 		for (size_t i = 0; i < m_segmentBuffer.size(); i++) {
 			uint64_t item = m_segmentBuffer[i];
@@ -161,7 +176,10 @@ void IndexWriter::flush()
 		segment.setIndex(writer->index());
 	}
 
-	qDebug() << "New segment" << segment.id() << "with checksum" << segment.checksum();
+	qDebug() << "New segment" << segment.id() << "with "
+		<< segment.documentCount() << " fingerprints and checksum"
+		<< segment.checksum();
+
 	info.addSegment(segment);
 	if (info.attribute("max_document_id").toInt() < m_maxDocumentId) {
 		info.setAttribute("max_document_id", QString::number(m_maxDocumentId));
@@ -173,6 +191,7 @@ void IndexWriter::flush()
 
 	maybeMerge();
 	m_segmentBuffer.clear();
+	m_segmentFingerprints.clear();
 }
 
 void IndexWriter::optimize()
@@ -197,7 +216,7 @@ void IndexWriter::cleanup()
 	for (int i = 0; i < segments.size(); i++) {
 		const SegmentInfo& segment = segments.at(i);
 		usedFileNames.insert(segment.indexFileName());
-		usedFileNames.insert(segment.dataFileName());
+		usedFileNames.insert(segment.indexDataFileName());
 	}
 
 	QList<QString> allFileNames = m_dir->listFiles();
