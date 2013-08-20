@@ -188,7 +188,8 @@ void Connection::handleLine(const QString& line)
 void Connection::readIncomingData()
 {
 	if (m_handler) {
-		qWarning() << "Got data while still handling the previous command";
+		qWarning() << "Got data while still handling the previous command, closing connection";
+		close();
 		return;
 	}
 
