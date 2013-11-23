@@ -38,9 +38,11 @@ IndexWriter::~IndexWriter()
 
 void IndexWriter::addDocument(uint32_t id, const uint32_t *data, size_t length)
 {
-	m_segmentFingerprints[id] = makeDocument(data, length);
-	for (size_t i = 0; i < length; i++) {
-		m_segmentBuffer.push_back(packItem(data[i], id));
+	Document doc = makeDocument(data, length);
+	Document query = documentHandler()->extractQuery(doc);
+	m_segmentFingerprints[id] = doc;
+	for (size_t i = 0; i < query.size(); i++) {
+		m_segmentBuffer.push_back(packItem(query[i], id));
 	}
 	if (id > m_maxDocumentId) {
 		m_maxDocumentId = id;
@@ -158,7 +160,7 @@ void IndexWriter::flush()
 		return;
 	}
 	//qDebug() << "Writing new segment" << (m_segmentBuffer.size() * 8.0 / 1024 / 1024);
-	std::sort(m_segmentBuffer.begin(), m_segmentBuffer.end());
+	qSort(m_segmentBuffer);
 
 	IndexInfo info(m_info);
 	SegmentInfo segment(info.incLastSegmentId());

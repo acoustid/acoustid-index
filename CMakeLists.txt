@@ -14,6 +14,7 @@ add_definitions(
 )
 
 set(fpindexlib_SOURCES
+	src/index/document_handler.cpp
 	src/index/index.cpp
 	src/index/index_file_deleter.cpp
 	src/index/index_info.cpp

@@ -8,7 +8,6 @@
 #include <QStringList>
 #include <QSharedData>
 #include <QSharedDataPointer>
-#include <algorithm>
 #include "common.h"
 #include "segment_info.h"
 

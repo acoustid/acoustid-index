@@ -1,7 +1,6 @@
 // Copyright (C) 2011  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
-#include <algorithm>
 #include "top_hits_collector.h"
 
 using namespace Acoustid;
@@ -37,7 +36,7 @@ QList<Result> TopHitsCollector::topResults()
 	if (ids.isEmpty()) {
 		return results;
 	}
-	std::sort(ids.begin(), ids.end(), CompareByCount(m_counts));
+	qSort(ids.begin(), ids.end(), CompareByCount(m_counts));
 	unsigned int minScore = (50 + m_counts[ids.first()] * m_topScorePercent) / 100;
 	for (int i = 0; i < std::min(m_numHits, size_t(ids.size())); i++) {
 		uint32_t id = ids.at(i);

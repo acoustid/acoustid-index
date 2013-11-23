@@ -8,13 +8,14 @@
 #include "segment_document_reader.h"
 #include "segment_index_data_reader.h"
 #include "segment_searcher.h"
+#include "document_handler.h"
 #include "index.h"
 #include "index_reader.h"
 
 using namespace Acoustid;
 
 IndexReader::IndexReader(DirectorySharedPtr dir, const IndexInfo& info)
-	: m_dir(dir), m_info(info)
+	: m_dir(dir), m_info(info), m_documentHandler(new DocumentHandler())
 {
 }
 
@@ -58,12 +59,14 @@ bool IndexReader::get(uint32_t id, Document *doc)
 
 void IndexReader::search(uint32_t* fingerprint, size_t length, Collector* collector)
 {
-	std::sort(fingerprint, fingerprint + length);
+	Document doc = makeDocument(fingerprint, length);
+	Document query = documentHandler()->extractQuery(doc);
+	qSort(query);
 	const SegmentInfoList& segments = m_info.segments();
 	for (int i = 0; i < segments.size(); i++) {
 		const SegmentInfo& s = segments.at(i);
 		SegmentSearcher searcher(s.index(), segmentIndexDataReader(s), s.lastKey());
-		searcher.search(fingerprint, length, collector);
+		searcher.search(query.data(), query.size(), collector);
 	}
 }
 

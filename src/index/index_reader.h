@@ -9,6 +9,7 @@
 #include "segment_index.h"
 #include "index.h"
 #include "index_info.h"
+#include "document_handler.h"
 
 namespace Acoustid {
 
@@ -38,10 +39,21 @@ public:
 	SegmentDocumentReader* segmentDocumentReader(const SegmentInfo& segment);
 	SegmentIndexDataReader* segmentIndexDataReader(const SegmentInfo& segment);
 
+	DocumentHandler *documentHandler()
+	{
+		return m_documentHandler.get();
+	}
+
+	void setDocumentHandler(DocumentHandler *documentHandler)
+	{
+		m_documentHandler.reset(documentHandler);
+	}
+
 protected:
 	DirectorySharedPtr m_dir;
 	IndexInfo m_info;
 	IndexSharedPtr m_index;
+	ScopedPtr<DocumentHandler> m_documentHandler;
 };
 
 }
