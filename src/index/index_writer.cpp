@@ -36,11 +36,11 @@ IndexWriter::~IndexWriter()
 	}
 }
 
-void IndexWriter::addDocument(uint32_t id, uint32_t *terms, size_t length)
+void IndexWriter::addDocument(uint32_t id, const uint32_t *data, size_t length)
 {
-	m_segmentFingerprints[id] = std::vector<uint32_t>(terms, terms + length);
+	m_segmentFingerprints[id] = makeDocument(data, length);
 	for (size_t i = 0; i < length; i++) {
-		m_segmentBuffer.push_back(packItem(terms[i], id));
+		m_segmentBuffer.push_back(packItem(data[i], id));
 	}
 	if (id > m_maxDocumentId) {
 		m_maxDocumentId = id;
@@ -165,8 +165,8 @@ void IndexWriter::flush()
 
 	{
 		ScopedPtr<SegmentDocumentWriter> writer(segmentDocumentWriter(segment));
-		for (std::map<uint32_t, std::vector<uint32_t> >::iterator it = m_segmentFingerprints.begin(); it != m_segmentFingerprints.end(); ++it) {
-			writer->addDocument(it->first, it->second.data(), it->second.size());
+		for (QMap<uint32_t, Document>::ConstIterator it = m_segmentFingerprints.begin(); it != m_segmentFingerprints.end(); ++it) {
+			writer->addDocument(it.key(), it.value());
 		}
 		writer->close();
 		segment.setDocumentCount(writer->documentCount());

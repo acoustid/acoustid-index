@@ -31,20 +31,18 @@ size_t SegmentDocumentMerger::merge()
 	while (!readers.isEmpty()) {
 		size_t minIdIndex = 0;
 		uint32_t minId = UINT32_MAX;
-		uint32_t *minIdData = NULL;
-		size_t minIdLength = 0;
+		Document minIdDocument;
 		for (size_t i = 0; i < readers.size(); i++) {
 			SegmentDocumentEnum *reader = readers[i];
 			uint32_t id = reader->id();
 			if (id < minId) {
 				minId = id;
 				minIdIndex = i;
-				minIdData = reader->data();
-				minIdLength = reader->length();
+				minIdDocument = reader->document();
 			}
 		}
 		if (minId != lastMinId) {
-			m_writer->addDocument(minId, minIdData, minIdLength);
+			m_writer->addDocument(minId, minIdDocument);
 			lastMinId = minId;
 		}
 		if (!readers[minIdIndex]->next()) {

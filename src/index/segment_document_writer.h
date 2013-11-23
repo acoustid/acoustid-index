@@ -4,8 +4,8 @@
 #ifndef ACOUSTID_INDEX_SEGMENT_DOCUMENT_WRITER_H_
 #define ACOUSTID_INDEX_SEGMENT_DOCUMENT_WRITER_H_
 
-#include <map>
 #include "common.h"
+#include "document.h"
 #include "segment_document_index.h"
 
 namespace Acoustid {
@@ -22,13 +22,13 @@ public:
 	size_t documentCount() const { return m_positions.size(); }
 	SegmentDocumentIndexSharedPtr index() const { return m_index; }
 
-	void addDocument(uint32_t id, uint32_t *data, size_t length);
+	void addDocument(uint32_t id, const Document &doc);
 	void close();
 
 private:
 	ScopedPtr<OutputStream> m_indexOutput;
 	ScopedPtr<OutputStream> m_dataOutput;
-	std::map<uint32_t, size_t> m_positions;
+	QMap<uint32_t, size_t> m_positions;
 	uint32_t m_checksum;
 	SegmentDocumentIndexSharedPtr m_index;
 };

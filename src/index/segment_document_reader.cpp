@@ -15,19 +15,17 @@ SegmentDocumentReader::~SegmentDocumentReader()
 {
 }
 
-void SegmentDocumentReader::readDocument(size_t position, uint32_t **dataOut, size_t *lengthOut)
+void SegmentDocumentReader::readDocument(size_t position, Document *doc)
 {
 	m_input->seek(position);
 
 	size_t length = m_input->readVInt32();
-	uint32_t *data = new uint32_t[length];
+	doc->resize(length);
 
 	for (size_t i = 0; i < length; i++) {
-		data[i] = m_input->readInt32();
+		doc->replace(i, m_input->readInt32());
 	}
 
-	*dataOut = data;
-	*lengthOut = length;
 }
 
 SegmentDocumentIndexSharedPtr SegmentDocumentReader::readIndex(InputStream *input, size_t documentCount)

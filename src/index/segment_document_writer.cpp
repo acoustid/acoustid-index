@@ -16,9 +16,11 @@ SegmentDocumentWriter::~SegmentDocumentWriter()
 	close();
 }
 
-void SegmentDocumentWriter::addDocument(uint32_t id, uint32_t *data, size_t length)
+void SegmentDocumentWriter::addDocument(uint32_t id, const Document &doc)
 {
 	assert(m_positions.find(id) == m_positions.end());
+	const uint32_t *data = doc.data();
+	size_t length = doc.size();
 	m_positions[id] = m_dataOutput->position();
 	m_dataOutput->writeVInt32(length);
 	for (size_t i = 0; i < length; i++) {
@@ -34,11 +36,11 @@ void SegmentDocumentWriter::close()
 	uint32_t *ids = m_index->ids();
 	size_t *positions = m_index->positions();
 
-	for (std::map<uint32_t, size_t>::iterator it = m_positions.begin(); it != m_positions.end(); ++it) {
-		*ids++ = it->first;
-		*positions++ = it->second;
-		m_indexOutput->writeVInt32(it->first);
-		m_indexOutput->writeVInt64(it->second);
+	for (QMap<uint32_t, size_t>::ConstIterator it = m_positions.begin(); it != m_positions.end(); ++it) {
+		*ids++ = it.key();
+		*positions++ = it.value();
+		m_indexOutput->writeVInt32(it.key());
+		m_indexOutput->writeVInt64(it.value());
 	}
 
 	m_indexOutput->flush();

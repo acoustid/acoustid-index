@@ -5,6 +5,7 @@
 #define ACOUSTID_INDEX_READER_H_
 
 #include "common.h"
+#include "document.h"
 #include "segment_index.h"
 #include "index.h"
 #include "index_info.h"
@@ -30,7 +31,7 @@ public:
 		return m_index;
 	}
 
-    bool get(uint32_t id, uint32_t **fingerprint, size_t *length);
+    bool get(uint32_t id, Document *doc);
 
 	void search(uint32_t *fingerprint, size_t length, Collector *collector);
 

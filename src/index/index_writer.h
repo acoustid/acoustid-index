@@ -5,6 +5,7 @@
 #define ACOUSTID_INDEX_WRITER_H_
 
 #include "common.h"
+#include "document.h"
 #include "index_info.h"
 #include "segment_merge_policy.h"
 #include "index_reader.h"
@@ -37,7 +38,7 @@ public:
 		return m_mergePolicy.get();
 	}
 
-	void addDocument(uint32_t id, uint32_t *terms, size_t length);
+	void addDocument(uint32_t id, const uint32_t *terms, size_t length);
 	void setAttribute(const QString &name, const QString &value);
 	void commit();
 	void cleanup();
@@ -55,8 +56,8 @@ private:
 
 	uint32_t m_maxDocumentId;
 	size_t m_maxSegmentBufferSize;
-	std::vector<uint64_t> m_segmentBuffer;
-	std::map<uint32_t, std::vector<uint32_t> > m_segmentFingerprints;
+	QList<uint64_t> m_segmentBuffer;
+	QMap<uint32_t, Document> m_segmentFingerprints;
 	ScopedPtr<SegmentMergePolicy> m_mergePolicy;
 };
 

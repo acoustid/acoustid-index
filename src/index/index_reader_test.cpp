@@ -28,22 +28,18 @@ TEST(IndexReaderTest, Get)
 
 	{
 		IndexReader reader(index);
-		uint32_t *fp2;
-		size_t length;
-		bool result = reader.get(1, &fp2, &length);
+		Document doc;
+		bool result = reader.get(1, &doc);
 		ASSERT_TRUE(result);
-		ASSERT_EQ(3, length);
-		ASSERT_INTARRAY_EQ(fp, fp2, length);
-		delete fp2;
+		ASSERT_EQ(3, doc.size());
+		ASSERT_INTARRAY_EQ(fp, doc, doc.size());
 	}
 
 	{
 		IndexReader reader(index);
-		uint32_t *fp2;
-		size_t length;
-		bool result = reader.get(2, &fp2, &length);
+		Document doc;
+		bool result = reader.get(2, &doc);
 		ASSERT_FALSE(result);
-		delete fp2;
 	}
 }
 

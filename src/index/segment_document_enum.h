@@ -14,34 +14,32 @@ class SegmentDocumentEnum
 {
 public:
 	SegmentDocumentEnum(SegmentDocumentIndexSharedPtr index, SegmentDocumentReader *reader)
-		: m_index(index), m_reader(reader), m_document(-1)
+		: m_index(index), m_reader(reader), m_document_no(-1)
 	{}
 
 	bool next()
 	{
-		if (++m_document >= m_index->documentCount()) {
+		if (++m_document_no >= m_index->documentCount()) {
 			return false;
 		}
 
-		uint32_t *data;
-		m_reader->readDocument(m_index->position(m_document), &data, &m_length);
-
-		m_data.reset(data);
+		m_reader->readDocument(m_index->position(m_document_no), &m_document);
 		return true;
 	}
 
 	uint32_t id()
 	{
-		return m_index->id(m_document);
+		return m_index->id(m_document_no);
 	}
 
-	uint32_t *data() { return m_data.get(); }
-	size_t length() { return m_length; }
+	Document document()
+	{
+		return m_document;
+	}
 
 private:
-	size_t m_document;
-	size_t m_length;
-	ScopedArrayPtr<uint32_t> m_data;
+	size_t m_document_no;
+	Document m_document;
 	SegmentDocumentIndexSharedPtr m_index;
 	ScopedPtr<SegmentDocumentReader> m_reader;
 };

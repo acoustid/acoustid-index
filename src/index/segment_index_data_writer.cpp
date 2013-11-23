@@ -69,7 +69,7 @@ void SegmentIndexDataWriter::addItem(uint32_t key, uint32_t value)
 		m_ptr += writeVInt32ToArray(m_ptr, keyDelta);
 	}
 	else {
-		m_indexData.push_back(key);
+		m_indexData.append(key);
 	}
 	m_ptr += writeVInt32ToArray(m_ptr, valueDelta);
 
@@ -92,7 +92,7 @@ void SegmentIndexDataWriter::close()
 
 	uint32_t *keys = m_index->keys();
 
-	for (std::vector<uint32_t>::iterator it = m_indexData.begin(); it != m_indexData.end(); ++it) {
+	for (QList<uint32_t>::ConstIterator it = m_indexData.begin(); it != m_indexData.end(); ++it) {
 		*keys++ = *it;
 		m_indexOutput->writeInt32(*it);
 	}

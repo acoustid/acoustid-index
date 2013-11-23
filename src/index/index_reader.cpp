@@ -41,20 +41,18 @@ SegmentDocumentReader* IndexReader::segmentDocumentReader(const SegmentInfo& seg
 	return new SegmentDocumentReader(m_dir->openFile(segment.documentDataFileName()));
 }
 
-bool IndexReader::get(uint32_t id, uint32_t **data, size_t *length)
+bool IndexReader::get(uint32_t id, Document *doc)
 {
 	const SegmentInfoList& segments = m_info.segments();
 	for (int i = 0; i < segments.size(); i++) {
 		const SegmentInfo& s = segments.at(i);
 		size_t position;
 		if (s.documentIndex()->findPosition(id, &position)) {
-			segmentDocumentReader(s)->readDocument(position, data, length);
+			segmentDocumentReader(s)->readDocument(position, doc);
 			return true;
 		}
 	}
 
-	*data = NULL;
-	*length = 0;
 	return false;
 }
 

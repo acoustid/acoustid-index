@@ -42,7 +42,7 @@ private:
 	ScopedPtr<OutputStream> m_indexOutput;
 	ScopedPtr<OutputStream> m_dataOutput;
 	SegmentIndexSharedPtr m_index;
-	std::vector<uint32_t> m_indexData;
+	QList<uint32_t> m_indexData;
 	size_t m_blockSize;
 	uint32_t m_lastKey;
 	uint32_t m_lastValue;

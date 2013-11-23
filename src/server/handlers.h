@@ -89,15 +89,14 @@ public:
 
 		ScopedPtr<IndexReader> reader(new IndexReader(index()));
 
-		uint32_t *data;
-		size_t length;
-		if (!reader->get(id, &data, &length)) {
+		Document doc;
+		if (!reader->get(id, &doc)) {
 			throw HandlerException("document not found");
 		}
 
 		QStringList output;
-		for (size_t j = 0; j < length; j++) {
-			output.append(QString("%1").arg(data[j]));
+		for (size_t j = 0; j < doc.size(); j++) {
+			output.append(QString("%1").arg(doc[j]));
 		}
 		return output.join(",");
 	}
