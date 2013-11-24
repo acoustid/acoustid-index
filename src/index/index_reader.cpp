@@ -20,7 +20,7 @@ IndexReader::IndexReader(DirectorySharedPtr dir, const IndexInfo& info)
 }
 
 IndexReader::IndexReader(IndexSharedPtr index)
-	: m_dir(index->directory()), m_index(index)
+	: m_dir(index->directory()), m_index(index), m_documentHandler(new DocumentHandler())
 {
 	m_info = m_index->acquireInfo();
 }

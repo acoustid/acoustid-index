@@ -14,6 +14,7 @@ add_definitions(
 )
 
 set(fpindexlib_SOURCES
+	src/index/acoustid_document_handler.cpp
 	src/index/document_handler.cpp
 	src/index/index.cpp
 	src/index/index_file_deleter.cpp
@@ -98,6 +99,7 @@ target_link_libraries(fpi-search ${QT_LIBRARIES} fpindexlib)
 #target_link_libraries(fpi-stats ${QT_LIBRARIES} fpindexlib)
 
 set(tests_SOURCES
+	src/index/acoustid_document_handler_test.cpp
 	src/index/segment_index_data_reader_test.cpp
 	src/index/segment_index_data_writer_test.cpp
 	src/index/segment_index_test.cpp
