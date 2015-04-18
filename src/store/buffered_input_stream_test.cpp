@@ -15,6 +15,7 @@ protected:
 	size_t read(uint8_t *data, size_t offset, size_t length)
 	{
 		memmove(data, m_data + offset, length);
+		return length;
 	}
 
 private:

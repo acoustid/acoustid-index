@@ -81,7 +81,7 @@ QStringList FSDirectory::listFiles()
 bool FSDirectory::fileExists(const QString &name)
 {
 	QMutexLocker locker(&m_mutex);
-	QFile::exists(filePath(name));
+	return QFile::exists(filePath(name));
 }
 
 void FSDirectory::sync(const QStringList& names)
