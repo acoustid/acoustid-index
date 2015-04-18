@@ -34,6 +34,10 @@ private:
 	int m_querySize;
 	int m_queryBits;
 	int m_queryBitMask;
+	QVector<uint16_t> m_offsets1;
+	QVector<uint16_t> m_offsets2;
+	QVector<unsigned char> m_seen;
+	QVector<unsigned short> m_counts;
 };
 
 }

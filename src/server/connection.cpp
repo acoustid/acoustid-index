@@ -11,14 +11,14 @@ using namespace Acoustid;
 using namespace Acoustid::Server;
 
 static const char* kCRLF = "\r\n";
-static const int kMaxLineSize = 1024 * 32;
 
 Connection::Connection(IndexSharedPtr index, QTcpSocket *socket, QObject *parent)
-	: QObject(parent), m_socket(socket), m_output(socket), m_index(index),
+	: QObject(parent), m_socket(socket), m_index(index),
 		m_handler(NULL), m_refs(1),
 		m_topScorePercent(10), m_maxResults(500)
 {
 	m_socket->setParent(this);
+    m_socket->setTextModeEnabled(true);
 	m_client = QString("%1:%2").arg(m_socket->peerAddress().toString()).arg(m_socket->peerPort());
 	qDebug() << "Connected to" << m_client;
 	connect(m_socket, SIGNAL(readyRead()), SLOT(readIncomingData()));
@@ -53,7 +53,10 @@ void Connection::close()
 
 void Connection::sendResponse(const QString& response, bool next)
 {
-	m_output << response << kCRLF << flush;
+    m_socket->write(response.toUtf8());
+    m_socket->write(kCRLF, 2);
+    m_socket->flush();
+
 	if (next) {
 		readIncomingData();
 	}
@@ -61,8 +64,12 @@ void Connection::sendResponse(const QString& response, bool next)
 
 void Connection::sendHandlerResponse(const QString& response, bool next)
 {
-	m_output << response << kCRLF << flush;
+    m_socket->write(response.toUtf8());
+    m_socket->write(kCRLF, 2);
+    m_socket->flush();
+
 	m_handler = NULL;
+
 	if (!maybeDelete()) {
 		if (next) {
 			readIncomingData();
@@ -196,17 +203,8 @@ void Connection::readIncomingData()
 		return;
 	}
 
-	m_buffer += m_output.readAll();
-	int pos = m_buffer.indexOf(kCRLF);
-	if (pos == -1) {
-		if (m_buffer.size() > kMaxLineSize) {
-			sendResponse("ERR line too long", false);
-			close();
-		}
-		return;
-	}
-	QString line = m_buffer.left(pos);
-	m_buffer = m_buffer.mid(pos + 2);
-	handleLine(line);
+    if (m_socket->canReadLine()) {
+	    handleLine(QString::fromUtf8(m_socket->readLine().trimmed()));
+    }
 }
 

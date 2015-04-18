@@ -56,8 +56,6 @@ protected slots:
 private:
 	QString m_client;
 	QTcpSocket *m_socket;
-	QString m_buffer;
-	QTextStream m_output;
     IndexSharedPtr m_index;
     IndexWriterSharedPtr m_indexWriter;
 	QMutex m_mutex;
