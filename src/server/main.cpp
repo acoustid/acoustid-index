@@ -2,6 +2,7 @@
 // Distributed under the MIT license, see the LICENSE file for details.
 
 #include <QCoreApplication>
+#include <QThreadPool>
 #include "util/options.h"
 #include "listener.h"
 
@@ -33,6 +34,10 @@ int main(int argc, char **argv)
 		.setMetaVar("FACILITY")
 		.setHelp("syslog facility to use (default: user)")
 		.setDefaultValue("user");
+	parser.addOption("threads", 't')
+		.setArgument()
+		.setHelp("use specific number of threads")
+		.setDefaultValue("0");
 	ScopedPtr<Options> opts(parser.parse(argc, argv));
 
 	QString path = opts->option("directory");
@@ -40,11 +45,19 @@ int main(int argc, char **argv)
 	int port = opts->option("port").toInt();
 
 	QCoreApplication app(argc, argv);
+
+	int numThreads = opts->option("threads").toInt();
+	if (numThreads) {
+		QThreadPool::globalInstance()->setMaxThreadCount(numThreads);
+	}
+
 	Listener::setupSignalHandlers();
 	Listener::setupLogging(opts->contains("syslog"), opts->option("syslog-facility"));
+
 	Listener listener(path, opts->contains("mmap"));
 	listener.listen(QHostAddress(address), port);
 	qDebug() << "Listening on" << address << "port" << port;
+
 	return app.exec();
 }
 
