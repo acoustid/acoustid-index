@@ -1,0 +1,43 @@
+stages:
+  - prepare
+  - build
+  - post build
+
+build env:
+  stage: prepare
+  script:
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
+    - docker build -f ci/Dockerfile.build -t $CI_REGISTRY_IMAGE/build ci/
+    - docker push $CI_REGISTRY_IMAGE/build
+  tags:
+    - docker-host
+
+build:
+  stage: build
+  image: $CI_REGISTRY_IMAGE/build
+  script:
+    - mkdir build
+    - cd build
+    - cmake -DCMAKE_BUILD_TYPE=Release ../
+    - make
+    - make check
+    - make package
+  artifacts:
+    paths:
+      - build/acoustid-index_*.deb
+    expire_in: 7 days
+  tags:
+    - docker
+
+docker image:
+  stage: post build
+  script:
+    - mv build/acoustid-index_*.deb ci/
+    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
+    - docker build -t $CI_REGISTRY_IMAGE ci/
+    - docker push $CI_REGISTRY_IMAGE
+    - docker tag $CI_REGISTRY_IMAGE quay.io/acoustid/acoustid-index
+    - docker login -u $QUAY_USER -p $QUAY_PASSWORD quay.io
+    - docker push quay.io/acoustid/acoustid-index
+  tags:
+    - docker-host

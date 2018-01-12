@@ -17,4 +17,5 @@ doc/tree_structure.png
 core
 *.a
 *.so
-
+*.cxx_parameters
+install_manifest.txt

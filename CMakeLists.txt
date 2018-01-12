@@ -8,6 +8,15 @@ find_package(GTest)
 find_package(Qt4 COMPONENTS QtCore QtNetwork REQUIRED)
 include(${QT_USE_FILE})
 
+set(CPACK_GENERATOR "DEB")
+set(CPACK_PACKAGE_NAME acoustid-index)
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Lukas Lalinsky <lukas@acoustid.org>")
+set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS TRUE)
+set(CPACK_STRIP_FILES TRUE)
+
+include(CPack)
+
 add_definitions(
         -D__STDC_LIMIT_MACROS
         -D__STDC_CONSTANT_MACROS
@@ -140,4 +149,3 @@ if(GTEST_FOUND)
 	add_test(IndexTests tests)
 	add_custom_target(check ${CMAKE_CURRENT_BINARY_DIR}/tests $ENV{GTEST_FLAGS} DEPENDS tests)
 endif()
-
