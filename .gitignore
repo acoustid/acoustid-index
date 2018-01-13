@@ -19,3 +19,8 @@ core
 *.so
 *.cxx_parameters
 install_manifest.txt
+*.deb
+/fpi-index
+/fpi-server
+/fpi-search
+/build
