@@ -33,11 +33,7 @@ docker image:
   stage: post build
   script:
     - mv build/acoustid-index_*.deb ci/
-    - docker login -u gitlab-ci-token -p $CI_JOB_TOKEN $CI_REGISTRY
-    - docker build -t $CI_REGISTRY_IMAGE ci/
-    - docker push $CI_REGISTRY_IMAGE
-    - docker tag $CI_REGISTRY_IMAGE quay.io/acoustid/acoustid-index
     - docker login -u $QUAY_USER -p $QUAY_PASSWORD quay.io
-    - docker push quay.io/acoustid/acoustid-index
+    - ./ci/build-image.sh
   tags:
     - docker-host
