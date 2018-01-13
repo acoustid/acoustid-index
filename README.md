@@ -19,20 +19,15 @@ Reindexing from the Acoustid database:
 
     $ echo "COPY (SELECT id, acoustid_extract_query(fingerprint) FROM fingerprint) TO stdout DELIMITER '|' " \
            | psql -U acoustid acoustid | ./fpi-import -d idx/ -c -o
-
- 1. Stop importing
- 2. `UPDATE fingerprint_index_queue SET fingerprint_id = (SELECT max(id) FROM fingerprint);`
- 3. Index the database
- 4. Start importing
-
-Running the server:
+Running:
 
     $ ./fpi-server
     Listening on "127.0.0.1" port 6080
 
-Running the server using Docker:
+Using Docker:
 
     $ docker run -ti -p 6080 quay.io/acoustid/acoustid-index
+    $ docker run -ti quay.io/acoustid/acoustid-index fpi-import -d /var/lib/acoustid-index/ -c -o
 
 Simple client session:
 
