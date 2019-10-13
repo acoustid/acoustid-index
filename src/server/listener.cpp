@@ -8,6 +8,7 @@
 #include "store/fs_directory.h"
 #include "listener.h"
 #include "connection.h"
+#include "metrics.h"
 
 using namespace Acoustid;
 using namespace Acoustid::Server;
@@ -18,7 +19,8 @@ int Listener::m_sigTermFd[2];
 Listener::Listener(const QString& path, bool mmap, QObject* parent)
 	: QTcpServer(parent),
 	  m_dir(new FSDirectory(path, mmap)),
-	  m_index(new Index(m_dir, true))
+	  m_index(new Index(m_dir, true)),
+	  m_metrics(new Metrics())
 {
 	m_sigIntNotifier = new QSocketNotifier(m_sigIntFd[1], QSocketNotifier::Read, this);
 	connect(m_sigIntNotifier, SIGNAL(activated(int)), this, SLOT(handleSigInt()));
@@ -92,10 +94,10 @@ void Listener::setupLogging(bool syslog, const QString& facility)
 
 void Listener::setupSignalHandlers()
 {
-    if (::socketpair(AF_UNIX, SOCK_STREAM, 0, m_sigIntFd)) {
+	if (::socketpair(AF_UNIX, SOCK_STREAM, 0, m_sigIntFd)) {
 		qFatal("Couldn't create SIGINT socketpair");
 	}
-    if (::socketpair(AF_UNIX, SOCK_STREAM, 0, m_sigTermFd)) {
+	if (::socketpair(AF_UNIX, SOCK_STREAM, 0, m_sigTermFd)) {
 		qFatal("Couldn't create SIGTERM socketpair");
 	}
 	struct sigaction sigint;
@@ -153,6 +155,7 @@ void Listener::stop()
 
 void Listener::removeConnection(Connection *connection)
 {
+	metrics()->onClosedConnection();
 	m_connections.removeAll(connection);
 	if (m_connections.isEmpty()) {
 		emit lastConnectionClosed();
@@ -165,5 +168,6 @@ void Listener::acceptNewConnection()
 	Connection* connection = new Connection(m_index, socket, this);
 	m_connections.append(connection);
 	connect(connection, SIGNAL(closed(Connection *)), SLOT(removeConnection(Connection *)));
+	metrics()->onNewConnection();
 }
 

@@ -4,12 +4,18 @@
 #ifndef ACOUSTID_SERVER_HANDLERS_H_
 #define ACOUSTID_SERVER_HANDLERS_H_
 
+#include <QElapsedTimer>
+#include "metrics.h"
 #include "handler.h"
 #include "index/index_reader.h"
 #include "index/top_hits_collector.h"
 
 namespace Acoustid {
 namespace Server {
+
+inline double elapsedSeconds(const QElapsedTimer& timer) {
+	return timer.elapsed() / 1000.0;
+}
 
 class EchoHandler : public Handler
 {
@@ -43,6 +49,8 @@ public:
 		if (args().size() < 1) {
 			throw HandlerException("expected 1 argument");
 		}
+		QElapsedTimer timer;
+		timer.start();
 		QStringList fingerprint = args().first().split(',');
 		ScopedArrayPtr<int32_t> fp(new int32_t[fingerprint.size()]);
 		size_t fpsize = 0;
@@ -64,7 +72,9 @@ public:
 		for (int j = 0; j < results.size(); j++) {
 			output.append(QString("%1:%2").arg(results[j].id()).arg(results[j].score()));
 		}
-		return output.join(" ");
+		QString result = output.join(" ");
+		metrics()->onInsertRequest(elapsedSeconds(timer));
+		return result;
 	}
 
 private:
@@ -128,6 +138,8 @@ public:
 
 	QString handle()
 	{
+		QElapsedTimer timer;
+		timer.start();
 		IndexWriterSharedPtr writer = connection()->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
@@ -150,6 +162,7 @@ public:
 			throw HandlerException("empty fingerprint");
 		}
 		writer->addDocument(id, reinterpret_cast<uint32_t*>(fp.get()), fpsize);
+		metrics()->onInsertRequest(elapsedSeconds(timer));
 		return QString();
 	}
 };

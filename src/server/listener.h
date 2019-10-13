@@ -14,6 +14,7 @@ namespace Acoustid {
 namespace Server {
 
 class Connection;
+class Metrics;
 
 class Listener : public QTcpServer
 {
@@ -24,6 +25,9 @@ public:
 	~Listener();
 
 	void stop();
+
+    QSharedPointer<Metrics> metrics() const { return m_metrics; }
+    void setMetrics(const QSharedPointer<Metrics> &metrics) { m_metrics = metrics; }
 
 	static void setupSignalHandlers();
 	static void setupLogging(bool syslog, const QString& facility);
@@ -46,6 +50,7 @@ private:
 
 	DirectorySharedPtr m_dir;
 	IndexSharedPtr m_index;
+    QSharedPointer<Metrics> m_metrics;
 	QList<Connection*> m_connections;
 	QSocketNotifier *m_sigIntNotifier;
 	QSocketNotifier *m_sigTermNotifier;

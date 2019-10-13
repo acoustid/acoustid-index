@@ -5,6 +5,7 @@
 #include <QThreadPool>
 #include "util/options.h"
 #include "listener.h"
+#include "metrics_server.h"
 
 using namespace Acoustid;
 using namespace Acoustid::Server;
@@ -25,6 +26,14 @@ int main(int argc, char **argv)
 		.setArgument()
 		.setHelp("listen on this port (default: 6080)")
 		.setDefaultValue("6080");
+	parser.addOption("metrics-address")
+		.setArgument()
+		.setHelp("prometheus metrics listen on this address (default: 127.0.0.1)")
+		.setDefaultValue("127.0.0.1");
+	parser.addOption("metrics-port")
+		.setArgument()
+		.setHelp("prometheus metrics listen on this port (default: 6081)")
+		.setDefaultValue("6081");
 	parser.addOption("mmap", 'm')
 		.setHelp("use mmap to read index files");
 	parser.addOption("syslog", 's')
@@ -41,8 +50,12 @@ int main(int argc, char **argv)
 	ScopedPtr<Options> opts(parser.parse(argc, argv));
 
 	QString path = opts->option("directory");
+
 	QString address = opts->option("address");
 	int port = opts->option("port").toInt();
+
+	QString metricsAddress = opts->option("metrics-address");
+	int metricsPort = opts->option("metrics-port").toInt();
 
 	QCoreApplication app(argc, argv);
 
@@ -51,12 +64,19 @@ int main(int argc, char **argv)
 		QThreadPool::globalInstance()->setMaxThreadCount(numThreads);
 	}
 
+    auto metrics = QSharedPointer<Metrics>(new Metrics());
+    auto metricsServer = QSharedPointer<MetricsServer>(new MetricsServer(metrics));
+
 	Listener::setupSignalHandlers();
 	Listener::setupLogging(opts->contains("syslog"), opts->option("syslog-facility"));
 
 	Listener listener(path, opts->contains("mmap"));
+	listener.setMetrics(metrics);
 	listener.listen(QHostAddress(address), port);
-	qDebug() << "Listening on" << address << "port" << port;
+	qDebug() << "Index server listening on" << address << "port" << port;
+
+    metricsServer->start(QHostAddress(metricsAddress), metricsPort);
+	qDebug() << "Prometheus metrics available at" << QString("http://%1:%2/metrics").arg(metricsAddress).arg(metricsPort);
 
 	return app.exec();
 }

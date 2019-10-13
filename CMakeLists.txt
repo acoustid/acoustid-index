@@ -61,11 +61,15 @@ set(fpserver_HEADERS
 	src/server/listener.h
 	src/server/connection.h
 	src/server/handler.h
+	src/server/metrics.h
+	src/server/metrics_server.h
 )
 set(fpserver_SOURCES
 	src/server/listener.cpp
 	src/server/connection.cpp
 	src/server/handler.cpp
+	src/server/metrics.cpp
+	src/server/metrics_server.cpp
 	src/server/main.cpp
 )
 

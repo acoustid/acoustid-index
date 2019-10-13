@@ -9,12 +9,16 @@
 #include <QStringList>
 #include "util/exceptions.h"
 #include "connection.h"
+#include "metrics.h"
+#include "listener.h"
 
 namespace Acoustid {
 
 class Index;
 
 namespace Server {
+
+class Metrics;
 
 class HandlerException : public Exception
 {
@@ -38,6 +42,7 @@ public:
 
 	Connection* connection() { return m_connection; }
 	IndexSharedPtr index() { return m_connection->index(); }
+	QSharedPointer<Metrics> metrics() { return m_connection->listener()->metrics(); }
 	QStringList args() { return m_args; }
 
 signals:
