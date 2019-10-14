@@ -54,7 +54,7 @@ QStringList Metrics::toStringList() {
 	{
 		auto iter = m_requestCount.constBegin();
 		while (iter != m_requestCount.constEnd()) {
-			output.append(QString("aindex_requests_total{operation=\"%1\"} %2").arg(iter.key(), iter.value()));
+			output.append(QString("aindex_requests_total{operation=\"%1\"} %2").arg(iter.key()).arg(iter.value()));
 			++iter;
 		}
 	}
@@ -63,7 +63,7 @@ QStringList Metrics::toStringList() {
 	{
 		auto iter = m_requestDurationSum.constBegin();
 		while (iter != m_requestDurationSum.constEnd()) {
-			output.append(QString("aindex_requests_duration_seconds{operation=\"%1\"} %2").arg(iter.key(), iter.value()));
+			output.append(QString("aindex_requests_duration_seconds{operation=\"%1\"} %2").arg(iter.key()).arg(iter.value()));
 			++iter;
 		}
 	}
