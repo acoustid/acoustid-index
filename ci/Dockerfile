@@ -1,6 +1,6 @@
 FROM ubuntu:18.04
 
-RUN useradd -ms /bin/bash acoustid
+RUN useradd -m -s /bin/bash -u 1000 acoustid
 
 RUN apt-get update && \
     apt-get install -y libqt4-network libqtcore4 libstdc++6 libgcc1
