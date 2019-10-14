@@ -20,6 +20,7 @@ include(CPack)
 add_definitions(
         -D__STDC_LIMIT_MACROS
         -D__STDC_CONSTANT_MACROS
+        -std=c++11
 )
 
 set(fpindexlib_SOURCES
