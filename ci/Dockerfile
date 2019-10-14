@@ -17,4 +17,4 @@ ENTRYPOINT ["docker-entrypoint.sh"]
 USER acoustid
 EXPOSE 6080
 
-CMD ["fpi-server", "-d", "/var/lib/acoustid-index", "-a", "0.0.0.0", "-p", "6080", "--metrics-address", "0.0.0.0", "--metrics-port", "6081", "-m"]
+CMD ["fpi-server", "--directory", "/var/lib/acoustid-index", "--mmap", "--address", "0.0.0.0", "--port", "6080", "--metrics", "--metrics-address", "0.0.0.0", "--metrics-port", "6081"]

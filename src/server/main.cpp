@@ -26,13 +26,17 @@ int main(int argc, char **argv)
 		.setArgument()
 		.setHelp("listen on this port (default: 6080)")
 		.setDefaultValue("6080");
+	parser.addOption("metrics")
+		.setHelp("enable prometheus metrics endpoint");
 	parser.addOption("metrics-address")
 		.setArgument()
 		.setHelp("prometheus metrics listen on this address (default: 127.0.0.1)")
+        .setMetaVar("ADDRESS")
 		.setDefaultValue("127.0.0.1");
 	parser.addOption("metrics-port")
 		.setArgument()
 		.setHelp("prometheus metrics listen on this port (default: 6081)")
+        .setMetaVar("PORT")
 		.setDefaultValue("6081");
 	parser.addOption("mmap", 'm')
 		.setHelp("use mmap to read index files");
@@ -54,6 +58,7 @@ int main(int argc, char **argv)
 	QString address = opts->option("address");
 	int port = opts->option("port").toInt();
 
+	bool metricsEnabled = opts->contains("metrics");
 	QString metricsAddress = opts->option("metrics-address");
 	int metricsPort = opts->option("metrics-port").toInt();
 
@@ -64,8 +69,8 @@ int main(int argc, char **argv)
 		QThreadPool::globalInstance()->setMaxThreadCount(numThreads);
 	}
 
-    auto metrics = QSharedPointer<Metrics>(new Metrics());
-    auto metricsServer = QSharedPointer<MetricsServer>(new MetricsServer(metrics));
+	auto metrics = QSharedPointer<Metrics>(new Metrics());
+	auto metricsServer = QSharedPointer<MetricsServer>(new MetricsServer(metrics));
 
 	Listener::setupSignalHandlers();
 	Listener::setupLogging(opts->contains("syslog"), opts->option("syslog-facility"));
@@ -75,8 +80,10 @@ int main(int argc, char **argv)
 	listener.listen(QHostAddress(address), port);
 	qDebug() << "Index server listening on" << address << "port" << port;
 
-    metricsServer->start(QHostAddress(metricsAddress), metricsPort);
-	qDebug() << "Prometheus metrics available at" << QString("http://%1:%2/metrics").arg(metricsAddress).arg(metricsPort);
+	if (metricsEnabled) {
+		metricsServer->start(QHostAddress(metricsAddress), metricsPort);
+		qDebug() << "Prometheus metrics available at" << QString("http://%1:%2/metrics").arg(metricsAddress).arg(metricsPort);
+	}
 
 	return app.exec();
 }
