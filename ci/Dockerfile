@@ -1,4 +1,4 @@
-FROM ubuntu:xenial
+FROM ubuntu:18.04
 
 RUN useradd -ms /bin/bash acoustid
 
@@ -17,4 +17,4 @@ ENTRYPOINT ["docker-entrypoint.sh"]
 USER acoustid
 EXPOSE 6080
 
-CMD ["fpi-server", "-d", "/var/lib/acoustid-index", "-a", "0.0.0.0", "-p", "6080", "-m"]
+CMD ["fpi-server", "-d", "/var/lib/acoustid-index", "-a", "0.0.0.0", "-p", "6080", "--metrics-address", "0.0.0.0", "--metrics-port", "6081", "-m"]
