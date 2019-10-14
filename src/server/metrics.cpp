@@ -25,10 +25,8 @@ void Metrics::onClosedConnection() {
 	m_connectionInFlightCount -= 1;
 }
 
-void Metrics::onSearchRequest(double duration, int resultCount) {
+void Metrics::onSearchRequest(int resultCount) {
 	QWriteLocker locker(&m_lock);
-	m_searchRequestCount += 1;
-	m_searchRequestDurationSum += duration;
 	if (resultCount > 0) {
 		m_searchHitCount += 1;
 	} else {
@@ -36,24 +34,43 @@ void Metrics::onSearchRequest(double duration, int resultCount) {
 	}
 }
 
-void Metrics::onInsertRequest(double duration) {
+void Metrics::onRequest(const QString &name, double duration) {
 	QWriteLocker locker(&m_lock);
-	m_insertRequestCount += 1;
-	m_insertRequestDurationSum += duration;
+	m_requestCount[name] += 1;
+	m_requestDurationSum[name] += duration;
 }
 
 QStringList Metrics::toStringList() {
 	QReadLocker locker(&m_lock);
 	QStringList output;
-	output.append(QString("# TYPE connections_in_flight gauge"));
-	output.append(QString("connections_in_flight %1").arg(m_connectionInFlightCount));
-	output.append(QString("# TYPE connections_total counter"));
-	output.append(QString("connections_total %1").arg(m_connectionCount));
-	output.append(QString("# TYPE requests_total counter"));
-	output.append(QString("requests_total{operation=\"search\"} %1").arg(m_searchRequestCount));
-	output.append(QString("requests_total{operation=\"insert\"} %1").arg(m_insertRequestCount));
-	output.append(QString("# TYPE requests_duration_seconds counter"));
-	output.append(QString("requests_duration_seconds{operation=\"search\"} %1").arg(m_searchRequestDurationSum));
-	output.append(QString("requests_duration_seconds{operation=\"insert\"} %1").arg(m_insertRequestDurationSum));
+
+	output.append(QString("# TYPE aindex_connections_in_flight gauge"));
+	output.append(QString("aindex_connections_in_flight %1").arg(m_connectionInFlightCount));
+
+	output.append(QString("# TYPE aindex_connections_total counter"));
+	output.append(QString("aindex_connections_total %1").arg(m_connectionCount));
+
+	output.append(QString("# TYPE aindex_requests_total counter"));
+	{
+		const auto iter = m_requestCount.constBegin();
+		while (iter != m_requestCount.constEnd()) {
+			output.append(QString("aindex_requests_total{operation=\"%1\"} %2").arg(iter.key(), iter.value()));
+		}
+	}
+
+	output.append(QString("# TYPE aindex_requests_duration_seconds counter"));
+	{
+		const auto iter = m_requestDurationSum.constBegin();
+		while (iter != m_requestDurationSum.constEnd()) {
+			output.append(QString("aindex_requests_duration_seconds{operation=\"%1\"} %2").arg(iter.key(), iter.value()));
+		}
+	}
+
+	output.append(QString("# TYPE aindex_search_hits_total counter"));
+	output.append(QString("aindex_search_hits_total %1").arg(m_searchHitCount));
+
+	output.append(QString("# TYPE aindex_search_misses_total counter"));
+	output.append(QString("aindex_search_misses_total %1").arg(m_searchMissCount));
+
 	return output;
 }

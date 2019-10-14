@@ -3,12 +3,17 @@
 
 #include "common.h"
 #include "handler.h"
+#include <QElapsedTimer>
 
 using namespace Acoustid;
 using namespace Acoustid::Server;
 
-Handler::Handler(Connection* connection, const QStringList& args)
-	: m_connection(connection), m_args(args)
+inline double elapsedSeconds(const QElapsedTimer& timer) {
+	return timer.elapsed() / 1000.0;
+}
+
+Handler::Handler(Connection* connection, const QString &name, const QStringList& args)
+	: m_connection(connection), m_name(name), m_args(args)
 {
 }
 
@@ -18,6 +23,8 @@ Handler::~Handler()
 
 void Handler::run()
 {
+	QElapsedTimer timer;
+	timer.start();
 	QMutexLocker locker(m_connection->mutex());
 	QString result;
 	try {
@@ -31,5 +38,6 @@ void Handler::run()
 		result = QString("ERR %1").arg(ex.what());
 	}
 	emit finished(result);
+	metrics()->onRequest(m_name, elapsedSeconds(timer));
 }
 

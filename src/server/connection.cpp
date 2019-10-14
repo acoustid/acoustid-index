@@ -119,7 +119,7 @@ void Connection::handleLine(const QString& line)
 				sendResponse("ERR expected 3 arguments");
 				return;
 			}
-			m_handler = new SetAttributeHandler(this, args);
+			m_handler = new SetAttributeHandler(this, command, args);
 		}
 		else {
 			sendResponse("ERR unknown parameter");
@@ -144,7 +144,7 @@ void Connection::handleLine(const QString& line)
 				sendResponse("ERR expected 2 arguments");
 				return;
 			}
-			m_handler = new GetAttributeHandler(this, args);
+			m_handler = new GetAttributeHandler(this, command, args);
 		}
 		else {
 			sendResponse("ERR unknown parameter");
@@ -152,28 +152,28 @@ void Connection::handleLine(const QString& line)
 		}
 	}
 	else if (command == "echo") {
-		m_handler = new EchoHandler(this, args);
+		m_handler = new EchoHandler(this, command, args);
 	}
 	else if (command == "search") {
-		m_handler = new SearchHandler(this, args, m_maxResults, m_topScorePercent);
+		m_handler = new SearchHandler(this, command, args, m_maxResults, m_topScorePercent);
 	}
 	else if (command == "insert") {
-		m_handler = new InsertHandler(this, args);
+		m_handler = new InsertHandler(this, command, args);
 	}
 	else if (command == "cleanup") {
-		m_handler = new CleanupHandler(this, args);
+		m_handler = new CleanupHandler(this, command, args);
 	}
 	else if (command == "optimize") {
-		m_handler = new OptimizeHandler(this, args);
+		m_handler = new OptimizeHandler(this, command, args);
 	}
 	else if (command == "begin") {
-		m_handler = new BeginHandler(this, args);
+		m_handler = new BeginHandler(this, command, args);
 	}
 	else if (command == "commit") {
-		m_handler = new CommitHandler(this, args);
+		m_handler = new CommitHandler(this, command, args);
 	}
 	else if (command == "rollback") {
-		m_handler = new RollbackHandler(this, args);
+		m_handler = new RollbackHandler(this, command, args);
 	}
 	else {
 		sendResponse("ERR unknown command");

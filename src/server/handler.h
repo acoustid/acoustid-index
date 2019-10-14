@@ -27,14 +27,14 @@ public:
 };
 
 #define ACOUSTID_HANDLER_CONSTRUCTOR(x) \
-	x(Connection* connection, const QStringList& args) : Handler(connection, args) { }
+	x(Connection* connection, const QString &name, const QStringList& args) : Handler(connection, name, args) { }
 
 class Handler : public QObject, public QRunnable
 {
 	Q_OBJECT
 
 public:
-	Handler(Connection* connection, const QStringList& args);
+	Handler(Connection* connection, const QString &name, const QStringList& args);
 	virtual ~Handler();
 
 	virtual void run();
@@ -50,6 +50,7 @@ signals:
 
 private:
 	Connection* m_connection;
+    QString m_name;
 	QStringList m_args;
 };
 

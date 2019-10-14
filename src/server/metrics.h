@@ -20,8 +20,8 @@ public:
 	void onNewConnection();
 	void onClosedConnection();
 
-	void onSearchRequest(double duration, int resultCount);
-	void onInsertRequest(double duration);
+	void onRequest(const QString &name, double duration);
+	void onSearchRequest(int resultCount);
 
 	QStringList toStringList();
 
@@ -31,17 +31,14 @@ private:
 	uint64_t m_connectionInFlightCount { 0 };
 	uint64_t m_connectionCount { 0 };
 
+	QMap<QString, uint64_t> m_requestCount;
+	QMap<QString, double> m_requestDurationSum;
+
 	uint64_t m_searchHitCount { 0 };
 	uint64_t m_searchMissCount { 0 };
-	uint64_t m_searchRequestCount { 0 };
-	double m_searchRequestDurationSum { 0 };
-
-	uint64_t m_insertRequestCount { 0 };
-	double m_insertRequestDurationSum { 0 };
 };
 
 }
 }
 
 #endif
-

@@ -4,7 +4,6 @@
 #ifndef ACOUSTID_SERVER_HANDLERS_H_
 #define ACOUSTID_SERVER_HANDLERS_H_
 
-#include <QElapsedTimer>
 #include "metrics.h"
 #include "handler.h"
 #include "index/index_reader.h"
@@ -12,10 +11,6 @@
 
 namespace Acoustid {
 namespace Server {
-
-inline double elapsedSeconds(const QElapsedTimer& timer) {
-	return timer.elapsed() / 1000.0;
-}
 
 class EchoHandler : public Handler
 {
@@ -31,8 +26,8 @@ public:
 class SearchHandler : public Handler
 {
 public:
-	SearchHandler(Connection* connection, const QStringList& args, int maxResults = 500, int topScorePercent = 10)
-		: Handler(connection, args), m_topScorePercent(topScorePercent), m_maxResults(maxResults) { }
+	SearchHandler(Connection* connection, const QString &name, const QStringList& args, int maxResults = 500, int topScorePercent = 10)
+		: Handler(connection, name, args), m_topScorePercent(topScorePercent), m_maxResults(maxResults) { }
 
 	void setTopScorePercent(int v)
 	{
@@ -49,8 +44,6 @@ public:
 		if (args().size() < 1) {
 			throw HandlerException("expected 1 argument");
 		}
-		QElapsedTimer timer;
-		timer.start();
 		QStringList fingerprint = args().first().split(',');
 		std::unique_ptr<int32_t[]> fp(new int32_t[fingerprint.size()]);
 		size_t fpsize = 0;
@@ -73,7 +66,7 @@ public:
 			output.append(QString("%1:%2").arg(results[j].id()).arg(results[j].score()));
 		}
 		QString result = output.join(" ");
-		metrics()->onInsertRequest(elapsedSeconds(timer));
+        metrics()->onSearchRequest(results.size());
 		return result;
 	}
 
@@ -138,8 +131,6 @@ public:
 
 	QString handle()
 	{
-		QElapsedTimer timer;
-		timer.start();
 		IndexWriterSharedPtr writer = connection()->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
@@ -162,7 +153,6 @@ public:
 			throw HandlerException("empty fingerprint");
 		}
 		writer->addDocument(id, reinterpret_cast<uint32_t*>(fp.get()), fpsize);
-		metrics()->onInsertRequest(elapsedSeconds(timer));
 		return QString();
 	}
 };
