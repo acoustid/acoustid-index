@@ -52,17 +52,19 @@ QStringList Metrics::toStringList() {
 
 	output.append(QString("# TYPE aindex_requests_total counter"));
 	{
-		const auto iter = m_requestCount.constBegin();
+		auto iter = m_requestCount.constBegin();
 		while (iter != m_requestCount.constEnd()) {
 			output.append(QString("aindex_requests_total{operation=\"%1\"} %2").arg(iter.key(), iter.value()));
+			++iter;
 		}
 	}
 
 	output.append(QString("# TYPE aindex_requests_duration_seconds counter"));
 	{
-		const auto iter = m_requestDurationSum.constBegin();
+		auto iter = m_requestDurationSum.constBegin();
 		while (iter != m_requestDurationSum.constEnd()) {
 			output.append(QString("aindex_requests_duration_seconds{operation=\"%1\"} %2").arg(iter.key(), iter.value()));
+			++iter;
 		}
 	}
 
