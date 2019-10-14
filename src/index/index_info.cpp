@@ -79,7 +79,7 @@ bool IndexInfo::load(Directory* dir, bool loadIndexes)
 
 void IndexInfo::load(InputStream* rawInput, bool loadIndexes, Directory* dir)
 {
-	ScopedPtr<ChecksumInputStream> input(new ChecksumInputStream(rawInput));
+	std::unique_ptr<ChecksumInputStream> input(new ChecksumInputStream(rawInput));
 	setLastSegmentId(input->readVInt32());
 	clearSegments();
 	size_t segmentCount = input->readVInt32();
@@ -121,7 +121,7 @@ void IndexInfo::save(Directory* dir)
 
 void IndexInfo::save(OutputStream *rawOutput)
 {
-	ScopedPtr<ChecksumOutputStream> output(new ChecksumOutputStream(rawOutput));
+	std::unique_ptr<ChecksumOutputStream> output(new ChecksumOutputStream(rawOutput));
 	output->writeVInt32(lastSegmentId());
 	output->writeVInt32(segmentCount());
 	for (size_t i = 0; i < segmentCount(); i++) {

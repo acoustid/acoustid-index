@@ -47,7 +47,7 @@ int main(int argc, char **argv)
 		.setArgument()
 		.setHelp("use specific number of threads")
 		.setDefaultValue("0");
-	ScopedPtr<Options> opts(parser.parse(argc, argv));
+	std::unique_ptr<Options> opts(parser.parse(argc, argv));
 
 	QString path = opts->option("directory");
 

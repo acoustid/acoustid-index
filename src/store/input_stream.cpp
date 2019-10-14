@@ -12,7 +12,7 @@ InputStream::~InputStream()
 QString InputStream::readString()
 {
 	size_t size = readVInt32();
-	ScopedArrayPtr<uint8_t> data(new uint8_t[size]);
+	std::unique_ptr<uint8_t[]> data(new uint8_t[size]);
 	for (size_t i = 0; i < size; i++) {
 		data[i] = readByte();
 	}

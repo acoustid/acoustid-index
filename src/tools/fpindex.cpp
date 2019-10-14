@@ -13,8 +13,8 @@ using namespace Acoustid;
 
 int main(int argc, char **argv)
 {
-	ScopedPtr<OutputStream> indexStream(FSOutputStream::open("segment0.fii"));
-	ScopedPtr<OutputStream> dataStream(FSOutputStream::open("segment0.fid"));
+	std::unique_ptr<OutputStream> indexStream(FSOutputStream::open("segment0.fii"));
+	std::unique_ptr<OutputStream> dataStream(FSOutputStream::open("segment0.fid"));
 
 	SegmentIndexWriter indexWriter(indexStream.get());
 	indexWriter.setBlockSize(512);

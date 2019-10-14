@@ -12,8 +12,8 @@ using namespace Acoustid;
 
 int main(int argc, char **argv)
 {
-	ScopedPtr<InputStream> inputStream(MMapInputStream::open("segment0.fii"));
-	ScopedPtr<SegmentIndexReader> indexReader(new SegmentIndexReader(inputStream.get()));
+	std::unique_ptr<InputStream> inputStream(MMapInputStream::open("segment0.fii"));
+	std::unique_ptr<SegmentIndexReader> indexReader(new SegmentIndexReader(inputStream.get()));
 	SegmentIndexSharedPtr index(indexReader->read());
 
 	QTextStream out(stdout);

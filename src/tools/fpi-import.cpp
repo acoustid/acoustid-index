@@ -38,7 +38,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	ScopedPtr<IndexWriter> writer(new IndexWriter(index));
+	std::unique_ptr<IndexWriter> writer(new IndexWriter(index));
 
 	const size_t lineSize = 1024 * 1024;
 	char line[lineSize];

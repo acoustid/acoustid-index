@@ -61,7 +61,7 @@ public:
 	BlockDataIterator *readBlock(size_t n, uint32_t key);
 
 private:
-	ScopedPtr<InputStream> m_input;
+	std::unique_ptr<InputStream> m_input;
 	size_t m_blockSize;
 };
 
