@@ -8,7 +8,6 @@
 #define _XOPEN_SOURCE 700
 #endif
 
-#include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,13 +15,12 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include <memory>
-
 #include <QString>
 #include <QDebug>
 #include <QSharedPointer>
 
 #include "util/exceptions.h"
+#include "util/scoped_ptr.h"
 
 namespace Acoustid {
 

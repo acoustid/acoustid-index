@@ -15,7 +15,7 @@ class SegmentEnum
 public:
 	SegmentEnum(SegmentIndexSharedPtr index, SegmentDataReader *dataReader)
 		: m_index(index), m_dataReader(dataReader), m_block(0),
-		  m_currentBlock(nullptr)
+		  m_currentBlock(0)
 	{}
 
 	bool next()
@@ -45,8 +45,8 @@ public:
 private:
 	size_t m_block;
 	SegmentIndexSharedPtr m_index;
-	std::unique_ptr<SegmentDataReader> m_dataReader;
-	std::unique_ptr<BlockDataIterator> m_currentBlock;
+	ScopedPtr<SegmentDataReader> m_dataReader;
+	ScopedPtr<BlockDataIterator> m_currentBlock;
 };
 
 }

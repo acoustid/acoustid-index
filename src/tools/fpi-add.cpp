@@ -11,7 +11,7 @@ int main(int argc, char **argv)
 	DirectorySharedPtr dir(new FSDirectory("."));
 	IndexSharedPtr index(new Index(dir, true));
 
-	std::unique_ptr<IndexWriter> writer(new IndexWriter(index));
+	ScopedPtr<IndexWriter> writer(new IndexWriter(index));
 
 	size_t length = argc - 2;
 	uint32_t id = strtoul(argv[1], NULL, 10);

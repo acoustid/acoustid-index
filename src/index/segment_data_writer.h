@@ -39,8 +39,8 @@ public:
 private:
 	void writeBlock();
 
-	std::unique_ptr<OutputStream> m_output;
-	std::unique_ptr<SegmentIndexWriter> m_indexWriter;
+	ScopedPtr<OutputStream> m_output;
+	ScopedPtr<SegmentIndexWriter> m_indexWriter;
 	SegmentIndexSharedPtr m_index;
 	std::vector<uint32_t> m_indexData;
 	size_t m_blockSize;
@@ -50,7 +50,7 @@ private:
 	size_t m_itemCount;
 	size_t m_blockCount;
 	uint8_t *m_ptr;
-	std::unique_ptr<uint8_t[]> m_buffer;
+	ScopedArrayPtr<uint8_t> m_buffer;
 };
 
 }

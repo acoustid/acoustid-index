@@ -45,7 +45,7 @@ public:
 			throw HandlerException("expected 1 argument");
 		}
 		QStringList fingerprint = args().first().split(',');
-		std::unique_ptr<int32_t[]> fp(new int32_t[fingerprint.size()]);
+		ScopedArrayPtr<int32_t> fp(new int32_t[fingerprint.size()]);
 		size_t fpsize = 0;
 		for (int j = 0; j < fingerprint.size(); j++) {
 			bool ok;
@@ -58,7 +58,7 @@ public:
 			throw HandlerException("empty fingerprint");
 		}
 		TopHitsCollector collector(m_maxResults, m_topScorePercent);
-		std::unique_ptr<IndexReader> reader(new IndexReader(index()));
+		ScopedPtr<IndexReader> reader(new IndexReader(index()));
 		reader->search(reinterpret_cast<uint32_t*>(fp.get()), fpsize, &collector);
 		QList<Result> results = collector.topResults();
 		QStringList output;
@@ -140,7 +140,7 @@ public:
 		}
 		int32_t id = args().at(0).toInt();
 		QStringList fingerprint = args().at(1).split(',');
-		std::unique_ptr<int32_t[]> fp(new int32_t[fingerprint.size()]);
+		ScopedArrayPtr<int32_t> fp(new int32_t[fingerprint.size()]);
 		size_t fpsize = 0;
 		for (int j = 0; j < fingerprint.size(); j++) {
 			bool ok;

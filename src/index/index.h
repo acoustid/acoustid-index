@@ -52,7 +52,7 @@ private:
 	QMutex m_mutex;
 	DirectorySharedPtr m_dir;
 	bool m_hasWriter;
-	std::unique_ptr<IndexFileDeleter> m_deleter;
+	ScopedPtr<IndexFileDeleter> m_deleter;
 	IndexInfo m_info;
 	bool m_open;
 };

@@ -23,7 +23,7 @@ public:
 private:
 	void maybeWriteHeader();
 
-	std::unique_ptr<OutputStream> m_output;
+	ScopedPtr<OutputStream> m_output;
 };
 
 }

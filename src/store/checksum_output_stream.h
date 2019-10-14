@@ -23,7 +23,7 @@ public:
 	void seek(size_t position);
 
 private:
-	std::unique_ptr<OutputStream> m_output;
+	ScopedPtr<OutputStream> m_output;
 	crc_t m_crc;
 };
 

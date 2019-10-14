@@ -34,7 +34,7 @@ TEST(IndexInfoTest, ReadFromDir)
 {
 	RAMDirectory dir;
 
-	std::unique_ptr<OutputStream> output(dir.createFile("info_0"));
+	ScopedPtr<OutputStream> output(dir.createFile("info_0"));
 	output->writeVInt32(2);
 	output->writeVInt32(2);
 	output->writeVInt32(0);
@@ -73,7 +73,7 @@ TEST(IndexInfoTest, ReadFromDirCorruptRecover)
 	RAMDirectory dir;
 
 	{
-		std::unique_ptr<OutputStream> output(dir.createFile("info_0"));
+		ScopedPtr<OutputStream> output(dir.createFile("info_0"));
 		output->writeVInt32(2);
 		output->writeVInt32(2);
 		output->writeVInt32(0);
@@ -91,7 +91,7 @@ TEST(IndexInfoTest, ReadFromDirCorruptRecover)
 	}
 
 	{
-		std::unique_ptr<OutputStream> output(dir.createFile("info_1"));
+		ScopedPtr<OutputStream> output(dir.createFile("info_1"));
 		output->writeVInt32(3);
 	}
 
@@ -118,7 +118,7 @@ TEST(IndexInfoTest, ReadFromDirCorruptRecover2)
 	RAMDirectory dir;
 
 	{
-		std::unique_ptr<OutputStream> output(dir.createFile("info_0"));
+		ScopedPtr<OutputStream> output(dir.createFile("info_0"));
 		output->writeVInt32(2);
 		output->writeVInt32(2);
 		output->writeVInt32(0);
@@ -136,12 +136,12 @@ TEST(IndexInfoTest, ReadFromDirCorruptRecover2)
 	}
 
 	{
-		std::unique_ptr<OutputStream> output(dir.createFile("info_1"));
+		ScopedPtr<OutputStream> output(dir.createFile("info_1"));
 		output->writeVInt32(3);
 	}
 
 	{
-		std::unique_ptr<OutputStream> output(dir.createFile("info_2"));
+		ScopedPtr<OutputStream> output(dir.createFile("info_2"));
 		output->writeVInt32(4);
 	}
 
@@ -168,12 +168,12 @@ TEST(IndexInfoTest, ReadFromDirCorruptFail)
 	RAMDirectory dir;
 
 	{
-		std::unique_ptr<OutputStream> output(dir.createFile("info_0"));
+		ScopedPtr<OutputStream> output(dir.createFile("info_0"));
 		output->writeVInt32(2);
 	}
 
 	{
-		std::unique_ptr<OutputStream> output(dir.createFile("info_1"));
+		ScopedPtr<OutputStream> output(dir.createFile("info_1"));
 		output->writeVInt32(3);
 	}
 
@@ -193,7 +193,7 @@ TEST(IndexInfoTest, WriteIntoDir)
 	infos.setAttribute("foo", "bar");
 	infos.save(&dir);
 
-	std::unique_ptr<InputStream> input(dir.openFile("info_0"));
+	ScopedPtr<InputStream> input(dir.openFile("info_0"));
 	ASSERT_EQ(2, input->readVInt32());
 	ASSERT_EQ(2, input->readVInt32());
 	ASSERT_EQ(0, input->readVInt32());

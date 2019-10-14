@@ -33,7 +33,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	std::unique_ptr<IndexReader> reader(new IndexReader(index));
+	ScopedPtr<IndexReader> reader(new IndexReader(index));
 
 	QStringList args = opts->arguments();
 	for (int i = 0; i < args.size(); i++) {

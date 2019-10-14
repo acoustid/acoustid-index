@@ -19,7 +19,7 @@ TEST(RAMDirectoryTest, EmptyListFiles)
 TEST(RAMDirectoryTest, CreateFile)
 {
 	RAMDirectory dir;
-	std::unique_ptr<OutputStream> output(dir.createFile("test.txt"));
+	ScopedPtr<OutputStream> output(dir.createFile("test.txt"));
 	QStringList files = dir.listFiles();
 	ASSERT_EQ(1, files.size());
 	ASSERT_STREQ("test.txt", qPrintable(files[0]));
@@ -34,13 +34,13 @@ TEST(RAMDirectoryTest, CreateFile)
 TEST(RAMDirectoryTest, OpenFile)
 {
 	RAMDirectory dir;
-	std::unique_ptr<OutputStream> output(dir.createFile("test.txt"));
+	ScopedPtr<OutputStream> output(dir.createFile("test.txt"));
 	output->writeByte('a');
 	output->writeByte('b');
 	output->writeByte('c');
 	output->writeByte(0);
 	output.reset();
-	std::unique_ptr<InputStream> input(dir.openFile("test.txt"));
+	ScopedPtr<InputStream> input(dir.openFile("test.txt"));
 	ASSERT_EQ('a', input->readByte());
 	ASSERT_EQ('b', input->readByte());
 	ASSERT_EQ('c', input->readByte());
@@ -56,7 +56,7 @@ TEST(RAMDirectoryTest, OpenNonExistantFile)
 TEST(RAMDirectoryTest, DeleteFile)
 {
 	RAMDirectory dir;
-	std::unique_ptr<OutputStream> output(dir.createFile("test.txt"));
+	ScopedPtr<OutputStream> output(dir.createFile("test.txt"));
 	QStringList files = dir.listFiles();
 	ASSERT_EQ(1, files.size());
 	ASSERT_STREQ("test.txt", qPrintable(files[0]));
@@ -69,7 +69,7 @@ TEST(RAMDirectoryTest, DeleteFile)
 TEST(RAMDirectoryTest, RenameFile)
 {
 	RAMDirectory dir;
-	std::unique_ptr<OutputStream> output(dir.createFile("test.txt"));
+	ScopedPtr<OutputStream> output(dir.createFile("test.txt"));
 	QStringList files = dir.listFiles();
 	ASSERT_EQ(1, files.size());
 	ASSERT_STREQ("test.txt", qPrintable(files[0]));
