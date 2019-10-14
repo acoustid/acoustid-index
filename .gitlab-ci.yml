@@ -10,7 +10,7 @@ build env:
     - docker build -f ci/Dockerfile.build -t $CI_REGISTRY_IMAGE/build ci/
     - docker push $CI_REGISTRY_IMAGE/build
   tags:
-    - docker-host
+    - docker
 
 build:
   stage: build
@@ -43,4 +43,4 @@ docker image:
     - docker login -u $QUAY_USER -p $QUAY_PASSWORD quay.io
     - ./ci/build-image.sh
   tags:
-    - docker-host
+    - docker
