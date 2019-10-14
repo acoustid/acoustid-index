@@ -30,7 +30,7 @@ public:
 
 private:
 	QList<SegmentEnum *> m_readers;
-	ScopedPtr<SegmentDataWriter> m_writer;
+	std::unique_ptr<SegmentDataWriter> m_writer;
 };
 
 }

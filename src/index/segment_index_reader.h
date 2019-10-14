@@ -20,7 +20,7 @@ public:
 	SegmentIndexSharedPtr read();
 
 private:
-	ScopedPtr<InputStream> m_input;
+	std::unique_ptr<InputStream> m_input;
 	size_t m_blockCount;
 };
 

@@ -16,7 +16,7 @@ TEST(IndexWriterTest, AddDocument)
 	DirectorySharedPtr dir(new RAMDirectory());
 	IndexSharedPtr index(new Index(dir, true));
 
-	ScopedPtr<IndexWriter> writer(new IndexWriter(index));
+	std::unique_ptr<IndexWriter> writer(new IndexWriter(index));
 	ASSERT_TRUE(index->directory()->fileExists("info_0"));
 	ASSERT_EQ(0, writer->info().revision());
 	ASSERT_EQ(0, writer->info().segmentCount());
@@ -36,12 +36,12 @@ TEST(IndexWriterTest, AddDocument)
 	ASSERT_EQ(3, writer->info().segment(0).checksum());
 
 	{
-		ScopedPtr<InputStream> input(index->directory()->openFile("segment_0.fii"));
+		std::unique_ptr<InputStream> input(index->directory()->openFile("segment_0.fii"));
 		ASSERT_EQ(7, input->readInt32());
 	}
 
 	{
-		ScopedPtr<InputStream> input(index->directory()->openFile("segment_0.fid"));
+		std::unique_ptr<InputStream> input(index->directory()->openFile("segment_0.fid"));
 		ASSERT_EQ(3, input->readInt16());
 		ASSERT_EQ(1, input->readVInt32());
 		ASSERT_EQ(2, input->readVInt32());
@@ -56,7 +56,7 @@ TEST(IndexWriterTest, Merge)
 	DirectorySharedPtr dir(new RAMDirectory());
 	IndexSharedPtr index(new Index(dir, true));
 
-	ScopedPtr<IndexWriter> writer(new IndexWriter(index));
+	std::unique_ptr<IndexWriter> writer(new IndexWriter(index));
 	ASSERT_TRUE(index->directory()->fileExists("info_0"));
 	ASSERT_EQ(0, writer->info().revision());
 	ASSERT_EQ(0, writer->info().segmentCount());

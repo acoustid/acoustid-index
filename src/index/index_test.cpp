@@ -33,7 +33,7 @@ TEST(IndexTest, DeleteUnusedFiled)
 
 	ASSERT_TRUE(index->directory()->fileExists("info_0"));
 	{
-		ScopedPtr<IndexWriter> writer(new IndexWriter(index));
+		std::unique_ptr<IndexWriter> writer(new IndexWriter(index));
 		uint32_t fp[] = { 1, 2, 3 };
 		writer->addDocument(1, fp, 3);
 		writer->commit();

@@ -131,7 +131,7 @@ Options *OptionParser::parse(int argc, char *const argv[])
 	QByteArray shortOptions;
 	int shortIndexes[256];
 	std::fill(shortIndexes, shortIndexes + 256, -1);
-	ScopedArrayPtr<struct option> longOptions(new struct option[m_options.size() + 1]);
+	std::unique_ptr<struct option[]> longOptions(new struct option[m_options.size() + 1]);
 	int i;
 	for (i = 0; i < m_options.size(); i++) {
 		const Option *option = m_options.at(i);

@@ -144,7 +144,7 @@ void IndexWriter::flush()
 	IndexInfo info(m_info);
 	SegmentInfo segment(info.incLastSegmentId());
 	{
-		ScopedPtr<SegmentDataWriter> writer(segmentDataWriter(segment));
+		std::unique_ptr<SegmentDataWriter> writer(segmentDataWriter(segment));
 		uint64_t lastItem = UINT64_MAX;
 		for (size_t i = 0; i < m_segmentBuffer.size(); i++) {
 			uint64_t item = m_segmentBuffer[i];

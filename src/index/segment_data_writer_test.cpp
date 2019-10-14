@@ -36,7 +36,7 @@ TEST_F(SegmentDataWriterTest, Write)
 	ASSERT_EQ(2, writer.blockCount());
 	ASSERT_EQ(2, writer.checksum());
 
-	ScopedPtr<FSInputStream> input(FSInputStream::open(stream->fileName()));
+	std::unique_ptr<FSInputStream> input(FSInputStream::open(stream->fileName()));
 
 	ASSERT_EQ(2, input->readInt16());
 	ASSERT_EQ(300, input->readVInt32());

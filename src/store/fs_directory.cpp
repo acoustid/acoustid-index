@@ -94,7 +94,7 @@ void FSDirectory::sync(const QStringList& names)
 void FSDirectory::fsync(const QString& name)
 {
 	QString fileName = filePath(name);
-	ScopedPtr<FSInputStream> input(FSInputStream::open(fileName));
+	std::unique_ptr<FSInputStream> input(FSInputStream::open(fileName));
 	int ret = ::fsync(input->fileDescriptor());
 	if (ret == -1) {
 		throw IOException(QString("Couldn't synchronize file '%1' (errno %2)").arg(fileName).arg(errno));

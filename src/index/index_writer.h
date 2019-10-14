@@ -54,7 +54,7 @@ private:
 	uint32_t m_maxDocumentId;
 	size_t m_maxSegmentBufferSize;
 	std::vector<uint64_t> m_segmentBuffer;
-	ScopedPtr<SegmentMergePolicy> m_mergePolicy;
+	std::unique_ptr<SegmentMergePolicy> m_mergePolicy;
 };
 
 typedef QWeakPointer<IndexWriter> IndexWriterWeakPtr;

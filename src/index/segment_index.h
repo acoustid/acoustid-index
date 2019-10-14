@@ -29,7 +29,7 @@ public:
 
 private:
 	size_t m_blockCount;
-	ScopedArrayPtr<uint32_t> m_keys;
+	std::unique_ptr<uint32_t[]> m_keys;
 };
 
 typedef QWeakPointer<SegmentIndex> SegmentIndexWeakPtr;

@@ -31,7 +31,7 @@ protected:
 	void refill();
 
 private:
-	ScopedArrayPtr<uint8_t> m_buffer;
+	std::unique_ptr<uint8_t[]> m_buffer;
 	size_t m_bufferSize;
 	size_t m_start;
 	size_t m_position;
