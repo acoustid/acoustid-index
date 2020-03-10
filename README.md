@@ -1,9 +1,6 @@
 AcoustID Index
 ==============
 
-[![build status](https://code.oxygene.sk/acoustid/acoustid-index/badges/master/build.svg)](https://code.oxygene.sk/acoustid/acoustid-index/commits/master)
-[![Docker Repository on Quay](https://quay.io/repository/acoustid/acoustid-index/status "Docker Repository on Quay")](https://quay.io/repository/acoustid/acoustid-index)
-
 Acoustid Index is a "number search engine". It's similar to text search
 engines, but instead of searching in documents that consist of words,
 it searches in documents that consist of 32-bit integers.
