@@ -11,9 +11,6 @@ RUN dpkg -i /tmp/acoustid-index.deb && rm /tmp/acoustid-index.deb
 RUN mkdir -p /var/lib/acoustid-index && chown -R acoustid /var/lib/acoustid-index
 VOLUME ["/var/lib/acoustid-index"]
 
-ADD docker-entrypoint.sh /usr/local/bin/
-ENTRYPOINT ["docker-entrypoint.sh"]
-
 USER acoustid
 EXPOSE 6080
 
