@@ -16,12 +16,18 @@ jobs:
     - run: make
     - run: make check
     - run: make package
+    - name: Build image
+      run: docker build -t quay.io/acoustid/acoustid-index:${{ github.sha }} .
     - uses: Azure/docker-login@v1
       with:
         login-server: quay.io
         username: ${{ secrets.QUAY_USERNAME }}
         password: ${{ secrets.QUAY_PASSWORD }}
-    - name: Build and push image
+    - name: Push image
       run: |
-        docker build . -t quay.io/acoustid/acoustid-index:${{ github.sha }}
-        docker push quay.io/acoustid/acoustid-index:${{ github.sha }}
+        echo TAG=$(echo $GITHUB_REF | cut -d'/' -f3 | sed 's/^v//')
+        docker tag quay.io/acoustid/acoustid-index:${{ github.sha }} quay.io/acoustid/acoustid-index:$TAG
+        docker push quay.io/acoustid/acoustid-index:$TAG
+        docker tag quay.io/acoustid/acoustid-index:${{ github.sha }} quay.io/acoustid/acoustid-index:latest
+        docker push quay.io/acoustid/acoustid-index:latest
+      if: startsWith(github.ref, 'ref/tags/v')
