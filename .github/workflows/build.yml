@@ -27,9 +27,9 @@ jobs:
     - build
     steps:
     - uses: actions/checkout@v2
-     - uses: actions/download-artifact@v1
-       with:
-         name: deb
+    - uses: actions/download-artifact@v1
+      with:
+        name: deb
     - uses: Azure/docker-login@v1
       with:
         login-server: quay.io
