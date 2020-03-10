@@ -5,8 +5,8 @@ RUN useradd -m -s /bin/bash -u 1000 acoustid
 RUN apt-get update && \
     apt-get install -y libqt5network5 libqt5core5a libstdc++6 libgcc1
 
-ADD acoustid-index_*.deb /tmp/
-RUN dpkg -i /tmp/acoustid-index_*.deb && rm /tmp/acoustid-index_*.deb
+ADD acoustid-index.deb /tmp/
+RUN dpkg -i /tmp/acoustid-index.deb && rm /tmp/acoustid-index.deb
 
 RUN mkdir -p /var/lib/acoustid-index && chown -R acoustid /var/lib/acoustid-index
 VOLUME ["/var/lib/acoustid-index"]

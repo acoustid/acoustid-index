@@ -2,26 +2,39 @@ name: Build
 
 on:
   push:
-    branches: [ master ]
   pull_request:
-    branches: [ master ]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-    
     steps:
     - uses: actions/checkout@v2
-    - name: Install build dependencies
-      run: |
+    - run: |
         sudo apt-get update
         sudo apt-get install -y qtbase5-dev libgtest-dev
-    - name: Confiure
-      run: cmake -DCMAKE_BUILD_TYPE=Release .
-    - name: Build
-      run: make
-    - name: Test
-      run: make check
-    - name: Package
-      run: make package
+    - run: cmake -DCMAKE_BUILD_TYPE=Release .
+    - run: make
+    - run: make check
+    - run: make package
+    - uses: actions/upload-artifact@v1
+      with:
+        name: deb
+        path: acoustid-index.deb
+
+  docker:
+    runs-on: ubuntu-latest
+    needs:
+    - build
+    steps:
+    - uses: actions/checkout@v2
+     - uses: actions/download-artifact@v1
+       with:
+         name: deb
+    - uses: Azure/docker-login@v1
+      with:
+        login-server: quay.io
+        username: ${{ secrets.QUAY_USERNAME }}
+        password: ${{ secrets.QUAY_PASSWORD }}
+    - run: |
+        docker build . -t quay.io/acoustid/acoustid-index:${{ github.sha }}
+        docker push quay.io/acoustid/acoustid-index:${{ github.sha }}
