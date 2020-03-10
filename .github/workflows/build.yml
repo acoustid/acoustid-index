@@ -17,13 +17,11 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y libqt4-dev libgtest-dev
+    - name: Confiure
+      run: cmake -DCMAKE_BUILD_TYPE=Release .
     - name: Build
-      run: |
-        mkdir build
-        cd build
-        cmake -DCMAKE_BUILD_TYPE=Release ..
-        make
+      run: make
     - name: Test
-      run: ./tests
+      run: make check
     - name: Package
       run: make package
