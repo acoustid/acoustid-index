@@ -13,10 +13,10 @@ jobs:
     
     steps:
     - uses: actions/checkout@v2
-    - name: Install Qt 4.x
+    - name: Install build dependencies
       run: |
-        apt-get update
-        apt-get install -y libqt4-dev
+        sudo apt-get update
+        sudo apt-get install -y libqt4-dev libgtest-dev
     - name: Build
       run: |
         mkdir build
