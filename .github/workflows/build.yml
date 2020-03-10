@@ -30,11 +30,13 @@ jobs:
     - uses: actions/download-artifact@v1
       with:
         name: deb
+        path: .
     - uses: Azure/docker-login@v1
       with:
         login-server: quay.io
         username: ${{ secrets.QUAY_USERNAME }}
         password: ${{ secrets.QUAY_PASSWORD }}
-    - run: |
+    - name: Build and push image
+      run: |
         docker build . -t quay.io/acoustid/acoustid-index:${{ github.sha }}
         docker push quay.io/acoustid/acoustid-index:${{ github.sha }}
