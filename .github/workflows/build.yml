@@ -24,6 +24,6 @@ jobs:
         cmake -DCMAKE_BUILD_TYPE=Release ..
         make
     - name: Test
-      run: make check
+      run: ./tests
     - name: Package
       run: make package
