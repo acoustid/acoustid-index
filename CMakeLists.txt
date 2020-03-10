@@ -1,6 +1,8 @@
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 3.1)
 
 project(fpserver)
+
+set(CMAKE_CXX_STANDARD 11)
 
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules)
 
@@ -25,7 +27,6 @@ include(CPack)
 add_definitions(
         -D__STDC_LIMIT_MACROS
         -D__STDC_CONSTANT_MACROS
-        -std=c++11
 )
 
 set(fpindexlib_SOURCES
