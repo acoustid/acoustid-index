@@ -11,6 +11,7 @@
 #include "connection.h"
 #include "metrics.h"
 #include "listener.h"
+#include "session.h"
 
 namespace Acoustid {
 
@@ -27,29 +28,27 @@ public:
 };
 
 #define ACOUSTID_HANDLER_CONSTRUCTOR(x) \
-	x(Connection* connection, const QString &name, const QStringList& args) : Handler(connection, name, args) { }
+	x(QSharedPointer<Session> session, const QString &name, const QStringList& args) : Handler(session, name, args) { }
 
 class Handler : public QObject, public QRunnable
 {
 	Q_OBJECT
 
 public:
-	Handler(Connection* connection, const QString &name, const QStringList& args);
+	Handler(QSharedPointer<Session> session, const QString &name, const QStringList& args);
 	virtual ~Handler();
 
 	virtual void run();
 	virtual QString handle() = 0;
 
-	Connection* connection() { return m_connection; }
-	IndexSharedPtr index() { return m_connection->index(); }
-	QSharedPointer<Metrics> metrics() { return m_connection->listener()->metrics(); }
+    QSharedPointer<Session> session() const { return m_session; }
 	QStringList args() { return m_args; }
 
 signals:
 	void finished(QString result);
 
 private:
-	Connection* m_connection;
+    QSharedPointer<Session> m_session;
     QString m_name;
 	QStringList m_args;
 };

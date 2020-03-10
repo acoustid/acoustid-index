@@ -7,6 +7,8 @@
 #include <QTextStream>
 #include <QByteArray>
 #include <QTcpSocket>
+#include <QSharedPointer>
+#include <QPointer>
 #include "index/index.h"
 #include "index/index_writer.h"
 
@@ -15,6 +17,7 @@ namespace Server {
 
 class Listener;
 class Handler;
+class Session;
 
 class Connection : public QObject
 {
@@ -27,41 +30,26 @@ public:
 	Listener *listener() const;
 	void close();
 
-	IndexSharedPtr index() { return m_index; }
-	IndexWriterSharedPtr indexWriter() { return m_indexWriter; }
-
-	void setIndexWriter(IndexWriterSharedPtr indexWriter)
-	{
-		m_indexWriter = indexWriter;
-	}
-
-	QMutex* mutex()
-	{
-		return &m_mutex;
-	}
-
 protected:
 	void sendResponse(const QString& response, bool next = true);
+	void handleLine(const QString& line);
 
 signals:
 	void closed(Connection *connection);
 
 protected slots:
 	void readIncomingData();
-	void sendHandlerResponse(const QString& response, bool next = true);
+	void sendHandlerResponse(const QString& response);
 
-	void handleLine(const QString& line);
-	bool maybeDelete();
+	void onDisconnect();
 
 private:
 	QString m_client;
 	QTcpSocket *m_socket;
 	QString m_buffer;
 	QTextStream m_output;
-    IndexSharedPtr m_index;
-    IndexWriterSharedPtr m_indexWriter;
-	QMutex m_mutex;
-	Handler* m_handler;
+    QSharedPointer<Session> m_session;
+	QPointer<Handler> m_handler;
 	int m_topScorePercent;
 	int m_maxResults;
 	int m_refs;

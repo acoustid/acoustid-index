@@ -14,21 +14,19 @@ static const char* kCRLF = "\r\n";
 static const int kMaxLineSize = 1024 * 32;
 
 Connection::Connection(IndexSharedPtr index, QTcpSocket *socket, QObject *parent)
-	: QObject(parent), m_socket(socket), m_output(socket), m_index(index),
-		m_handler(NULL), m_refs(1),
+	: QObject(parent), m_socket(socket), m_output(socket),
 		m_topScorePercent(10), m_maxResults(500)
 {
 	m_socket->setParent(this);
+	m_session = QSharedPointer<Session>(new Session(index, listener()->metrics()));
 	m_client = QString("%1:%2").arg(m_socket->peerAddress().toString()).arg(m_socket->peerPort());
 	qDebug() << "Connected to" << m_client;
 	connect(m_socket, SIGNAL(readyRead()), SLOT(readIncomingData()));
-	connect(m_socket, SIGNAL(disconnected()), SLOT(maybeDelete()));
+	connect(m_socket, SIGNAL(disconnected()), SLOT(onDisconnect()));
 }
 
 Connection::~Connection()
 {
-	emit closed(this);
-	qDebug() << "Disconnected from" << m_client;
 }
 
 Listener *Connection::listener() const
@@ -36,14 +34,11 @@ Listener *Connection::listener() const
 	return qobject_cast<Listener *>(parent());
 }
 
-bool Connection::maybeDelete()
+void Connection::onDisconnect()
 {
-	m_refs--;
-	if (!m_refs) {
-		deleteLater();
-		return true;
-	}
-	return false;
+	qDebug() << "Disconnected from" << m_client;
+	emit closed(this);
+    deleteLater();
 }
 
 void Connection::close()
@@ -59,15 +54,10 @@ void Connection::sendResponse(const QString& response, bool next)
 	}
 }
 
-void Connection::sendHandlerResponse(const QString& response, bool next)
+void Connection::sendHandlerResponse(const QString& response)
 {
-	m_output << response << kCRLF << flush;
-	m_handler = NULL;
-	if (!maybeDelete()) {
-		if (next) {
-			readIncomingData();
-		}
-	}
+	m_handler = nullptr;
+    sendResponse(response);
 }
 
 void Connection::handleLine(const QString& line)
@@ -119,7 +109,7 @@ void Connection::handleLine(const QString& line)
 				sendResponse("ERR expected 3 arguments");
 				return;
 			}
-			m_handler = new SetAttributeHandler(this, command, args);
+			m_handler = new SetAttributeHandler(m_session, command, args);
 		}
 		else {
 			sendResponse("ERR unknown parameter");
@@ -144,7 +134,7 @@ void Connection::handleLine(const QString& line)
 				sendResponse("ERR expected 2 arguments");
 				return;
 			}
-			m_handler = new GetAttributeHandler(this, command, args);
+			m_handler = new GetAttributeHandler(m_session, command, args);
 		}
 		else {
 			sendResponse("ERR unknown parameter");
@@ -152,42 +142,43 @@ void Connection::handleLine(const QString& line)
 		}
 	}
 	else if (command == "echo") {
-		m_handler = new EchoHandler(this, command, args);
+		m_handler = new EchoHandler(m_session, command, args);
 	}
 	else if (command == "search") {
-		m_handler = new SearchHandler(this, command, args, m_maxResults, m_topScorePercent);
+		m_handler = new SearchHandler(m_session, command, args, m_maxResults, m_topScorePercent);
 	}
 	else if (command == "insert") {
-		m_handler = new InsertHandler(this, command, args);
+		m_handler = new InsertHandler(m_session, command, args);
 	}
 	else if (command == "cleanup") {
-		m_handler = new CleanupHandler(this, command, args);
+		m_handler = new CleanupHandler(m_session, command, args);
 	}
 	else if (command == "optimize") {
-		m_handler = new OptimizeHandler(this, command, args);
+		m_handler = new OptimizeHandler(m_session, command, args);
 	}
 	else if (command == "begin") {
-		m_handler = new BeginHandler(this, command, args);
+		m_handler = new BeginHandler(m_session, command, args);
 	}
 	else if (command == "commit") {
-		m_handler = new CommitHandler(this, command, args);
+		m_handler = new CommitHandler(m_session, command, args);
 	}
 	else if (command == "rollback") {
-		m_handler = new RollbackHandler(this, command, args);
+		m_handler = new RollbackHandler(m_session, command, args);
 	}
 	else {
 		sendResponse("ERR unknown command");
 		return;
 	}
 
-	m_refs++;
+    m_handler->setAutoDelete(true);
+    m_handler->setParent(this);
 	connect(m_handler, SIGNAL(finished(QString)), SLOT(sendHandlerResponse(QString)), Qt::QueuedConnection);
 	QThreadPool::globalInstance()->start(m_handler);
 }
 
 void Connection::readIncomingData()
 {
-	if (m_handler) {
+	if (m_handler.isNull()) {
 		qWarning() << "Got data while still handling the previous command, closing connection";
 		close();
 		return;

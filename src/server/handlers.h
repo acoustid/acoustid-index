@@ -26,8 +26,8 @@ public:
 class SearchHandler : public Handler
 {
 public:
-	SearchHandler(Connection* connection, const QString &name, const QStringList& args, int maxResults = 500, int topScorePercent = 10)
-		: Handler(connection, name, args), m_topScorePercent(topScorePercent), m_maxResults(maxResults) { }
+	SearchHandler(QSharedPointer<Session> session, const QString &name, const QStringList& args, int maxResults = 500, int topScorePercent = 10)
+		: Handler(session, name, args), m_topScorePercent(topScorePercent), m_maxResults(maxResults) { }
 
 	void setTopScorePercent(int v)
 	{
@@ -44,6 +44,7 @@ public:
 		if (args().size() < 1) {
 			throw HandlerException("expected 1 argument");
 		}
+        auto session = this->session();
 		QStringList fingerprint = args().first().split(',');
 		std::unique_ptr<int32_t[]> fp(new int32_t[fingerprint.size()]);
 		size_t fpsize = 0;
@@ -58,7 +59,7 @@ public:
 			throw HandlerException("empty fingerprint");
 		}
 		TopHitsCollector collector(m_maxResults, m_topScorePercent);
-		std::unique_ptr<IndexReader> reader(new IndexReader(index()));
+		std::unique_ptr<IndexReader> reader(new IndexReader(session->index()));
 		reader->search(reinterpret_cast<uint32_t*>(fp.get()), fpsize, &collector);
 		QList<Result> results = collector.topResults();
 		QStringList output;
@@ -66,7 +67,7 @@ public:
 			output.append(QString("%1:%2").arg(results[j].id()).arg(results[j].score()));
 		}
 		QString result = output.join(" ");
-        metrics()->onSearchRequest(results.size());
+        session->metrics()->onSearchRequest(results.size());
 		return result;
 	}
 
@@ -82,11 +83,13 @@ public:
 
 	QString handle()
 	{
-		if (connection()->indexWriter()) {
+        auto session = this->session();
+		auto writer = session->indexWriter();
+		if (!writer.isNull()) {
 			throw HandlerException("already in transaction");
 		}
-		IndexWriterSharedPtr writer(new IndexWriter(index()));
-		connection()->setIndexWriter(writer);
+        writer = QSharedPointer<IndexWriter>(new IndexWriter(session->index()));
+		session->setIndexWriter(writer);
 		return QString();
 	}
 };
@@ -98,12 +101,14 @@ public:
 
 	QString handle()
 	{
-		IndexWriterSharedPtr writer = connection()->indexWriter();
-		if (!writer) {
+        auto session = this->session();
+		auto writer = session->indexWriter();
+		if (writer.isNull()) {
 			throw HandlerException("not in transaction");
 		}
 		writer->commit();
-		connection()->setIndexWriter(IndexWriterSharedPtr());
+        writer = QSharedPointer<IndexWriter>();
+		session->setIndexWriter(writer);
 		return QString();
 	}
 };
@@ -115,11 +120,13 @@ public:
 
 	QString handle()
 	{
-		IndexWriterSharedPtr writer = connection()->indexWriter();
+        auto session = this->session();
+		auto writer = session->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
 		}
-		connection()->setIndexWriter(IndexWriterSharedPtr());
+        writer = QSharedPointer<IndexWriter>();
+		session->setIndexWriter(writer);
 		return QString();
 	}
 };
@@ -131,7 +138,8 @@ public:
 
 	QString handle()
 	{
-		IndexWriterSharedPtr writer = connection()->indexWriter();
+        auto session = this->session();
+		auto writer = session->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
 		}
@@ -164,7 +172,8 @@ public:
 
 	QString handle()
 	{
-		IndexWriterSharedPtr writer = connection()->indexWriter();
+        auto session = this->session();
+		auto writer = session->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
 		}
@@ -180,11 +189,12 @@ public:
 
 	QString handle()
 	{
-		IndexWriterSharedPtr writer = connection()->indexWriter();
+        auto session = this->session();
+		auto writer = session->indexWriter();
 		if (writer) {
 			return writer->info().attribute(args().at(1));
 		}
-		return index()->info().attribute(args().at(1));
+		return session->index()->info().attribute(args().at(1));
 	}
 };
 
@@ -195,7 +205,8 @@ public:
 
 	QString handle()
 	{
-		IndexWriterSharedPtr writer = connection()->indexWriter();
+        auto session = this->session();
+		auto writer = session->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
 		}
@@ -211,7 +222,8 @@ public:
 
 	QString handle()
 	{
-		IndexWriterSharedPtr writer = connection()->indexWriter();
+        auto session = this->session();
+		auto writer = session->indexWriter();
 		if (!writer) {
 			throw HandlerException("not in transaction");
 		}
