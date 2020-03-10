@@ -4,9 +4,14 @@ project(fpserver)
 
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules)
 
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
+
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTORCC ON)
+
 find_package(GTest)
-find_package(Qt4 COMPONENTS QtCore QtNetwork REQUIRED)
-include(${QT_USE_FILE})
+find_package(Qt5 COMPONENTS Core Network REQUIRED)
 
 set(CPACK_GENERATOR "DEB")
 set(CPACK_PACKAGE_NAME acoustid-index)
@@ -57,6 +62,7 @@ set(fpindexlib_SOURCES
 	src/util/options.cpp
 )
 add_library(fpindexlib ${fpindexlib_SOURCES})
+target_link_libraries(fpindexlib Qt5::Core Qt5::Network)
 
 set(fpserver_HEADERS
 	src/server/listener.h
@@ -74,36 +80,24 @@ set(fpserver_SOURCES
 	src/server/main.cpp
 )
 
-qt4_wrap_cpp(fpserver_MOC ${fpserver_HEADERS})
+qt5_wrap_cpp(fpserver_MOC ${fpserver_HEADERS})
 
 include_directories(
-	${CMAKE_CURRENT_BINARY_DIR}
 	${CMAKE_CURRENT_SOURCE_DIR}/src
     ${GTEST_INCLUDE_DIRS}
 )
 
 add_executable(fpi-server ${fpserver_SOURCES} ${fpserver_MOC})
-target_link_libraries(fpi-server ${QT_LIBRARIES} fpindexlib)
-#add_executable(fpindex src/tools/fpindex.cpp)
-#target_link_libraries(fpindex ${QT_LIBRARIES} fpindexlib)
-
-#add_executable(fpstats src/tools/fpstats.cpp)
-#target_link_libraries(fpstats ${QT_LIBRARIES} fpindexlib)
-
-#add_executable(fpsearch src/tools/fpsearch.cpp)
-#target_link_libraries(fpsearch ${QT_LIBRARIES} fpindexlib)
-
-#add_executable(fpdumpindex src/tools/fpdumpindex.cpp)
-#target_link_libraries(fpdumpindex ${QT_LIBRARIES} fpindexlib)
+target_link_libraries(fpi-server fpindexlib)
 
 add_executable(fpi-add src/tools/fpi-add.cpp)
-target_link_libraries(fpi-add ${QT_LIBRARIES} fpindexlib)
+target_link_libraries(fpi-add fpindexlib)
 
 add_executable(fpi-import src/tools/fpi-import.cpp)
-target_link_libraries(fpi-import ${QT_LIBRARIES} fpindexlib)
+target_link_libraries(fpi-import fpindexlib)
 
 add_executable(fpi-search src/tools/fpi-search.cpp)
-target_link_libraries(fpi-search ${QT_LIBRARIES} fpindexlib)
+target_link_libraries(fpi-search fpindexlib)
 
 #add_executable(fpi-stats src/tools/fpi-stats.cpp)
 #target_link_libraries(fpi-stats ${QT_LIBRARIES} fpindexlib)

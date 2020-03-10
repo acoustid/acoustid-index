@@ -27,3 +27,6 @@ install_manifest.txt
 /fpi-server
 /fpi-search
 /build
+moc_*.cpp
+moc_*.cpp_parameters
+*_autogen

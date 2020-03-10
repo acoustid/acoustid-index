@@ -40,13 +40,6 @@ int main(int argc, char **argv)
 		.setDefaultValue("6081");
 	parser.addOption("mmap", 'm')
 		.setHelp("use mmap to read index files");
-	parser.addOption("syslog", 's')
-		.setHelp("log to syslog");
-	parser.addOption("syslog-facility", 'f')
-		.setArgument()
-		.setMetaVar("FACILITY")
-		.setHelp("syslog facility to use (default: user)")
-		.setDefaultValue("user");
 	parser.addOption("threads", 't')
 		.setArgument()
 		.setHelp("use specific number of threads")
@@ -73,7 +66,6 @@ int main(int argc, char **argv)
 	auto metricsServer = QSharedPointer<MetricsServer>(new MetricsServer(metrics));
 
 	Listener::setupSignalHandlers();
-	Listener::setupLogging(opts->contains("syslog"), opts->option("syslog-facility"));
 
 	Listener listener(path, opts->contains("mmap"));
 	listener.setMetrics(metrics);

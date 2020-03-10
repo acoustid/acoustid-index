@@ -30,7 +30,6 @@ public:
     void setMetrics(const QSharedPointer<Metrics> &metrics) { m_metrics = metrics; }
 
 	static void setupSignalHandlers();
-	static void setupLogging(bool syslog, const QString& facility);
 
 signals:
 	void lastConnectionClosed();

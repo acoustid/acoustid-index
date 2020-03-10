@@ -45,53 +45,6 @@ void Listener::sigTermHandler(int signal)
 	::write(m_sigTermFd[0], &tmp, sizeof(tmp));
 }
 
-static void syslogMessageHandler(QtMsgType type, const char *msg)
-{
-	switch (type) {
-	case QtDebugMsg:
-		syslog(LOG_DEBUG, "%s", msg);
-		break;
-	case QtWarningMsg:
-		syslog(LOG_WARNING, "%s", msg);
-		break;
-	case QtCriticalMsg:
-		syslog(LOG_CRIT, "%s", msg);
-		break;
-	case QtFatalMsg:
-		syslog(LOG_CRIT, "%s", msg);
-		abort();
-	}
-}
-
-void Listener::setupLogging(bool syslog, const QString& facility)
-{
-	QMap<QString, int> facilities;
-	facilities["auth"] = LOG_AUTH;
-	facilities["authpriv"] = LOG_AUTHPRIV;
-	facilities["cron"] = LOG_CRON;
-	facilities["ftp"] = LOG_FTP;
-	facilities["kern"] = LOG_KERN;
-	facilities["lpr"] = LOG_LPR;
-	facilities["mail"] = LOG_MAIL;
-	facilities["news"] = LOG_NEWS;
-	facilities["syslog"] = LOG_SYSLOG;
-	facilities["user"] = LOG_USER;
-	facilities["uucp"] = LOG_UUCP;
-	facilities["local0"] = LOG_LOCAL0;
-	facilities["local1"] = LOG_LOCAL1;
-	facilities["local2"] = LOG_LOCAL2;
-	facilities["local3"] = LOG_LOCAL3;
-	facilities["local4"] = LOG_LOCAL4;
-	facilities["local5"] = LOG_LOCAL5;
-	facilities["local6"] = LOG_LOCAL6;
-	facilities["local7"] = LOG_LOCAL7;
-	if (syslog) {
-		openlog("fpi-server", LOG_PID, facilities.value(facility.toLower(), LOG_USER));
-		setlogmask(LOG_UPTO(LOG_DEBUG));
-		qInstallMsgHandler(syslogMessageHandler);
-	}
-}
-
 void Listener::setupSignalHandlers()
 {
 	if (::socketpair(AF_UNIX, SOCK_STREAM, 0, m_sigIntFd)) {

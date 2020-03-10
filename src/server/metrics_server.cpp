@@ -67,7 +67,7 @@ void MetricsServerConnection::writeResponse(const QString &httpVersion, const QS
 	responseHeader += QString("Content-Length: %1").arg(responseBodyBytes.size()) + kCRLF;
 	responseHeader += QString("Connection: close") + kCRLF;
 	responseHeader += kCRLF;
-	auto responseHeaderBytes = responseHeader.toAscii();
+	auto responseHeaderBytes = responseHeader.toUtf8();
 
 	m_socket->write(responseHeaderBytes);
 	m_socket->write(responseBodyBytes);
@@ -84,7 +84,7 @@ void MetricsServerConnection::readData()
 	auto requestHeaderBytes = m_buffer.left(pos);
 	m_buffer = m_buffer.mid(pos + 4);
 
-	auto requestHeader = QString::fromAscii(requestHeaderBytes);
+	auto requestHeader = QString::fromUtf8(requestHeaderBytes);
 	auto requestHeaderLines = requestHeader.split(kCRLF);
 
 	if (requestHeaderLines.isEmpty()) {
