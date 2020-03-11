@@ -37,7 +37,7 @@ IndexWriter::~IndexWriter()
 	}
 }
 
-void IndexWriter::addDocument(uint32_t id, uint32_t *terms, size_t length)
+void IndexWriter::addDocument(uint32_t id, const uint32_t *terms, size_t length)
 {
 	for (size_t i = 0; i < length; i++) {
 		m_segmentBuffer.push_back(packItem(terms[i], id));

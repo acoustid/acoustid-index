@@ -29,7 +29,7 @@ public:
 		return m_index;
 	}
 
-	void search(uint32_t *fingerprint, size_t length, Collector *collector);
+	void search(const uint32_t *fingerprint, size_t length, Collector *collector);
 
 	SegmentDataReader* segmentDataReader(const SegmentInfo& segment);
 

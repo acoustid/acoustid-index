@@ -6,10 +6,12 @@
 
 #include <QMutex>
 #include <QSharedPointer>
+#include "index/top_hits_collector.h"
 
 namespace Acoustid {
 
 class Index;
+class IndexWriter;
 
 namespace Server {
 
@@ -21,25 +23,24 @@ public:
 	Session(QSharedPointer<Index> index, QSharedPointer<Metrics> metrics)
         : m_index(index), m_metrics(metrics) {}
 
-	QSharedPointer<Index> index() { return m_index; }
-	QSharedPointer<IndexWriter> indexWriter() { return m_indexWriter; }
-	QSharedPointer<Metrics> metrics() { return m_metrics; }
+    void begin();
+    void commit();
+    void rollback();
+    void optimize();
+    void cleanup();
+    void insert(uint32_t id, const QVector<uint32_t> &hashes);
+    QList<Result> search(const QVector<uint32_t> &hashes);
 
-	void setIndexWriter(QSharedPointer<IndexWriter> indexWriter)
-	{
-		m_indexWriter = indexWriter;
-	}
-
-	QMutex* mutex()
-	{
-		return &m_mutex;
-	}
+    QString getAttribute(const QString &name);
+    void setAttribute(const QString &name, const QString &value);
 
 private:
 	QMutex m_mutex;
     QSharedPointer<Index> m_index;
     QSharedPointer<IndexWriter> m_indexWriter;
     QSharedPointer<Metrics> m_metrics;
+	int m_topScorePercent { 10 };
+	int m_maxResults { 500 };
 };
 
 }

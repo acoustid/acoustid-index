@@ -36,14 +36,15 @@ SegmentDataReader* IndexReader::segmentDataReader(const SegmentInfo& segment)
 	return new SegmentDataReader(m_dir->openFile(segment.dataFileName()), BLOCK_SIZE);
 }
 
-void IndexReader::search(uint32_t* fingerprint, size_t length, Collector* collector)
+void IndexReader::search(const uint32_t* fingerprint, size_t length, Collector* collector)
 {
-	std::sort(fingerprint, fingerprint + length);
+    std::vector<uint32_t> fp(fingerprint, fingerprint + length);
+	std::sort(fp.begin(), fp.end());
 	const SegmentInfoList& segments = m_info.segments();
 	for (int i = 0; i < segments.size(); i++) {
 		const SegmentInfo& s = segments.at(i);
 		SegmentSearcher searcher(s.index(), segmentDataReader(s), s.lastKey());
-		searcher.search(fingerprint, length, collector);
+		searcher.search(fp.data(), fp.size(), collector);
 	}
 }
 

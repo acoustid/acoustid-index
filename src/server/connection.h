@@ -9,6 +9,7 @@
 #include <QTcpSocket>
 #include <QSharedPointer>
 #include <QPointer>
+#include <QFutureWatcher>
 #include "index/index.h"
 #include "index/index_writer.h"
 
@@ -28,31 +29,24 @@ public:
 	~Connection();
 
 	Listener *listener() const;
+    QString client() const { return m_client; };
+
 	void close();
 
 protected:
 	void sendResponse(const QString& response, bool next = true);
-	void handleLine(const QString& line);
+	void readIncomingData();
 
 signals:
-	void closed(Connection *connection);
-
-protected slots:
-	void readIncomingData();
-	void sendHandlerResponse(const QString& response);
-
-	void onDisconnect();
+	void disconnected();
 
 private:
 	QString m_client;
 	QTcpSocket *m_socket;
-	QString m_buffer;
-	QTextStream m_output;
+    QTextStream m_stream;
+    QString m_line;
     QSharedPointer<Session> m_session;
-	QPointer<Handler> m_handler;
-	int m_topScorePercent;
-	int m_maxResults;
-	int m_refs;
+    QFutureWatcher<QString> *m_handler;
 };
 
 }

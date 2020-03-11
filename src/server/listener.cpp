@@ -23,10 +23,10 @@ Listener::Listener(const QString& path, bool mmap, QObject* parent)
 	  m_metrics(new Metrics())
 {
 	m_sigIntNotifier = new QSocketNotifier(m_sigIntFd[1], QSocketNotifier::Read, this);
-	connect(m_sigIntNotifier, SIGNAL(activated(int)), this, SLOT(handleSigInt()));
+	connect(m_sigIntNotifier, &QSocketNotifier::activated, this, &Listener::handleSigInt);
 	m_sigTermNotifier = new QSocketNotifier(m_sigTermFd[1], QSocketNotifier::Read, this);
-	connect(m_sigTermNotifier, SIGNAL(activated(int)), this, SLOT(handleSigTerm()));
-	connect(this, SIGNAL(newConnection()), SLOT(acceptNewConnection()));
+	connect(m_sigTermNotifier, &QSocketNotifier::activated, this, &Listener::handleSigTerm);
+	connect(this, &QTcpServer::newConnection, this, &Listener::acceptNewConnection);
 }
 
 Listener::~Listener()
@@ -99,7 +99,7 @@ void Listener::stop()
 		qApp->quit();
 	}
 	else {
-		connect(this, SIGNAL(lastConnectionClosed()), qApp, SLOT(quit()));
+		connect(this, &Listener::lastConnectionClosed, qApp, &QCoreApplication::quit);
 		foreach (Connection* connection, m_connections) {
 			connection->close();
 		}
@@ -108,7 +108,9 @@ void Listener::stop()
 
 void Listener::removeConnection(Connection *connection)
 {
+	qDebug() << "Disconnected from" << connection->client();
 	metrics()->onClosedConnection();
+    connection->deleteLater();
 	m_connections.removeAll(connection);
 	if (m_connections.isEmpty()) {
 		emit lastConnectionClosed();
@@ -117,10 +119,10 @@ void Listener::removeConnection(Connection *connection)
 
 void Listener::acceptNewConnection()
 {
-	QTcpSocket* socket = nextPendingConnection();
+	auto socket = nextPendingConnection();
 	Connection* connection = new Connection(m_index, socket, this);
 	m_connections.append(connection);
-	connect(connection, SIGNAL(closed(Connection *)), SLOT(removeConnection(Connection *)));
+	connect(connection, &Connection::disconnected, [=]() { removeConnection(connection); });
 	metrics()->onNewConnection();
+	qDebug() << "Connected to" << connection->client();
 }
-

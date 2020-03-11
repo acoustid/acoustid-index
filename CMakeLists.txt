@@ -13,7 +13,7 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
 find_package(GTest)
-find_package(Qt5 COMPONENTS Core Network REQUIRED)
+find_package(Qt5 COMPONENTS Core Network Concurrent REQUIRED)
 
 set(CPACK_GENERATOR "DEB")
 set(CPACK_PACKAGE_NAME acoustid-index)
@@ -28,8 +28,8 @@ set(CPACK_COMPONENTS_ALL application)
 include(CPack)
 
 add_definitions(
-        -D__STDC_LIMIT_MACROS
-        -D__STDC_CONSTANT_MACROS
+    -D__STDC_LIMIT_MACROS
+    -D__STDC_CONSTANT_MACROS
 )
 
 set(fpindexlib_SOURCES
@@ -66,33 +66,32 @@ set(fpindexlib_SOURCES
 	src/util/options.cpp
 )
 add_library(fpindexlib ${fpindexlib_SOURCES})
-target_link_libraries(fpindexlib Qt5::Core Qt5::Network)
+target_link_libraries(fpindexlib Qt5::Core Qt5::Network Qt5::Concurrent)
 
 set(fpserver_HEADERS
 	src/server/listener.h
 	src/server/connection.h
-	src/server/handler.h
 	src/server/metrics.h
 	src/server/metrics_server.h
 )
 set(fpserver_SOURCES
 	src/server/listener.cpp
+	src/server/protocol.cpp
+	src/server/session.cpp
 	src/server/connection.cpp
-	src/server/handler.cpp
 	src/server/metrics.cpp
 	src/server/metrics_server.cpp
-	src/server/main.cpp
 )
-
-qt5_wrap_cpp(fpserver_MOC ${fpserver_HEADERS})
+add_library(fpserverlib ${fpserver_SOURCES})
+target_link_libraries(fpserverlib fpindexlib)
 
 include_directories(
 	${CMAKE_CURRENT_SOURCE_DIR}/src
     ${GTEST_INCLUDE_DIRS}
 )
 
-add_executable(fpi-server ${fpserver_SOURCES} ${fpserver_MOC})
-target_link_libraries(fpi-server fpindexlib)
+add_executable(fpi-server src/server/main.cpp)
+target_link_libraries(fpi-server fpserverlib)
 
 add_executable(fpi-add src/tools/fpi-add.cpp)
 target_link_libraries(fpi-add fpindexlib)
@@ -129,6 +128,7 @@ set(tests_SOURCES
 	src/util/options_test.cpp
 	src/util/exceptions_test.cpp
 	src/util/tests.cpp
+	src/server/session_test.cpp
 )
 
 install(
@@ -143,12 +143,12 @@ install(
 
 if(GTEST_FOUND)
 	include_directories(${GTEST_INCLUDE_DIRS})
-	add_subdirectory(${GTEST_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/gtest_build)
+	add_subdirectory(${GTEST_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/gtest_build EXCLUDE_FROM_ALL)
 	add_executable(tests ${tests_SOURCES})
 	target_link_libraries(tests
 		${GTEST_BOTH_LIBRARIES} -lpthread
-		${QT_LIBRARIES}
-		fpindexlib)
+		fpindexlib
+        fpserverlib)
 	enable_testing(true)
 	add_test(IndexTests tests)
 	add_custom_target(check ${CMAKE_CURRENT_BINARY_DIR}/tests $ENV{GTEST_FLAGS} DEPENDS tests)

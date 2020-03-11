@@ -34,9 +34,8 @@ public:
 signals:
 	void lastConnectionClosed();
 
-protected slots:
+protected:
 	void acceptNewConnection();
-	void removeConnection(Connection*);
 
 	void handleSigInt();
 	void handleSigTerm();
@@ -46,6 +45,8 @@ private:
 	static int m_sigTermFd[2];
 	static void sigIntHandler(int unused);
 	static void sigTermHandler(int unused);
+
+    void removeConnection(Connection *conn);
 
 	DirectorySharedPtr m_dir;
 	IndexSharedPtr m_index;
