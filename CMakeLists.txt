@@ -30,6 +30,7 @@ include(CPack)
 add_definitions(
     -D__STDC_LIMIT_MACROS
     -D__STDC_CONSTANT_MACROS
+    -DQHTTP_HAS_CLIENT
 )
 
 set(fpindexlib_SOURCES
@@ -85,8 +86,24 @@ set(fpserver_SOURCES
 add_library(fpserverlib ${fpserver_SOURCES})
 target_link_libraries(fpserverlib fpindexlib)
 
+set(qhttp_SOURCES
+    ./src/3rdparty/qhttp/src/qhttpserverconnection.cpp
+    ./src/3rdparty/qhttp/src/qhttpabstracts.cpp
+    ./src/3rdparty/qhttp/src/qhttpclientrequest.cpp
+    ./src/3rdparty/qhttp/src/qhttpserverresponse.cpp
+    ./src/3rdparty/qhttp/src/qhttpserverrequest.cpp
+    ./src/3rdparty/qhttp/src/qhttpclient.cpp
+    ./src/3rdparty/qhttp/src/qhttpserver.cpp
+    ./src/3rdparty/qhttp/src/qhttpclientresponse.cpp
+    ./src/3rdparty/qhttp/3rdparty/http-parser/http_parser.c
+)
+add_library(qhttp ${qhttp_SOURCES})
+target_link_libraries(qhttp Qt5::Core Qt5::Network Qt5::Concurrent)
+
 include_directories(
 	${CMAKE_CURRENT_SOURCE_DIR}/src
+	${CMAKE_CURRENT_SOURCE_DIR}/src/3rdparty/qhttp/3rdparty
+	${CMAKE_CURRENT_SOURCE_DIR}/src/3rdparty/qhttp/src
     ${GTEST_INCLUDE_DIRS}
 )
 
