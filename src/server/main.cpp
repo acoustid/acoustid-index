@@ -3,12 +3,18 @@
 
 #include <QCoreApplication>
 #include <QThreadPool>
+#include "qhttpserver.hpp"
+#include "qhttpserverrequest.hpp"
+#include "qhttpserverresponse.hpp"
 #include "util/options.h"
 #include "listener.h"
-#include "metrics_server.h"
+#include "metrics.h"
+#include "http.h"
 
 using namespace Acoustid;
 using namespace Acoustid::Server;
+
+using namespace qhttp::server;
 
 int main(int argc, char **argv)
 {
@@ -26,16 +32,16 @@ int main(int argc, char **argv)
 		.setArgument()
 		.setHelp("listen on this port (default: 6080)")
 		.setDefaultValue("6080");
-	parser.addOption("metrics")
-		.setHelp("enable prometheus metrics endpoint");
-	parser.addOption("metrics-address")
+	parser.addOption("http")
+		.setHelp("enable http server");
+	parser.addOption("http-address")
 		.setArgument()
-		.setHelp("prometheus metrics listen on this address (default: 127.0.0.1)")
+		.setHelp("http server listens on this address (default: 127.0.0.1)")
         .setMetaVar("ADDRESS")
 		.setDefaultValue("127.0.0.1");
-	parser.addOption("metrics-port")
+	parser.addOption("http-port")
 		.setArgument()
-		.setHelp("prometheus metrics listen on this port (default: 6081)")
+		.setHelp("http server listens on this port (default: 6081)")
         .setMetaVar("PORT")
 		.setDefaultValue("6081");
 	parser.addOption("mmap", 'm')
@@ -51,9 +57,9 @@ int main(int argc, char **argv)
 	QString address = opts->option("address");
 	int port = opts->option("port").toInt();
 
-	bool metricsEnabled = opts->contains("metrics");
-	QString metricsAddress = opts->option("metrics-address");
-	int metricsPort = opts->option("metrics-port").toInt();
+	bool httpEnabled = opts->contains("http");
+	QString httpAddress = opts->option("http-address");
+	int httpPort = opts->option("http-port").toInt();
 
 	QCoreApplication app(argc, argv);
 
@@ -63,18 +69,21 @@ int main(int argc, char **argv)
 	}
 
 	auto metrics = QSharedPointer<Metrics>(new Metrics());
-	auto metricsServer = QSharedPointer<MetricsServer>(new MetricsServer(metrics));
 
 	Listener::setupSignalHandlers();
 
 	Listener listener(path, opts->contains("mmap"));
 	listener.setMetrics(metrics);
 	listener.listen(QHostAddress(address), port);
-	qDebug() << "Index server listening on" << address << "port" << port;
+	qDebug() << "Simple server listening on" << address << "port" << port;
 
-	if (metricsEnabled) {
-		metricsServer->start(QHostAddress(metricsAddress), metricsPort);
-		qDebug() << "Prometheus metrics available at" << QString("http://%1:%2/metrics").arg(metricsAddress).arg(metricsPort);
+	QHttpServer httpListener(&app);
+	if (httpEnabled) {
+		httpListener.listen(QHostAddress(httpAddress), httpPort, [=](QHttpRequest *req, QHttpResponse *res) {
+			handleHttpRequest(req, res, metrics);
+		});
+		qDebug() << "HTTP server listening on" << address << "port" << port;
+		qDebug() << "Prometheus metrics available at" << QString("http://%1:%2/metrics").arg(httpAddress).arg(httpPort);
 	}
 
 	return app.exec();

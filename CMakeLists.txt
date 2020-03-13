@@ -69,19 +69,13 @@ set(fpindexlib_SOURCES
 add_library(fpindexlib ${fpindexlib_SOURCES})
 target_link_libraries(fpindexlib Qt5::Core Qt5::Network Qt5::Concurrent)
 
-set(fpserver_HEADERS
-	src/server/listener.h
-	src/server/connection.h
-	src/server/metrics.h
-	src/server/metrics_server.h
-)
 set(fpserver_SOURCES
 	src/server/listener.cpp
 	src/server/protocol.cpp
 	src/server/session.cpp
 	src/server/connection.cpp
 	src/server/metrics.cpp
-	src/server/metrics_server.cpp
+	src/server/http.cpp
 )
 add_library(fpserverlib ${fpserver_SOURCES})
 target_link_libraries(fpserverlib fpindexlib)
@@ -108,7 +102,7 @@ include_directories(
 )
 
 add_executable(fpi-server src/server/main.cpp)
-target_link_libraries(fpi-server fpserverlib)
+target_link_libraries(fpi-server fpserverlib qhttp)
 
 add_executable(fpi-add src/tools/fpi-add.cpp)
 target_link_libraries(fpi-add fpindexlib)
