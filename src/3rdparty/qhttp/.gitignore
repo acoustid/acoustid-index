@@ -1,5 +1,5 @@
 # 3rdparty, tmp and build direcotry
-3rdparty/
+#3rdparty/
 tmp/
 xbin/
 build/
