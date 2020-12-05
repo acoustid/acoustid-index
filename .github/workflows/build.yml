@@ -25,7 +25,7 @@ jobs:
         password: ${{ secrets.QUAY_PASSWORD }}
     - name: Push image
       run: |
-        echo TAG=$(echo $GITHUB_REF | cut -d'/' -f3 | sed 's/^v//')
+        TAG=$(echo $GITHUB_REF | cut -d'/' -f3 | sed 's/^v//')
         docker tag quay.io/acoustid/acoustid-index:${{ github.sha }} quay.io/acoustid/acoustid-index:$TAG
         docker push quay.io/acoustid/acoustid-index:$TAG
         docker tag quay.io/acoustid/acoustid-index:${{ github.sha }} quay.io/acoustid/acoustid-index:latest
