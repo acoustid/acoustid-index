@@ -34,7 +34,7 @@ MMapInputStream *MMapInputStream::open(const QString &fileName)
 	}
 	struct stat sb;
 	fstat(fd, &sb);
-    void *addr = ::mmap(NULL, sb.st_size, PROT_READ, MAP_SHARED | MAP_POPULATE, fd, 0);
+    void *addr = ::mmap(NULL, sb.st_size, PROT_READ, MAP_SHARED, fd, 0);
     if (addr == MAP_FAILED) {
         ::close(fd);
         throw IOException(QString("Couldn't map the file '%1' to memory (errno %2)").arg(fileName).arg(errno));
