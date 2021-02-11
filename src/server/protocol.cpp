@@ -60,12 +60,18 @@ HandlerFunc buildHandler(QSharedPointer<Session> session, const QString &line) {
     }
     if (command == "get") {
         if (args.size() != 1) {
+            if (args.size() == 2 and args.at(0) == "attribute") {  // backwards compatibility
+                return [=]() { return session->getAttribute(args.at(1)); };
+            }
             throw HandlerException("expected one argument");
         }
         return [=]() { return session->getAttribute(args.at(0)); };
     }
     if (command == "set") {
         if (args.size() != 2) {
+            if (args.size() == 3 and args.at(0) == "attribute") {  // backwards compatibility
+                return [=]() { session->setAttribute(args.at(1), args.at(2)); return QString(); };
+            }
             throw HandlerException("expected two arguments");
         }
         return [=]() { session->setAttribute(args.at(0), args.at(1)); return QString(); };
