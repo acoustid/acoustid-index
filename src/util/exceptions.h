@@ -33,6 +33,12 @@ public:
 	CorruptIndexException(const QString &msg) : IOException(msg) { }
 };
 
+class TimeoutExceeded : public Exception
+{
+public:
+	TimeoutExceeded() : Exception("timeout exceeded") { }
+};
+
 }
 
 #endif

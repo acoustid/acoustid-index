@@ -59,6 +59,9 @@ QString Session::getAttribute(const QString &name) {
     if (name == "top_score_percent") {
         return QString("%1").arg(m_topScorePercent);
     }
+    if (name == "timeout") {
+        return QString("%1").arg(m_timeout);
+    }
     if (m_indexWriter.isNull()) {
         return m_index->info().attribute(name);
     }
@@ -73,6 +76,10 @@ void Session::setAttribute(const QString &name, const QString &value) {
     }
     if (name == "top_score_percent") {
         m_topScorePercent = value.toInt();
+        return;
+    }
+    if (name == "timeout") {
+        m_timeout = value.toInt();
         return;
     }
     if (m_indexWriter.isNull()) {
@@ -93,6 +100,6 @@ QList<Result> Session::search(const QVector<uint32_t> &hashes) {
     QMutexLocker locker(&m_mutex);
     TopHitsCollector collector(m_maxResults, m_topScorePercent);
     IndexReader reader(m_index);
-    reader.search(hashes.data(), hashes.size(), &collector);
+    reader.search(hashes.data(), hashes.size(), &collector, m_timeout);
     return collector.topResults();
 }

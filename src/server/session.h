@@ -41,6 +41,7 @@ private:
     QSharedPointer<Metrics> m_metrics;
 	int m_topScorePercent { 10 };
 	int m_maxResults { 500 };
+    int64_t m_timeout { 0 };
 };
 
 }
