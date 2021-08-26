@@ -26,13 +26,12 @@ Connection::Connection(IndexSharedPtr index, QTcpSocket *socket, QObject *parent
     connect(m_socket, &QTcpSocket::readyRead, this, &Connection::readIncomingData);
     connect(m_socket, &QTcpSocket::disconnected, this, &Connection::disconnected);
 
-    connect(m_handler, &QFutureWatcher<QString>::resultReadyAt, [this](int index) {
-        auto result = m_handler->resultAt(index);
-        sendResponse(result);
-    });
-
     connect(m_handler, &QFutureWatcher<QString>::finished, [this]() {
-        m_handler->setFuture(QFuture<QString>());
+        if (!m_handler->isCanceled()) {
+            auto result = m_handler->result();
+            sendResponse(result);
+        }
+        QTimer::singleShot(0, this, &Connection::readIncomingData);
     });
 }
 
@@ -50,28 +49,28 @@ void Connection::close()
     m_socket->disconnectFromHost();
 }
 
-void Connection::sendResponse(const QString& response, bool next)
+void Connection::sendResponse(const QString& response)
 {
     m_stream << response << kCRLF << flush;
-    if (next) {
-        readIncomingData();
-    }
 }
 
 void Connection::readIncomingData()
 {
     auto log_prefix = "[" + m_client + "]";
 
-    if (m_handler->isRunning()) {
-        qWarning() << log_prefix << "Got data while still handling the previous command, closing connection";
-        close();
-        return;
-    }
-
     if (m_stream.readLineInto(&m_line, kMaxLineSize)) {
         if (m_line.size() >= kMaxLineSize) {
-            qWarning() << log_prefix << "Got too long request, closing connection";
-            sendResponse(renderErrorResponse("line too long"), false);
+            qDebug() << log_prefix << "Received request that is too long, closing connection";
+            sendResponse(renderErrorResponse("line too long"));
+            m_handler->cancel();
+            close();
+            return;
+        }
+
+        if (!m_handler->isFinished()) {
+            qWarning() << log_prefix << "Received request while still handling the previous one, closing connection";
+            sendResponse(renderErrorResponse("previous request is still in progress"));
+            m_handler->cancel();
             close();
             return;
         }
@@ -82,18 +81,18 @@ void Connection::readIncomingData()
         }
         catch (const CloseRequested &ex) {
             qDebug() << log_prefix << "Client request to close the connection";
-            sendResponse(renderResponse(""), false);
+            sendResponse(renderResponse(""));
             close();
             return;
         }
         catch (const ProtocolException &ex) {
             qInfo() << log_prefix << "Protocol error:" << ex.what();
-            sendResponse(renderErrorResponse(ex.what()), false);
+            sendResponse(renderErrorResponse(ex.what()));
             return;
         }
         catch (const Exception &ex) {
             qCritical() << log_prefix << "Unexpected exception while building handler:" << ex.what();
-            sendResponse(renderErrorResponse(ex.what()), false);
+            sendResponse(renderErrorResponse(ex.what()));
             return;
         }
 

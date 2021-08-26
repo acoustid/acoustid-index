@@ -34,7 +34,7 @@ public:
 	void close();
 
 protected:
-	void sendResponse(const QString& response, bool next = true);
+	void sendResponse(const QString& response);
 	void readIncomingData();
 
 signals:
