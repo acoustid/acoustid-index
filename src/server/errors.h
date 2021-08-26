@@ -9,12 +9,6 @@
 namespace Acoustid {
 namespace Server {
 
-class CloseRequested : public Exception
-{
-public:
-	CloseRequested() : Exception("close requested") { }
-};
-
 class ProtocolException : public Exception
 {
 public:

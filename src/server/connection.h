@@ -13,6 +13,7 @@
 #include <QFutureWatcher>
 #include "index/index.h"
 #include "index/index_writer.h"
+#include "request.h"
 
 namespace Acoustid {
 namespace Server {
@@ -35,7 +36,7 @@ public:
 	void close();
 
 protected:
-	void sendResponse(const QString& response);
+	void sendResponse(const QSharedPointer<Request> &request, const QString& response);
 	void readIncomingData();
     void resetIdleTimeoutTimer();
 
@@ -48,7 +49,7 @@ private:
     QTextStream m_stream;
     QString m_line;
     QSharedPointer<Session> m_session;
-    QFutureWatcher<QString> *m_handler;
+    QFutureWatcher<QPair<QSharedPointer<Request>, QString>> *m_handler;
     QTimer *m_idle_timeout_timer;
 };
 

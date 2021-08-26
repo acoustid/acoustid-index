@@ -30,15 +30,17 @@ QString renderErrorResponse(const QString &response) {
     return QString("ERR %1").arg(response);
 }
 
-ScopedHandlerFunc buildHandler(const QString &line) {
+QSharedPointer<Request> parseRequest(const QString &line) {
     auto args = line.split(' ');
     if (args.size() < 1) {
         throw BadRequest("missing command");
     }
     auto command = args.takeFirst();
-    if (command == "quit") {
-        throw CloseRequested();
-    } else if (command == "echo") {
+    return QSharedPointer<Request>::create(command, args);
+}
+
+ScopedHandlerFunc buildHandler(const QString &command, const QStringList &args) {
+    if (command == "echo") {
         return [=](QSharedPointer<Session>) { return args.join(" "); };
     } else if (command == "get") {
         if (args.size() != 1) {

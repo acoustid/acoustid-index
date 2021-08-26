@@ -75,6 +75,7 @@ set(fpserver_SOURCES
 	src/server/session.cpp
 	src/server/connection.cpp
 	src/server/metrics.cpp
+	src/server/request.cpp
 	src/server/http.cpp
 )
 add_library(fpserverlib ${fpserver_SOURCES})

@@ -9,6 +9,8 @@
 #include <QStringList>
 #include <QSharedPointer>
 
+#include "request.h"
+
 namespace Acoustid { namespace Server {
 
 class Session;
@@ -19,7 +21,9 @@ typedef std::function<QString()> HandlerFunc;
 QString renderResponse(const QString &response);
 QString renderErrorResponse(const QString &response);
 
-ScopedHandlerFunc buildHandler(const QString &line);
+QSharedPointer<Request> parseRequest(const QString &line);
+
+ScopedHandlerFunc buildHandler(const QString &command, const QStringList &args);
 HandlerFunc injectSessionIntoHandler(QWeakPointer<Session> session, ScopedHandlerFunc handler);
 
 } // namespace Server

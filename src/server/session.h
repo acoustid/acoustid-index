@@ -37,6 +37,8 @@ public:
     int64_t getTimeout() const { return m_timeout; }
     int64_t getIdleTimeout() const { return m_idle_timeout; }
 
+    QSharedPointer<Metrics> metrics() const { return m_metrics; }
+
 private:
 	QMutex m_mutex;
     QSharedPointer<Index> m_index;
