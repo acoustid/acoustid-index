@@ -100,6 +100,10 @@ QList<Result> Session::search(const QVector<uint32_t> &hashes) {
     QMutexLocker locker(&m_mutex);
     TopHitsCollector collector(m_maxResults, m_topScorePercent);
     IndexReader reader(m_index);
-    reader.search(hashes.data(), hashes.size(), &collector, m_timeout);
+    try {
+        reader.search(hashes.data(), hashes.size(), &collector, m_timeout);
+    } catch (TimeoutExceeded) {
+        throw HandlerException("timeout exceeded");
+    }
     return collector.topResults();
 }
