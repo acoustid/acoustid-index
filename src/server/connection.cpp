@@ -30,6 +30,10 @@ Connection::Connection(IndexSharedPtr index, QTcpSocket *socket, QObject *parent
         auto result = m_handler->resultAt(index);
         sendResponse(result);
     });
+
+    connect(m_handler, &QFutureWatcher<QString>::finished, [this]() {
+        m_handler->setFuture(QFuture<QString>());
+    });
 }
 
 Connection::~Connection()
