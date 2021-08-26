@@ -31,6 +31,10 @@ TEST(SessionTest, Attributes)
     ASSERT_EQ("10", session->getAttribute("top_score_percent").toStdString());
     session->setAttribute("top_score_percent", "100");
     ASSERT_EQ("100", session->getAttribute("top_score_percent").toStdString());
+
+    ASSERT_EQ("10", session->getAttribute("timeout").toStdString());
+    session->setAttribute("timeout", "100");
+    ASSERT_EQ("100", session->getAttribute("timeout").toStdString());
 }
 
 TEST(SessionTest, InsertAndSearch)
