@@ -15,6 +15,18 @@ public:
 	CloseRequested() : Exception("close requested") { }
 };
 
+class ProtocolException : public Exception
+{
+public:
+	ProtocolException(const QString& msg) : Exception(msg) { }
+};
+
+class BadRequest : public ProtocolException
+{
+public:
+	BadRequest(const QString& msg) : ProtocolException(msg) { }
+};
+
 class HandlerException : public Exception
 {
 public:

@@ -30,86 +30,61 @@ QString renderErrorResponse(const QString &response) {
     return QString("ERR %1").arg(response);
 }
 
-HandlerFunc wrapHandlerFunc(HandlerFunc func) {
-    return [=]() {
-        try {
-            auto result = func();
-            return renderResponse(result);
-        }
-        catch (const HandlerException &ex) {
-            return renderErrorResponse(ex.what());
-        }
-        catch (const Exception &ex) {
-            qCritical() << "Unexpected exception in handler" << ex.what();
-            return renderErrorResponse(ex.what());
-        }
-    };
-}
-
-HandlerFunc buildHandler(QSharedPointer<Session> session, const QString &line) {
+ScopedHandlerFunc buildHandler(const QString &line) {
     auto args = line.split(' ');
     if (args.size() < 1) {
-        throw HandlerException("missing command");
+        throw BadRequest("missing command");
     }
     auto command = args.takeFirst();
     if (command == "quit") {
         throw CloseRequested();
-    }
-    if (command == "echo") {
-        return [=]() { return args.join(" "); };
-    }
-    if (command == "get") {
+    } else if (command == "echo") {
+        return [=](QSharedPointer<Session>) { return args.join(" "); };
+    } else if (command == "get") {
         if (args.size() != 1) {
             if (args.size() == 2 and args.at(0) == "attribute") {  // backwards compatibility
-                return [=]() { return session->getAttribute(args.at(1)); };
+                return [=](QSharedPointer<Session> session) { return session->getAttribute(args.at(1)); };
+            } else {
+                throw BadRequest("expected one argument");
             }
-            throw HandlerException("expected one argument");
+        } else {
+            return [=](QSharedPointer<Session> session) { return session->getAttribute(args.at(0)); };
         }
-        return [=]() { return session->getAttribute(args.at(0)); };
-    }
-    if (command == "set") {
+    } else if (command == "set") {
         if (args.size() != 2) {
             if (args.size() == 3 and args.at(0) == "attribute") {  // backwards compatibility
-                return [=]() { session->setAttribute(args.at(1), args.at(2)); return QString(); };
+                return [=](QSharedPointer<Session> session) { session->setAttribute(args.at(1), args.at(2)); return QString(); };
+            } else {
+                throw BadRequest("expected two arguments");
             }
-            throw HandlerException("expected two arguments");
+        } else {
+            return [=](QSharedPointer<Session> session) { session->setAttribute(args.at(0), args.at(1)); return QString(); };
         }
-        return [=]() { session->setAttribute(args.at(0), args.at(1)); return QString(); };
-    }
-    if (command == "begin") {
-        return [=]() { session->begin(); return QString(); };
-    }
-    if (command == "commit") {
-        return [=]() { session->commit(); return QString(); };
-    }
-    if (command == "rollback") {
-        return [=]() { session->rollback(); return QString(); };
-    }
-    if (command == "optimize") {
-        return [=]() { session->optimize(); return QString(); };
-    }
-    if (command == "cleanup") {
-        return [=]() { session->cleanup(); return QString(); };
-    }
-    if (command == "cleanup") {
-        return [=]() { session->cleanup(); return QString(); };
-    }
-    if (command == "insert") {
-        return [=]() {
-            if (args.size() != 2) {
-                throw HandlerException("expected two arguments");
-            }
+    } else if (command == "begin") {
+        return [=](QSharedPointer<Session> session) { session->begin(); return QString(); };
+    } else if (command == "commit") {
+        return [=](QSharedPointer<Session> session) { session->commit(); return QString(); };
+    } else if (command == "rollback") {
+        return [=](QSharedPointer<Session> session) { session->rollback(); return QString(); };
+    } else if (command == "optimize") {
+        return [=](QSharedPointer<Session> session) { session->optimize(); return QString(); };
+    } else if (command == "cleanup") {
+        return [=](QSharedPointer<Session> session) { session->cleanup(); return QString(); };
+    } else if (command == "insert") {
+        if (args.size() != 2) {
+            throw BadRequest("expected two arguments");
+        }
+        return [=](QSharedPointer<Session> session) {
             auto id = args.at(0).toInt();
             auto hashes = parseFingerprint(args.at(1));
             session->insert(id, hashes);
             return QString();
         };
-    }
-    if (command == "search") {
-        return [=]() {
-            if (args.size() != 1) {
-                throw HandlerException("expected one argumemt");
-            }
+    } else if (command == "search") {
+        if (args.size() != 1) {
+            throw BadRequest("expected one argumemt");
+        }
+        return [=](QSharedPointer<Session> session) {
             auto hashes = parseFingerprint(args.at(0));
             auto results = session->search(hashes);
             QStringList output;
@@ -119,8 +94,19 @@ HandlerFunc buildHandler(QSharedPointer<Session> session, const QString &line) {
             }
             return output.join(" ");
         };
+    } else {
+        throw BadRequest("unknown command");
     }
-    throw HandlerException("unknown command");
+}
+
+HandlerFunc injectSessionIntoHandler(QWeakPointer<Session> session, ScopedHandlerFunc handler) {
+    return [=]() {
+        auto lockedSession = session.lock();
+        if (!lockedSession) {
+            throw HandlerException("session expired");
+        }
+        return handler(lockedSession);
+    };
 }
 
 } // namespace Server

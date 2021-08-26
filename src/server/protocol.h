@@ -13,13 +13,14 @@ namespace Acoustid { namespace Server {
 
 class Session;
 
+typedef std::function<QString(QSharedPointer<Session> session)> ScopedHandlerFunc;
 typedef std::function<QString()> HandlerFunc;
 
 QString renderResponse(const QString &response);
 QString renderErrorResponse(const QString &response);
 
-HandlerFunc wrapHandlerFunc(HandlerFunc func);
-HandlerFunc buildHandler(QSharedPointer<Session> session, const QString &line);
+ScopedHandlerFunc buildHandler(const QString &line);
+HandlerFunc injectSessionIntoHandler(QWeakPointer<Session> session, ScopedHandlerFunc handler);
 
 } // namespace Server
 } // namespace Acoustid

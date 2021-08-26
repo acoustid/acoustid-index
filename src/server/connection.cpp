@@ -69,17 +69,17 @@ void Connection::readIncomingData()
             return;
         }
 
-        HandlerFunc func;
+        HandlerFunc handler;
         try {
-            func = buildHandler(m_session, m_line);
-        }
-        catch (const HandlerException &ex) {
-            sendResponse(renderErrorResponse(ex.what()), false);
-            return;
+            handler = injectSessionIntoHandler(m_session, buildHandler(m_line));
         }
         catch (const CloseRequested &ex) {
             sendResponse(renderResponse(""), false);
             close();
+            return;
+        }
+        catch (const ProtocolException &ex) {
+            sendResponse(renderErrorResponse(ex.what()), false);
             return;
         }
         catch (const Exception &ex) {
@@ -88,7 +88,18 @@ void Connection::readIncomingData()
             return;
         }
 
-        auto result = QtConcurrent::run(wrapHandlerFunc(func));
+        auto result = QtConcurrent::run([=]() {
+            try {
+                return renderResponse(handler());
+            }
+            catch (const HandlerException &ex) {
+                return renderErrorResponse(ex.what());
+            }
+            catch (const Exception &ex) {
+                qCritical() << "Unexpected exception in handler" << ex.what();
+                return renderErrorResponse(ex.what());
+            }
+        });
         m_handler->setFuture(result);
     }
 
