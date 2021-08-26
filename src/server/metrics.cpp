@@ -1,6 +1,7 @@
 // Copyright (C) 2019  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
+#include <QThreadPool>
 #include "metrics.h"
 
 using namespace Acoustid;
@@ -43,6 +44,9 @@ void Metrics::onRequest(const QString &name, double duration) {
 QStringList Metrics::toStringList() {
 	QReadLocker locker(&m_lock);
 	QStringList output;
+
+	output.append(QString("# TYPE aindex_active_threads gauge"));
+	output.append(QString("aindex_active_threads %1").arg(QThreadPool::globalInstance()->activeThreadCount()));
 
 	output.append(QString("# TYPE aindex_connections_in_flight gauge"));
 	output.append(QString("aindex_connections_in_flight %1").arg(m_connectionInFlightCount));
