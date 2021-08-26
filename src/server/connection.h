@@ -7,6 +7,7 @@
 #include <QTextStream>
 #include <QByteArray>
 #include <QTcpSocket>
+#include <QTimer>
 #include <QSharedPointer>
 #include <QPointer>
 #include <QFutureWatcher>
@@ -36,6 +37,7 @@ public:
 protected:
 	void sendResponse(const QString& response);
 	void readIncomingData();
+    void resetIdleTimeoutTimer();
 
 signals:
 	void disconnected();
@@ -47,6 +49,7 @@ private:
     QString m_line;
     QSharedPointer<Session> m_session;
     QFutureWatcher<QString> *m_handler;
+    QTimer *m_idle_timeout_timer;
 };
 
 }

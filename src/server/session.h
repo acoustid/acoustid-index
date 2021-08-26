@@ -34,6 +34,9 @@ public:
     QString getAttribute(const QString &name);
     void setAttribute(const QString &name, const QString &value);
 
+    int64_t getTimeout() const { return m_timeout; }
+    int64_t getIdleTimeout() const { return m_idle_timeout; }
+
 private:
 	QMutex m_mutex;
     QSharedPointer<Index> m_index;
@@ -42,6 +45,7 @@ private:
 	int m_topScorePercent { 10 };
 	int m_maxResults { 500 };
     int64_t m_timeout { 0 };
+    int64_t m_idle_timeout { 60 * 1000 };
 };
 
 }

@@ -62,6 +62,9 @@ QString Session::getAttribute(const QString &name) {
     if (name == "timeout") {
         return QString("%1").arg(m_timeout);
     }
+    if (name == "idle_timeout") {
+        return QString("%1").arg(m_idle_timeout);
+    }
     if (m_indexWriter.isNull()) {
         return m_index->info().attribute(name);
     }
@@ -80,6 +83,10 @@ void Session::setAttribute(const QString &name, const QString &value) {
     }
     if (name == "timeout") {
         m_timeout = value.toInt();
+        return;
+    }
+    if (name == "idle_timeout") {
+        m_idle_timeout = value.toInt();
         return;
     }
     if (m_indexWriter.isNull()) {
