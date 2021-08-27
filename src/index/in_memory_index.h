@@ -6,7 +6,7 @@
 
 #include <QHash>
 #include <QString>
-#include <QMutex>
+#include <QReadWriteLock>
 
 #include "base_index.h"
 #include "collector.h"
@@ -14,7 +14,8 @@
 namespace Acoustid {
 
 struct InMemoryIndexData {
-    QMutex mutex;
+    QReadWriteLock lock;
+    QHash<uint32_t, uint32_t> index;
     QHash<QString, QString> attributes;
 };
 
@@ -23,7 +24,10 @@ class InMemoryIndex : public BaseIndex {
     InMemoryIndex();
     virtual ~InMemoryIndex() override;
 
-    QString getAttribute(const QString &name) override;
+    virtual void search(const uint32_t *fingerprint, size_t length, Collector *collector, int64_t timeoutInMSecs) override;
+
+    virtual bool hasAttribute(const QString &name) override;
+    virtual QString getAttribute(const QString &name) override;
 
   private:
     QSharedPointer<InMemoryIndexData> m_data;

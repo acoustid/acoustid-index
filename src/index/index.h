@@ -46,6 +46,7 @@ public:
 
 	virtual void search(const uint32_t *fingerprint, size_t length, Collector *collector, int64_t timeoutInMSecs) override;
 
+    virtual bool hasAttribute(const QString &name) override;
     virtual QString getAttribute(const QString &name) override;
 
 private:

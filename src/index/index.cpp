@@ -99,6 +99,10 @@ void Index::search(const uint32_t *fingerprint, size_t length, Collector *collec
     reader.search(fingerprint, length, collector, timeoutInMSecs);
 }
 
+bool Index::hasAttribute(const QString &name) {
+    return info().hasAttribute(name);
+}
+
 QString Index::getAttribute(const QString &name) {
     return info().attribute(name);
 }
