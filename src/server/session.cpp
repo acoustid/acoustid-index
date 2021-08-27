@@ -4,7 +4,6 @@
 #include "session.h"
 #include "errors.h"
 #include "index/top_hits_collector.h"
-#include "index/index_reader.h"
 #include "index/index_writer.h"
 
 using namespace Acoustid;
@@ -66,7 +65,7 @@ QString Session::getAttribute(const QString &name) {
         return QString("%1").arg(m_idle_timeout);
     }
     if (m_indexWriter.isNull()) {
-        return m_index->info().attribute(name);
+        return m_index->getAttribute(name);
     }
     return m_indexWriter->info().attribute(name);
 }
@@ -106,9 +105,8 @@ void Session::insert(uint32_t id, const QVector<uint32_t> &hashes) {
 QList<Result> Session::search(const QVector<uint32_t> &hashes) {
     QMutexLocker locker(&m_mutex);
     TopHitsCollector collector(m_maxResults, m_topScorePercent);
-    IndexReader reader(m_index);
     try {
-        reader.search(hashes.data(), hashes.size(), &collector, m_timeout);
+        m_index->search(hashes.data(), hashes.size(), &collector, m_timeout);
     } catch (TimeoutExceeded) {
         throw HandlerException("timeout exceeded");
     }
