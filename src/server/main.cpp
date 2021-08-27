@@ -82,7 +82,7 @@ int main(int argc, char **argv)
 		httpListener.listen(QHostAddress(httpAddress), httpPort, [=](QHttpRequest *req, QHttpResponse *res) {
 			handleHttpRequest(req, res, metrics);
 		});
-		qDebug() << "HTTP server listening on" << address << "port" << port;
+		qDebug() << "HTTP server listening on" << httpAddress << "port" << httpPort;
 		qDebug() << "Prometheus metrics available at" << QString("http://%1:%2/metrics").arg(httpAddress).arg(httpPort);
 	}
 
