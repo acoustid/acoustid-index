@@ -6,7 +6,7 @@
 
 #include <QMutex>
 #include "common.h"
-#include "index.h"
+#include "base_index.h"
 #include "index_info.h"
 #include "store/directory.h"
 #include "segment_index.h"
@@ -19,7 +19,7 @@ class IndexFileDeleter;
 //
 // This class is thread-safe and is intended to be shared by multiple
 // threads. Threads can use it to open their own searchers or writers.
-class Index
+class Index : public BaseIndex, public QEnableSharedFromThis<Index>
 {
 public:
 	// Build a new instance using the given directory
@@ -43,6 +43,10 @@ public:
 	IndexInfo acquireInfo();
 	void releaseInfo(const IndexInfo& info);
 	void updateInfo(const IndexInfo& oldInfo, const IndexInfo& newInfo, bool updateIndex = false);
+
+	virtual void search(const uint32_t *fingerprint, size_t length, Collector *collector, int64_t timeoutInMSecs) override;
+
+    virtual QString getAttribute(const QString &name) override;
 
 private:
 	ACOUSTID_DISABLE_COPY(Index);

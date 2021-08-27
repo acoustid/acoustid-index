@@ -48,6 +48,9 @@ set(fpindexlib_SOURCES
 	src/index/segment_merge_policy.cpp
 	src/index/segment_merger.cpp
 	src/index/segment_searcher.cpp
+	src/index/in_memory_index.h
+	src/index/in_memory_index.cpp
+	src/index/top_hits_collector.h
 	src/index/top_hits_collector.cpp
 	src/store/buffered_input_stream.cpp
 	src/store/buffered_output_stream.cpp
