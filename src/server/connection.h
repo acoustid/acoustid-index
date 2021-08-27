@@ -51,6 +51,7 @@ private:
     QSharedPointer<Session> m_session;
     QFutureWatcher<QPair<QSharedPointer<Request>, QString>> *m_handler;
     QTimer *m_idle_timeout_timer;
+    bool m_active_request = false;
 };
 
 }

@@ -33,6 +33,7 @@ Connection::Connection(IndexSharedPtr index, QTcpSocket *socket, QObject *parent
             auto result = m_handler->result();
             sendResponse(result.first, result.second);
         }
+        m_active_request = false;
         QTimer::singleShot(0, this, &Connection::readIncomingData);
     });
 
@@ -93,7 +94,7 @@ void Connection::readIncomingData()
             return;
         }
 
-        if (!m_handler->isFinished()) {
+        if (m_active_request) {
             qWarning() << log_prefix << "Received request while still handling the previous one, closing connection";
             sendResponse(nullptr, renderErrorResponse("previous request is still in progress"));
             close();
@@ -137,6 +138,7 @@ void Connection::readIncomingData()
             return qMakePair(request, response);
         });
 
+        m_active_request = true;
         m_handler->setFuture(futureResult);
     }
 
