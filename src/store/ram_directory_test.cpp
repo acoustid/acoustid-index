@@ -2,6 +2,9 @@
 // Distributed under the MIT license, see the LICENSE file for details.
 
 #include <gtest/gtest.h>
+
+#include <QSqlQuery>
+
 #include "util/test_utils.h"
 #include "input_stream.h"
 #include "output_stream.h"
@@ -80,3 +83,15 @@ TEST(RAMDirectoryTest, RenameFile)
 	ASSERT_STREQ("newtest.txt", qPrintable(files[0]));
 }
 
+TEST(RAMDirectoryTest, OpenDatabase) {
+    RAMDirectory dir;
+    auto db = dir.openDatabase("foo.db");
+
+    QSqlQuery query(db);
+    query.exec("CREATE TABLE foo (a int)");
+    query.exec("INSERT INTO foo (a) VALUES (1)");
+    query.exec("SELECT * FROM foo");
+
+    ASSERT_TRUE(query.first());
+    ASSERT_EQ(query.value(0).toInt(), 1);
+}

@@ -22,11 +22,17 @@ FSDirectory::FSDirectory(const QString &path, bool mmap)
 
 FSDirectory::~FSDirectory()
 {
+    close();
 }
 
 void FSDirectory::close()
 {
 	QMutexLocker locker(&m_mutex);
+    if (m_autoDelete) {
+        QDir dir(m_path);
+        dir.removeRecursively();
+        m_autoDelete = false;
+    }
 }
 
 OutputStream *FSDirectory::createFile(const QString &name)
@@ -106,11 +112,23 @@ QSqlDatabase FSDirectory::openDatabase(const QString &name)
     if (QSqlDatabase::contains(name)) {
         return QSqlDatabase::database(name);
     }
-    auto db = QSqlDatabase::addDatabase("SQLITE", name);
+    auto db = QSqlDatabase::addDatabase("QSQLITE", name);
 	auto fileName = filePath(name);
     db.setDatabaseName(fileName);
-    if (db.open()) {
-		throw IOException(QString("Couldn't open the DB file '%1' (errno %2)").arg(fileName).arg(db.lastError().text()));
+    if (!db.open()) {
+		throw IOException(QString("Couldn't open the DB file '%1' (%2)").arg(fileName).arg(db.lastError().text()));
     }
     return db;
+}
+
+FSDirectory *FSDirectory::openTemporary(bool autoDelete)
+{
+	QByteArray path("/tmp/acoustidXXXXXX");
+	auto tmpPath = ::mkdtemp(path.data());
+	if (tmpPath == NULL) {
+		throw IOException("couldn't create a temporary directory");
+	}
+	auto dir = new FSDirectory(path);
+    dir->setAutoDelete(autoDelete);
+    return dir;
 }
