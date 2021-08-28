@@ -94,9 +94,9 @@ void Index::updateInfo(const IndexInfo& oldInfo, const IndexInfo& newInfo, bool 
 	}
 }
 
-void Index::search(const uint32_t *fingerprint, size_t length, Collector *collector, int64_t timeoutInMSecs) {
+void Index::search(const QVector<uint32_t> &terms, Collector *collector, int64_t timeoutInMSecs) {
     IndexReader reader(sharedFromThis());
-    reader.search(fingerprint, length, collector, timeoutInMSecs);
+    reader.search(terms.data(), static_cast<size_t>(terms.size()), collector, timeoutInMSecs);
 }
 
 bool Index::hasAttribute(const QString &name) {

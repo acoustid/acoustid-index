@@ -102,11 +102,11 @@ void Session::insert(uint32_t id, const QVector<uint32_t> &hashes) {
     m_indexWriter->addDocument(id, hashes.data(), hashes.size());
 }
 
-QList<Result> Session::search(const QVector<uint32_t> &hashes) {
+QList<Result> Session::search(const QVector<uint32_t> &terms) {
     QMutexLocker locker(&m_mutex);
     TopHitsCollector collector(m_maxResults, m_topScorePercent);
     try {
-        m_index->search(hashes.data(), hashes.size(), &collector, m_timeout);
+        m_index->search(terms, &collector, m_timeout);
     } catch (TimeoutExceeded) {
         throw HandlerException("timeout exceeded");
     }

@@ -44,7 +44,7 @@ public:
 	void releaseInfo(const IndexInfo& info);
 	void updateInfo(const IndexInfo& oldInfo, const IndexInfo& newInfo, bool updateIndex = false);
 
-	virtual void search(const uint32_t *fingerprint, size_t length, Collector *collector, int64_t timeoutInMSecs) override;
+	virtual void search(const QVector<uint32_t> &terms, Collector *collector, int64_t timeoutInMSecs) override;
 
     virtual bool hasAttribute(const QString &name) override;
     virtual QString getAttribute(const QString &name) override;
