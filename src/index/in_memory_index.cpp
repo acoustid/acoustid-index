@@ -58,7 +58,6 @@ void InMemoryIndex::search(const QVector<uint32_t> &terms, Collector *collector,
     const auto &index = m_data->index;
     for (size_t i = 0; i < terms.size(); i++) {
         const auto term = terms[i];
-        qDebug() << index;
         QHash<uint32_t, uint32_t>::const_iterator valuesIter = index.find(term);
         while (valuesIter != index.end() && valuesIter.key() == term) {
             collector->collect(valuesIter.value());

@@ -19,6 +19,10 @@ class MultiLayerIndex : public BaseIndex {
     MultiLayerIndex();
     virtual ~MultiLayerIndex() override;
 
+    bool isOpen();
+
+    void open(QSharedPointer<Directory> dir, bool create = false);
+
     // Inserts or updates a document in the index. Returns true if the document was updated, false if it was inserted.
     bool insertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms);
 
@@ -35,8 +39,12 @@ class MultiLayerIndex : public BaseIndex {
     void setAttribute(const QString &name, const QString &value);
 
   private:
-    QSharedPointer<InMemoryIndex> m_inMemoryIndex;
+    void updateDatabaseSchema();
+
+  private:
+    QSqlDatabase m_db;
     QSharedPointer<Index> m_persistentIndex;
+    QSharedPointer<InMemoryIndex> m_inMemoryIndex;
 };
 
 } // namespace Acoustid
