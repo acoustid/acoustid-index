@@ -39,7 +39,11 @@ class MultiLayerIndex : public BaseIndex {
     void setAttribute(const QString &name, const QString &value);
 
   private:
-    void updateDatabaseSchema();
+    int getDatabaseSchemaVersion();
+    void updateDatabaseSchemaVersion(int version);
+
+    void upgradeDatabaseSchema();
+    void upgradeDatabaseSchemaV1();
 
   private:
     QSqlDatabase m_db;

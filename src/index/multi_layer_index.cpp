@@ -17,43 +17,52 @@ bool MultiLayerIndex::isOpen() {
     return m_db.isValid() && m_db.isOpen() && m_persistentIndex;
 }
 
-void MultiLayerIndex::updateDatabaseSchema() {
+int MultiLayerIndex::getDatabaseSchemaVersion() {
     QSqlQuery query(m_db);
-    auto tables = m_db.tables(QSql::Tables);
-
-    int currentSchemaVersion;
-    if (tables.contains("schema_version")) {
-        query.exec("SELECT version FROM schema_version");
-        if (query.first()) {
-            currentSchemaVersion = query.value(0).toInt();
-        } else {
-            currentSchemaVersion = 0;
-        }
+    query.exec("SELECT version FROM schema_version");
+    if (query.first()) {
+        return query.value(0).toInt();
     } else {
-        query.exec("CREATE TABLE schema_version (version INT PRIMARY KEY)");
-        currentSchemaVersion = 0;
+        return 0;
     }
+}
 
-    auto targetSchemaVersion = 1;
+void MultiLayerIndex::updateDatabaseSchemaVersion(int version) {
+    QSqlQuery query(m_db);
+    query.prepare("UPDATE schema_version SET version = ?");
+    query.bindValue(0, version);
+    query.exec();
+    if (query.numRowsAffected() == 0) {
+        query.prepare("INSERT INTO schema_version (id, version) VALUES (1, ?)");
+        query.bindValue(0, version);
+        query.exec();
+    }
+}
 
-    for (int schemaVersion = currentSchemaVersion + 1; schemaVersion <= targetSchemaVersion; schemaVersion++) {
-        qDebug() << "Upgradin to schema version" << schemaVersion;
-        if (currentSchemaVersion != targetSchemaVersion) {
-            query.prepare("UPDATE schema_version SET version = ?");
-            query.bindValue(0, targetSchemaVersion);
-            query.exec();
-            if (query.numRowsAffected() == 0) {
-                query.prepare("INSERT INTO schema_version (version) VALUES (?)");
-                query.bindValue(0, targetSchemaVersion);
-                query.exec();
-            }
+void MultiLayerIndex::upgradeDatabaseSchemaV1() {
+    QSqlQuery query(m_db);
+    query.exec("CREATE TABLE schema_version (id INTEGER PRIMARY KEY, version INTEGER)");
+    query.exec("CREATE TABLE oplog (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, op TEXT, data TEXT)");
+}
+
+void MultiLayerIndex::upgradeDatabaseSchema() {
+    const auto latestSchemaVersion = 1;
+    auto schemaVersion = getDatabaseSchemaVersion();
+    while (schemaVersion < latestSchemaVersion) {
+        schemaVersion++;
+        qDebug() << "Upgrading to schema version" << schemaVersion;
+        switch (schemaVersion) {
+            case 1:
+                upgradeDatabaseSchemaV1();
+                break;
         }
+        updateDatabaseSchemaVersion(schemaVersion);
     }
 }
 
 void MultiLayerIndex::open(QSharedPointer<Directory> dir, bool create) {
     m_db = dir->openDatabase("control.db");
-    updateDatabaseSchema();
+    upgradeDatabaseSchema();
 
     m_persistentIndex = QSharedPointer<Index>::create(dir, create);
 }
