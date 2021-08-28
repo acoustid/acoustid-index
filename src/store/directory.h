@@ -6,6 +6,8 @@
 
 #include <QString>
 #include <QStringList>
+#include <QSqlDatabase>
+#include <QSqlError>
 #include "common.h"
 
 namespace Acoustid {
@@ -35,6 +37,7 @@ public:
 	 */
 	virtual void sync(const QStringList& names);
 
+    virtual QSqlDatabase openDatabase(const QString &name) = 0;
 };
 
 typedef QWeakPointer<Directory> DirectoryWeakPtr;

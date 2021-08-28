@@ -31,6 +31,8 @@ public:
 	bool fileExists(const QString &name);
 	virtual void sync(const QStringList& names);
 
+    virtual QSqlDatabase openDatabase(const QString &name) override;
+
 private:
 
 	void fsync(const QString& name);
