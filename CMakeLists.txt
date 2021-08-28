@@ -50,6 +50,8 @@ set(fpindexlib_SOURCES
 	src/index/segment_searcher.cpp
 	src/index/in_memory_index.h
 	src/index/in_memory_index.cpp
+	src/index/multi_layer_index.h
+	src/index/multi_layer_index.cpp
 	src/index/top_hits_collector.h
 	src/index/top_hits_collector.cpp
 	src/store/buffered_input_stream.cpp
