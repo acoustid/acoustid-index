@@ -97,7 +97,7 @@ ScopedHandlerFunc buildHandler(const QString &command, const QStringList &args) 
             return output.join(" ");
         };
     } else {
-        throw BadRequest("unknown command");
+        throw BadRequest(QString("unknown command %1").arg(command));
     }
 }
 
