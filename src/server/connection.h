@@ -4,7 +4,6 @@
 #ifndef ACOUSTID_SERVER_CONNECTION_H_
 #define ACOUSTID_SERVER_CONNECTION_H_
 
-#include <QTextStream>
 #include <QByteArray>
 #include <QTcpSocket>
 #include <QTimer>
@@ -46,8 +45,7 @@ signals:
 private:
 	QString m_client;
 	QTcpSocket *m_socket;
-    QTextStream m_stream;
-    QString m_line;
+    QByteArray m_buffer;
     QSharedPointer<Session> m_session;
     QFutureWatcher<QPair<QSharedPointer<Request>, QString>> *m_handler;
     QTimer *m_idle_timeout_timer;
