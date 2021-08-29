@@ -106,3 +106,27 @@ bool Index::hasAttribute(const QString &name) {
 QString Index::getAttribute(const QString &name) {
     return info().attribute(name);
 }
+
+void Index::applyUpdates(OpStream *updates) {
+    IndexWriter writer(sharedFromThis());
+    while (updates->next()) {
+        auto op = updates->operation();
+        switch (op->type()) {
+            case INSERT_OR_UPDATE_DOCUMENT:
+                {
+                    auto data = op->data()->insertOrUpdateDocument;
+                    writer.addDocument(data->docId, data->terms.data(), data->terms.size());
+                }
+                break;
+            case DELETE_DOCUMENT:
+                break;
+            case SET_ATTRIBUTE:
+                {
+                    auto data = op->data()->setAttribute;
+                    writer.setAttribute(data->name, data->value);
+                }
+                break;
+        }
+    }
+    writer.commit();
+}

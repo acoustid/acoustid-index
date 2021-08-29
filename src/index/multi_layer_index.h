@@ -38,6 +38,8 @@ class MultiLayerIndex : public BaseIndex {
     virtual QString getAttribute(const QString &name) override;
     void setAttribute(const QString &name, const QString &value);
 
+    virtual void applyUpdates(OpStream *updates) override;
+
   private:
     int getDatabaseSchemaVersion();
     void updateDatabaseSchemaVersion(int version);

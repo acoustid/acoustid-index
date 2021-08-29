@@ -81,4 +81,37 @@ void InMemoryIndex::setAttribute(const QString &name, const QString &value) {
     m_data->attributes[name] = value;
 }
 
+void InMemoryIndex::applyUpdates(OpStream *updates) {
+    QWriteLocker locker(&m_data->lock);
+    while (updates->next()) {
+        auto op = updates->operation();
+        switch (op->type()) {
+            case INSERT_OR_UPDATE_DOCUMENT:
+                {
+                    auto data = op->data()->insertOrUpdateDocument;
+                    auto docId = data->docId;
+                    auto terms = data->terms;
+                    m_data->deleteInternal(docId);
+                    m_data->insertInternal(docId, terms);
+                }
+                break;
+            case DELETE_DOCUMENT:
+                {
+                    auto data = op->data()->deleteDocument;
+                    auto docId = data->docId;
+                    m_data->deleteInternal(docId);
+                }
+                break;
+            case SET_ATTRIBUTE:
+                {
+                    auto data = op->data()->setAttribute;
+                    auto name = data->name;
+                    auto value = data->value;
+                    m_data->attributes[name] = value;
+                }
+                break;
+        }
+    }
+}
+
 } // namespace Acoustid

@@ -103,5 +103,10 @@ void MultiLayerIndex::setAttribute(const QString &name, const QString &value) {
     m_inMemoryIndex->setAttribute(name, value);
 }
 
+void MultiLayerIndex::applyUpdates(OpStream *updates) {
+    assert(isOpen());
+    m_inMemoryIndex->applyUpdates(updates);
+}
+
 } // namespace Acoustid
 

@@ -45,6 +45,8 @@ class InMemoryIndex : public BaseIndex {
     virtual QString getAttribute(const QString &name) override;
     void setAttribute(const QString &name, const QString &value);
 
+    virtual void applyUpdates(OpStream *updates) override;
+
   private:
     void insertInternal(uint32_t docId, const QVector<uint32_t> &terms);
     bool deleteInternal(uint32_t docId);
