@@ -102,7 +102,7 @@ void Connection::readIncomingData()
     auto line = QString::fromUtf8(m_buffer.left(pos));
     m_buffer.remove(0, pos + 2);
 
-    if (line.startswith("quit")) {
+    if (line.startsWith("quit")) {
         sendResponse(nullptr, renderResponse(""));
         close();
         return;
