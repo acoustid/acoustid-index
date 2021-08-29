@@ -102,6 +102,12 @@ void Connection::readIncomingData()
     auto line = QString::fromUtf8(m_buffer.left(pos));
     m_buffer.remove(0, pos + 2);
 
+    if (line.startswith("quit")) {
+        sendResponse(nullptr, renderResponse(""));
+        close();
+        return;
+    }
+
     if (m_active_request) {
         qWarning() << log_prefix << "Received request (" << line << ") while still handling the previous one (" << m_active_request->command() << "), closing connection";
         sendResponse(nullptr, renderErrorResponse("previous request is still in progress"));
@@ -116,12 +122,6 @@ void Connection::readIncomingData()
         request = parseRequest(line);
     } catch (const ProtocolException &ex) {
         sendResponse(request, renderErrorResponse(ex.what()));
-        return;
-    }
-
-    if (request->command() == "quit") {
-        sendResponse(request, renderResponse(""));
-        close();
         return;
     }
 
