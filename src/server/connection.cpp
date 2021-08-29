@@ -94,6 +94,13 @@ void Connection::readIncomingData()
             return;
         }
 
+        if (m_active_request) {
+            qWarning() << log_prefix << "Received request (" << m_line << ") while still handling the previous one (" << m_active_request->command() << "), closing connection";
+            sendResponse(nullptr, renderErrorResponse("previous request is still in progress"));
+            close();
+            return;
+        }
+
         QSharedPointer<Request> request;
         HandlerFunc handler;
 
@@ -114,13 +121,6 @@ void Connection::readIncomingData()
             handler = injectSessionIntoHandler(m_session, buildHandler(request->command(), request->args()));
         } catch (const ProtocolException &ex) {
             sendResponse(request, renderErrorResponse(ex.what()));
-            return;
-        }
-
-        if (m_active_request) {
-            qWarning() << log_prefix << "Received request (" << request->command() << ") while still handling the previous one (" << m_active_request->command() << "), closing connection";
-            sendResponse(nullptr, renderErrorResponse("previous request is still in progress"));
-            close();
             return;
         }
 
