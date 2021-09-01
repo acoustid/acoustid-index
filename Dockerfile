@@ -11,6 +11,9 @@ RUN dpkg -i /tmp/acoustid-index.deb && rm /tmp/acoustid-index.deb
 RUN mkdir -p /var/lib/acoustid-index && chown -R acoustid /var/lib/acoustid-index
 VOLUME ["/var/lib/acoustid-index"]
 
+RUN apt-get update && \
+    apt-get install -y rsync
+
 USER acoustid
 EXPOSE 6080
 
