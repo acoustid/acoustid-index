@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.1)
 
 project(fpserver)
 
+cmake_policy(SET CMP0071 NEW)
+
 set(CMAKE_CXX_STANDARD 14)
 
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules)
@@ -14,6 +16,7 @@ set(CMAKE_AUTORCC ON)
 
 find_package(GTest)
 find_package(Qt5 COMPONENTS Core Network Concurrent Sql REQUIRED)
+find_package(Protobuf REQUIRED)
 
 set(CPACK_GENERATOR "DEB")
 set(CPACK_PACKAGE_NAME acoustid-index)
@@ -71,8 +74,11 @@ set(fpindexlib_SOURCES
 	src/util/crc.c
 	src/util/options.cpp
 )
-add_library(fpindexlib ${fpindexlib_SOURCES})
-target_link_libraries(fpindexlib Qt5::Core Qt5::Network Qt5::Concurrent Qt5::Sql)
+
+protobuf_generate_cpp(fpindexlib_proto_SOURCES fpindexlib_proto_HEADERS src/proto/oplog.proto)
+
+add_library(fpindexlib ${fpindexlib_SOURCES} ${fpindexlib_proto_SOURCES} ${fpindexlib_proto_HEADERS})
+target_link_libraries(fpindexlib Qt5::Core Qt5::Network Qt5::Concurrent Qt5::Sql protobuf::libprotobuf)
 
 set(fpserver_SOURCES
 	src/server/listener.cpp
