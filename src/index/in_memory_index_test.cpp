@@ -26,7 +26,9 @@ TEST(InMemoryIndexTest, Documents)
     auto index = QSharedPointer<InMemoryIndex>::create();
 
     ASSERT_FALSE(index->containsDocument(1));
+    ASSERT_FALSE(index->isDocumentDeleted(1));
     ASSERT_FALSE(index->deleteDocument(1));
+    ASSERT_TRUE(index->isDocumentDeleted(1));
     ASSERT_FALSE(index->insertOrUpdateDocument(1, {100, 200, 300}));
 
     ASSERT_TRUE(index->containsDocument(1));

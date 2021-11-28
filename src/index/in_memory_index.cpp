@@ -24,13 +24,15 @@ void InMemoryIndexData::insertInternal(uint32_t docId, const QVector<uint32_t> &
 bool InMemoryIndexData::deleteInternal(uint32_t docId) {
     auto it = docs.find(docId);
     if (it == docs.end()) {
+        docs.insert(docId, false);
         return false;
     }
     auto isActive = *it;
     if (!isActive) {
+        *it = false;
         return false;
     }
-    docs.insert(docId, false);
+    *it = false;
     auto i = index.begin();
     while (i != index.end()) {
         if (i.value() == docId) {

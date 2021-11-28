@@ -53,6 +53,8 @@ class InMemoryIndex : public BaseIndex {
     virtual void applyUpdates(const OpBatch &batch) override;
 
   private:
+	ACOUSTID_DISABLE_COPY(InMemoryIndex);
+
     void insertInternal(uint32_t docId, const QVector<uint32_t> &terms);
     bool deleteInternal(uint32_t docId);
 

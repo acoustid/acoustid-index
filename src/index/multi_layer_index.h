@@ -51,6 +51,8 @@ class MultiLayerIndex : public BaseIndex {
     uint64_t insertToOplog(pb::Operation *op);
 
   private:
+	ACOUSTID_DISABLE_COPY(MultiLayerIndex);
+
     QSqlDatabase m_db;
     QSharedPointer<Index> m_persistentIndex;
     QSharedPointer<InMemoryIndex> m_inMemoryIndex;
