@@ -107,23 +107,26 @@ QString Index::getAttribute(const QString &name) {
     return info().attribute(name);
 }
 
-void Index::applyUpdates(OpStream *updates) {
+void Index::applyUpdates(const OpBatch &batch) {
     IndexWriter writer(sharedFromThis());
-    while (updates->next()) {
-        auto op = updates->operation();
-        switch (op->type()) {
+    for (auto op : batch) {
+        switch (op.type()) {
             case INSERT_OR_UPDATE_DOCUMENT:
                 {
-                    auto data = op->data()->insertOrUpdateDocument;
-                    writer.addDocument(data->docId, data->terms.data(), data->terms.size());
+                    auto data = std::get<InsertOrUpdateDocument>(op.data());
+                    writer.addDocument(data.docId, data.terms.data(), data.terms.size());
                 }
                 break;
             case DELETE_DOCUMENT:
+                {
+                    auto data = std::get<DeleteDocument>(op.data());
+                    // writer.deleteDocument(data.docId);
+                }
                 break;
             case SET_ATTRIBUTE:
                 {
-                    auto data = op->data()->setAttribute;
-                    writer.setAttribute(data->name, data->value);
+                    auto data = std::get<SetAttribute>(op.data());
+                    writer.setAttribute(data.name, data.value);
                 }
                 break;
         }

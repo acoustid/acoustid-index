@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package Acoustid;
+package Acoustid.pb;
 
 message InserOrUpdateDocumentOperation {
     uint32 id = 1;
@@ -23,10 +23,10 @@ message Operation {
         SET_ATTRIBUTE = 2;
     }
     Type type = 1;
-    oneof op {
-        InserOrUpdateDocumentOperation insert_or_update_document = 2;
-        DeleteDocumentOperation delete_document = 3;
-        SetAttributeOperation set_attribute = 4;
+    oneof data {
+        InserOrUpdateDocumentOperation insert_or_update_document_data = 2;
+        DeleteDocumentOperation delete_document_data = 3;
+        SetAttributeOperation set_attribute_data = 4;
     }
 }
 

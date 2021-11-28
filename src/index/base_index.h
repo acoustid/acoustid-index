@@ -7,6 +7,8 @@
 #include <QString>
 #include <QVector>
 
+#include <variant>
+
 #include "collector.h"
 
 namespace Acoustid {
@@ -27,53 +29,44 @@ class BaseIndexTransaction {
 };
 
 enum OpType {
+    INVALID_OP = 0,
     INSERT_OR_UPDATE_DOCUMENT = 1,
     DELETE_DOCUMENT = 2,
     SET_ATTRIBUTE = 3,
 };
 
-struct InsertOrUpdateDocumentData {
+struct InsertOrUpdateDocument {
     uint32_t docId;
     QVector<uint32_t> terms;
+    InsertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms)
+        : docId(docId), terms(terms) {}
 };
 
-struct DeleteDocumentData {
+struct DeleteDocument {
     uint32_t docId;
+    DeleteDocument(uint32_t docId) : docId(docId) {}
 };
 
-struct SetAttributeData {
+struct SetAttribute {
     QString name;
     QString value;
+    SetAttribute(const QString &name, const QString &value)
+        : name(name), value(value) {}
 };
 
-union OpData {
-    InsertOrUpdateDocumentData *insertOrUpdateDocument;
-    DeleteDocumentData *deleteDocument;
-    SetAttributeData *setAttribute;
-};
+typedef std::variant<std::monostate, InsertOrUpdateDocument, DeleteDocument, SetAttribute> OpData;
 
 class Op {
  public:
-    ~Op() {
-        switch (m_type) {
-            case INSERT_OR_UPDATE_DOCUMENT:
-                delete m_data.insertOrUpdateDocument;
-            case DELETE_DOCUMENT:
-                delete m_data.deleteDocument;
-            case SET_ATTRIBUTE:
-                delete m_data.setAttribute;
-        }
-    }
+    Op() : m_type(INVALID_OP) {}
+    Op(InsertOrUpdateDocument data) : m_type(INSERT_OR_UPDATE_DOCUMENT), m_data(data) {}
+    Op(DeleteDocument data) : m_type(DELETE_DOCUMENT), m_data(data) {}
+    Op(SetAttribute data) : m_type(SET_ATTRIBUTE), m_data(data) {}
 
     OpType type() const { return m_type; }
-    const OpData *data() const { return &m_data; }
+    const OpData data() const { return m_data; }
 
-    static Op *insertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms) {
-        auto d = new InsertOrUpdateDocumentData();
-        d->docId = docId;
-        d->terms = terms;
-        return new Op(INSERT_OR_UPDATE_DOCUMENT, OpData { .insertOrUpdateDocument = d });
-    }
+    bool isValid() const { return m_type != INVALID_OP; }
 
  private:
     Op(OpType type, OpData data) : m_type(type), m_data(data) { }
@@ -82,14 +75,39 @@ class Op {
     OpData m_data;
 };
 
-class OpStream {
+class OpBatch {
  public:
-    virtual ~OpStream() {}
+    typedef QVector<Op>::iterator iterator;
+    typedef QVector<Op>::const_iterator const_iterator;
 
-    virtual bool isValid() = 0;
-    virtual bool next() = 0;
+    void insertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms) {
+        m_ops.append(Op(InsertOrUpdateDocument(docId, terms)));
+    }
 
-    virtual Op *operation() = 0;
+    void deleteDocument(uint32_t docId) {
+        m_ops.append(Op(DeleteDocument(docId)));
+    }
+
+    void setAttribute(const QString &name, const QString &value) {
+        m_ops.append(Op(SetAttribute(name, value)));
+    }
+
+    void clear() {
+        m_ops.clear();
+    }
+
+    size_t size() const { return m_ops.size(); }
+
+    const_iterator begin() const {
+        return m_ops.begin();
+    }
+
+    const_iterator end() const {
+        return m_ops.end();
+    }
+
+ private:
+    QVector<Op> m_ops;
 };
 
 class BaseIndex {
@@ -102,7 +120,7 @@ class BaseIndex {
     virtual bool hasAttribute(const QString &name) = 0;
     virtual QString getAttribute(const QString &name) = 0;
 
-    virtual void applyUpdates(OpStream *updates) = 0;
+    virtual void applyUpdates(const OpBatch &ops) = 0;
 };
 
 } // namespace Acoustid

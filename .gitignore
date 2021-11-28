@@ -30,3 +30,5 @@ install_manifest.txt
 moc_*.cpp
 moc_*.cpp_parameters
 *_autogen
+/*.pb.h
+/*.pb.cc

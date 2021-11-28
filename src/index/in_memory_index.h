@@ -17,9 +17,9 @@ namespace Acoustid {
 
 struct InMemoryIndexData {
     QReadWriteLock lock;
-    QSet<uint32_t> docs;
-    QHash<QString, QString> attributes;
+    QHash<uint32_t, bool> docs;
     QMultiHash<uint32_t, uint32_t> index;
+    QHash<QString, QString> attributes;
 
     void insertInternal(uint32_t docId, const QVector<uint32_t> &terms);
     bool deleteInternal(uint32_t docId);
@@ -30,6 +30,8 @@ class InMemoryIndex : public BaseIndex {
     InMemoryIndex();
     virtual ~InMemoryIndex() override;
 
+    void reset();
+
     // Inserts or updates a document in the index. Returns true if the document was updated, false if it was inserted.
     bool insertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms);
 
@@ -39,13 +41,16 @@ class InMemoryIndex : public BaseIndex {
     // Returns true if the index contains the specified document.
     bool containsDocument(uint32_t docId);
 
+    // Returns true if the specified document has been deleted.
+    bool isDocumentDeleted(uint32_t docId);
+
     virtual void search(const QVector<uint32_t> &terms, Collector *collector, int64_t timeoutInMSecs = 0) override;
 
     virtual bool hasAttribute(const QString &name) override;
     virtual QString getAttribute(const QString &name) override;
     void setAttribute(const QString &name, const QString &value);
 
-    virtual void applyUpdates(OpStream *updates) override;
+    virtual void applyUpdates(const OpBatch &batch) override;
 
   private:
     void insertInternal(uint32_t docId, const QVector<uint32_t> &terms);

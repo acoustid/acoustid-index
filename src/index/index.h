@@ -49,7 +49,7 @@ public:
     virtual bool hasAttribute(const QString &name) override;
     virtual QString getAttribute(const QString &name) override;
 
-    virtual void applyUpdates(OpStream *updates) override;
+    virtual void applyUpdates(const OpBatch &batch) override;
 
 private:
 	ACOUSTID_DISABLE_COPY(Index);
