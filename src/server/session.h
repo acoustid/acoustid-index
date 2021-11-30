@@ -6,6 +6,7 @@
 
 #include <QMutex>
 #include <QSharedPointer>
+
 #include "index/top_hits_collector.h"
 
 namespace Acoustid {
@@ -18,11 +19,9 @@ namespace Server {
 
 class Metrics;
 
-class Session
-{
-public:
-	Session(QSharedPointer<Index> index, QSharedPointer<Metrics> metrics)
-        : m_index(index), m_metrics(metrics) {}
+class Session {
+ public:
+    Session(QSharedPointer<Index> index, QSharedPointer<Metrics> metrics) : m_index(index), m_metrics(metrics) {}
 
     void begin();
     void commit();
@@ -40,18 +39,18 @@ public:
 
     QSharedPointer<Metrics> metrics() const { return m_metrics; }
 
-private:
-	QMutex m_mutex;
+ private:
+    QMutex m_mutex;
     QSharedPointer<Index> m_index;
     QSharedPointer<IndexWriter> m_indexWriter;
     QSharedPointer<Metrics> m_metrics;
-	int m_topScorePercent { 10 };
-	int m_maxResults { 500 };
-    int64_t m_timeout { 0 };
-    int64_t m_idle_timeout { 60 * 1000 };
+    int m_topScorePercent{10};
+    int m_maxResults{500};
+    int64_t m_timeout{0};
+    int64_t m_idle_timeout{60 * 1000};
 };
 
-}
-}
+}  // namespace Server
+}  // namespace Acoustid
 
 #endif

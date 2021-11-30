@@ -9,8 +9,8 @@
 
 #include "base_index.h"
 #include "collector.h"
-#include "index.h"
 #include "in_memory_index.h"
+#include "index.h"
 
 namespace Acoustid {
 
@@ -19,7 +19,7 @@ class Operation;
 }
 
 class MultiLayerIndex : public BaseIndex {
-  public:
+ public:
     MultiLayerIndex();
     virtual ~MultiLayerIndex() override;
 
@@ -38,7 +38,7 @@ class MultiLayerIndex : public BaseIndex {
 
     void flush();
 
-  private:
+ private:
     int getDatabaseSchemaVersion();
     void updateDatabaseSchemaVersion(int version);
 
@@ -51,8 +51,8 @@ class MultiLayerIndex : public BaseIndex {
 
     uint64_t insertToOplog(pb::Operation *op);
 
-  private:
-	ACOUSTID_DISABLE_COPY(MultiLayerIndex);
+ private:
+    ACOUSTID_DISABLE_COPY(MultiLayerIndex);
 
     QSqlDatabase m_db;
     QSharedPointer<Index> m_persistentIndex;
@@ -61,6 +61,6 @@ class MultiLayerIndex : public BaseIndex {
     quint64 m_lastOplogId = 0;
 };
 
-} // namespace Acoustid
+}  // namespace Acoustid
 
-#endif // ACOUSTID_INDEX_MULTI_LAYER_INDEX_H_
+#endif  // ACOUSTID_INDEX_MULTI_LAYER_INDEX_H_

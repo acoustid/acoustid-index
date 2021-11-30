@@ -4,14 +4,15 @@
 #ifndef ACOUSTID_SERVER_PROTOCOL_H_
 #define ACOUSTID_SERVER_PROTOCOL_H_
 
-#include <functional>
+#include <QSharedPointer>
 #include <QString>
 #include <QStringList>
-#include <QSharedPointer>
+#include <functional>
 
 #include "request.h"
 
-namespace Acoustid { namespace Server {
+namespace Acoustid {
+namespace Server {
 
 class Session;
 
@@ -26,7 +27,7 @@ QSharedPointer<Request> parseRequest(const QString &line);
 ScopedHandlerFunc buildHandler(const QString &command, const QStringList &args);
 HandlerFunc injectSessionIntoHandler(QWeakPointer<Session> session, ScopedHandlerFunc handler);
 
-} // namespace Server
-} // namespace Acoustid
+}  // namespace Server
+}  // namespace Acoustid
 
 #endif

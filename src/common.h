@@ -9,18 +9,17 @@
 #endif
 
 #include <assert.h>
+#include <fcntl.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/stat.h>
-#include <fcntl.h>
+#include <unistd.h>
 
-#include <memory>
-
-#include <QString>
 #include <QDebug>
 #include <QSharedPointer>
+#include <QString>
+#include <memory>
 
 #include "util/exceptions.h"
 
@@ -34,10 +33,10 @@ static const int MAX_SEGMENTS_PER_TIER = 3;
 static const int MAX_SEGMENT_BLOCKS = 4 * 1024 * 1024;
 static const int FLOOR_SEGMENT_BLOCKS = 1024;
 
-#define ACOUSTID_DISABLE_COPY(ClassName)	\
-	ClassName(const ClassName &);			\
-	void operator=(const ClassName &);
+#define ACOUSTID_DISABLE_COPY(ClassName) \
+    ClassName(const ClassName &);        \
+    void operator=(const ClassName &);
 
-}
+}  // namespace Acoustid
 
 #endif

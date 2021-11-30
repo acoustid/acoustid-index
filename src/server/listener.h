@@ -4,9 +4,10 @@
 #ifndef ACOUSTID_SERVER_LISTENER_H_
 #define ACOUSTID_SERVER_LISTENER_H_
 
+#include <QSocketNotifier>
 #include <QTcpServer>
 #include <QTcpSocket>
-#include <QSocketNotifier>
+
 #include "index/index.h"
 #include "store/directory.h"
 
@@ -16,47 +17,46 @@ namespace Server {
 class Connection;
 class Metrics;
 
-class Listener : public QTcpServer
-{
-	Q_OBJECT
+class Listener : public QTcpServer {
+    Q_OBJECT
 
-public:
-	Listener(const QString &path, bool mmap = false, QObject *parent = 0);
-	~Listener();
+ public:
+    Listener(const QString &path, bool mmap = false, QObject *parent = 0);
+    ~Listener();
 
-	void stop();
+    void stop();
 
     QSharedPointer<Metrics> metrics() const { return m_metrics; }
     void setMetrics(const QSharedPointer<Metrics> &metrics) { m_metrics = metrics; }
 
-	static void setupSignalHandlers();
+    static void setupSignalHandlers();
 
-signals:
-	void lastConnectionClosed();
+ signals:
+    void lastConnectionClosed();
 
-protected:
-	void acceptNewConnection();
+ protected:
+    void acceptNewConnection();
 
-	void handleSigInt();
-	void handleSigTerm();
+    void handleSigInt();
+    void handleSigTerm();
 
-private:
-	static int m_sigIntFd[2];
-	static int m_sigTermFd[2];
-	static void sigIntHandler(int unused);
-	static void sigTermHandler(int unused);
+ private:
+    static int m_sigIntFd[2];
+    static int m_sigTermFd[2];
+    static void sigIntHandler(int unused);
+    static void sigTermHandler(int unused);
 
     void removeConnection(Connection *conn);
 
-	DirectorySharedPtr m_dir;
-	IndexSharedPtr m_index;
+    DirectorySharedPtr m_dir;
+    IndexSharedPtr m_index;
     QSharedPointer<Metrics> m_metrics;
-	QList<Connection*> m_connections;
-	QSocketNotifier *m_sigIntNotifier;
-	QSocketNotifier *m_sigTermNotifier;
+    QList<Connection *> m_connections;
+    QSocketNotifier *m_sigIntNotifier;
+    QSocketNotifier *m_sigTermNotifier;
 };
 
-}
-}
+}  // namespace Server
+}  // namespace Acoustid
 
 #endif

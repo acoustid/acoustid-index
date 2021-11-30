@@ -1,45 +1,37 @@
 // Copyright (C) 2011  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
-#include <algorithm>
+#include "index_reader.h"
+
 #include <QDateTime>
+#include <algorithm>
+
+#include "index.h"
+#include "segment_data_reader.h"
+#include "segment_docs.h"
+#include "segment_index_reader.h"
+#include "segment_searcher.h"
 #include "store/directory.h"
 #include "store/input_stream.h"
 #include "store/output_stream.h"
-#include "segment_index_reader.h"
-#include "segment_data_reader.h"
-#include "segment_searcher.h"
-#include "segment_docs.h"
-#include "index.h"
-#include "index_reader.h"
 
 using namespace Acoustid;
 
-IndexReader::IndexReader(DirectorySharedPtr dir, const IndexInfo& info)
-	: m_dir(dir), m_info(info)
-{
+IndexReader::IndexReader(DirectorySharedPtr dir, const IndexInfo& info) : m_dir(dir), m_info(info) {}
+
+IndexReader::IndexReader(IndexSharedPtr index) : m_dir(index->directory()), m_index(index) { m_info = m_index->acquireInfo(); }
+
+IndexReader::~IndexReader() {
+    if (m_index) {
+        m_index->releaseInfo(m_info);
+    }
 }
 
-IndexReader::IndexReader(IndexSharedPtr index)
-	: m_dir(index->directory()), m_index(index)
-{
-	m_info = m_index->acquireInfo();
+SegmentDataReader* IndexReader::segmentDataReader(const SegmentInfo& segment) {
+    return new SegmentDataReader(m_dir->openFile(segment.dataFileName()), BLOCK_SIZE);
 }
 
-IndexReader::~IndexReader()
-{
-	if (m_index) {
-		m_index->releaseInfo(m_info);
-	}
-}
-
-SegmentDataReader* IndexReader::segmentDataReader(const SegmentInfo& segment)
-{
-	return new SegmentDataReader(m_dir->openFile(segment.dataFileName()), BLOCK_SIZE);
-}
-
-bool IndexReader::containsDocument(uint32_t docId)
-{
+bool IndexReader::containsDocument(uint32_t docId) {
     auto currentInfo = std::make_pair<uint32_t, bool>(0, false);
     for (auto segment : m_info.segments()) {
         qDebug() << "Checking segment" << segment.id();
@@ -52,26 +44,25 @@ bool IndexReader::containsDocument(uint32_t docId)
     return currentInfo.first > 0 && !currentInfo.second;
 }
 
-QVector<SearchResult> IndexReader::search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs)
-{
+QVector<SearchResult> IndexReader::search(const QVector<uint32_t>& terms, int64_t timeoutInMSecs) {
     auto deadline = timeoutInMSecs > 0 ? (QDateTime::currentMSecsSinceEpoch() + timeoutInMSecs) : 0;
-	const SegmentInfoList& segments = m_info.segments();
+    const SegmentInfoList& segments = m_info.segments();
 
     auto sortedTerms = QVector<uint32_t>(terms);
-	std::sort(sortedTerms.begin(), sortedTerms.end());
+    std::sort(sortedTerms.begin(), sortedTerms.end());
 
     QHash<uint32_t, std::tuple<uint32_t, uint32_t, int>> hits;
     std::unordered_map<uint32_t, int> segmentHits;
-	for (int i = 0; i < segments.size(); i++) {
+    for (int i = 0; i < segments.size(); i++) {
         if (deadline > 0) {
             if (QDateTime::currentMSecsSinceEpoch() > deadline) {
                 throw TimeoutExceeded();
             }
         }
-		const SegmentInfo& s = segments.at(i);
-		SegmentSearcher searcher(s.index(), segmentDataReader(s), s.lastKey());
+        const SegmentInfo& s = segments.at(i);
+        SegmentSearcher searcher(s.index(), segmentDataReader(s), s.lastKey());
         segmentHits.clear();
-		searcher.search(sortedTerms.data(), sortedTerms.size(), segmentHits);
+        searcher.search(sortedTerms.data(), sortedTerms.size(), segmentHits);
         auto segmentId = s.id();
         for (auto hit : segmentHits) {
             auto docId = hit.first;
@@ -86,7 +77,7 @@ QVector<SearchResult> IndexReader::search(const QVector<uint32_t> &terms, int64_
                 }
             }
         }
-	}
+    }
 
     QVector<SearchResult> results;
 
@@ -107,10 +98,7 @@ QVector<SearchResult> IndexReader::search(const QVector<uint32_t> &terms, int64_
         }
     }
 
-    std::sort(results.begin(), results.end(), [](const SearchResult& a, const SearchResult& b) {
-        return a.score() >= b.score();
-    });
+    std::sort(results.begin(), results.end(), [](const SearchResult& a, const SearchResult& b) { return a.score() >= b.score(); });
 
     return results;
 }
-

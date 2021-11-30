@@ -9,40 +9,38 @@
 
 namespace Acoustid {
 
-class BufferedInputStream : public InputStream 
-{
-public:
-	BufferedInputStream(size_t bufferSize = 1024);
-	~BufferedInputStream();
+class BufferedInputStream : public InputStream {
+ public:
+    BufferedInputStream(size_t bufferSize = 1024);
+    ~BufferedInputStream();
 
-	size_t bufferSize();
-	void setBufferSize(size_t size);
+    size_t bufferSize();
+    void setBufferSize(size_t size);
 
-	uint8_t readByte()
-	{
-		if (m_position >= m_length) {
-			refill();
-		}
-		return m_buffer[m_position++];
-	}
+    uint8_t readByte() {
+        if (m_position >= m_length) {
+            refill();
+        }
+        return m_buffer[m_position++];
+    }
 
-	uint32_t readVInt32();
+    uint32_t readVInt32();
 
-	size_t position();
-	void seek(size_t position);
+    size_t position();
+    void seek(size_t position);
 
-protected:
-	virtual size_t read(uint8_t *data, size_t offset, size_t length) = 0;
-	void refill();
+ protected:
+    virtual size_t read(uint8_t *data, size_t offset, size_t length) = 0;
+    void refill();
 
-private:
-	std::unique_ptr<uint8_t[]> m_buffer;
-	size_t m_bufferSize;
-	size_t m_start;
-	size_t m_position;
-	size_t m_length;
+ private:
+    std::unique_ptr<uint8_t[]> m_buffer;
+    size_t m_bufferSize;
+    size_t m_start;
+    size_t m_position;
+    size_t m_length;
 };
 
-}
+}  // namespace Acoustid
 
 #endif

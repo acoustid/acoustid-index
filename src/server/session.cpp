@@ -2,9 +2,10 @@
 // Distributed under the MIT license, see the LICENSE file for details.
 
 #include "session.h"
+
 #include "errors.h"
-#include "index/top_hits_collector.h"
 #include "index/index_writer.h"
+#include "index/top_hits_collector.h"
 
 using namespace Acoustid;
 using namespace Acoustid::Server;

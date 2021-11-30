@@ -5,11 +5,9 @@
 
 namespace Acoustid {
 
-SegmentDocs::SegmentDocs() {
-}
+SegmentDocs::SegmentDocs() {}
 
-SegmentDocs::~SegmentDocs() {
-}
+SegmentDocs::~SegmentDocs() {}
 
 std::optional<std::pair<uint32_t, bool>> SegmentDocs::findDocumentUpdate(uint32_t docId, uint32_t currentVersion) const {
     auto it = m_docs.find(docId);

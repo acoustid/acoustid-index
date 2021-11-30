@@ -4,8 +4,9 @@
 #ifndef ACOUSTID_STORE_RAM_DIRECTORY_H_
 #define ACOUSTID_STORE_RAM_DIRECTORY_H_
 
-#include <QString>
 #include <QHash>
+#include <QString>
+
 #include "common.h"
 #include "directory.h"
 
@@ -14,29 +15,28 @@ namespace Acoustid {
 class InputStream;
 class OutputStream;
 
-class RAMDirectory : public Directory
-{
-public:
-	RAMDirectory();
-	virtual ~RAMDirectory();
+class RAMDirectory : public Directory {
+ public:
+    RAMDirectory();
+    virtual ~RAMDirectory();
 
-	virtual void close();
+    virtual void close();
 
-	const QByteArray &fileData(const QString &name);
+    const QByteArray &fileData(const QString &name);
 
-	virtual OutputStream *createFile(const QString &name);
-	virtual void deleteFile(const QString &name);
-	virtual InputStream *openFile(const QString &name);
-	virtual void renameFile(const QString &oldName, const QString &newName);
-	QStringList listFiles();
-	bool fileExists(const QString &name);
+    virtual OutputStream *createFile(const QString &name);
+    virtual void deleteFile(const QString &name);
+    virtual InputStream *openFile(const QString &name);
+    virtual void renameFile(const QString &oldName, const QString &newName);
+    QStringList listFiles();
+    bool fileExists(const QString &name);
 
     virtual QSqlDatabase openDatabase(const QString &name) override;
 
-private:
-	QHash<QString, QByteArray*> m_data;
+ private:
+    QHash<QString, QByteArray *> m_data;
 };
 
-}
+}  // namespace Acoustid
 
 #endif

@@ -1,12 +1,14 @@
 #include "protocol.h"
-#include "session.h"
+
 #include "errors.h"
 #include "index/base_index.h"
+#include "session.h"
 
-namespace Acoustid { namespace Server {
+namespace Acoustid {
+namespace Server {
 
 QVector<uint32_t> parseFingerprint(const QString &input) {
-	QStringList inputParts = input.split(',');
+    QStringList inputParts = input.split(',');
     QVector<uint32_t> output;
     output.reserve(inputParts.size());
     for (int i = 0; i < inputParts.size(); i++) {
@@ -23,13 +25,9 @@ QVector<uint32_t> parseFingerprint(const QString &input) {
     return output;
 }
 
-QString renderResponse(const QString &response) {
-    return QString("OK %1").arg(response);
-}
+QString renderResponse(const QString &response) { return QString("OK %1").arg(response); }
 
-QString renderErrorResponse(const QString &response) {
-    return QString("ERR %1").arg(response);
-}
+QString renderErrorResponse(const QString &response) { return QString("ERR %1").arg(response); }
 
 QSharedPointer<Request> parseRequest(const QString &line) {
     auto args = line.split(' ');
@@ -56,23 +54,44 @@ ScopedHandlerFunc buildHandler(const QString &command, const QStringList &args) 
     } else if (command == "set") {
         if (args.size() != 2) {
             if (args.size() == 3 and args.at(0) == "attribute") {  // backwards compatibility
-                return [=](QSharedPointer<Session> session) { session->setAttribute(args.at(1), args.at(2)); return QString(); };
+                return [=](QSharedPointer<Session> session) {
+                    session->setAttribute(args.at(1), args.at(2));
+                    return QString();
+                };
             } else {
                 throw BadRequest("expected two arguments");
             }
         } else {
-            return [=](QSharedPointer<Session> session) { session->setAttribute(args.at(0), args.at(1)); return QString(); };
+            return [=](QSharedPointer<Session> session) {
+                session->setAttribute(args.at(0), args.at(1));
+                return QString();
+            };
         }
     } else if (command == "begin") {
-        return [=](QSharedPointer<Session> session) { session->begin(); return QString(); };
+        return [=](QSharedPointer<Session> session) {
+            session->begin();
+            return QString();
+        };
     } else if (command == "commit") {
-        return [=](QSharedPointer<Session> session) { session->commit(); return QString(); };
+        return [=](QSharedPointer<Session> session) {
+            session->commit();
+            return QString();
+        };
     } else if (command == "rollback") {
-        return [=](QSharedPointer<Session> session) { session->rollback(); return QString(); };
+        return [=](QSharedPointer<Session> session) {
+            session->rollback();
+            return QString();
+        };
     } else if (command == "optimize") {
-        return [=](QSharedPointer<Session> session) { session->optimize(); return QString(); };
+        return [=](QSharedPointer<Session> session) {
+            session->optimize();
+            return QString();
+        };
     } else if (command == "cleanup") {
-        return [=](QSharedPointer<Session> session) { session->cleanup(); return QString(); };
+        return [=](QSharedPointer<Session> session) {
+            session->cleanup();
+            return QString();
+        };
     } else if (command == "insert") {
         if (args.size() != 2) {
             throw BadRequest("expected two arguments");
@@ -112,5 +131,5 @@ HandlerFunc injectSessionIntoHandler(QWeakPointer<Session> session, ScopedHandle
     };
 }
 
-} // namespace Server
-} // namespace Acoustid
+}  // namespace Server
+}  // namespace Acoustid

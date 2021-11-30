@@ -5,6 +5,7 @@
 #define ACOUSTID_SERVER_HTTP_H_
 
 #include <QSharedPointer>
+
 #include "qhttpserver.hpp"
 #include "qhttpserverrequest.hpp"
 #include "qhttpserverresponse.hpp"
@@ -16,7 +17,7 @@ class Metrics;
 
 void handleHttpRequest(qhttp::server::QHttpRequest *req, qhttp::server::QHttpResponse *res, QSharedPointer<Metrics> metrics);
 
-}
-}
+}  // namespace Server
+}  // namespace Acoustid
 
 #endif

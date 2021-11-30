@@ -1,15 +1,15 @@
 // Copyright (C) 2021  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
+#include "in_memory_index.h"
+
 #include <gtest/gtest.h>
 
-#include "in_memory_index.h"
 #include "top_hits_collector.h"
 
 using namespace Acoustid;
 
-TEST(InMemoryIndexTest, Attributes)
-{
+TEST(InMemoryIndexTest, Attributes) {
     auto index = QSharedPointer<InMemoryIndex>::create();
 
     ASSERT_FALSE(index->hasAttribute("foo"));
@@ -21,8 +21,7 @@ TEST(InMemoryIndexTest, Attributes)
     ASSERT_EQ(index->getAttribute("foo"), "bar");
 }
 
-TEST(InMemoryIndexTest, Documents)
-{
+TEST(InMemoryIndexTest, Documents) {
     auto index = QSharedPointer<InMemoryIndex>::create();
 
     ASSERT_FALSE(index->containsDocument(1));

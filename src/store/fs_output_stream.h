@@ -6,44 +6,42 @@
 
 #include <QSharedPointer>
 #include <QString>
-#include "fs_file.h"
+
 #include "buffered_output_stream.h"
+#include "fs_file.h"
 
 namespace Acoustid {
 
-class FSOutputStream : public BufferedOutputStream
-{
-public:
-	explicit FSOutputStream(const FSFileSharedPtr &file);
-	~FSOutputStream();
+class FSOutputStream : public BufferedOutputStream {
+ public:
+    explicit FSOutputStream(const FSFileSharedPtr &file);
+    ~FSOutputStream();
 
-	int fileDescriptor() const;
+    int fileDescriptor() const;
 
-	static FSOutputStream *open(const QString &fileName);
+    static FSOutputStream *open(const QString &fileName);
 
-protected:
-	size_t write(const uint8_t *data, size_t offset, size_t length);
+ protected:
+    size_t write(const uint8_t *data, size_t offset, size_t length);
 
-private:
-	FSFileSharedPtr m_file;
+ private:
+    FSFileSharedPtr m_file;
 };
 
-class NamedFSOutputStream : public FSOutputStream
-{
-public:
-	NamedFSOutputStream(const QString &name, const FSFileSharedPtr &file, bool autoDelete = false);
-	~NamedFSOutputStream();
+class NamedFSOutputStream : public FSOutputStream {
+ public:
+    NamedFSOutputStream(const QString &name, const FSFileSharedPtr &file, bool autoDelete = false);
+    ~NamedFSOutputStream();
 
-	QString fileName() const;
+    QString fileName() const;
 
-	static NamedFSOutputStream *openTemporary(bool autoDelete = false);
+    static NamedFSOutputStream *openTemporary(bool autoDelete = false);
 
-private:
-	bool m_autoDelete;
-	QString m_fileName;
+ private:
+    bool m_autoDelete;
+    QString m_fileName;
 };
 
-}
+}  // namespace Acoustid
 
 #endif
-

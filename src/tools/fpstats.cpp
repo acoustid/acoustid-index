@@ -1,48 +1,45 @@
-#include <QFile>
-#include <QTextStream>
-#include <QDebug>
 #include <stdint.h>
 #include <stdio.h>
 
-int main(int argc, char **argv)
-{
-	QTextStream in(stdin);
+#include <QDebug>
+#include <QFile>
+#include <QTextStream>
 
-	unsigned long counts[256];
-	memset(counts, 0, sizeof(counts));
+int main(int argc, char **argv) {
+    QTextStream in(stdin);
 
-	unsigned long long sum = 0;
+    unsigned long counts[256];
+    memset(counts, 0, sizeof(counts));
 
-	int bits = 8;
-	bool first = false;
+    unsigned long long sum = 0;
 
-	uint32_t mask, shift;
-	if (first) {
-		mask = ((1 << bits) - 1);
-		shift = 0;
-	}
-	else {
-		mask = 0xffffffff;
-		shift = 32 - bits;
-	}
+    int bits = 8;
+    bool first = false;
 
-	qDebug() << mask;
+    uint32_t mask, shift;
+    if (first) {
+        mask = ((1 << bits) - 1);
+        shift = 0;
+    } else {
+        mask = 0xffffffff;
+        shift = 32 - bits;
+    }
 
-	while (!in.atEnd()) {
-		uint32_t key, value;
-		in >> key >> value;
-		if (in.status() != QTextStream::Ok)
-			break;
-		counts[(key & mask) >> shift]++;
-		sum++;
-	}
+    qDebug() << mask;
 
-	unsigned long long sum2 = 0;
-	for (int i = 0; i < (1 << bits); i++) {
-		qDebug() << i << counts[i] << (100.0 * counts[i] / sum);
-		sum2 += counts[i];
-	}
+    while (!in.atEnd()) {
+        uint32_t key, value;
+        in >> key >> value;
+        if (in.status() != QTextStream::Ok) break;
+        counts[(key & mask) >> shift]++;
+        sum++;
+    }
 
-	return 0;
+    unsigned long long sum2 = 0;
+    for (int i = 0; i < (1 << bits); i++) {
+        qDebug() << i << counts[i] << (100.0 * counts[i] / sum);
+        sum2 += counts[i];
+    }
+
+    return 0;
 }
-

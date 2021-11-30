@@ -5,11 +5,10 @@
 
 using namespace Acoustid;
 
-QList<QString> SegmentInfo::files() const
-{
-	QList<QString> files;
-	files.append(indexFileName());
-	files.append(dataFileName());
-	files.append(docsFileName());
-	return files;
+QList<QString> SegmentInfo::files() const {
+    QList<QString> files;
+    files.append(indexFileName());
+    files.append(dataFileName());
+    files.append(docsFileName());
+    return files;
 }

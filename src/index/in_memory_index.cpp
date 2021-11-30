@@ -1,17 +1,15 @@
 // Copyright (C) 2021  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
-#include <QReadLocker>
-
 #include "in_memory_index.h"
+
+#include <QReadLocker>
 
 namespace Acoustid {
 
-InMemoryIndex::InMemoryIndex() : m_data(QSharedPointer<InMemoryIndexData>::create()) {
-}
+InMemoryIndex::InMemoryIndex() : m_data(QSharedPointer<InMemoryIndexData>::create()) {}
 
-InMemoryIndex::~InMemoryIndex() {
-}
+InMemoryIndex::~InMemoryIndex() {}
 
 void InMemoryIndexData::insertInternal(uint32_t docId, const QVector<uint32_t> &terms) {
     for (size_t i = 0; i < terms.size(); i++) {
@@ -95,9 +93,7 @@ QVector<SearchResult> InMemoryIndex::search(const QVector<uint32_t> &terms, int6
     for (auto it = hits.begin(); it != hits.end(); ++it) {
         results.append(SearchResult(it.key(), it.value()));
     }
-    std::sort(results.begin(), results.end(), [](const SearchResult& a, const SearchResult& b) {
-        return a.score() >= b.score();
-    });
+    std::sort(results.begin(), results.end(), [](const SearchResult &a, const SearchResult &b) { return a.score() >= b.score(); });
     return results;
 }
 
@@ -120,27 +116,21 @@ void InMemoryIndex::applyUpdates(const OpBatch &batch) {
     QWriteLocker locker(&m_data->lock);
     for (auto op : batch) {
         switch (op.type()) {
-            case INSERT_OR_UPDATE_DOCUMENT:
-                {
-                    auto data = std::get<InsertOrUpdateDocument>(op.data());
-                    m_data->deleteInternal(data.docId);
-                    m_data->insertInternal(data.docId, data.terms);
-                }
-                break;
-            case DELETE_DOCUMENT:
-                {
-                    auto data = std::get<DeleteDocument>(op.data());
-                    m_data->deleteInternal(data.docId);
-                }
-                break;
-            case SET_ATTRIBUTE:
-                {
-                    auto data = std::get<SetAttribute>(op.data());
-                    m_data->attributes[data.name] = data.value;
-                }
-                break;
+            case INSERT_OR_UPDATE_DOCUMENT: {
+                auto data = std::get<InsertOrUpdateDocument>(op.data());
+                m_data->deleteInternal(data.docId);
+                m_data->insertInternal(data.docId, data.terms);
+            } break;
+            case DELETE_DOCUMENT: {
+                auto data = std::get<DeleteDocument>(op.data());
+                m_data->deleteInternal(data.docId);
+            } break;
+            case SET_ATTRIBUTE: {
+                auto data = std::get<SetAttribute>(op.data());
+                m_data->attributes[data.name] = data.value;
+            } break;
         }
     }
 }
 
-} // namespace Acoustid
+}  // namespace Acoustid
