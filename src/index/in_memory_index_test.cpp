@@ -39,15 +39,12 @@ TEST(InMemoryIndexTest, Documents)
     ASSERT_FALSE(index->insertOrUpdateDocument(2, {102, 202, 302}));
     ASSERT_FALSE(index->insertOrUpdateDocument(3, {103, 203, 303}));
 
-    auto collector = QSharedPointer<TopHitsCollector>::create(100);
-    index->search({101, 201, 303}, collector.get());
-
-    auto results = collector->topResults();
+    auto results = index->search({101, 201, 303});
     ASSERT_EQ(results.size(), 2);
 
-    ASSERT_EQ(results[0].id(), 1);
+    ASSERT_EQ(results[0].docId(), 1);
     ASSERT_EQ(results[0].score(), 2);
 
-    ASSERT_EQ(results[1].id(), 3);
+    ASSERT_EQ(results[1].docId(), 3);
     ASSERT_EQ(results[1].score(), 1);
 }

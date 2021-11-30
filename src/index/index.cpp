@@ -28,7 +28,7 @@ Index::~Index()
 
 void Index::open(bool create)
 {
-	if (!m_info.load(m_dir.data(), true)) {
+	if (!m_info.load(m_dir.data(), true, true)) {
 		if (create) {
 			IndexWriter(m_dir, m_info).commit();
 			return open(false);
@@ -94,9 +94,14 @@ void Index::updateInfo(const IndexInfo& oldInfo, const IndexInfo& newInfo, bool 
 	}
 }
 
-void Index::search(const QVector<uint32_t> &terms, Collector *collector, int64_t timeoutInMSecs) {
+bool Index::containsDocument(uint32_t docId) {
     IndexReader reader(sharedFromThis());
-    reader.search(terms.data(), static_cast<size_t>(terms.size()), collector, timeoutInMSecs);
+    return reader.containsDocument(docId);
+}
+
+QVector<SearchResult> Index::search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs) {
+    IndexReader reader(sharedFromThis());
+    return reader.search(terms, timeoutInMSecs);
 }
 
 bool Index::hasAttribute(const QString &name) {
@@ -114,13 +119,13 @@ void Index::applyUpdates(const OpBatch &batch) {
             case INSERT_OR_UPDATE_DOCUMENT:
                 {
                     auto data = std::get<InsertOrUpdateDocument>(op.data());
-                    writer.addDocument(data.docId, data.terms.data(), data.terms.size());
+                    writer.insertOrUpdateDocument(data.docId, data.terms);
                 }
                 break;
             case DELETE_DOCUMENT:
                 {
                     auto data = std::get<DeleteDocument>(op.data());
-                    // writer.deleteDocument(data.docId);
+                    writer.deleteDocument(data.docId);
                 }
                 break;
             case SET_ATTRIBUTE:

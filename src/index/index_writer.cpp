@@ -7,6 +7,7 @@
 #include "store/output_stream.h"
 #include "segment_index_writer.h"
 #include "segment_data_writer.h"
+#include "segment_docs_writer.h"
 #include "segment_index_reader.h"
 #include "segment_data_reader.h"
 #include "segment_merger.h"
@@ -37,15 +38,22 @@ IndexWriter::~IndexWriter()
 	}
 }
 
-void IndexWriter::addDocument(uint32_t id, const uint32_t *terms, size_t length)
+void IndexWriter::insertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms)
 {
-	for (size_t i = 0; i < length; i++) {
-		m_segmentBuffer.push_back(packItem(terms[i], id));
+    m_segmentBufferDocs[docId] = false;
+    for (auto term : terms) {
+		m_segmentBuffer.push_back(packItem(term, docId));
 	}
-	if (id > m_maxDocumentId) {
-		m_maxDocumentId = id;
+	if (docId > m_maxDocumentId) {
+		m_maxDocumentId = docId;
 	}
 	maybeFlush();
+}
+
+void IndexWriter::deleteDocument(uint32_t docId)
+{
+    m_segmentBufferDocs[docId] = true;
+    maybeFlush();
 }
 
 void IndexWriter::setAttribute(const QString& name, const QString& value)
@@ -86,18 +94,40 @@ void IndexWriter::merge(const QList<int>& merge)
 		return;
 	}
 
-	uint32_t expectedChecksum = 0;
 	const SegmentInfoList& segments = m_info.segments();
+
 	IndexInfo info(m_info);
 	SegmentInfo segment(info.incLastSegmentId());
+
+    auto docs = std::make_shared<SegmentDocs>();
+    {
+		for (size_t i = 0; i < merge.size(); i++) {
+            auto j = merge.at(i);
+            const auto s = segments.at(j);
+            for (auto doc : *s.docs()) {
+                docs->add(doc.docId(), doc.version(), doc.isDeleted());
+            }
+
+        }
+        saveSegmentDocs(segment, docs);
+    }
+
 	{
 		SegmentMerger merger(segmentDataWriter(segment));
 		for (size_t i = 0; i < merge.size(); i++) {
 			int j = merge.at(i);
 			const SegmentInfo& s = segments.at(j);
-			expectedChecksum ^= s.checksum();
+            QSet<uint32_t> excludeDocIds;
+            for (auto doc : *s.docs()) {
+                if (doc.version() < docs->getVersion(doc.docId())) {
+                    qDebug() << "Need to remove" << doc.docId() << "from" << s.name() << "before merging";
+                    excludeDocIds.insert(doc.docId());
+                }
+            }
 			qDebug() << "Merging segment" << s.id() << "with checksum" << s.checksum() << "into segment" << segment.id();
-			merger.addSource(new SegmentEnum(s.index(), segmentDataReader(s)));
+            auto source = new SegmentEnum(s.index(), segmentDataReader(s));
+            source->setFilter(excludeDocIds);
+			merger.addSource(source);
 		}
 		merger.merge();
 		segment.setBlockCount(merger.writer()->blockCount());
@@ -107,10 +137,6 @@ void IndexWriter::merge(const QList<int>& merge)
 	}
 
 	qDebug() << "New segment" << segment.id() << "with checksum" << segment.checksum() << "(merge)";
-
-	if (segment.checksum() != expectedChecksum) {
-		throw CorruptIndexException("checksum mismatch after merge");
-	}
 
 	QSet<int> merged = merge.toSet();
 	info.clearSegments();
@@ -133,19 +159,27 @@ void IndexWriter::maybeMerge()
 	merge(m_mergePolicy->findMerges(segments));
 }
 
+void IndexWriter::saveSegmentDocs(SegmentInfo &segment, const std::shared_ptr<SegmentDocs> &docs)
+{
+    auto output = std::unique_ptr<OutputStream>(m_dir->createFile(segment.docsFileName()));
+    writeSegmentDocs(output.get(), docs.get());
+    segment.setDocs(docs);
+}
+
 void IndexWriter::flush()
 {
-	if (m_segmentBuffer.empty()) {
+	if (m_segmentBuffer.empty() && m_segmentBufferDocs.empty()) {
 		return;
 	}
 	//qDebug() << "Writing new segment" << (m_segmentBuffer.size() * 8.0 / 1024 / 1024);
-	std::sort(m_segmentBuffer.begin(), m_segmentBuffer.end());
 
 	IndexInfo info(m_info);
 	SegmentInfo segment(info.incLastSegmentId());
+
 	{
 		std::unique_ptr<SegmentDataWriter> writer(segmentDataWriter(segment));
 		uint64_t lastItem = UINT64_MAX;
+	    std::sort(m_segmentBuffer.begin(), m_segmentBuffer.end());
 		for (size_t i = 0; i < m_segmentBuffer.size(); i++) {
 			uint64_t item = m_segmentBuffer[i];
 			if (item != lastItem) {
@@ -161,6 +195,17 @@ void IndexWriter::flush()
 		segment.setIndex(writer->index());
 	}
 
+    {
+        auto docs = std::make_shared<SegmentDocs>();
+        const auto version = segment.id();
+        for (auto it : m_segmentBufferDocs) {
+            const auto docId = it.first;
+            const auto isDeleted = it.second;
+            docs->add(docId, version, isDeleted);
+        }
+        saveSegmentDocs(segment, docs);
+    }
+
 	qDebug() << "New segment" << segment.id() << "with checksum" << segment.checksum();
 	info.addSegment(segment);
 	if (info.attribute("max_document_id").toInt() < m_maxDocumentId) {
@@ -173,6 +218,7 @@ void IndexWriter::flush()
 
 	maybeMerge();
 	m_segmentBuffer.clear();
+    m_segmentBufferDocs.clear();
 }
 
 void IndexWriter::optimize()
@@ -198,6 +244,7 @@ void IndexWriter::cleanup()
 		const SegmentInfo& segment = segments.at(i);
 		usedFileNames.insert(segment.indexFileName());
 		usedFileNames.insert(segment.dataFileName());
+		usedFileNames.insert(segment.docsFileName());
 	}
 
 	QList<QString> allFileNames = m_dir->listFiles();

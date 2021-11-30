@@ -99,16 +99,19 @@ void Session::insert(uint32_t id, const QVector<uint32_t> &hashes) {
     if (m_indexWriter.isNull()) {
         throw NotInTransactionException();
     }
-    m_indexWriter->addDocument(id, hashes.data(), hashes.size());
+    m_indexWriter->insertOrUpdateDocument(id, hashes);
 }
 
-QList<Result> Session::search(const QVector<uint32_t> &terms) {
+QVector<SearchResult> Session::search(const QVector<uint32_t> &terms) {
     QMutexLocker locker(&m_mutex);
-    TopHitsCollector collector(m_maxResults, m_topScorePercent);
+    QVector<SearchResult> results;
     try {
-        m_index->search(terms, &collector, m_timeout);
+        results = m_index->search(terms, m_timeout);
     } catch (TimeoutExceeded) {
         throw HandlerException("timeout exceeded");
     }
-    return collector.topResults();
+    if (results.size() > m_maxResults) {
+        results.remove(m_maxResults, results.size() - m_maxResults);
+    }
+    return results;
 }

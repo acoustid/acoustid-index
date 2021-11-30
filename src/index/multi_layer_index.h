@@ -27,7 +27,8 @@ class MultiLayerIndex : public BaseIndex {
 
     void open(QSharedPointer<Directory> dir, bool create = false);
 
-    virtual void search(const QVector<uint32_t> &terms, Collector *collector, int64_t timeoutInMSecs = 0) override;
+    virtual bool containsDocument(uint32_t docId) override;
+    virtual QVector<SearchResult> search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs = 0) override;
 
     virtual bool hasAttribute(const QString &name) override;
     virtual QString getAttribute(const QString &name) override;

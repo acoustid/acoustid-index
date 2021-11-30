@@ -69,10 +69,15 @@ void MultiLayerIndex::open(QSharedPointer<Directory> dir, bool create) {
     m_persistentIndex = QSharedPointer<Index>::create(dir, create);
 }
 
-void MultiLayerIndex::search(const QVector<uint32_t> &terms, Collector *collector, int64_t timeoutInMSecs) {
+bool MultiLayerIndex::containsDocument(uint32_t docId) {
+    return m_inMemoryIndex->containsDocument(docId) || m_persistentIndex->containsDocument(docId);
+}
+
+QVector<SearchResult> MultiLayerIndex::search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs) {
     assert(isOpen());
-    m_inMemoryIndex->search(terms, collector, timeoutInMSecs);
-    m_persistentIndex->search(terms, collector, timeoutInMSecs);
+    auto results = m_inMemoryIndex->search(terms, timeoutInMSecs);
+    results.append(m_persistentIndex->search(terms, timeoutInMSecs));
+    return results;
 }
 
 bool MultiLayerIndex::hasAttribute(const QString &name) {

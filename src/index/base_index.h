@@ -110,12 +110,31 @@ class OpBatch {
     QVector<Op> m_ops;
 };
 
+class SearchResult {
+ public:
+    SearchResult()
+        : m_docId(0), m_score(0) {}
+
+    SearchResult(uint32_t docId, uint32_t score)
+        : m_docId(docId), m_score(score) {}
+
+    bool isValid() const { return m_docId != 0; }
+
+    uint32_t docId() const { return m_docId; }
+    uint32_t score() const { return m_score; }
+
+ private:
+    uint32_t m_docId;
+    uint32_t m_score;
+};
+
 class BaseIndex {
  public:
     BaseIndex() {}
     virtual ~BaseIndex() {}
-    
-	virtual void search(const QVector<uint32_t> &terms, Collector *collector, int64_t timeoutInMSecs) = 0;
+
+    virtual bool containsDocument(uint32_t docId) = 0;
+	virtual QVector<SearchResult> search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs) = 0;
 
     virtual bool hasAttribute(const QString &name) = 0;
     virtual QString getAttribute(const QString &name) = 0;

@@ -36,7 +36,9 @@ public:
 		return m_mergePolicy.get();
 	}
 
-	void addDocument(uint32_t id, const uint32_t *terms, size_t length);
+	void insertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms);
+    void deleteDocument(uint32_t docId);
+
 	void setAttribute(const QString &name, const QString &value);
 	void commit();
 	void cleanup();
@@ -51,9 +53,12 @@ private:
 
 	SegmentDataWriter *segmentDataWriter(const SegmentInfo& info);
 
+    void saveSegmentDocs(SegmentInfo &segment, const std::shared_ptr<SegmentDocs> &docs);
+
 	uint32_t m_maxDocumentId;
 	size_t m_maxSegmentBufferSize;
 	std::vector<uint64_t> m_segmentBuffer;
+    std::map<uint32_t, bool> m_segmentBufferDocs;
 	std::unique_ptr<SegmentMergePolicy> m_mergePolicy;
 };
 

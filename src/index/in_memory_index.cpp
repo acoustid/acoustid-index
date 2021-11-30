@@ -78,17 +78,27 @@ bool InMemoryIndex::insertOrUpdateDocument(uint32_t docId, const QVector<uint32_
     return updated;
 }
 
-void InMemoryIndex::search(const QVector<uint32_t> &terms, Collector *collector, int64_t timeoutInMSecs) {
+QVector<SearchResult> InMemoryIndex::search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs) {
     QReadLocker locker(&m_data->lock);
     const auto &index = m_data->index;
+    QHash<uint32_t, int> hits;
     for (size_t i = 0; i < terms.size(); i++) {
         const auto term = terms[i];
         QHash<uint32_t, uint32_t>::const_iterator valuesIter = index.find(term);
         while (valuesIter != index.end() && valuesIter.key() == term) {
-            collector->collect(valuesIter.value());
+            auto docId = valuesIter.value();
+            hits[docId]++;
             ++valuesIter;
         }
     }
+    QVector<SearchResult> results;
+    for (auto it = hits.begin(); it != hits.end(); ++it) {
+        results.append(SearchResult(it.key(), it.value()));
+    }
+    std::sort(results.begin(), results.end(), [](const SearchResult& a, const SearchResult& b) {
+        return a.score() >= b.score();
+    });
+    return results;
 }
 
 bool InMemoryIndex::hasAttribute(const QString &name) {

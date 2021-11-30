@@ -52,18 +52,18 @@ TEST(SessionTest, InsertAndSearch)
     {
         auto results = session->search({ 1, 2, 3 });
         ASSERT_EQ(2, results.size());
-        ASSERT_EQ(1, results[0].id());
+        ASSERT_EQ(1, results[0].docId());
         ASSERT_EQ(3, results[0].score());
-        ASSERT_EQ(2, results[1].id());
+        ASSERT_EQ(2, results[1].docId());
         ASSERT_EQ(1, results[1].score());
     }
 
     {
         auto results = session->search({ 1, 200, 300 });
         ASSERT_EQ(2, results.size());
-        ASSERT_EQ(2, results[0].id());
+        ASSERT_EQ(2, results[0].docId());
         ASSERT_EQ(3, results[0].score());
-        ASSERT_EQ(1, results[1].id());
+        ASSERT_EQ(1, results[1].docId());
         ASSERT_EQ(1, results[1].score());
     }
 
@@ -72,7 +72,7 @@ TEST(SessionTest, InsertAndSearch)
     {
         auto results = session->search({ 1, 2, 3 });
         ASSERT_EQ(1, results.size());
-        ASSERT_EQ(1, results[0].id());
+        ASSERT_EQ(1, results[0].docId());
         ASSERT_EQ(3, results[0].score());
     }
 }

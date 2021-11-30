@@ -1,6 +1,7 @@
 #include "protocol.h"
 #include "session.h"
 #include "errors.h"
+#include "index/base_index.h"
 
 namespace Acoustid { namespace Server {
 
@@ -92,7 +93,7 @@ ScopedHandlerFunc buildHandler(const QString &command, const QStringList &args) 
             QStringList output;
             output.reserve(results.size());
             for (int i = 0; i < results.size(); i++) {
-                output.append(QString("%1:%2").arg(results[i].id()).arg(results[i].score()));
+                output.append(QString("%1:%2").arg(results[i].docId()).arg(results[i].score()));
             }
             return output.join(" ");
         };

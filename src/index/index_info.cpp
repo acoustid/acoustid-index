@@ -5,6 +5,7 @@
 #include "store/input_stream.h"
 #include "store/output_stream.h"
 #include "segment_index_reader.h"
+#include "segment_docs_reader.h"
 #include "store/checksum_input_stream.h"
 #include "store/checksum_output_stream.h"
 #include "index_info.h"
@@ -53,7 +54,7 @@ int IndexInfo::findCurrentRevision(Directory* dir, int maxRevision)
 	return currentRev;
 }
 
-bool IndexInfo::load(Directory* dir, bool loadIndexes)
+bool IndexInfo::load(Directory* dir, bool loadIndexes, bool loadDocs)
 {
 	int revision = 0;
 	while (true) {
@@ -62,7 +63,7 @@ bool IndexInfo::load(Directory* dir, bool loadIndexes)
 			break;
 		}
 		try {
-			load(dir->openFile(indexInfoFileName(revision)), loadIndexes, dir);
+			load(dir->openFile(indexInfoFileName(revision)), loadIndexes, loadDocs, dir);
 			d->revision = revision;
 			return true;
 		}
@@ -77,7 +78,7 @@ bool IndexInfo::load(Directory* dir, bool loadIndexes)
 	return false;
 }
 
-void IndexInfo::load(InputStream* rawInput, bool loadIndexes, Directory* dir)
+void IndexInfo::load(InputStream* rawInput, bool loadIndexes, bool loadDocs, Directory* dir)
 {
 	std::unique_ptr<ChecksumInputStream> input(new ChecksumInputStream(rawInput));
 	setLastSegmentId(input->readVInt32());
@@ -92,6 +93,9 @@ void IndexInfo::load(InputStream* rawInput, bool loadIndexes, Directory* dir)
 		if (loadIndexes) {
 			segment.setIndex(SegmentIndexReader(dir->openFile(segment.indexFileName()), segment.blockCount()).read());
 		}
+        if (loadDocs) {
+            segment.setDocs(SegmentDocsReader(dir->openFile(segment.docsFileName())).read());
+        }
 		addSegment(segment);
 	}
 	size_t attribsCount = input->readVInt32();

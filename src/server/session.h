@@ -12,6 +12,7 @@ namespace Acoustid {
 
 class Index;
 class IndexWriter;
+class SearchResult;
 
 namespace Server {
 
@@ -29,7 +30,7 @@ public:
     void optimize();
     void cleanup();
     void insert(uint32_t id, const QVector<uint32_t> &hashes);
-    QList<Result> search(const QVector<uint32_t> &hashes);
+    QVector<SearchResult> search(const QVector<uint32_t> &hashes);
 
     QString getAttribute(const QString &name);
     void setAttribute(const QString &name, const QString &value);
