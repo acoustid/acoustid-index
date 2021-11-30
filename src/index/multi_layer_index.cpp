@@ -1,20 +1,23 @@
 // Copyright (C) 2021  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
-#include "multi_layer_index.h"
-
-#include <QDateTime>
 #include <QSqlQuery>
+#include <QDateTime>
 
+#include "multi_layer_index.h"
 #include "oplog.pb.h"
 
 namespace Acoustid {
 
-MultiLayerIndex::MultiLayerIndex() : m_inMemoryIndex(QSharedPointer<InMemoryIndex>::create()) {}
+MultiLayerIndex::MultiLayerIndex() : m_inMemoryIndex(QSharedPointer<InMemoryIndex>::create()) {
+}
 
-MultiLayerIndex::~MultiLayerIndex() {}
+MultiLayerIndex::~MultiLayerIndex() {
+}
 
-bool MultiLayerIndex::isOpen() { return m_db.isValid() && m_db.isOpen() && m_persistentIndex; }
+bool MultiLayerIndex::isOpen() {
+    return m_db.isValid() && m_db.isOpen() && m_persistentIndex;
+}
 
 int MultiLayerIndex::getDatabaseSchemaVersion() {
     QSqlQuery query(m_db);
@@ -40,12 +43,8 @@ void MultiLayerIndex::updateDatabaseSchemaVersion(int version) {
 
 void MultiLayerIndex::upgradeDatabaseSchemaV1() {
     QSqlQuery query(m_db);
-    query.exec(
-        "CREATE TABLE schema_version (id INTEGER PRIMARY KEY, version "
-        "INTEGER)");
-    query.exec(
-        "CREATE TABLE oplog (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, "
-        "op TEXT, data TEXT)");
+    query.exec("CREATE TABLE schema_version (id INTEGER PRIMARY KEY, version INTEGER)");
+    query.exec("CREATE TABLE oplog (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, op TEXT, data TEXT)");
 }
 
 void MultiLayerIndex::upgradeDatabaseSchema() {
@@ -70,7 +69,9 @@ void MultiLayerIndex::open(QSharedPointer<Directory> dir, bool create) {
     m_persistentIndex = QSharedPointer<Index>::create(dir, create);
 }
 
-bool MultiLayerIndex::containsDocument(uint32_t docId) { return m_inMemoryIndex->containsDocument(docId) || m_persistentIndex->containsDocument(docId); }
+bool MultiLayerIndex::containsDocument(uint32_t docId) {
+    return m_inMemoryIndex->containsDocument(docId) || m_persistentIndex->containsDocument(docId);
+}
 
 QVector<SearchResult> MultiLayerIndex::search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs) {
     assert(isOpen());
@@ -243,4 +244,5 @@ void MultiLayerIndex::setAttribute(const QString &name, const QString &value) {
     applyUpdates(batch);
 }
 
-}  // namespace Acoustid
+} // namespace Acoustid
+

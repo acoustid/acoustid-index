@@ -9,34 +9,35 @@
 
 namespace Acoustid {
 
-class BufferedOutputStream : public OutputStream {
- public:
-    BufferedOutputStream(size_t bufferSize = 1024 * 8);
-    ~BufferedOutputStream();
+class BufferedOutputStream : public OutputStream 
+{
+public:
+	BufferedOutputStream(size_t bufferSize = 1024 * 8);
+	~BufferedOutputStream();
 
-    size_t bufferSize();
-    void setBufferSize(size_t size);
+	size_t bufferSize();
+	void setBufferSize(size_t size);
 
-    void writeByte(uint8_t);
-    void writeBytes(const uint8_t *data, size_t length);
+	void writeByte(uint8_t);
+	void writeBytes(const uint8_t *data, size_t length);
 
-    size_t position();
-    void seek(size_t position);
-    void flush();
+	size_t position();
+	void seek(size_t position);
+	void flush();
 
- protected:
-    virtual size_t write(const uint8_t *data, size_t offset, size_t length) = 0;
-    void flushBuffer();
-    void refill();
+protected:
+	virtual size_t write(const uint8_t *data, size_t offset, size_t length) = 0;
+	void flushBuffer();
+	void refill();
 
- private:
-    std::unique_ptr<uint8_t[]> m_buffer;
-    size_t m_bufferSize;
-    size_t m_start;
-    size_t m_position;
-    size_t m_length;
+private:
+	std::unique_ptr<uint8_t[]> m_buffer;
+	size_t m_bufferSize;
+	size_t m_start;
+	size_t m_position;
+	size_t m_length;
 };
 
-}  // namespace Acoustid
+}
 
 #endif

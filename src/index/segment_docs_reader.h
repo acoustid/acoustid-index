@@ -11,13 +11,14 @@ namespace Acoustid {
 
 class InputStream;
 
-class SegmentDocsReader {
- public:
-    SegmentDocsReader(InputStream *input);
+class SegmentDocsReader
+{
+public:
+	SegmentDocsReader(InputStream *input);
     std::shared_ptr<SegmentDocs> read();
 
- private:
-    std::unique_ptr<InputStream> m_input;
+private:
+	std::unique_ptr<InputStream> m_input;
 };
 
 }  // namespace Acoustid

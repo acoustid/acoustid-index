@@ -6,9 +6,9 @@
 
 #include <QHash>
 #include <QMultiHash>
-#include <QReadWriteLock>
 #include <QString>
 #include <QVector>
+#include <QReadWriteLock>
 
 #include "base_index.h"
 #include "collector.h"
@@ -26,18 +26,16 @@ struct InMemoryIndexData {
 };
 
 class InMemoryIndex : public BaseIndex {
- public:
+  public:
     InMemoryIndex();
     virtual ~InMemoryIndex() override;
 
     void reset();
 
-    // Inserts or updates a document in the index. Returns true if the document
-    // was updated, false if it was inserted.
+    // Inserts or updates a document in the index. Returns true if the document was updated, false if it was inserted.
     bool insertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms);
 
-    // Removes a document from the index. Returns true if the document was
-    // removed.
+    // Removes a document from the index. Returns true if the document was removed.
     bool deleteDocument(uint32_t docId);
 
     // Returns true if the index contains the specified document.
@@ -54,8 +52,8 @@ class InMemoryIndex : public BaseIndex {
 
     virtual void applyUpdates(const OpBatch &batch) override;
 
- private:
-    ACOUSTID_DISABLE_COPY(InMemoryIndex);
+  private:
+	ACOUSTID_DISABLE_COPY(InMemoryIndex);
 
     void insertInternal(uint32_t docId, const QVector<uint32_t> &terms);
     bool deleteInternal(uint32_t docId);
@@ -63,6 +61,6 @@ class InMemoryIndex : public BaseIndex {
     QSharedPointer<InMemoryIndexData> m_data;
 };
 
-}  // namespace Acoustid
+} // namespace Acoustid
 
-#endif  // ACOUSTID_INDEX_IN_MEMORY_INDEX_H_
+#endif // ACOUSTID_INDEX_IN_MEMORY_INDEX_H_

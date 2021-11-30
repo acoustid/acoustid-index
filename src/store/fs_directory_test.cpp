@@ -1,11 +1,11 @@
 // Copyright (C) 2021  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
-#include "fs_directory.h"
-
 #include <gtest/gtest.h>
 
 #include <QSqlQuery>
+
+#include "fs_directory.h"
 
 using namespace Acoustid;
 

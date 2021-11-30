@@ -8,23 +8,25 @@
 
 namespace Acoustid {
 
-class MemoryInputStream : public InputStream {
- public:
-    explicit MemoryInputStream(const uint8_t *addr, size_t m_length);
-    ~MemoryInputStream();
+class MemoryInputStream : public InputStream
+{
+public:
+	explicit MemoryInputStream(const uint8_t *addr, size_t m_length);
+	~MemoryInputStream();
 
-    size_t position();
-    void seek(size_t position);
+	size_t position();
+	void seek(size_t position);
 
-    uint8_t readByte();
-    uint32_t readVInt32();
+	uint8_t readByte();
+	uint32_t readVInt32();
 
- private:
-    const uint8_t *m_addr;
-    size_t m_length;
-    size_t m_position;
+private:
+	const uint8_t *m_addr;
+	size_t m_length;
+	size_t m_position;	
 };
 
-}  // namespace Acoustid
+}
 
 #endif
+

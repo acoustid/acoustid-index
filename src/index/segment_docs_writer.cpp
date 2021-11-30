@@ -1,17 +1,23 @@
 // Copyright (C) 2021  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
-#include "segment_docs_writer.h"
-
 #include "store/output_stream.h"
+#include "segment_docs_writer.h"
 
 namespace Acoustid {
 
-SegmentDocsWriter::SegmentDocsWriter(OutputStream *output) : m_output(output) {}
+SegmentDocsWriter::SegmentDocsWriter(OutputStream *output)
+	: m_output(output)
+{
+}
 
-SegmentDocsWriter::~SegmentDocsWriter() { close(); }
+SegmentDocsWriter::~SegmentDocsWriter()
+{
+	close();
+}
 
-void SegmentDocsWriter::write(SegmentDocs *docs) {
+void SegmentDocsWriter::write(SegmentDocs *docs)
+{
     for (auto doc : *docs) {
         m_output->writeInt32(doc.docId());
         m_output->writeInt32(doc.version());
@@ -19,12 +25,14 @@ void SegmentDocsWriter::write(SegmentDocs *docs) {
     }
 }
 
-void SegmentDocsWriter::close() {
+void SegmentDocsWriter::close()
+{
     m_output->writeInt32(0);
-    m_output->flush();
+	m_output->flush();
 }
 
-void writeSegmentDocs(OutputStream *output, SegmentDocs *docs) {
+void writeSegmentDocs(OutputStream *output, SegmentDocs *docs)
+{
     SegmentDocsWriter writer(output);
     writer.write(docs);
 }

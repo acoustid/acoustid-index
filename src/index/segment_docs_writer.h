@@ -11,16 +11,17 @@ namespace Acoustid {
 
 class OutputStream;
 
-class SegmentDocsWriter {
- public:
-    SegmentDocsWriter(OutputStream *output);
-    virtual ~SegmentDocsWriter();
+class SegmentDocsWriter
+{
+public:
+	SegmentDocsWriter(OutputStream *output);
+	virtual ~SegmentDocsWriter();
 
-    void write(SegmentDocs *docs);
-    void close();
+	void write(SegmentDocs *docs);
+	void close();
 
- private:
-    OutputStream *m_output;
+private:
+	OutputStream *m_output;
 };
 
 void writeSegmentDocs(OutputStream *output, SegmentDocs *docs);

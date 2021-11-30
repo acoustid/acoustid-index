@@ -1,5 +1,4 @@
 #include "http.h"
-
 #include "metrics.h"
 
 using namespace qhttp::server;
@@ -33,5 +32,6 @@ void handleHttpRequest(QHttpRequest *req, QHttpResponse *res, QSharedPointer<Met
     }
 }
 
-}  // namespace Server
-}  // namespace Acoustid
+}
+}
+

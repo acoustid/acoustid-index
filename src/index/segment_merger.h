@@ -5,27 +5,34 @@
 #define ACOUSTID_INDEX_SEGMENT_MERGER_H_
 
 #include "common.h"
-#include "segment_data_writer.h"
 #include "segment_enum.h"
+#include "segment_data_writer.h"
 
 namespace Acoustid {
 
-class SegmentMerger {
- public:
-    SegmentMerger(SegmentDataWriter *target);
-    virtual ~SegmentMerger();
+class SegmentMerger
+{
+public:
+	SegmentMerger(SegmentDataWriter *target);
+	virtual ~SegmentMerger();
 
-    void addSource(SegmentEnum *reader) { m_readers.append(reader); }
+	void addSource(SegmentEnum *reader)
+	{
+		m_readers.append(reader);
+	}
 
-    SegmentDataWriter *writer() { return m_writer.get(); }
+	SegmentDataWriter *writer()
+	{
+		return m_writer.get();
+	}
 
-    size_t merge();
+	size_t merge();
 
- private:
-    QList<SegmentEnum *> m_readers;
-    std::unique_ptr<SegmentDataWriter> m_writer;
+private:
+	QList<SegmentEnum *> m_readers;
+	std::unique_ptr<SegmentDataWriter> m_writer;
 };
 
-}  // namespace Acoustid
+}
 
 #endif

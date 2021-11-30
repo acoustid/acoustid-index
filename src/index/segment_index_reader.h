@@ -11,18 +11,19 @@ namespace Acoustid {
 
 class InputStream;
 
-class SegmentIndexReader {
- public:
-    SegmentIndexReader(InputStream *input, size_t blockCount);
-    virtual ~SegmentIndexReader();
+class SegmentIndexReader
+{
+public:
+	SegmentIndexReader(InputStream *input, size_t blockCount);
+	virtual ~SegmentIndexReader();
 
-    SegmentIndexSharedPtr read();
+	SegmentIndexSharedPtr read();
 
- private:
-    std::unique_ptr<InputStream> m_input;
-    size_t m_blockCount;
+private:
+	std::unique_ptr<InputStream> m_input;
+	size_t m_blockCount;
 };
 
-}  // namespace Acoustid
+}
 
 #endif

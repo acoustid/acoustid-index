@@ -4,31 +4,42 @@
 #ifndef ACOUSTID_UTIL_TIMER_H_
 #define ACOUSTID_UTIL_TIMER_H_
 
+#include "common.h"
 #include <sys/time.h>
 
-#include "common.h"
+class Timer
+{
+public:
 
-class Timer {
- public:
-    void start() { m_started = currentTime(); }
-
-    double restart() {
-        unsigned long now = currentTime();
-        double elapsed = (now - m_started) / 1000.0;
-        m_started = now;
-        return elapsed;
+    void start()
+    {
+		m_started = currentTime();
     }
 
-    double elapsed() const { return (currentTime() - m_started) / 1000.0; }
+    double restart()
+    {
+		unsigned long now = currentTime();
+		double elapsed = (now - m_started) / 1000.0;
+		m_started = now;
+		return elapsed;
+	}
 
- private:
-    unsigned long currentTime() const {
-        struct timeval tv;
+    double elapsed() const
+    {
+		return (currentTime() - m_started) / 1000.0;
+    }
+
+private:
+
+	unsigned long currentTime() const
+	{
+		struct timeval tv;
         gettimeofday(&tv, NULL);
-        return tv.tv_sec * 1000 * 1000 + tv.tv_usec;
-    }
+		return tv.tv_sec * 1000 * 1000 + tv.tv_usec;
+	}
 
-    unsigned long m_started;
+	unsigned long m_started;
 };
 
 #endif
+

@@ -9,19 +9,21 @@
 
 namespace Acoustid {
 
-class MMapInputStream : public MemoryInputStream {
- public:
-    explicit MMapInputStream(const FSFileSharedPtr &file);
+class MMapInputStream : public MemoryInputStream
+{
+public:
+	explicit MMapInputStream(const FSFileSharedPtr &file);
 
-    int fileDescriptor() const;
-    const FSFileSharedPtr &file() const;
+	int fileDescriptor() const;
+	const FSFileSharedPtr &file() const;
 
-    static MMapInputStream *open(const QString &fileName);
+	static MMapInputStream *open(const QString &fileName);
 
- private:
-    FSFileSharedPtr m_file;
+private:
+	FSFileSharedPtr m_file;
 };
 
-}  // namespace Acoustid
+}
 
 #endif
+

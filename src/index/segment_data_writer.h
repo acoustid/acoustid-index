@@ -14,44 +14,45 @@ class SegmentIndexWriter;
 
 typedef QPair<uint32_t, uint32_t> Int32Pair;
 
-class SegmentDataWriter {
- public:
-    SegmentDataWriter(OutputStream *output, SegmentIndexWriter *indexWriter, size_t blockSize);
-    virtual ~SegmentDataWriter();
+class SegmentDataWriter
+{
+public:
+	SegmentDataWriter(OutputStream *output, SegmentIndexWriter *indexWriter, size_t blockSize);
+	virtual ~SegmentDataWriter();
 
-    // Number of blocks written into the file.
-    size_t blockCount() const { return m_blockCount; }
+	// Number of blocks written into the file.
+	size_t blockCount() const { return m_blockCount; }
 
-    // Last key written into the file.
-    uint32_t lastKey() const { return m_lastKey; }
+	// Last key written into the file.
+	uint32_t lastKey() const { return m_lastKey; }
 
-    uint32_t checksum() const { return m_checksum; }
+	uint32_t checksum() const { return m_checksum; }
 
-    SegmentIndexSharedPtr index() const { return m_index; }
+	SegmentIndexSharedPtr index() const { return m_index; }
 
-    size_t blockSize() { return m_blockSize; }
-    void setBlockSize(size_t blockSize);
+	size_t blockSize() { return m_blockSize; }
+	void setBlockSize(size_t blockSize);
 
-    void addItem(uint32_t key, uint32_t value);
-    void close();
+	void addItem(uint32_t key, uint32_t value);
+	void close();
 
- private:
-    void writeBlock();
+private:
+	void writeBlock();
 
-    std::unique_ptr<OutputStream> m_output;
-    std::unique_ptr<SegmentIndexWriter> m_indexWriter;
-    SegmentIndexSharedPtr m_index;
-    std::vector<uint32_t> m_indexData;
-    size_t m_blockSize;
-    uint32_t m_lastKey;
-    uint32_t m_lastValue;
-    uint32_t m_checksum;
-    size_t m_itemCount;
-    size_t m_blockCount;
-    uint8_t *m_ptr;
-    std::unique_ptr<uint8_t[]> m_buffer;
+	std::unique_ptr<OutputStream> m_output;
+	std::unique_ptr<SegmentIndexWriter> m_indexWriter;
+	SegmentIndexSharedPtr m_index;
+	std::vector<uint32_t> m_indexData;
+	size_t m_blockSize;
+	uint32_t m_lastKey;
+	uint32_t m_lastValue;
+	uint32_t m_checksum;
+	size_t m_itemCount;
+	size_t m_blockCount;
+	uint8_t *m_ptr;
+	std::unique_ptr<uint8_t[]> m_buffer;
 };
 
-}  // namespace Acoustid
+}
 
 #endif

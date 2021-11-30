@@ -11,19 +11,20 @@ namespace Acoustid {
 
 class SegmentDataReader;
 
-class SegmentSearcher {
- public:
-    SegmentSearcher(SegmentIndexSharedPtr index, SegmentDataReader *dataReader, uint32_t lastKey = UINT32_MAX);
-    virtual ~SegmentSearcher();
+class SegmentSearcher
+{
+public:
+	SegmentSearcher(SegmentIndexSharedPtr index, SegmentDataReader *dataReader, uint32_t lastKey = UINT32_MAX);
+	virtual ~SegmentSearcher();
 
-    void search(uint32_t *fingerprint, size_t length, std::unordered_map<uint32_t, int> &hits);
+	void search(uint32_t *fingerprint, size_t length, std::unordered_map<uint32_t, int> &hits);
 
- private:
-    SegmentIndexSharedPtr m_index;
-    std::unique_ptr<SegmentDataReader> m_dataReader;
-    uint32_t m_lastKey;
+private:
+	SegmentIndexSharedPtr m_index;
+	std::unique_ptr<SegmentDataReader> m_dataReader;
+	uint32_t m_lastKey;
 };
 
-}  // namespace Acoustid
+}
 
 #endif

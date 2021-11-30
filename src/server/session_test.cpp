@@ -1,20 +1,19 @@
 // Copyright (C) 2020  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
-#include "server/session.h"
-
 #include <gtest/gtest.h>
-
+#include "store/ram_directory.h"
 #include "index/index.h"
 #include "server/metrics.h"
-#include "store/ram_directory.h"
+#include "server/session.h"
 
 using namespace Acoustid;
 using namespace Acoustid::Server;
 
-TEST(SessionTest, Attributes) {
-    auto storage = QSharedPointer<RAMDirectory>::create();
-    auto index = QSharedPointer<Index>::create(storage, true);
+TEST(SessionTest, Attributes)
+{
+	auto storage = QSharedPointer<RAMDirectory>::create();
+	auto index = QSharedPointer<Index>::create(storage, true);
     auto metrics = QSharedPointer<Metrics>::create();
     auto session = QSharedPointer<Session>::create(index, metrics);
 
@@ -38,19 +37,20 @@ TEST(SessionTest, Attributes) {
     ASSERT_EQ("100", session->getAttribute("timeout").toStdString());
 }
 
-TEST(SessionTest, InsertAndSearch) {
-    auto storage = QSharedPointer<RAMDirectory>::create();
-    auto index = QSharedPointer<Index>::create(storage, true);
+TEST(SessionTest, InsertAndSearch)
+{
+	auto storage = QSharedPointer<RAMDirectory>::create();
+	auto index = QSharedPointer<Index>::create(storage, true);
     auto metrics = QSharedPointer<Metrics>::create();
     auto session = QSharedPointer<Session>::create(index, metrics);
 
     session->begin();
-    session->insert(1, {1, 2, 3});
-    session->insert(2, {1, 200, 300});
+    session->insert(1, { 1, 2, 3 });
+    session->insert(2, { 1, 200, 300 });
     session->commit();
 
     {
-        auto results = session->search({1, 2, 3});
+        auto results = session->search({ 1, 2, 3 });
         ASSERT_EQ(2, results.size());
         ASSERT_EQ(1, results[0].docId());
         ASSERT_EQ(3, results[0].score());
@@ -59,7 +59,7 @@ TEST(SessionTest, InsertAndSearch) {
     }
 
     {
-        auto results = session->search({1, 200, 300});
+        auto results = session->search({ 1, 200, 300 });
         ASSERT_EQ(2, results.size());
         ASSERT_EQ(2, results[0].docId());
         ASSERT_EQ(3, results[0].score());
@@ -70,7 +70,7 @@ TEST(SessionTest, InsertAndSearch) {
     session->setAttribute("max_results", "1");
 
     {
-        auto results = session->search({1, 2, 3});
+        auto results = session->search({ 1, 2, 3 });
         ASSERT_EQ(1, results.size());
         ASSERT_EQ(1, results[0].docId());
         ASSERT_EQ(3, results[0].score());

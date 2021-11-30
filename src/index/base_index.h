@@ -6,6 +6,7 @@
 
 #include <QString>
 #include <QVector>
+
 #include <variant>
 
 #include "collector.h"
@@ -37,7 +38,8 @@ enum OpType {
 struct InsertOrUpdateDocument {
     uint32_t docId;
     QVector<uint32_t> terms;
-    InsertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms) : docId(docId), terms(terms) {}
+    InsertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms)
+        : docId(docId), terms(terms) {}
 };
 
 struct DeleteDocument {
@@ -48,7 +50,8 @@ struct DeleteDocument {
 struct SetAttribute {
     QString name;
     QString value;
-    SetAttribute(const QString &name, const QString &value) : name(name), value(value) {}
+    SetAttribute(const QString &name, const QString &value)
+        : name(name), value(value) {}
 };
 
 typedef std::variant<std::monostate, InsertOrUpdateDocument, DeleteDocument, SetAttribute> OpData;
@@ -66,7 +69,7 @@ class Op {
     bool isValid() const { return m_type != INVALID_OP; }
 
  private:
-    Op(OpType type, OpData data) : m_type(type), m_data(data) {}
+    Op(OpType type, OpData data) : m_type(type), m_data(data) { }
 
     OpType m_type;
     OpData m_data;
@@ -77,19 +80,31 @@ class OpBatch {
     typedef QVector<Op>::iterator iterator;
     typedef QVector<Op>::const_iterator const_iterator;
 
-    void insertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms) { m_ops.append(Op(InsertOrUpdateDocument(docId, terms))); }
+    void insertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms) {
+        m_ops.append(Op(InsertOrUpdateDocument(docId, terms)));
+    }
 
-    void deleteDocument(uint32_t docId) { m_ops.append(Op(DeleteDocument(docId))); }
+    void deleteDocument(uint32_t docId) {
+        m_ops.append(Op(DeleteDocument(docId)));
+    }
 
-    void setAttribute(const QString &name, const QString &value) { m_ops.append(Op(SetAttribute(name, value))); }
+    void setAttribute(const QString &name, const QString &value) {
+        m_ops.append(Op(SetAttribute(name, value)));
+    }
 
-    void clear() { m_ops.clear(); }
+    void clear() {
+        m_ops.clear();
+    }
 
     size_t size() const { return m_ops.size(); }
 
-    const_iterator begin() const { return m_ops.begin(); }
+    const_iterator begin() const {
+        return m_ops.begin();
+    }
 
-    const_iterator end() const { return m_ops.end(); }
+    const_iterator end() const {
+        return m_ops.end();
+    }
 
  private:
     QVector<Op> m_ops;
@@ -97,9 +112,11 @@ class OpBatch {
 
 class SearchResult {
  public:
-    SearchResult() : m_docId(0), m_score(0) {}
+    SearchResult()
+        : m_docId(0), m_score(0) {}
 
-    SearchResult(uint32_t docId, uint32_t score) : m_docId(docId), m_score(score) {}
+    SearchResult(uint32_t docId, uint32_t score)
+        : m_docId(docId), m_score(score) {}
 
     bool isValid() const { return m_docId != 0; }
 
@@ -117,7 +134,7 @@ class BaseIndex {
     virtual ~BaseIndex() {}
 
     virtual bool containsDocument(uint32_t docId) = 0;
-    virtual QVector<SearchResult> search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs) = 0;
+	virtual QVector<SearchResult> search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs) = 0;
 
     virtual bool hasAttribute(const QString &name) = 0;
     virtual QString getAttribute(const QString &name) = 0;
@@ -125,6 +142,6 @@ class BaseIndex {
     virtual void applyUpdates(const OpBatch &ops) = 0;
 };
 
-}  // namespace Acoustid
+} // namespace Acoustid
 
-#endif  // ACOUSTID_INDEX_BASE_INDEX_H_
+#endif // ACOUSTID_INDEX_BASE_INDEX_H_

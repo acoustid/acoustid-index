@@ -1,15 +1,15 @@
 // Copyright (C) 2021  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
-#include "multi_layer_index.h"
-
 #include <gtest/gtest.h>
 
+#include "multi_layer_index.h"
 #include "store/ram_directory.h"
 
 using namespace Acoustid;
 
-TEST(MultiLayerIndex, Open) {
+TEST(MultiLayerIndex, Open)
+{
     auto dir = QSharedPointer<RAMDirectory>::create();
     auto index = QSharedPointer<MultiLayerIndex>::create();
 

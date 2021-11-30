@@ -5,27 +5,27 @@
 #define ACOUSTID_INDEX_SEGMENT_INDEX_WRITER_H_
 
 #include <QList>
-
 #include "common.h"
 
 namespace Acoustid {
 
 class OutputStream;
 
-class SegmentIndexWriter {
- public:
-    SegmentIndexWriter(OutputStream *output);
-    virtual ~SegmentIndexWriter();
+class SegmentIndexWriter
+{
+public:
+	SegmentIndexWriter(OutputStream *output);
+	virtual ~SegmentIndexWriter();
 
-    void addItem(uint32_t key);
-    void close();
+	void addItem(uint32_t key);
+	void close();
 
- private:
-    void maybeWriteHeader();
+private:
+	void maybeWriteHeader();
 
-    std::unique_ptr<OutputStream> m_output;
+	std::unique_ptr<OutputStream> m_output;
 };
 
-}  // namespace Acoustid
+}
 
 #endif
