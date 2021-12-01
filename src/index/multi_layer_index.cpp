@@ -1,23 +1,20 @@
 // Copyright (C) 2021  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
-#include <QSqlQuery>
-#include <QDateTime>
-
 #include "multi_layer_index.h"
+
+#include <QDateTime>
+#include <QSqlQuery>
+
 #include "oplog.pb.h"
 
 namespace Acoustid {
 
-MultiLayerIndex::MultiLayerIndex() : m_inMemoryIndex(QSharedPointer<InMemoryIndex>::create()) {
-}
+MultiLayerIndex::MultiLayerIndex() : m_inMemoryIndex(QSharedPointer<InMemoryIndex>::create()) {}
 
-MultiLayerIndex::~MultiLayerIndex() {
-}
+MultiLayerIndex::~MultiLayerIndex() {}
 
-bool MultiLayerIndex::isOpen() {
-    return m_db.isValid() && m_db.isOpen() && m_persistentIndex;
-}
+bool MultiLayerIndex::isOpen() { return m_db.isValid() && m_db.isOpen() && m_persistentIndex; }
 
 int MultiLayerIndex::getDatabaseSchemaVersion() {
     QSqlQuery query(m_db);
@@ -244,5 +241,4 @@ void MultiLayerIndex::setAttribute(const QString &name, const QString &value) {
     applyUpdates(batch);
 }
 
-} // namespace Acoustid
-
+}  // namespace Acoustid
