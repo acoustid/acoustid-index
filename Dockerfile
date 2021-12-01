@@ -3,7 +3,7 @@ FROM ubuntu:20.04
 RUN useradd -m -s /bin/bash -u 1000 acoustid
 
 RUN apt-get update && \
-    apt-get install -y libqt5network5 libqt5core5a libqt5sql5 libstdc++6 libgcc1 libgcc-s1 libprotobuf17
+    apt-get install -y libqt5network5 libqt5core5a libqt5sql5 libstdc++6 libgcc1 libgcc-s1
 
 ADD acoustid-index.deb /tmp/
 RUN dpkg -i /tmp/acoustid-index.deb && rm /tmp/acoustid-index.deb

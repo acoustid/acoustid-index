@@ -16,7 +16,6 @@ set(CMAKE_AUTORCC ON)
 
 find_package(GTest)
 find_package(Qt5 COMPONENTS Core Network Concurrent Sql REQUIRED)
-find_package(Protobuf REQUIRED)
 
 set(CPACK_GENERATOR "DEB")
 set(CPACK_PACKAGE_NAME acoustid-index)
@@ -57,10 +56,6 @@ set(fpindexlib_SOURCES
 	src/index/segment_merge_policy.cpp
 	src/index/segment_merger.cpp
 	src/index/segment_searcher.cpp
-	src/index/in_memory_index.h
-	src/index/in_memory_index.cpp
-	src/index/multi_layer_index.h
-	src/index/multi_layer_index.cpp
 	src/index/top_hits_collector.h
 	src/index/top_hits_collector.cpp
 	src/store/buffered_input_stream.cpp
@@ -81,10 +76,8 @@ set(fpindexlib_SOURCES
 	src/util/options.cpp
 )
 
-protobuf_generate_cpp(fpindexlib_proto_SOURCES fpindexlib_proto_HEADERS src/proto/oplog.proto)
-
 add_library(fpindexlib ${fpindexlib_SOURCES} ${fpindexlib_proto_SOURCES} ${fpindexlib_proto_HEADERS})
-target_link_libraries(fpindexlib Qt5::Core Qt5::Network Qt5::Concurrent Qt5::Sql protobuf::libprotobuf)
+target_link_libraries(fpindexlib Qt5::Core Qt5::Network Qt5::Concurrent Qt5::Sql)
 
 set(fpserver_SOURCES
 	src/server/listener.cpp
@@ -141,8 +134,6 @@ set(tests_SOURCES
 	src/index/segment_index_writer_test.cpp
 	src/index/index_test.cpp
 	src/index/index_info_test.cpp
-	src/index/in_memory_index_test.cpp
-	src/index/multi_layer_index_test.cpp
 	src/index/index_reader_test.cpp
 	src/index/index_writer_test.cpp
 	src/index/index_file_deleter_test.cpp
