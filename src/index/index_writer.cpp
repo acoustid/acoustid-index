@@ -120,7 +120,6 @@ void IndexWriter::merge(const QList<int>& merge)
             QSet<uint32_t> excludeDocIds;
             for (auto doc : *s.docs()) {
                 if (doc.version() < docs->getVersion(doc.docId())) {
-                    qDebug() << "Need to remove" << doc.docId() << "from" << s.name() << "before merging";
                     excludeDocIds.insert(doc.docId());
                 }
             }

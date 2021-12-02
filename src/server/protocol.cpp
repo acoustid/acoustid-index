@@ -79,8 +79,17 @@ ScopedHandlerFunc buildHandler(const QString &command, const QStringList &args) 
         }
         return [=](QSharedPointer<Session> session) {
             auto id = args.at(0).toInt();
-            auto hashes = parseFingerprint(args.at(1));
-            session->insert(id, hashes);
+            auto terms = parseFingerprint(args.at(1));
+            session->insertOrUpdateDocument(id, terms);
+            return QString();
+        };
+    } else if (command == "delete") {
+        if (args.size() != 1) {
+            throw BadRequest("expected one argument");
+        }
+        return [=](QSharedPointer<Session> session) {
+            auto id = args.at(0).toInt();
+            session->deleteDocument(id);
             return QString();
         };
     } else if (command == "search") {

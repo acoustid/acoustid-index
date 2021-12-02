@@ -45,8 +45,8 @@ TEST(SessionTest, InsertAndSearch)
     auto session = QSharedPointer<Session>::create(index, metrics);
 
     session->begin();
-    session->insert(1, { 1, 2, 3 });
-    session->insert(2, { 1, 200, 300 });
+    session->insertOrUpdateDocument(1, { 1, 2, 3 });
+    session->insertOrUpdateDocument(2, { 1, 200, 300 });
     session->commit();
 
     {

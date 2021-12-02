@@ -29,8 +29,9 @@ public:
     void rollback();
     void optimize();
     void cleanup();
-    void insert(uint32_t id, const QVector<uint32_t> &hashes);
-    QVector<SearchResult> search(const QVector<uint32_t> &hashes);
+    void insertOrUpdateDocument(uint32_t id, const QVector<uint32_t> &terms);
+    void deleteDocument(uint32_t id);
+    QVector<SearchResult> search(const QVector<uint32_t> &terms);
 
     QString getAttribute(const QString &name);
     void setAttribute(const QString &name, const QString &value);

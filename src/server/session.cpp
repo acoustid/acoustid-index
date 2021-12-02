@@ -94,12 +94,20 @@ void Session::setAttribute(const QString &name, const QString &value) {
     m_indexWriter->setAttribute(name, value);
 }
 
-void Session::insert(uint32_t id, const QVector<uint32_t> &hashes) {
+void Session::insertOrUpdateDocument(uint32_t id, const QVector<uint32_t> &terms) {
     QMutexLocker locker(&m_mutex);
     if (m_indexWriter.isNull()) {
         throw NotInTransactionException();
     }
-    m_indexWriter->insertOrUpdateDocument(id, hashes);
+    m_indexWriter->insertOrUpdateDocument(id, terms);
+}
+
+void Session::deleteDocument(uint32_t id) {
+    QMutexLocker locker(&m_mutex);
+    if (m_indexWriter.isNull()) {
+        throw NotInTransactionException();
+    }
+    m_indexWriter->deleteDocument(id);
 }
 
 QVector<SearchResult> Session::search(const QVector<uint32_t> &terms) {
