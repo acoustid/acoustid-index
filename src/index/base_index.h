@@ -108,6 +108,9 @@ class SearchResult {
     uint32_t docId() const { return m_docId; }
     uint32_t score() const { return m_score; }
 
+    bool operator==(const SearchResult &other) const { return m_docId == other.m_docId && m_score == other.m_score; }
+    bool operator!=(const SearchResult &other) const { return !operator==(other); }
+
  private:
     uint32_t m_docId;
     uint32_t m_score;

@@ -26,6 +26,8 @@ public:
 	Index(DirectorySharedPtr dir, bool create = false);
 	virtual ~Index();
 
+    bool isOpen() const;
+
 	// Return the directory which contains the index data
 	DirectorySharedPtr directory()
 	{
@@ -49,6 +51,9 @@ public:
 
     virtual bool hasAttribute(const QString &name) override;
     virtual QString getAttribute(const QString &name) override;
+
+    void insertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms);
+    void deleteDocument(uint32_t docId);
 
     virtual void applyUpdates(const OpBatch &batch) override;
 

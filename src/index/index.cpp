@@ -39,6 +39,11 @@ void Index::open(bool create)
 	m_open = true;
 }
 
+bool Index::isOpen() const
+{
+    return m_open;
+}
+
 void Index::acquireWriterLock()
 {
 	QMutexLocker locker(&m_mutex);
@@ -110,6 +115,18 @@ bool Index::hasAttribute(const QString &name) {
 
 QString Index::getAttribute(const QString &name) {
     return info().attribute(name);
+}
+
+void Index::insertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms) {
+    OpBatch batch;
+    batch.insertOrUpdateDocument(docId, terms);
+    applyUpdates(batch);
+}
+
+void Index::deleteDocument(uint32_t docId) {
+    OpBatch batch;
+    batch.deleteDocument(docId);
+    applyUpdates(batch);
 }
 
 void Index::applyUpdates(const OpBatch &batch) {
