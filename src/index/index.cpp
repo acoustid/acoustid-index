@@ -104,7 +104,7 @@ bool Index::containsDocument(uint32_t docId) {
     return reader.containsDocument(docId);
 }
 
-QVector<SearchResult> Index::search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs) {
+std::vector<SearchResult> Index::search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs) {
     IndexReader reader(sharedFromThis());
     return reader.search(terms, timeoutInMSecs);
 }

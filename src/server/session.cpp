@@ -110,16 +110,16 @@ void Session::deleteDocument(uint32_t id) {
     m_indexWriter->deleteDocument(id);
 }
 
-QVector<SearchResult> Session::search(const QVector<uint32_t> &terms) {
+std::vector<SearchResult> Session::search(const QVector<uint32_t> &terms) {
     QMutexLocker locker(&m_mutex);
-    QVector<SearchResult> results;
+    std::vector<SearchResult> results;
     try {
         results = m_index->search(terms, m_timeout);
     } catch (TimeoutExceeded) {
         throw HandlerException("timeout exceeded");
     }
     if (results.size() > m_maxResults) {
-        results.remove(m_maxResults, results.size() - m_maxResults);
+        results.erase(results.begin() + m_maxResults, results.end());
     }
     return results;
 }

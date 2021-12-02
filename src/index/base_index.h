@@ -28,7 +28,6 @@ class BaseIndexTransaction {
 };
 
 enum OpType {
-    INVALID_OP = 0,
     INSERT_OR_UPDATE_DOCUMENT = 1,
     DELETE_DOCUMENT = 2,
     SET_ATTRIBUTE = 3,
@@ -55,15 +54,12 @@ typedef std::variant<std::monostate, InsertOrUpdateDocument, DeleteDocument, Set
 
 class Op {
  public:
-    Op() : m_type(INVALID_OP) {}
     Op(InsertOrUpdateDocument data) : m_type(INSERT_OR_UPDATE_DOCUMENT), m_data(data) {}
     Op(DeleteDocument data) : m_type(DELETE_DOCUMENT), m_data(data) {}
     Op(SetAttribute data) : m_type(SET_ATTRIBUTE), m_data(data) {}
 
     OpType type() const { return m_type; }
-    const OpData data() const { return m_data; }
-
-    bool isValid() const { return m_type != INVALID_OP; }
+    const OpData &data() const { return m_data; }
 
  private:
     Op(OpType type, OpData data) : m_type(type), m_data(data) {}
@@ -74,36 +70,31 @@ class Op {
 
 class OpBatch {
  public:
-    typedef QVector<Op>::iterator iterator;
-    typedef QVector<Op>::const_iterator const_iterator;
+    typedef std::vector<Op>::iterator iterator;
+    typedef std::vector<Op>::const_iterator const_iterator;
 
     void insertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms) {
-        m_ops.append(Op(InsertOrUpdateDocument(docId, terms)));
+        m_ops.push_back(Op(InsertOrUpdateDocument(docId, terms)));
     }
 
-    void deleteDocument(uint32_t docId) { m_ops.append(Op(DeleteDocument(docId))); }
+    void deleteDocument(uint32_t docId) { m_ops.push_back(Op(DeleteDocument(docId))); }
 
-    void setAttribute(const QString &name, const QString &value) { m_ops.append(Op(SetAttribute(name, value))); }
+    void setAttribute(const QString &name, const QString &value) { m_ops.push_back(Op(SetAttribute(name, value))); }
 
     void clear() { m_ops.clear(); }
 
     size_t size() const { return m_ops.size(); }
 
     const_iterator begin() const { return m_ops.begin(); }
-
     const_iterator end() const { return m_ops.end(); }
 
  private:
-    QVector<Op> m_ops;
+    std::vector<Op> m_ops;
 };
 
 class SearchResult {
  public:
-    SearchResult() : m_docId(0), m_score(0) {}
-
     SearchResult(uint32_t docId, uint32_t score) : m_docId(docId), m_score(score) {}
-
-    bool isValid() const { return m_docId != 0; }
 
     uint32_t docId() const { return m_docId; }
     uint32_t score() const { return m_score; }
@@ -122,7 +113,7 @@ class BaseIndex {
     virtual ~BaseIndex() {}
 
     virtual bool containsDocument(uint32_t docId) = 0;
-    virtual QVector<SearchResult> search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs) = 0;
+    virtual std::vector<SearchResult> search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs) = 0;
 
     virtual bool hasAttribute(const QString &name) = 0;
     virtual QString getAttribute(const QString &name) = 0;

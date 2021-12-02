@@ -52,7 +52,7 @@ bool IndexReader::containsDocument(uint32_t docId)
     return currentInfo.first > 0 && !currentInfo.second;
 }
 
-QVector<SearchResult> IndexReader::search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs)
+std::vector<SearchResult> IndexReader::search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs)
 {
     auto deadline = timeoutInMSecs > 0 ? (QDateTime::currentMSecsSinceEpoch() + timeoutInMSecs) : 0;
 	const SegmentInfoList& segments = m_info.segments();
@@ -88,7 +88,7 @@ QVector<SearchResult> IndexReader::search(const QVector<uint32_t> &terms, int64_
         }
 	}
 
-    QVector<SearchResult> results;
+    std::vector<SearchResult> results;
 
     for (auto it = hits.begin(); it != hits.end(); ++it) {
         auto docId = it.key();
@@ -103,7 +103,7 @@ QVector<SearchResult> IndexReader::search(const QVector<uint32_t> &terms, int64_
             }
         }
         if (currentVersion == version) {
-            results.append(SearchResult(docId, score));
+            results.push_back(SearchResult(docId, score));
         }
     }
 
