@@ -2,7 +2,6 @@
 // Distributed under the MIT license, see the LICENSE file for details.
 
 #include <algorithm>
-#include "collector.h"
 #include "segment_data_reader.h"
 #include "segment_searcher.h"
 
@@ -17,7 +16,7 @@ SegmentSearcher::~SegmentSearcher()
 {
 }
 
-void SegmentSearcher::search(uint32_t *fingerprint, size_t length, Collector *collector)
+void SegmentSearcher::search(uint32_t *fingerprint, size_t length, std::unordered_map<uint32_t, int> &hits)
 {
 	size_t i = 0, block = 0, lastBlock = SIZE_MAX;
 	while (i < length) {
@@ -60,7 +59,8 @@ void SegmentSearcher::search(uint32_t *fingerprint, size_t length, Collector *co
 					}
 				}
 				if (key == fingerprint[i]) {
-					collector->collect(blockData->value());
+                    auto docId = blockData->value();
+                    hits[docId]++;
 				}
 			}
 		}
@@ -68,4 +68,3 @@ void SegmentSearcher::search(uint32_t *fingerprint, size_t length, Collector *co
 		block++;
 	}
 }
-

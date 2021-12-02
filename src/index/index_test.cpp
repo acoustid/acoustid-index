@@ -1,43 +1,116 @@
 // Copyright (C) 2011  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
+#include "index.h"
+
 #include <gtest/gtest.h>
-#include "util/test_utils.h"
-#include "store/ram_directory.h"
+
 #include "store/input_stream.h"
 #include "store/output_stream.h"
-#include "index.h"
-#include "index_writer.h"
+#include "store/ram_directory.h"
+#include "util/test_utils.h"
 
 using namespace Acoustid;
 
-TEST(IndexTest, OpenEmpty)
-{
-	DirectorySharedPtr dir(new RAMDirectory());
-	ASSERT_FALSE(dir->fileExists("info_0"));
-	ASSERT_THROW({ Index index(dir); }, IOException);
+TEST(IndexTest, OpenEmpty) {
+    auto dir = QSharedPointer<RAMDirectory>::create();
+    ASSERT_THROW({ QSharedPointer<Index>::create(dir); }, IOException);
 }
 
-TEST(IndexTest, OpenEmptyCreate)
-{
-	DirectorySharedPtr dir(new RAMDirectory());
-	ASSERT_FALSE(dir->fileExists("info_0"));
-	Index index(dir, true);
-	ASSERT_TRUE(dir->fileExists("info_0"));
+TEST(IndexTest, OpenEmptyCreate) {
+    auto dir = QSharedPointer<RAMDirectory>::create();
+    auto index = QSharedPointer<Index>::create(dir, true);
+    ASSERT_TRUE(index->isOpen());
 }
 
-TEST(IndexTest, DeleteUnusedFiled)
-{
-	DirectorySharedPtr dir(new RAMDirectory());
-	IndexSharedPtr index(new Index(dir, true));
+TEST(IndexTest, Insert) {
+    auto dir = QSharedPointer<RAMDirectory>::create();
+    auto index = QSharedPointer<Index>::create(dir, true);
 
-	ASSERT_TRUE(index->directory()->fileExists("info_0"));
-	{
-		std::unique_ptr<IndexWriter> writer(new IndexWriter(index));
-		uint32_t fp[] = { 1, 2, 3 };
-		writer->addDocument(1, fp, 3);
-		writer->commit();
-	}
-	ASSERT_TRUE(index->directory()->fileExists("info_1"));
-	ASSERT_FALSE(index->directory()->fileExists("info_0"));
+    ASSERT_FALSE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
+
+    index->insertOrUpdateDocument(1, {1, 2, 3});
+    ASSERT_TRUE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{SearchResult(1, 3)});
+
+    index = QSharedPointer<Index>::create(dir, false);
+
+    ASSERT_TRUE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{SearchResult(1, 3)});
+}
+
+TEST(IndexTest, InsertAndUpdate) {
+    auto dir = QSharedPointer<RAMDirectory>::create();
+    auto index = QSharedPointer<Index>::create(dir, true);
+
+    ASSERT_FALSE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
+
+    index->insertOrUpdateDocument(1, {1, 2, 3});
+    ASSERT_TRUE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{SearchResult(1, 3)});
+
+    index->insertOrUpdateDocument(1, {5, 6, 7});
+    ASSERT_TRUE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
+    ASSERT_EQ(index->search({5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
+    ASSERT_EQ(index->search({1, 2, 3, 4, 5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
+
+    index = QSharedPointer<Index>::create(dir, false);
+
+    ASSERT_TRUE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
+    ASSERT_EQ(index->search({5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
+    ASSERT_EQ(index->search({1, 2, 3, 4, 5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
+}
+
+TEST(IndexTest, InsertAndDelete) {
+    auto dir = QSharedPointer<RAMDirectory>::create();
+    auto index = QSharedPointer<Index>::create(dir, true);
+
+    ASSERT_FALSE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
+
+    index->insertOrUpdateDocument(1, {1, 2, 3});
+    ASSERT_TRUE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{SearchResult(1, 3)});
+
+    index->deleteDocument(1);
+    ASSERT_FALSE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
+
+    index = QSharedPointer<Index>::create(dir, false);
+
+    ASSERT_FALSE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
+}
+
+TEST(IndexTest, InsertAndDeleteAndInsert) {
+    auto dir = QSharedPointer<RAMDirectory>::create();
+    auto index = QSharedPointer<Index>::create(dir, true);
+
+    ASSERT_FALSE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
+
+    index->insertOrUpdateDocument(1, {1, 2, 3});
+    ASSERT_TRUE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{SearchResult(1, 3)});
+
+    index->deleteDocument(1);
+    ASSERT_FALSE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
+
+    index->insertOrUpdateDocument(1, {5, 6, 7});
+    ASSERT_TRUE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
+    ASSERT_EQ(index->search({5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
+    ASSERT_EQ(index->search({1, 2, 3, 4, 5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
+
+    index = QSharedPointer<Index>::create(dir, false);
+
+    ASSERT_TRUE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
+    ASSERT_EQ(index->search({5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
+    ASSERT_EQ(index->search({1, 2, 3, 4, 5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
 }

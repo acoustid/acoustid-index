@@ -3,8 +3,6 @@
 
 #include "session.h"
 #include "errors.h"
-#include "index/top_hits_collector.h"
-#include "index/index_reader.h"
 #include "index/index_writer.h"
 
 using namespace Acoustid;
@@ -66,7 +64,7 @@ QString Session::getAttribute(const QString &name) {
         return QString("%1").arg(m_idle_timeout);
     }
     if (m_indexWriter.isNull()) {
-        return m_index->info().attribute(name);
+        return m_index->getAttribute(name);
     }
     return m_indexWriter->info().attribute(name);
 }
@@ -95,22 +93,30 @@ void Session::setAttribute(const QString &name, const QString &value) {
     m_indexWriter->setAttribute(name, value);
 }
 
-void Session::insert(uint32_t id, const QVector<uint32_t> &hashes) {
+void Session::insertOrUpdateDocument(uint32_t id, const std::vector<uint32_t> &terms) {
     QMutexLocker locker(&m_mutex);
     if (m_indexWriter.isNull()) {
         throw NotInTransactionException();
     }
-    m_indexWriter->addDocument(id, hashes.data(), hashes.size());
+    m_indexWriter->insertOrUpdateDocument(id, terms);
 }
 
-QList<Result> Session::search(const QVector<uint32_t> &hashes) {
+void Session::deleteDocument(uint32_t id) {
     QMutexLocker locker(&m_mutex);
-    TopHitsCollector collector(m_maxResults, m_topScorePercent);
-    IndexReader reader(m_index);
+    if (m_indexWriter.isNull()) {
+        throw NotInTransactionException();
+    }
+    m_indexWriter->deleteDocument(id);
+}
+
+std::vector<SearchResult> Session::search(const std::vector<uint32_t> &terms) {
+    QMutexLocker locker(&m_mutex);
+    std::vector<SearchResult> results;
     try {
-        reader.search(hashes.data(), hashes.size(), &collector, m_timeout);
+        results = m_index->search(terms, m_timeout);
     } catch (TimeoutExceeded) {
         throw HandlerException("timeout exceeded");
     }
-    return collector.topResults();
+    filterSearchResults(results, m_maxResults, m_topScorePercent);
+    return results;
 }

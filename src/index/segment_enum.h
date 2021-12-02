@@ -18,18 +18,25 @@ public:
 		  m_currentBlock(nullptr)
 	{}
 
+    void setFilter(const QSet<uint32_t> &excludeDocIds) { m_excludeDocIds = excludeDocIds; }
+
 	bool next()
 	{
-		if (!m_currentBlock.get() || !m_currentBlock->next()) {
-			if (m_block >= m_index->blockCount()) {
-				return false;
-			}
-			uint32_t firstKey = m_index->key(m_block);
-			m_currentBlock.reset(m_dataReader->readBlock(m_block, firstKey));
-			m_currentBlock->next();
-			m_block++;
-		}
-		return true;
+        while (true) {
+            if (!m_currentBlock.get() || !m_currentBlock->next()) {
+                if (m_block >= m_index->blockCount()) {
+                    return false;
+                }
+                uint32_t firstKey = m_index->key(m_block);
+                m_currentBlock.reset(m_dataReader->readBlock(m_block, firstKey));
+                m_currentBlock->next();
+                m_block++;
+            }
+            if (m_excludeDocIds.contains(m_currentBlock->value())) {
+                continue;
+            }
+            return true;
+        }
 	}
 
 	uint32_t key()
@@ -47,6 +54,7 @@ private:
 	SegmentIndexSharedPtr m_index;
 	std::unique_ptr<SegmentDataReader> m_dataReader;
 	std::unique_ptr<BlockDataIterator> m_currentBlock;
+    QSet<uint32_t> m_excludeDocIds;
 };
 
 }

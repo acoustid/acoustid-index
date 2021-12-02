@@ -6,7 +6,6 @@
 #include "store/ram_directory.h"
 #include "store/input_stream.h"
 #include "store/output_stream.h"
-#include "top_hits_collector.h"
 #include "index.h"
 #include "index_writer.h"
 #include "index_reader.h"
@@ -18,29 +17,22 @@ TEST(IndexReaderTest, Search)
 	DirectorySharedPtr dir(new RAMDirectory());
 	IndexSharedPtr index(new Index(dir, true));
 
-	uint32_t fp1[] = { 7, 9, 12 };
-    auto fp1len = 3;
-
-	uint32_t fp2[] = { 7, 9, 11 };
-    auto fp2len = 3;
-
 	{
 		IndexWriter writer(index);
-		writer.addDocument(1, fp1, fp1len);
+		writer.insertOrUpdateDocument(1, { 7, 9, 12});
 		writer.commit();
-		writer.addDocument(2, fp2, fp2len);
+		writer.insertOrUpdateDocument(2, { 7, 9, 11 });
 		writer.commit();
 	}
 
 	{
 		IndexReader reader(index);
-		TopHitsCollector collector(100);
-		reader.search(fp1, fp1len, &collector);
-		ASSERT_EQ(2, collector.topResults().size());
-		ASSERT_EQ(1, collector.topResults().at(0).id());
-		ASSERT_EQ(3, collector.topResults().at(0).score());
-		ASSERT_EQ(2, collector.topResults().at(1).id());
-		ASSERT_EQ(2, collector.topResults().at(1).score());
+		auto results = reader.search({ 7, 9, 12 });
+		ASSERT_EQ(2, results.size());
+		ASSERT_EQ(3, results.at(0).score());
+		ASSERT_EQ(1, results.at(0).docId());
+		ASSERT_EQ(2, results.at(1).score());
+		ASSERT_EQ(2, results.at(1).docId());
 	}
 }
 

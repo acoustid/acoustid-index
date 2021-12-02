@@ -31,6 +31,11 @@ public:
 	bool fileExists(const QString &name);
 	virtual void sync(const QStringList& names);
 
+    void setAutoDelete(bool autoDelete) { m_autoDelete = autoDelete; }
+    bool autoDelete() const { return m_autoDelete; }
+
+	static FSDirectory *openTemporary(bool autoDelete = false);
+
 private:
 
 	void fsync(const QString& name);
@@ -44,6 +49,7 @@ private:
 	QMutex m_mutex;
 	QHash<QString, FSFileSharedPtr> m_openInputFiles;
 	QString m_path;
+    bool m_autoDelete { false };
 };
 
 }

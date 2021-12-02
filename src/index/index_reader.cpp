@@ -9,6 +9,7 @@
 #include "segment_index_reader.h"
 #include "segment_data_reader.h"
 #include "segment_searcher.h"
+#include "segment_docs.h"
 #include "index.h"
 #include "index_reader.h"
 
@@ -37,12 +38,30 @@ SegmentDataReader* IndexReader::segmentDataReader(const SegmentInfo& segment)
 	return new SegmentDataReader(m_dir->openFile(segment.dataFileName()), BLOCK_SIZE);
 }
 
-void IndexReader::search(const uint32_t* fingerprint, size_t length, Collector* collector, int64_t timeoutInMSecs)
+bool IndexReader::containsDocument(uint32_t docId)
+{
+    auto currentInfo = std::make_pair<uint32_t, bool>(0, false);
+    for (auto segment : m_info.segments()) {
+        qDebug() << "Checking segment" << segment.id();
+        auto update = segment.docs()->findDocumentUpdate(docId, currentInfo.first);
+        if (update.has_value()) {
+            qDebug() << "Segment" << segment.id() << "has update for doc" << docId;
+            currentInfo = update.value();
+        }
+    }
+    return currentInfo.first > 0 && !currentInfo.second;
+}
+
+std::vector<SearchResult> IndexReader::search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs)
 {
     auto deadline = timeoutInMSecs > 0 ? (QDateTime::currentMSecsSinceEpoch() + timeoutInMSecs) : 0;
-    std::vector<uint32_t> fp(fingerprint, fingerprint + length);
-	std::sort(fp.begin(), fp.end());
 	const SegmentInfoList& segments = m_info.segments();
+
+    auto sortedTerms = std::vector<uint32_t>(terms);
+	std::sort(sortedTerms.begin(), sortedTerms.end());
+
+    QHash<uint32_t, std::tuple<uint32_t, uint32_t, int>> hits;
+    std::unordered_map<uint32_t, int> segmentHits;
 	for (int i = 0; i < segments.size(); i++) {
         if (deadline > 0) {
             if (QDateTime::currentMSecsSinceEpoch() > deadline) {
@@ -51,7 +70,45 @@ void IndexReader::search(const uint32_t* fingerprint, size_t length, Collector* 
         }
 		const SegmentInfo& s = segments.at(i);
 		SegmentSearcher searcher(s.index(), segmentDataReader(s), s.lastKey());
-		searcher.search(fp.data(), fp.size(), collector);
+        segmentHits.clear();
+		searcher.search(sortedTerms.data(), sortedTerms.size(), segmentHits);
+        auto segmentId = s.id();
+        for (auto hit : segmentHits) {
+            auto docId = hit.first;
+            auto score = hit.second;
+            auto version = s.docs()->getVersion(docId);
+            auto it = hits.find(docId);
+            if (it == hits.end()) {
+                hits[docId] = std::make_tuple(score, version, segmentId);
+            } else {
+                if (version > std::get<1>(it.value())) {
+                    it.value() = std::make_tuple(score, version, segmentId);
+                }
+            }
+        }
 	}
+
+    std::vector<SearchResult> results;
+
+    for (auto it = hits.begin(); it != hits.end(); ++it) {
+        auto docId = it.key();
+        auto score = std::get<0>(it.value());
+        auto version = std::get<1>(it.value());
+        auto segmentId = std::get<2>(it.value());
+        auto currentVersion = version;
+        for (auto segment : segments) {
+            if (segment.id() != segmentId) {
+                auto docInfo = segment.docs()->get(docId);
+                currentVersion = std::max(currentVersion, docInfo.version());
+            }
+        }
+        if (currentVersion == version) {
+            results.push_back(SearchResult(docId, score));
+        }
+    }
+
+    sortSearchResults(results);
+
+    return results;
 }
 

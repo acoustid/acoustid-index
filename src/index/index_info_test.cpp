@@ -193,7 +193,7 @@ TEST(IndexInfoTest, WriteIntoDir)
 	infos.setAttribute("foo", "bar");
 	infos.save(&dir);
 
-	std::unique_ptr<InputStream> input(dir.openFile("info_0"));
+	std::unique_ptr<InputStream> input(dir.openFile("info_1"));
 	ASSERT_EQ(2, input->readVInt32());
 	ASSERT_EQ(2, input->readVInt32());
 	ASSERT_EQ(0, input->readVInt32());

@@ -28,7 +28,7 @@ Index::~Index()
 
 void Index::open(bool create)
 {
-	if (!m_info.load(m_dir.data(), true)) {
+	if (!m_info.load(m_dir.data(), true, true)) {
 		if (create) {
 			IndexWriter(m_dir, m_info).commit();
 			return open(false);
@@ -37,6 +37,11 @@ void Index::open(bool create)
 	}
 	m_deleter->incRef(m_info);
 	m_open = true;
+}
+
+bool Index::isOpen() const
+{
+    return m_open;
 }
 
 void Index::acquireWriterLock()
@@ -92,4 +97,61 @@ void Index::updateInfo(const IndexInfo& oldInfo, const IndexInfo& newInfo, bool 
 			assert(!m_info.segment(i).index().isNull());
 		}
 	}
+}
+
+bool Index::containsDocument(uint32_t docId) {
+    IndexReader reader(sharedFromThis());
+    return reader.containsDocument(docId);
+}
+
+std::vector<SearchResult> Index::search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs) {
+    IndexReader reader(sharedFromThis());
+    return reader.search(terms, timeoutInMSecs);
+}
+
+bool Index::hasAttribute(const QString &name) {
+    return info().hasAttribute(name);
+}
+
+QString Index::getAttribute(const QString &name) {
+    return info().attribute(name);
+}
+
+void Index::insertOrUpdateDocument(uint32_t docId, const std::vector<uint32_t> &terms) {
+    OpBatch batch;
+    batch.insertOrUpdateDocument(docId, terms);
+    applyUpdates(batch);
+}
+
+void Index::deleteDocument(uint32_t docId) {
+    OpBatch batch;
+    batch.deleteDocument(docId);
+    applyUpdates(batch);
+}
+
+void Index::applyUpdates(const OpBatch &batch) {
+    IndexWriter writer(sharedFromThis());
+    for (auto op : batch) {
+        switch (op.type()) {
+            case INSERT_OR_UPDATE_DOCUMENT:
+                {
+                    auto data = std::get<InsertOrUpdateDocument>(op.data());
+                    writer.insertOrUpdateDocument(data.docId, data.terms);
+                }
+                break;
+            case DELETE_DOCUMENT:
+                {
+                    auto data = std::get<DeleteDocument>(op.data());
+                    writer.deleteDocument(data.docId);
+                }
+                break;
+            case SET_ATTRIBUTE:
+                {
+                    auto data = std::get<SetAttribute>(op.data());
+                    writer.setAttribute(data.name, data.value);
+                }
+                break;
+        }
+    }
+    writer.commit();
 }

@@ -26,7 +26,6 @@ public:
 
 	bool search(uint32_t key, size_t *firstBlock, size_t *lastBlock);
 
-
 private:
 	size_t m_blockCount;
 	std::unique_ptr<uint32_t[]> m_keys;

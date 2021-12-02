@@ -63,4 +63,3 @@ const QByteArray &RAMDirectory::fileData(const QString &name)
 {
 	return *m_data.value(name);
 }
-

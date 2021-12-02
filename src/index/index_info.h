@@ -22,7 +22,7 @@ class OutputStream;
 class IndexInfoData : public QSharedData
 {
 public:
-	IndexInfoData() : nextSegmentNum(0), revision(-1) { }
+	IndexInfoData() : nextSegmentNum(0), revision(0) { }
 	IndexInfoData(const IndexInfoData& other)
 		: QSharedData(other),
 		segments(other.segments),
@@ -104,7 +104,7 @@ public:
 
 	size_t incLastSegmentId()
 	{
-		return d->nextSegmentNum++;
+		return ++d->nextSegmentNum;
 	}
 
 	void setLastSegmentId(size_t n)
@@ -122,6 +122,11 @@ public:
 		return d->attribs;
 	}
 
+	bool hasAttribute(const QString& name) const
+	{
+		return d->attribs.contains(name);
+	}
+
 	QString attribute(const QString& name) const
 	{
 		return d->attribs.value(name);
@@ -135,7 +140,7 @@ public:
 	QList<QString> files(bool includeIndexInfo = true) const;
 
 	// Load the latest index info from a directory
-	bool load(Directory* dir, bool loadIndexes = false);
+	bool load(Directory* dir, bool loadIndexes = false, bool loadDocs = false);
 
 	// Save a new index info revision into a directory
 	void save(Directory* dir);
@@ -153,7 +158,7 @@ public:
 private:
 
 	// Load the index info from a specific file
-	void load(InputStream* input, bool loadIndexes, Directory* dir);
+	void load(InputStream* input, bool loadIndexes, bool loadDocs, Directory* dir);
 
 	// Save the index info into a specific file
 	void save(OutputStream* output);

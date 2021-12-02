@@ -6,6 +6,7 @@
 
 #include "common.h"
 #include "segment_index.h"
+#include "segment_searcher.h"
 #include "index.h"
 #include "index_info.h"
 
@@ -29,7 +30,9 @@ public:
 		return m_index;
 	}
 
-	void search(const uint32_t *fingerprint, size_t length, Collector *collector, int64_t timeoutInMSecs = 0);
+    bool containsDocument(uint32_t docId);
+
+    std::vector<SearchResult> search(const std::vector<uint32_t> &fingerprint, int64_t timeoutInMSecs = 0);
 
 	SegmentDataReader* segmentDataReader(const SegmentInfo& segment);
 

@@ -22,11 +22,17 @@ FSDirectory::FSDirectory(const QString &path, bool mmap)
 
 FSDirectory::~FSDirectory()
 {
+    close();
 }
 
 void FSDirectory::close()
 {
 	QMutexLocker locker(&m_mutex);
+    if (m_autoDelete) {
+        QDir dir(m_path);
+        dir.removeRecursively();
+        m_autoDelete = false;
+    }
 }
 
 OutputStream *FSDirectory::createFile(const QString &name)
@@ -101,3 +107,14 @@ void FSDirectory::fsync(const QString& name)
 	}
 }
 
+FSDirectory *FSDirectory::openTemporary(bool autoDelete)
+{
+	QByteArray path("/tmp/acoustidXXXXXX");
+	auto tmpPath = ::mkdtemp(path.data());
+	if (tmpPath == NULL) {
+		throw IOException("couldn't create a temporary directory");
+	}
+	auto dir = new FSDirectory(path);
+    dir->setAutoDelete(autoDelete);
+    return dir;
+}

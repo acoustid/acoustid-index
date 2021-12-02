@@ -2,6 +2,7 @@
 // Distributed under the MIT license, see the LICENSE file for details.
 
 #include <gtest/gtest.h>
+
 #include "util/test_utils.h"
 #include "input_stream.h"
 #include "output_stream.h"
@@ -79,4 +80,3 @@ TEST(RAMDirectoryTest, RenameFile)
 	ASSERT_EQ(1, files.size());
 	ASSERT_STREQ("newtest.txt", qPrintable(files[0]));
 }
-

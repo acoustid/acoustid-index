@@ -42,7 +42,8 @@ int main(int argc, char **argv)
 
 	const size_t lineSize = 1024 * 1024;
 	char line[lineSize];
-	int32_t fp[1024 * 10];
+    std::vector<uint32_t> fp;
+    fp.reserve(10 * 1024);
 
 	size_t counter = 0;
 	while (fgets(line, lineSize, stdin) != NULL) {
@@ -56,16 +57,16 @@ int main(int argc, char **argv)
 			qWarning() << "Invalid line 2";
 			continue;
 		}
-		size_t length = 0;
+        fp.clear();
 		while (*ptr != '}' && *ptr != 0) {
 			ptr++;
-			fp[length++] = strtol(ptr, &ptr, 10);
+			fp.push_back(strtol(ptr, &ptr, 10));
 			if (*ptr != ',' && *ptr != '}' && *ptr != 0) {
 				qWarning() << "Invalid line 3" << int(*ptr);
 				continue;
 			}
 		}
-		writer->addDocument(id, (uint32_t *)fp, length);
+		writer->insertOrUpdateDocument(id, fp);
 		if (counter % 1000 == 0) {
 			qDebug() << "Imported" << counter << "lines";
 		}

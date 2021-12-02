@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 3.1)
 
 project(fpserver)
 
-set(CMAKE_CXX_STANDARD 14)
+cmake_policy(SET CMP0071 NEW)
+
+set(CMAKE_CXX_STANDARD 17)
 
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules)
 
@@ -12,6 +14,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
+find_package(Threads REQUIRED)
 find_package(GTest)
 find_package(Qt5 COMPONENTS Core Network Concurrent REQUIRED)
 
@@ -34,11 +37,18 @@ add_definitions(
 )
 
 set(fpindexlib_SOURCES
+    src/index/search_result.h
 	src/index/index.cpp
 	src/index/index_file_deleter.cpp
 	src/index/index_info.cpp
 	src/index/index_reader.cpp
 	src/index/index_writer.cpp
+	src/index/segment_docs.h
+	src/index/segment_docs.cpp
+	src/index/segment_docs_reader.h
+	src/index/segment_docs_reader.cpp
+	src/index/segment_docs_writer.h
+	src/index/segment_docs_writer.cpp
 	src/index/segment_data_reader.cpp
 	src/index/segment_data_writer.cpp
 	src/index/segment_index.cpp
@@ -48,7 +58,6 @@ set(fpindexlib_SOURCES
 	src/index/segment_merge_policy.cpp
 	src/index/segment_merger.cpp
 	src/index/segment_searcher.cpp
-	src/index/top_hits_collector.cpp
 	src/store/buffered_input_stream.cpp
 	src/store/buffered_output_stream.cpp
 	src/store/checksum_output_stream.cpp
@@ -66,6 +75,7 @@ set(fpindexlib_SOURCES
 	src/util/crc.c
 	src/util/options.cpp
 )
+
 add_library(fpindexlib ${fpindexlib_SOURCES})
 target_link_libraries(fpindexlib Qt5::Core Qt5::Network Qt5::Concurrent)
 
@@ -118,6 +128,7 @@ target_link_libraries(fpi-search fpindexlib)
 #target_link_libraries(fpi-stats ${QT_LIBRARIES} fpindexlib)
 
 set(tests_SOURCES
+	src/index/search_result_test.cpp
 	src/index/segment_data_writer_test.cpp
 	src/index/segment_index_test.cpp
 	src/index/segment_index_reader_test.cpp
@@ -130,7 +141,6 @@ set(tests_SOURCES
 	src/index/segment_enum_test.cpp
 	src/index/segment_merger_test.cpp
 	src/index/segment_merge_policy_test.cpp
-	src/index/top_hits_collector_test.cpp
 	src/store/buffered_input_stream_test.cpp
 	src/store/input_stream_test.cpp
 	src/store/output_stream_test.cpp
@@ -154,14 +164,19 @@ install(
 )
 
 if(GTEST_FOUND)
-	include_directories(${GTEST_INCLUDE_DIRS})
-	add_subdirectory(${GTEST_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/gtest_build EXCLUDE_FROM_ALL)
-	add_executable(tests ${tests_SOURCES})
-	target_link_libraries(tests
-		${GTEST_BOTH_LIBRARIES} -lpthread
-		fpindexlib
-        fpserverlib)
-	enable_testing(true)
-	add_test(IndexTests tests)
-	add_custom_target(check ${CMAKE_CURRENT_BINARY_DIR}/tests $ENV{GTEST_FLAGS} DEPENDS tests)
+    add_library(gtest STATIC ${GTEST_SOURCES})
+    target_include_directories(gtest INTERFACE ${GTEST_INCLUDE_DIRS})
+    target_include_directories(gtest PRIVATE ${GTEST_SOURCE_DIR})
+    target_link_libraries(gtest Threads::Threads)
+
+    add_library(gtest_main STATIC ${GTEST_MAIN_SOURCES})
+    target_link_libraries(gtest_main gtest)
+
+    add_executable(tests ${tests_SOURCES})
+    target_link_libraries(tests gtest gtest_main fpindexlib fpserverlib)
+
+    enable_testing(true)
+    add_test(IndexTests tests)
+
+    add_custom_target(check ${CMAKE_CURRENT_BINARY_DIR}/tests $ENV{GTEST_FLAGS} DEPENDS tests)
 endif()

@@ -34,7 +34,6 @@ public:
 	 * crash from corrupting the index.
 	 */
 	virtual void sync(const QStringList& names);
-
 };
 
 typedef QWeakPointer<Directory> DirectoryWeakPtr;

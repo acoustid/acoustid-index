@@ -1,12 +1,13 @@
 #include "protocol.h"
 #include "session.h"
 #include "errors.h"
+#include "index/base_index.h"
 
 namespace Acoustid { namespace Server {
 
-QVector<uint32_t> parseFingerprint(const QString &input) {
+std::vector<uint32_t> parseFingerprint(const QString &input) {
 	QStringList inputParts = input.split(',');
-    QVector<uint32_t> output;
+    std::vector<uint32_t> output;
     output.reserve(inputParts.size());
     for (int i = 0; i < inputParts.size(); i++) {
         bool ok;
@@ -14,9 +15,9 @@ QVector<uint32_t> parseFingerprint(const QString &input) {
         if (!ok) {
             throw HandlerException("invalid fingerprint");
         }
-        output.append(value);
+        output.push_back(value);
     }
-    if (output.isEmpty()) {
+    if (output.empty()) {
         throw HandlerException("empty fingerprint");
     }
     return output;
@@ -78,8 +79,17 @@ ScopedHandlerFunc buildHandler(const QString &command, const QStringList &args) 
         }
         return [=](QSharedPointer<Session> session) {
             auto id = args.at(0).toInt();
-            auto hashes = parseFingerprint(args.at(1));
-            session->insert(id, hashes);
+            auto terms = parseFingerprint(args.at(1));
+            session->insertOrUpdateDocument(id, terms);
+            return QString();
+        };
+    } else if (command == "delete") {
+        if (args.size() != 1) {
+            throw BadRequest("expected one argument");
+        }
+        return [=](QSharedPointer<Session> session) {
+            auto id = args.at(0).toInt();
+            session->deleteDocument(id);
             return QString();
         };
     } else if (command == "search") {
@@ -92,7 +102,7 @@ ScopedHandlerFunc buildHandler(const QString &command, const QStringList &args) 
             QStringList output;
             output.reserve(results.size());
             for (int i = 0; i < results.size(); i++) {
-                output.append(QString("%1:%2").arg(results[i].id()).arg(results[i].score()));
+                output.append(QString("%1:%2").arg(results[i].docId()).arg(results[i].score()));
             }
             return output.join(" ");
         };
