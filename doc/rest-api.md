@@ -33,3 +33,40 @@ Deletes an index.
 #### Request
 
     DELETE /<index>
+
+## Search APIs
+
+### Search API
+
+### Request
+
+    GET /_search
+    GET /<index>/_search
+
+## Healthchecks
+
+### Liveness check
+
+Check if the server is running, to be used in Kubernetes `livenessProbe`.
+
+#### Request
+
+    GET /_health/alive
+
+### Readiness check
+
+Check if the server is ready to serve requests, to be used in Kubernetes `readinessProbe`.
+
+#### Request
+
+    GET /_health/ready
+
+## Metrics
+
+### Prometheus metrics endpoint
+
+Returns metrics in Prometheus format
+
+#### Request
+
+    GET /_metrics

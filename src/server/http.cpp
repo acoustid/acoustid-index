@@ -30,7 +30,7 @@ HttpRequestHandler::HttpRequestHandler(QSharedPointer<Index> index, QSharedPoint
     });
 
     // Index API
-    const auto indexPatternPrefix = "/(?<index>[^_/][^/]*)";
+    const QString indexPatternPrefix = "/(?<index>[^_/][^/]*)";
     addHandler(qhttp::EHTTP_HEAD, indexPatternPrefix,
                [this](QHttpRequest *req, QHttpResponse *res, const QMap<QString, QString> &args) {
                    const auto indexName = args["index"];
@@ -53,6 +53,44 @@ HttpRequestHandler::HttpRequestHandler(QSharedPointer<Index> index, QSharedPoint
                [this](QHttpRequest *req, QHttpResponse *res, const QMap<QString, QString> &args) {
                    const auto indexName = args["index"];
                    qDebug() << "Deleting index" << indexName;
+                   sendStringResponse(qhttp::ESTATUS_OK, res, "ok\n");
+               });
+
+    // Document API
+    const QString docIdPatternPrefix = indexPatternPrefix + "/(?<id>[0-9]+)";
+    addHandler(qhttp::EHTTP_POST, indexPatternPrefix,
+               [this](QHttpRequest *req, QHttpResponse *res, const QMap<QString, QString> &args) {
+                   const auto indexName = args["index"];
+                   qDebug() << "Adding fingerprints to index" << indexName;
+                   sendStringResponse(qhttp::ESTATUS_OK, res, "ok\n");
+               });
+    addHandler(qhttp::EHTTP_GET, docIdPatternPrefix,
+               [this](QHttpRequest *req, QHttpResponse *res, const QMap<QString, QString> &args) {
+                   const auto indexName = args["index"];
+                   const auto docId = args["id"];
+                   qDebug() << "Getting fingerprint" << docId << "from index" << indexName;
+                   sendStringResponse(qhttp::ESTATUS_OK, res, "ok\n");
+               });
+    addHandler(qhttp::EHTTP_PUT, docIdPatternPrefix,
+               [this](QHttpRequest *req, QHttpResponse *res, const QMap<QString, QString> &args) {
+                   const auto indexName = args["index"];
+                   const auto docId = args["id"];
+                   qDebug() << "Updating fingerprint" << docId << "in index" << indexName;
+                   sendStringResponse(qhttp::ESTATUS_OK, res, "ok\n");
+               });
+    addHandler(qhttp::EHTTP_DELETE, docIdPatternPrefix,
+               [this](QHttpRequest *req, QHttpResponse *res, const QMap<QString, QString> &args) {
+                   const auto indexName = args["index"];
+                   const auto docId = args["id"];
+                   qDebug() << "Deleting fingerprint" << docId << "in index" << indexName;
+                   sendStringResponse(qhttp::ESTATUS_OK, res, "ok\n");
+               });
+
+    // Search API
+    addHandler(qhttp::EHTTP_GET, indexPatternPrefix + "/_search",
+               [this](QHttpRequest *req, QHttpResponse *res, const QMap<QString, QString> &args) {
+                   const auto indexName = args["index"];
+                   qDebug() << "Searching in index" << indexName;
                    sendStringResponse(qhttp::ESTATUS_OK, res, "ok\n");
                });
 }
