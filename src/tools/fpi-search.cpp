@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include "index/index.h"
 #include "index/index_reader.h"
-#include "index/top_hits_collector.h"
 #include "store/fs_directory.h"
 #include "util/options.h"
 #include "util/timer.h"

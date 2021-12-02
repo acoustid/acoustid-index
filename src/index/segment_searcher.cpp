@@ -2,7 +2,6 @@
 // Distributed under the MIT license, see the LICENSE file for details.
 
 #include <algorithm>
-#include "collector.h"
 #include "segment_data_reader.h"
 #include "segment_searcher.h"
 

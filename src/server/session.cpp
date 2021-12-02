@@ -3,7 +3,6 @@
 
 #include "session.h"
 #include "errors.h"
-#include "index/top_hits_collector.h"
 #include "index/index_writer.h"
 
 using namespace Acoustid;

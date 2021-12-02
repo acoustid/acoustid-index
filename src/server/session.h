@@ -6,7 +6,6 @@
 
 #include <QMutex>
 #include <QSharedPointer>
-#include "index/top_hits_collector.h"
 
 namespace Acoustid {
 

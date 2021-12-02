@@ -6,7 +6,6 @@
 #include "store/ram_directory.h"
 #include "store/input_stream.h"
 #include "store/output_stream.h"
-#include "top_hits_collector.h"
 #include "index.h"
 #include "index_writer.h"
 #include "index_reader.h"

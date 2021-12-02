@@ -5,10 +5,9 @@
 #define ACOUSTID_INDEX_BASE_INDEX_H_
 
 #include <QString>
+#include <QVector>
 #include <variant>
 #include <vector>
-
-#include "collector.h"
 
 namespace Acoustid {
 
