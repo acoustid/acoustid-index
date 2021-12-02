@@ -32,6 +32,15 @@ void handleHttpRequest(QHttpRequest *req, QHttpResponse *res, QSharedPointer<Met
     }
 }
 
-}
+HttpRequestHandler::HttpRequestHandler(QSharedPointer<Index> index, QSharedPointer<Metrics> metrics)
+    : m_index(index), m_metrics(metrics)
+{
 }
 
+void HttpRequestHandler::handleRequest(qhttp::server::QHttpRequest *req, qhttp::server::QHttpResponse *res)
+{
+    handleHttpRequest(req, res, m_metrics);
+}
+
+} // namespace Server
+} // namespace Acoustid

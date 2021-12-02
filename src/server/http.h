@@ -10,13 +10,31 @@
 #include "qhttpserverresponse.hpp"
 
 namespace Acoustid {
+
+class Index;
+
 namespace Server {
 
 class Metrics;
 
-void handleHttpRequest(qhttp::server::QHttpRequest *req, qhttp::server::QHttpResponse *res, QSharedPointer<Metrics> metrics);
+class HttpRequestHandler : public QObject {
+    Q_OBJECT
 
-}
-}
+ public:
+    HttpRequestHandler(QSharedPointer<Index> index, QSharedPointer<Metrics> metrics);
+
+    void handleRequest(qhttp::server::QHttpRequest *req, qhttp::server::QHttpResponse *res);
+
+    void operator()(qhttp::server::QHttpRequest *req, qhttp::server::QHttpResponse *res) {
+        handleRequest(req, res);
+    }
+
+ private:
+    QSharedPointer<Index> m_index;
+    QSharedPointer<Metrics> m_metrics;
+};
+
+} // namespace Server
+} // namespace Acoustid
 
 #endif

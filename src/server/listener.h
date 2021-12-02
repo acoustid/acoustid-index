@@ -21,13 +21,12 @@ class Listener : public QTcpServer
 	Q_OBJECT
 
 public:
-	Listener(const QString &path, bool mmap = false, QObject *parent = 0);
+	Listener(const QSharedPointer<Index>& index, const QSharedPointer<Metrics>& metrics, QObject *parent = 0);
 	~Listener();
 
 	void stop();
 
     QSharedPointer<Metrics> metrics() const { return m_metrics; }
-    void setMetrics(const QSharedPointer<Metrics> &metrics) { m_metrics = metrics; }
 
 	static void setupSignalHandlers();
 

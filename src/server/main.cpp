@@ -9,6 +9,8 @@
 #include "util/options.h"
 #include "listener.h"
 #include "metrics.h"
+#include "index/index.h"
+#include "store/fs_directory.h"
 #include "http.h"
 
 using namespace Acoustid;
@@ -32,8 +34,6 @@ int main(int argc, char **argv)
 		.setArgument()
 		.setHelp("listen on this port (default: 6080)")
 		.setDefaultValue("6080");
-	parser.addOption("http")
-		.setHelp("enable http server");
 	parser.addOption("http-address")
 		.setArgument()
 		.setHelp("http server listens on this address (default: 127.0.0.1)")
@@ -44,8 +44,6 @@ int main(int argc, char **argv)
 		.setHelp("http server listens on this port (default: 6081)")
         .setMetaVar("PORT")
 		.setDefaultValue("6081");
-	parser.addOption("mmap", 'm')
-		.setHelp("use mmap to read index files");
 	parser.addOption("threads", 't')
 		.setArgument()
 		.setHelp("use specific number of threads")
@@ -68,23 +66,23 @@ int main(int argc, char **argv)
 		QThreadPool::globalInstance()->setMaxThreadCount(numThreads);
 	}
 
-	auto metrics = QSharedPointer<Metrics>(new Metrics());
+    auto indexDir = QSharedPointer<FSDirectory>::create(path, true);
+    auto index = QSharedPointer<Index>::create(indexDir, true);
+	auto metrics = QSharedPointer<Metrics>::create();
 
 	Listener::setupSignalHandlers();
 
-	Listener listener(path, opts->contains("mmap"));
-	listener.setMetrics(metrics);
-	listener.listen(QHostAddress(address), port);
+    auto listener = QSharedPointer<Listener>::create(index, metrics);
+	listener->listen(QHostAddress(address), port);
 	qDebug() << "Simple server listening on" << address << "port" << port;
 
-	QHttpServer httpListener(&app);
-	if (httpEnabled) {
-		httpListener.listen(QHostAddress(httpAddress), httpPort, [=](QHttpRequest *req, QHttpResponse *res) {
-			handleHttpRequest(req, res, metrics);
-		});
-		qDebug() << "HTTP server listening on" << httpAddress << "port" << httpPort;
-		qDebug() << "Prometheus metrics available at" << QString("http://%1:%2/metrics").arg(httpAddress).arg(httpPort);
-	}
+    auto httpHandler = QSharedPointer<HttpRequestHandler>::create(index, metrics);
+	auto httpListener = QSharedPointer<QHttpServer>::create(&app);
+    httpListener->listen(QHostAddress(httpAddress), httpPort, [=](QHttpRequest *req, QHttpResponse *res) {
+        httpHandler->handleRequest(req, res);
+    });
+    qDebug() << "HTTP server listening on" << httpAddress << "port" << httpPort;
+    qDebug() << "Prometheus metrics available at" << QString("http://%1:%2/metrics").arg(httpAddress).arg(httpPort);
 
 	return app.exec();
 }
