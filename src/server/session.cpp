@@ -117,8 +117,6 @@ std::vector<SearchResult> Session::search(const std::vector<uint32_t> &terms) {
     } catch (TimeoutExceeded) {
         throw HandlerException("timeout exceeded");
     }
-    if (results.size() > m_maxResults) {
-        results.erase(results.begin() + m_maxResults, results.end());
-    }
+    filterSearchResults(results, m_maxResults, m_topScorePercent);
     return results;
 }

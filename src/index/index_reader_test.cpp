@@ -29,10 +29,10 @@ TEST(IndexReaderTest, Search)
 		IndexReader reader(index);
 		auto results = reader.search({ 7, 9, 12 });
 		ASSERT_EQ(2, results.size());
-		ASSERT_EQ(1, results.at(0).docId());
 		ASSERT_EQ(3, results.at(0).score());
-		ASSERT_EQ(2, results.at(1).docId());
+		ASSERT_EQ(1, results.at(0).docId());
 		ASSERT_EQ(2, results.at(1).score());
+		ASSERT_EQ(2, results.at(1).docId());
 	}
 }
 

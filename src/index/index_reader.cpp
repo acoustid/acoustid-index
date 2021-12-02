@@ -107,9 +107,7 @@ std::vector<SearchResult> IndexReader::search(const std::vector<uint32_t> &terms
         }
     }
 
-    std::sort(results.begin(), results.end(), [](const SearchResult& a, const SearchResult& b) {
-        return a.score() >= b.score();
-    });
+    sortSearchResults(results);
 
     return results;
 }

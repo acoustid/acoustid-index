@@ -37,6 +37,7 @@ add_definitions(
 )
 
 set(fpindexlib_SOURCES
+    src/index/search_result.h
 	src/index/index.cpp
 	src/index/index_file_deleter.cpp
 	src/index/index_info.cpp
@@ -127,6 +128,7 @@ target_link_libraries(fpi-search fpindexlib)
 #target_link_libraries(fpi-stats ${QT_LIBRARIES} fpindexlib)
 
 set(tests_SOURCES
+	src/index/search_result_test.cpp
 	src/index/segment_data_writer_test.cpp
 	src/index/segment_index_test.cpp
 	src/index/segment_index_reader_test.cpp
