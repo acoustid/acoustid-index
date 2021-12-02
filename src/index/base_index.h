@@ -5,27 +5,12 @@
 #define ACOUSTID_INDEX_BASE_INDEX_H_
 
 #include <QString>
-#include <QVector>
 #include <variant>
+#include <vector>
 
 #include "collector.h"
 
 namespace Acoustid {
-
-class BaseIndexTransaction {
- public:
-    BaseIndexTransaction() {}
-    virtual ~BaseIndexTransaction() {}
-
-    virtual bool insertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms) = 0;
-    virtual bool deleteDocument(uint32_t docId);
-
-    virtual bool hasAttribute(const QString &name) = 0;
-    virtual QString getAttribute(const QString &name) = 0;
-    virtual void setAttribute(const QString &name, const QString &value) = 0;
-
-    virtual void commit() = 0;
-};
 
 enum OpType {
     INSERT_OR_UPDATE_DOCUMENT = 1,
@@ -50,7 +35,7 @@ struct SetAttribute {
     SetAttribute(const QString &name, const QString &value) : name(name), value(value) {}
 };
 
-typedef std::variant<std::monostate, InsertOrUpdateDocument, DeleteDocument, SetAttribute> OpData;
+typedef std::variant<InsertOrUpdateDocument, DeleteDocument, SetAttribute> OpData;
 
 class Op {
  public:
