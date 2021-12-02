@@ -5,9 +5,9 @@
 
 namespace Acoustid { namespace Server {
 
-QVector<uint32_t> parseFingerprint(const QString &input) {
+std::vector<uint32_t> parseFingerprint(const QString &input) {
 	QStringList inputParts = input.split(',');
-    QVector<uint32_t> output;
+    std::vector<uint32_t> output;
     output.reserve(inputParts.size());
     for (int i = 0; i < inputParts.size(); i++) {
         bool ok;
@@ -15,9 +15,9 @@ QVector<uint32_t> parseFingerprint(const QString &input) {
         if (!ok) {
             throw HandlerException("invalid fingerprint");
         }
-        output.append(value);
+        output.push_back(value);
     }
-    if (output.isEmpty()) {
+    if (output.empty()) {
         throw HandlerException("empty fingerprint");
     }
     return output;

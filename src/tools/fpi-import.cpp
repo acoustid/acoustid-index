@@ -42,7 +42,7 @@ int main(int argc, char **argv)
 
 	const size_t lineSize = 1024 * 1024;
 	char line[lineSize];
-    QVector<uint32_t> fp;
+    std::vector<uint32_t> fp;
     fp.reserve(10 * 1024);
 
 	size_t counter = 0;
@@ -57,9 +57,10 @@ int main(int argc, char **argv)
 			qWarning() << "Invalid line 2";
 			continue;
 		}
+        fp.clear();
 		while (*ptr != '}' && *ptr != 0) {
 			ptr++;
-			fp.append(strtol(ptr, &ptr, 10));
+			fp.push_back(strtol(ptr, &ptr, 10));
 			if (*ptr != ',' && *ptr != '}' && *ptr != 0) {
 				qWarning() << "Invalid line 3" << int(*ptr);
 				continue;

@@ -52,12 +52,12 @@ bool IndexReader::containsDocument(uint32_t docId)
     return currentInfo.first > 0 && !currentInfo.second;
 }
 
-std::vector<SearchResult> IndexReader::search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs)
+std::vector<SearchResult> IndexReader::search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs)
 {
     auto deadline = timeoutInMSecs > 0 ? (QDateTime::currentMSecsSinceEpoch() + timeoutInMSecs) : 0;
 	const SegmentInfoList& segments = m_info.segments();
 
-    auto sortedTerms = QVector<uint32_t>(terms);
+    auto sortedTerms = std::vector<uint32_t>(terms);
 	std::sort(sortedTerms.begin(), sortedTerms.end());
 
     QHash<uint32_t, std::tuple<uint32_t, uint32_t, int>> hits;

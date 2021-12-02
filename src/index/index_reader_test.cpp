@@ -17,20 +17,17 @@ TEST(IndexReaderTest, Search)
 	DirectorySharedPtr dir(new RAMDirectory());
 	IndexSharedPtr index(new Index(dir, true));
 
-	QVector<uint32_t> fp1 { 7, 9, 12 };
-    QVector<uint32_t> fp2 { 7, 9, 11 };
-
 	{
 		IndexWriter writer(index);
-		writer.insertOrUpdateDocument(1, fp1);
+		writer.insertOrUpdateDocument(1, { 7, 9, 12});
 		writer.commit();
-		writer.insertOrUpdateDocument(2, fp2);
+		writer.insertOrUpdateDocument(2, { 7, 9, 11 });
 		writer.commit();
 	}
 
 	{
 		IndexReader reader(index);
-		auto results = reader.search(fp1);
+		auto results = reader.search({ 7, 9, 12 });
 		ASSERT_EQ(2, results.size());
 		ASSERT_EQ(1, results.at(0).docId());
 		ASSERT_EQ(3, results.at(0).score());

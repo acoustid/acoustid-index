@@ -47,12 +47,12 @@ public:
 	void updateInfo(const IndexInfo& oldInfo, const IndexInfo& newInfo, bool updateIndex = false);
 
     virtual bool containsDocument(uint32_t docId) override;
-	virtual std::vector<SearchResult> search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs = 0) override;
+	virtual std::vector<SearchResult> search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs = 0) override;
 
     virtual bool hasAttribute(const QString &name) override;
     virtual QString getAttribute(const QString &name) override;
 
-    void insertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms);
+    void insertOrUpdateDocument(uint32_t docId, const std::vector<uint32_t> &terms);
     void deleteDocument(uint32_t docId);
 
     virtual void applyUpdates(const OpBatch &batch) override;

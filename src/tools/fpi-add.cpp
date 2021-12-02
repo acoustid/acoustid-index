@@ -16,7 +16,7 @@ int main(int argc, char **argv)
 	size_t length = argc - 2;
 	uint32_t id = strtoul(argv[1], NULL, 10);
 	qDebug() << "id=" << id;
-	QVector<uint32_t> fp(length);
+    std::vector<uint32_t> fp(length);
 	for (int i = 2; i < argc; i++) {
 		fp[i - 2] = strtoul(argv[i], NULL, 10);
 	}

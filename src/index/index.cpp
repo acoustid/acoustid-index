@@ -104,7 +104,7 @@ bool Index::containsDocument(uint32_t docId) {
     return reader.containsDocument(docId);
 }
 
-std::vector<SearchResult> Index::search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs) {
+std::vector<SearchResult> Index::search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs) {
     IndexReader reader(sharedFromThis());
     return reader.search(terms, timeoutInMSecs);
 }
@@ -117,7 +117,7 @@ QString Index::getAttribute(const QString &name) {
     return info().attribute(name);
 }
 
-void Index::insertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms) {
+void Index::insertOrUpdateDocument(uint32_t docId, const std::vector<uint32_t> &terms) {
     OpBatch batch;
     batch.insertOrUpdateDocument(docId, terms);
     applyUpdates(batch);

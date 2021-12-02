@@ -22,7 +22,7 @@ TEST(IndexWriterTest, AddDocument)
 	ASSERT_EQ(0, writer->info().segmentCount());
 	ASSERT_EQ("", writer->info().attribute("max_document_id"));
 
-	QVector<uint32_t> fp { 7, 9, 12 };
+    std::vector<uint32_t> fp { 7, 9, 12 };
 	writer->insertOrUpdateDocument(1, fp);
 	writer->commit();
 	ASSERT_TRUE(index->directory()->fileExists("info_2"));
@@ -67,7 +67,7 @@ TEST(IndexWriterTest, Merge)
 	writer->segmentMergePolicy()->setMaxSegmentsPerTier(2);
 	writer->segmentMergePolicy()->setFloorSegmentBlocks(0);
 
-	QVector<uint32_t> fp { 7, 9, 12 };
+    std::vector<uint32_t> fp { 7, 9, 12 };
 	writer->insertOrUpdateDocument(1, fp);
 	writer->commit();
 	ASSERT_EQ(1, writer->info().segmentCount());

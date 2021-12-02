@@ -38,7 +38,7 @@ IndexWriter::~IndexWriter()
 	}
 }
 
-void IndexWriter::insertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms)
+void IndexWriter::insertOrUpdateDocument(uint32_t docId, const std::vector<uint32_t> &terms)
 {
     m_segmentBufferDocs[docId] = false;
     for (auto term : terms) {

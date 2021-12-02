@@ -5,7 +5,6 @@
 #define ACOUSTID_INDEX_BASE_INDEX_H_
 
 #include <QString>
-#include <QVector>
 #include <variant>
 #include <vector>
 
@@ -19,8 +18,8 @@ enum OpType {
 
 struct InsertOrUpdateDocument {
     uint32_t docId;
-    QVector<uint32_t> terms;
-    InsertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms) : docId(docId), terms(terms) {}
+    std::vector<uint32_t> terms;
+    InsertOrUpdateDocument(uint32_t docId, const std::vector<uint32_t> &terms) : docId(docId), terms(terms) {}
 };
 
 struct DeleteDocument {
@@ -57,7 +56,7 @@ class OpBatch {
     typedef std::vector<Op>::iterator iterator;
     typedef std::vector<Op>::const_iterator const_iterator;
 
-    void insertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms) {
+    void insertOrUpdateDocument(uint32_t docId, const std::vector<uint32_t> &terms) {
         m_ops.push_back(Op(InsertOrUpdateDocument(docId, terms)));
     }
 
@@ -97,7 +96,7 @@ class BaseIndex {
     virtual ~BaseIndex() {}
 
     virtual bool containsDocument(uint32_t docId) = 0;
-    virtual std::vector<SearchResult> search(const QVector<uint32_t> &terms, int64_t timeoutInMSecs) = 0;
+    virtual std::vector<SearchResult> search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs) = 0;
 
     virtual bool hasAttribute(const QString &name) = 0;
     virtual QString getAttribute(const QString &name) = 0;

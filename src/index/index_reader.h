@@ -32,7 +32,7 @@ public:
 
     bool containsDocument(uint32_t docId);
 
-    std::vector<SearchResult> search(const QVector<uint32_t> &fingerprint, int64_t timeoutInMSecs = 0);
+    std::vector<SearchResult> search(const std::vector<uint32_t> &fingerprint, int64_t timeoutInMSecs = 0);
 
 	SegmentDataReader* segmentDataReader(const SegmentInfo& segment);
 

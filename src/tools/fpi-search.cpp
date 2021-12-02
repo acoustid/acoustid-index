@@ -35,7 +35,7 @@ int main(int argc, char **argv)
 	QStringList args = opts->arguments();
 	for (int i = 0; i < args.size(); i++) {
 		QStringList arg = args.at(i).split(',');
-		QVector<uint32_t> fp(arg.size());
+        std::vector<uint32_t> fp(arg.size());
 		for (int j = 0; j < arg.size(); j++) {
 			fp[j] = arg.at(j).toInt();
 		}

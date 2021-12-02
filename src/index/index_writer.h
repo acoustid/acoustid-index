@@ -36,7 +36,7 @@ public:
 		return m_mergePolicy.get();
 	}
 
-	void insertOrUpdateDocument(uint32_t docId, const QVector<uint32_t> &terms);
+	void insertOrUpdateDocument(uint32_t docId, const std::vector<uint32_t> &terms);
     void deleteDocument(uint32_t docId);
 
 	void setAttribute(const QString &name, const QString &value);

@@ -28,9 +28,9 @@ public:
     void rollback();
     void optimize();
     void cleanup();
-    void insertOrUpdateDocument(uint32_t id, const QVector<uint32_t> &terms);
+    void insertOrUpdateDocument(uint32_t id, const std::vector<uint32_t> &terms);
     void deleteDocument(uint32_t id);
-    std::vector<SearchResult> search(const QVector<uint32_t> &terms);
+    std::vector<SearchResult> search(const std::vector<uint32_t> &terms);
 
     QString getAttribute(const QString &name);
     void setAttribute(const QString &name, const QString &value);
