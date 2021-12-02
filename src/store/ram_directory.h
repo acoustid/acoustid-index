@@ -31,8 +31,6 @@ public:
 	QStringList listFiles();
 	bool fileExists(const QString &name);
 
-    virtual QSqlDatabase openDatabase(const QString &name) override;
-
 private:
 	QHash<QString, QByteArray*> m_data;
 };

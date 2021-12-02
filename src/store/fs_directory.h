@@ -31,8 +31,6 @@ public:
 	bool fileExists(const QString &name);
 	virtual void sync(const QStringList& names);
 
-    virtual QSqlDatabase openDatabase(const QString &name) override;
-
     void setAutoDelete(bool autoDelete) { m_autoDelete = autoDelete; }
     bool autoDelete() const { return m_autoDelete; }
 

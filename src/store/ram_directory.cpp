@@ -63,16 +63,3 @@ const QByteArray &RAMDirectory::fileData(const QString &name)
 {
 	return *m_data.value(name);
 }
-
-QSqlDatabase RAMDirectory::openDatabase(const QString &name)
-{
-    if (QSqlDatabase::contains(name)) {
-        return QSqlDatabase::database(name);
-    }
-    auto db = QSqlDatabase::addDatabase("QSQLITE", name);
-    db.setDatabaseName(":memory:");
-    if (!db.open()) {
-		throw IOException(QString("Couldn't open the DB file '%1' (%2)").arg(name).arg(db.lastError().text()));
-    }
-    return db;
-}

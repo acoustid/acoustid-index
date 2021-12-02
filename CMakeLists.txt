@@ -15,7 +15,7 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
 find_package(GTest)
-find_package(Qt5 COMPONENTS Core Network Concurrent Sql REQUIRED)
+find_package(Qt5 COMPONENTS Core Network Concurrent REQUIRED)
 
 set(CPACK_GENERATOR "DEB")
 set(CPACK_PACKAGE_NAME acoustid-index)
@@ -76,8 +76,8 @@ set(fpindexlib_SOURCES
 	src/util/options.cpp
 )
 
-add_library(fpindexlib ${fpindexlib_SOURCES} ${fpindexlib_proto_SOURCES} ${fpindexlib_proto_HEADERS})
-target_link_libraries(fpindexlib Qt5::Core Qt5::Network Qt5::Concurrent Qt5::Sql)
+add_library(fpindexlib ${fpindexlib_SOURCES})
+target_link_libraries(fpindexlib Qt5::Core Qt5::Network Qt5::Concurrent)
 
 set(fpserver_SOURCES
 	src/server/listener.cpp
@@ -145,7 +145,6 @@ set(tests_SOURCES
 	src/store/input_stream_test.cpp
 	src/store/output_stream_test.cpp
 	src/store/fs_output_stream_test.cpp
-	src/store/fs_directory_test.cpp
 	src/store/ram_directory_test.cpp
 	src/util/search_utils_test.cpp
 	src/util/options_test.cpp

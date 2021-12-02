@@ -107,20 +107,6 @@ void FSDirectory::fsync(const QString& name)
 	}
 }
 
-QSqlDatabase FSDirectory::openDatabase(const QString &name)
-{
-    if (QSqlDatabase::contains(name)) {
-        return QSqlDatabase::database(name);
-    }
-    auto db = QSqlDatabase::addDatabase("QSQLITE", name);
-	auto fileName = filePath(name);
-    db.setDatabaseName(fileName);
-    if (!db.open()) {
-		throw IOException(QString("Couldn't open the DB file '%1' (%2)").arg(fileName).arg(db.lastError().text()));
-    }
-    return db;
-}
-
 FSDirectory *FSDirectory::openTemporary(bool autoDelete)
 {
 	QByteArray path("/tmp/acoustidXXXXXX");
