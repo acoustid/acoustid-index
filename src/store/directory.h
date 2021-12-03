@@ -32,6 +32,8 @@ class Directory {
     virtual bool exists() = 0;
     virtual void ensureExists() = 0;
 
+    virtual void deleteDirectory(const QString &name) = 0;
+
     /***
      * Ensure that any writes to these files are moved to
      * stable storage. This is used to properly commit

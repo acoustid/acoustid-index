@@ -59,3 +59,7 @@ Directory *RAMDirectory::openDirectory(const QString &name) {
 bool RAMDirectory::exists() { return true; }
 
 void RAMDirectory::ensureExists() {}
+
+void RAMDirectory::deleteDirectory(const QString &name) {
+    m_data->directories.take(name);
+}

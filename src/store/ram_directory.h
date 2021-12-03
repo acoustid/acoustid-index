@@ -41,6 +41,8 @@ class RAMDirectory : public Directory {
 
     virtual Directory *openDirectory(const QString &name) override;
 
+    virtual void deleteDirectory(const QString &name) override;
+
  private:
     RAMDirectory(const QSharedPointer<RAMDirectoryData> &data);
 

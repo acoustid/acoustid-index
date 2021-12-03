@@ -35,6 +35,7 @@ class FSDirectory : public Directory {
     virtual void ensureExists() override;
 
     virtual Directory *openDirectory(const QString &name);
+    virtual void deleteDirectory(const QString &name) override;
 
     void setAutoDelete(bool autoDelete) { m_autoDelete = autoDelete; }
     bool autoDelete() const { return m_autoDelete; }

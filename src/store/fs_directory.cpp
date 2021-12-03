@@ -127,3 +127,9 @@ void FSDirectory::ensureExists() {
         }
     }
 }
+
+void FSDirectory::deleteDirectory(const QString &name) {
+    QMutexLocker locker(&m_mutex);
+    QDir dir(filePath(name));
+    dir.removeRecursively();
+}

@@ -71,7 +71,7 @@ HttpRequestHandler::HttpRequestHandler(QSharedPointer<MultiIndex> indexes, QShar
         return makeResponse(qhttp::ESTATUS_OK, content);
     });
 
-    // Index API
+    // Check if index exists
     const QString indexPatternPrefix = "/(?<index>[^_/][^/]*)";
     addHandler(qhttp::EHTTP_HEAD, indexPatternPrefix, [=](const HttpRequest &req) {
         auto indexName = req.arg("index");
@@ -80,6 +80,8 @@ HttpRequestHandler::HttpRequestHandler(QSharedPointer<MultiIndex> indexes, QShar
         }
         return makeResponse(qhttp::ESTATUS_OK, QJsonDocument());
     });
+
+    // Get index info
     addHandler(qhttp::EHTTP_GET, indexPatternPrefix, [=](const HttpRequest &req) {
         auto indexName = req.arg("index");
         try {
@@ -93,6 +95,8 @@ HttpRequestHandler::HttpRequestHandler(QSharedPointer<MultiIndex> indexes, QShar
             return makeResponse(qhttp::ESTATUS_NOT_FOUND, QJsonDocument(QJsonObject()));
         }
     });
+
+    // Create index
     addHandler(qhttp::EHTTP_PUT, indexPatternPrefix, [=](const HttpRequest &req) {
         auto indexName = req.arg("index");
         auto index = m_indexes->getIndex(indexName, true);
@@ -101,6 +105,13 @@ HttpRequestHandler::HttpRequestHandler(QSharedPointer<MultiIndex> indexes, QShar
             {"revision", index->info().revision()},
         };
         return makeResponse(qhttp::ESTATUS_OK, QJsonDocument(result));
+    });
+
+    // Delete index
+    addHandler(qhttp::EHTTP_DELETE, indexPatternPrefix, [=](const HttpRequest &req) {
+        auto indexName = req.arg("index");
+        m_indexes->deleteIndex(indexName);
+        return makeResponse(qhttp::ESTATUS_OK, QJsonDocument(QJsonObject()));
     });
 
     /*

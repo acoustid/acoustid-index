@@ -21,7 +21,7 @@ class MultiIndex {
 
     bool indexExists(const QString &name);
     QSharedPointer<Index> getIndex(const QString &name, bool create = false);
-    bool deleteIndex(const QString &name);
+    void deleteIndex(const QString &name);
 
  private:
     QMutex m_mutex;

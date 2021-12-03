@@ -28,4 +28,10 @@ QSharedPointer<Index> MultiIndex::getIndex(const QString &name, bool create) {
     return index;
 }
 
+void MultiIndex::deleteIndex(const QString &name) {
+    QMutexLocker locker(&m_mutex);
+    m_indexes.remove(name);
+    m_dir->deleteDirectory(name);
+}
+
 }  // namespace Acoustid
