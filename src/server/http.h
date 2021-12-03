@@ -19,6 +19,35 @@ namespace Server {
 
 class Metrics;
 
+class HttpRequest {
+ public:
+    HttpRequest(const QMap<QString, QString> &args);
+
+    QString getArg(const QString &name, const QString &defaultValue = QString()) const;
+
+ private:
+    QMap<QString, QString> m_args;
+};
+
+class HttpResponse {
+ public:
+    HttpResponse();
+
+    void setStatus(qhttp::TStatusCode status);
+    void setHeader(const QString &name, const QString &value);
+    void setBody(const QString &text);
+    void setBody(const QJsonDocument &doc);
+
+    void send(qhttp::server::QHttpResponse *response) const;
+
+ private:
+    qhttp::TStatusCode m_status;
+    QMap<QString, QString> m_headers;
+    QByteArray m_body;
+};
+
+typedef std::function<HttpResponse(const HttpRequest &)> HttpRequestHandlerFunc;
+
 class HttpRequestHandler : public QObject {
     Q_OBJECT
 
@@ -27,19 +56,21 @@ class HttpRequestHandler : public QObject {
 
     void handleRequest(qhttp::server::QHttpRequest *req, qhttp::server::QHttpResponse *res);
 
+    template <typename T>
+    HttpResponse makeResponse(qhttp::TStatusCode status, const T &body) {
+        HttpResponse response;
+        response.setStatus(status);
+        response.setBody(body);
+        return response;
+    }
+
  private:
     QSharedPointer<MultiIndex> m_indexes;
     QSharedPointer<Metrics> m_metrics;
 
-    typedef std::function<void(qhttp::server::QHttpRequest *, qhttp::server::QHttpResponse *)> Handler;
-    typedef std::function<void(qhttp::server::QHttpRequest *, qhttp::server::QHttpResponse *,
-                               QMap<QString, QString> args)>
-        HandlerWithArgs;
+    void addHandler(qhttp::THttpMethod, const QString &pattern, HttpRequestHandlerFunc handler);
 
-    void addHandler(qhttp::THttpMethod, const QString &pattern, Handler handler);
-    void addHandler(qhttp::THttpMethod, const QString &pattern, HandlerWithArgs handler);
-
-    std::vector<std::tuple<qhttp::THttpMethod, QRegularExpression, HandlerWithArgs>> m_handlers;
+    std::vector<std::tuple<qhttp::THttpMethod, QRegularExpression, HttpRequestHandlerFunc>> m_handlers;
 };
 
 }  // namespace Server
