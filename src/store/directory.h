@@ -6,6 +6,7 @@
 
 #include <QString>
 #include <QStringList>
+
 #include "common.h"
 
 namespace Acoustid {
@@ -14,31 +15,35 @@ class InputStream;
 class OutputStream;
 
 class Directory {
+ public:
+    virtual ~Directory();
 
-public:
-	virtual ~Directory();
+    virtual void close() = 0;
 
-	virtual void close() = 0;
+    virtual OutputStream *createFile(const QString &name) = 0;
+    virtual void deleteFile(const QString &name) = 0;
+    virtual InputStream *openFile(const QString &name) = 0;
+    virtual void renameFile(const QString &oldName, const QString &newName) = 0;
+    virtual QStringList listFiles() = 0;
+    virtual bool fileExists(const QString &name);
 
-	virtual OutputStream *createFile(const QString &name) = 0;
-	virtual void deleteFile(const QString &name) = 0;
-	virtual InputStream *openFile(const QString &name) = 0;
-	virtual void renameFile(const QString &oldName, const QString &newName) = 0;
-	virtual QStringList listFiles() = 0;
-	virtual bool fileExists(const QString &name);
+    virtual Directory *openDirectory(const QString &name) = 0;
 
-	/***
-	 * Ensure that any writes to these files are moved to
-	 * stable storage. This is used to properly commit
-	 * changes to the index, to prevent a machine/OS
-	 * crash from corrupting the index.
-	 */
-	virtual void sync(const QStringList& names);
+    virtual bool exists() = 0;
+    virtual void ensureExists() = 0;
+
+    /***
+     * Ensure that any writes to these files are moved to
+     * stable storage. This is used to properly commit
+     * changes to the index, to prevent a machine/OS
+     * crash from corrupting the index.
+     */
+    virtual void sync(const QStringList &names);
 };
 
 typedef QWeakPointer<Directory> DirectoryWeakPtr;
 typedef QSharedPointer<Directory> DirectorySharedPtr;
 
-}
+}  // namespace Acoustid
 
 #endif

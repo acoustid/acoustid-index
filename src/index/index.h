@@ -5,11 +5,12 @@
 #define ACOUSTID_INDEX_H_
 
 #include <QMutex>
-#include "common.h"
+
 #include "base_index.h"
+#include "common.h"
 #include "index_info.h"
-#include "store/directory.h"
 #include "segment_index.h"
+#include "store/directory.h"
 
 namespace Acoustid {
 
@@ -19,35 +20,31 @@ class IndexFileDeleter;
 //
 // This class is thread-safe and is intended to be shared by multiple
 // threads. Threads can use it to open their own searchers or writers.
-class Index : public BaseIndex, public QEnableSharedFromThis<Index>
-{
-public:
-	// Build a new instance using the given directory
-	Index(DirectorySharedPtr dir, bool create = false);
-	virtual ~Index();
+class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
+ public:
+    // Build a new instance using the given directory
+    Index(DirectorySharedPtr dir, bool create = false);
+    virtual ~Index();
 
     bool isOpen() const;
 
-	// Return the directory which contains the index data
-	DirectorySharedPtr directory()
-	{
-		return m_dir;
-	}
+    // Return true if the index exists on disk.
+    static bool exists(const QSharedPointer<Directory> &dir);
 
-	IndexInfo info()
-	{
-		return m_info;
-	}
+    // Return the directory which contains the index data
+    DirectorySharedPtr directory() { return m_dir; }
 
-	void acquireWriterLock();
-	void releaseWriterLock();
+    IndexInfo info() { return m_info; }
 
-	IndexInfo acquireInfo();
-	void releaseInfo(const IndexInfo& info);
-	void updateInfo(const IndexInfo& oldInfo, const IndexInfo& newInfo, bool updateIndex = false);
+    void acquireWriterLock();
+    void releaseWriterLock();
+
+    IndexInfo acquireInfo();
+    void releaseInfo(const IndexInfo &info);
+    void updateInfo(const IndexInfo &oldInfo, const IndexInfo &newInfo, bool updateIndex = false);
 
     virtual bool containsDocument(uint32_t docId) override;
-	virtual std::vector<SearchResult> search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs = 0) override;
+    virtual std::vector<SearchResult> search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs = 0) override;
 
     virtual bool hasAttribute(const QString &name) override;
     virtual QString getAttribute(const QString &name) override;
@@ -57,22 +54,22 @@ public:
 
     virtual void applyUpdates(const OpBatch &batch) override;
 
-private:
-	ACOUSTID_DISABLE_COPY(Index);
+ private:
+    ACOUSTID_DISABLE_COPY(Index);
 
-	void open(bool create);
+    void open(bool create);
 
-	QMutex m_mutex;
-	DirectorySharedPtr m_dir;
-	bool m_hasWriter;
-	std::unique_ptr<IndexFileDeleter> m_deleter;
-	IndexInfo m_info;
-	bool m_open;
+    QMutex m_mutex;
+    DirectorySharedPtr m_dir;
+    bool m_hasWriter;
+    std::unique_ptr<IndexFileDeleter> m_deleter;
+    IndexInfo m_info;
+    bool m_open;
 };
 
 typedef QWeakPointer<Index> IndexWeakPtr;
 typedef QSharedPointer<Index> IndexSharedPtr;
 
-}
+}  // namespace Acoustid
 
 #endif
