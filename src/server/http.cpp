@@ -19,15 +19,18 @@ static void sendStringResponse(qhttp::TStatusCode status, QHttpResponse *res, co
     res->end(contentBytes);
 }
 
-HttpRequest::HttpRequest(const QMap<QString, QString> &args) : m_args(args) {}
+HttpRequest::HttpRequest(qhttp::server::QHttpRequest *req, const QMap<QString, QString> &args)
+    : m_req(req), m_args(args) {}
 
-QString HttpRequest::getArg(const QString &name, const QString &defaultValue) const {
+QString HttpRequest::arg(const QString &name, const QString &defaultValue) const {
     auto it = m_args.find(name);
     if (it == m_args.end()) {
         return defaultValue;
     }
     return *it;
 }
+
+QUrl HttpRequest::url() const { return m_req->url(); }
 
 HttpResponse::HttpResponse() {}
 
@@ -71,11 +74,33 @@ HttpRequestHandler::HttpRequestHandler(QSharedPointer<MultiIndex> indexes, QShar
     // Index API
     const QString indexPatternPrefix = "/(?<index>[^_/][^/]*)";
     addHandler(qhttp::EHTTP_HEAD, indexPatternPrefix, [=](const HttpRequest &req) {
-        auto indexName = req.getArg("index");
+        auto indexName = req.arg("index");
         if (!m_indexes->indexExists(indexName)) {
             return makeResponse(qhttp::ESTATUS_NOT_FOUND, "");
         }
-        return makeResponse(qhttp::ESTATUS_OK, "");
+        return makeResponse(qhttp::ESTATUS_OK, QJsonDocument());
+    });
+    addHandler(qhttp::EHTTP_GET, indexPatternPrefix, [=](const HttpRequest &req) {
+        auto indexName = req.arg("index");
+        try {
+            auto index = m_indexes->getIndex(indexName);
+            QJsonObject result{
+                {"name", indexName},
+                {"revision", index->info().revision()},
+            };
+            return makeResponse(qhttp::ESTATUS_OK, QJsonDocument(result));
+        } catch (const IndexNotFoundException &) {
+            return makeResponse(qhttp::ESTATUS_NOT_FOUND, QJsonDocument(QJsonObject()));
+        }
+    });
+    addHandler(qhttp::EHTTP_PUT, indexPatternPrefix, [=](const HttpRequest &req) {
+        auto indexName = req.arg("index");
+        auto index = m_indexes->getIndex(indexName, true);
+        QJsonObject result{
+            {"name", indexName},
+            {"revision", index->info().revision()},
+        };
+        return makeResponse(qhttp::ESTATUS_OK, QJsonDocument(result));
     });
 
     /*
@@ -162,6 +187,13 @@ void HttpRequestHandler::addHandler(qhttp::THttpMethod method, const QString &pa
     m_handlers.push_back({method, QRegularExpression("^" + pattern + "$"), handler});
 }
 
+void HttpRequestHandler::sendResponse(const HttpResponse &response, qhttp::server::QHttpRequest *req,
+                                      qhttp::server::QHttpResponse *res) {
+    qDebug().nospace() << "method=" << qhttp::Stringify::toString(req->method()) << " path=" << req->url().path()
+                       << " status=" << response.status();
+    response.send(res);
+}
+
 void HttpRequestHandler::handleRequest(QHttpRequest *req, QHttpResponse *res) {
     for (auto it = m_handlers.begin(); it != m_handlers.end(); ++it) {
         const auto method = std::get<0>(*it);
@@ -175,21 +207,24 @@ void HttpRequestHandler::handleRequest(QHttpRequest *req, QHttpResponse *res) {
                 for (auto i = 1; i < argNames.size(); ++i) {
                     args[argNames[i]] = match.captured(i);
                 }
-                QtConcurrent::run([=]() {
-                    HttpResponse response;
-                    try {
-                        response = handler(HttpRequest(args));
-                    } catch (std::exception &e) {
-                        qDebug() << "Error handling request:" << e.what();
-                        response = makeResponse(qhttp::ESTATUS_INTERNAL_SERVER_ERROR, "internal server error\n");
-                    }
-                    QMetaObject::invokeMethod(this, [=]() { response.send(res); });
+                req->collectData();
+                req->onEnd([=]() {
+                    QtConcurrent::run([=]() {
+                        HttpResponse response;
+                        try {
+                            response = handler(HttpRequest(req, args));
+                        } catch (std::exception &e) {
+                            qDebug() << "Error handling request:" << e.what();
+                            response = makeResponse(qhttp::ESTATUS_INTERNAL_SERVER_ERROR, "internal server error\n");
+                        }
+                        QMetaObject::invokeMethod(this, [=]() { sendResponse(response, req, res); });
+                    });
                 });
                 return;
             }
         }
     }
-    makeResponse(qhttp::ESTATUS_NOT_FOUND, "not found\n").send(res);
+    sendResponse(makeResponse(qhttp::ESTATUS_NOT_FOUND, "not found\n"), req, res);
 }
 
 }  // namespace Server

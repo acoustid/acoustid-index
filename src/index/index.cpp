@@ -31,7 +31,7 @@ bool Index::exists(const QSharedPointer<Directory> &dir) {
 
 void Index::open(bool create) {
     if (!m_dir->exists() && !create) {
-        throw IOException("index directory does not exist");
+        throw IndexNotFoundException("index directory does not exist");
     }
     if (!m_info.load(m_dir.data(), true, true)) {
         if (create) {
@@ -39,7 +39,7 @@ void Index::open(bool create) {
             IndexWriter(m_dir, m_info).commit();
             return open(false);
         }
-        throw IOException("there is no index in the directory");
+        throw IndexNotFoundException("there is no index in the directory");
     }
     m_deleter->incRef(m_info);
     m_open = true;
