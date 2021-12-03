@@ -76,7 +76,7 @@ HttpRequestHandler::HttpRequestHandler(QSharedPointer<MultiIndex> indexes, QShar
     addHandler(qhttp::EHTTP_HEAD, indexPatternPrefix, [=](const HttpRequest &req) {
         auto indexName = req.arg("index");
         if (!m_indexes->indexExists(indexName)) {
-            return makeResponse(qhttp::ESTATUS_NOT_FOUND, "");
+            return makeResponse(qhttp::ESTATUS_NOT_FOUND, QJsonDocument());
         }
         return makeResponse(qhttp::ESTATUS_OK, QJsonDocument());
     });
@@ -112,6 +112,35 @@ HttpRequestHandler::HttpRequestHandler(QSharedPointer<MultiIndex> indexes, QShar
         auto indexName = req.arg("index");
         m_indexes->deleteIndex(indexName);
         return makeResponse(qhttp::ESTATUS_OK, QJsonDocument(QJsonObject()));
+    });
+
+    // Search
+    addHandler(qhttp::EHTTP_GET, indexPatternPrefix + "/_search", [=](const HttpRequest &req) {
+        auto indexName = req.arg("index");
+        try {
+            auto index = m_indexes->getIndex(indexName);
+            auto results = index->search({1, 2, 3});
+            QJsonArray resultsJson;
+            for (auto &result : results) {
+                resultsJson.append(QJsonObject{
+                    {"id", qint64(result.docId())},
+                    {"score", result.score()},
+                });
+            }
+            QJsonObject responseJson{
+                {"results", resultsJson},
+            };
+            return makeResponse(qhttp::ESTATUS_OK, QJsonDocument(responseJson));
+        } catch (const IndexNotFoundException &) {
+            QJsonObject responseJson{
+                {"error",
+                 QJsonObject{
+                     {"type", "index_not_found"},
+                 }},
+                {"status", int(qhttp::ESTATUS_NOT_FOUND)},
+            };
+            return makeResponse(qhttp::ESTATUS_NOT_FOUND, QJsonDocument(responseJson));
+        }
     });
 
     /*
