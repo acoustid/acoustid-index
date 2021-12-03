@@ -13,7 +13,7 @@
 
 namespace Acoustid {
 
-class Index;
+class MultiIndex;
 
 namespace Server {
 
@@ -23,12 +23,12 @@ class HttpRequestHandler : public QObject {
     Q_OBJECT
 
  public:
-    HttpRequestHandler(QSharedPointer<Index> index, QSharedPointer<Metrics> metrics);
+    HttpRequestHandler(QSharedPointer<MultiIndex> indexes, QSharedPointer<Metrics> metrics);
 
     void handleRequest(qhttp::server::QHttpRequest *req, qhttp::server::QHttpResponse *res);
 
  private:
-    QSharedPointer<Index> m_index;
+    QSharedPointer<MultiIndex> m_indexes;
     QSharedPointer<Metrics> m_metrics;
 
     typedef std::function<void(qhttp::server::QHttpRequest *, qhttp::server::QHttpResponse *)> Handler;

@@ -1,5 +1,8 @@
 #include "http.h"
 
+#include <QtConcurrent>
+
+#include "index/multi_index.h"
 #include "metrics.h"
 
 using namespace qhttp;
@@ -9,14 +12,15 @@ namespace Acoustid {
 namespace Server {
 
 static void sendStringResponse(qhttp::TStatusCode status, QHttpResponse *res, const QString &content) {
+    qDebug() << "Sending response" << status << content << "from thread" << QThread::currentThreadId();
     auto contentBytes = content.toUtf8();
     res->setStatusCode(status);
     res->addHeaderValue("Content-Length", contentBytes.size());
     res->end(contentBytes);
 }
 
-HttpRequestHandler::HttpRequestHandler(QSharedPointer<Index> index, QSharedPointer<Metrics> metrics)
-    : m_index(index), m_metrics(metrics) {
+HttpRequestHandler::HttpRequestHandler(QSharedPointer<MultiIndex> indexes, QSharedPointer<Metrics> metrics)
+    : m_indexes(indexes), m_metrics(metrics) {
     // Healthchecks
     addHandler(qhttp::EHTTP_GET, "/_health/alive",
                [this](QHttpRequest *req, QHttpResponse *res) { sendStringResponse(qhttp::ESTATUS_OK, res, "ok\n"); });
@@ -89,20 +93,29 @@ HttpRequestHandler::HttpRequestHandler(QSharedPointer<Index> index, QSharedPoint
     // Search API
     addHandler(qhttp::EHTTP_GET, indexPatternPrefix + "/_search",
                [this](QHttpRequest *req, QHttpResponse *res, const QMap<QString, QString> &args) {
+                   qDebug() << "Received search in thread" << QThread::currentThreadId();
                    const auto indexName = args["index"];
                    qDebug() << "Searching in index" << indexName;
-                   sendStringResponse(qhttp::ESTATUS_OK, res, "ok\n");
+                   QtConcurrent::run([this, indexName, req, res]() {
+                       qDebug() << "Running search in thread" << QThread::currentThreadId();
+                       //                       auto index = m_indexes->getIndex(indexName);
+                       //                       auto results = index->search({1, 2, 3});
+                       QJsonObject response;
+                       response["status"] = "ok";
+                       QJsonDocument doc(response);
+                       QMetaObject::invokeMethod(this,
+                                                 [=]() { sendStringResponse(qhttp::ESTATUS_OK, res, doc.toJson()); });
+                   });
                });
 }
 
 void HttpRequestHandler::addHandler(qhttp::THttpMethod method, const QString &pattern, Handler handler) {
-    m_handlers.push_back(
-        {method, QRegularExpression(pattern),
-         [=](QHttpRequest *req, QHttpResponse *res, QMap<QString, QString> args) { handler(req, res); }});
+    addHandler(method, pattern,
+               [=](QHttpRequest *req, QHttpResponse *res, QMap<QString, QString> args) { handler(req, res); });
 }
 
 void HttpRequestHandler::addHandler(qhttp::THttpMethod method, const QString &pattern, HandlerWithArgs handler) {
-    m_handlers.push_back({method, QRegularExpression(pattern), handler});
+    m_handlers.push_back({method, QRegularExpression("^" + pattern + "$"), handler});
 }
 
 void HttpRequestHandler::handleRequest(QHttpRequest *req, QHttpResponse *res) {
