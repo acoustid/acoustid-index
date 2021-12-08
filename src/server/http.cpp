@@ -34,13 +34,15 @@ static HttpResponse errNotFound(const QString &description) {
     return makeJsonErrorResponse(HTTP_NOT_FOUND, "not_found", description);
 }
 
-static HttpResponse errInvalidParameter(const QString &description) {
-    return makeJsonErrorResponse(HTTP_BAD_REQUEST, "invalid_parameter", description);
+static HttpResponse errBadRequest(const QString &type, const QString &description) {
+    return makeJsonErrorResponse(HTTP_BAD_REQUEST, type, description);
 }
 
-static HttpResponse errInvalidTerms() {
-    return makeJsonErrorResponse(HTTP_BAD_REQUEST, "invalid_terms", "invalid terms");
+static HttpResponse errInvalidParameter(const QString &description) {
+    return errBadRequest("invalid_parameter", description);
 }
+
+static HttpResponse errInvalidTerms() { return errBadRequest("invalid_terms", "invalid terms"); }
 
 static QString getIndexName(const HttpRequest &request) {
     auto indexName = request.param(":index");
@@ -215,7 +217,29 @@ static HttpResponse handleDeleteDocumentRequest(const HttpRequest &request, cons
 static HttpResponse handleSearchRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
     auto index = getIndex(request, indexes);
 
-    QJsonObject responseJson;
+    auto query = parseTerms(request.param("query"));
+    if (query.empty()) {
+        return errInvalidParameter("query is empty");
+    }
+
+    auto limit = request.param("limit").toUInt();
+    if (!limit) {
+        limit = 100;
+    }
+
+    auto results = index->search(query);
+    filterSearchResults(results, limit);
+
+    QJsonArray resultsJson;
+    for (auto &result : results) {
+        resultsJson.append(QJsonObject{
+            {"id", qint64(result.docId())},
+            {"score", result.score()},
+        });
+    }
+    QJsonObject responseJson{
+        {"results", resultsJson},
+    };
     return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
 }
 
