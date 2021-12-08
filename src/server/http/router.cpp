@@ -59,7 +59,9 @@ void HttpRouter::handle(qhttp::server::QHttpRequest *req, qhttp::server::QHttpRe
                 qDebug() << "Error handling request:" << e.what();
                 response = HttpResponse(HTTP_INTERNAL_SERVER_ERROR);
             }
-            QMetaObject::invokeMethod(req, [=]() { response.send(req, res); });
+            QMetaObject::invokeMethod(req, [=]() {
+                response.send(req, res);
+            });
         });
     });
 }

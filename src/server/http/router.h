@@ -1,9 +1,9 @@
 #ifndef ACOUSTID_INDEX_SERVER_HTTP_ROUTER_H_
 #define ACOUSTID_INDEX_SERVER_HTTP_ROUTER_H_
 
-#include <QRegularExpression>
 #include <QList>
 #include <QPair>
+#include <QRegularExpression>
 
 #include "request.h"
 #include "response.h"

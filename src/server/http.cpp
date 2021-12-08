@@ -243,31 +243,100 @@ static HttpResponse handleSearchRequest(const HttpRequest &request, const QShare
     return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
 }
 
+// Handle bulk requests.
+static HttpResponse handleBulkRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
+    auto index = getIndex(request, indexes);
+
+    OpBatch batch;
+
+    auto body = request.json();
+    if (!body.isArray()) {
+        return errBadRequest("invalid_bulk_operation", "invalid bulk operation");
+    }
+
+    auto operations = body.array();
+    for (auto operation : operations) {
+        if (!operation.isObject()) {
+            return errBadRequest("invalid_bulk_operation", "invalid bulk operation");
+        }
+        auto operationObj = operation.toObject();
+        if (operationObj.contains("upsert")) {
+            auto docObj = operationObj.value("upsert").toObject();
+            auto docId = docObj.value("id").toInt();
+            auto terms = parseTerms(docObj.value("terms"));
+            batch.insertOrUpdateDocument(docId, terms);
+        }
+        if (operationObj.contains("delete")) {
+            auto docObj = operationObj.value("delete").toObject();
+            auto docId = docObj.value("id").toInt();
+            batch.deleteDocument(docId);
+        }
+        if (operationObj.contains("set")) {
+            auto attrObj = operationObj.value("set").toObject();
+            auto name = attrObj.value("name").toString();
+            auto value = attrObj.value("value").toString();
+            batch.setAttribute(name, value);
+        }
+    }
+
+    index->applyUpdates(batch);
+
+    QJsonObject responseJson;
+    return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
+}
+
 HttpRequestHandler::HttpRequestHandler(QSharedPointer<MultiIndex> indexes, QSharedPointer<Metrics> metrics)
     : m_indexes(indexes), m_metrics(metrics) {
     // Healthchecks
-    m_router.route(HTTP_GET, "/_health/alive", [=](auto req) { return HttpResponse(HTTP_OK, "OK\n"); });
-    m_router.route(HTTP_GET, "/_health/ready", [=](auto req) { return HttpResponse(HTTP_OK, "OK\n"); });
+    m_router.route(HTTP_GET, "/_health/alive", [=](auto req) {
+        return HttpResponse(HTTP_OK, "OK\n");
+    });
+    m_router.route(HTTP_GET, "/_health/ready", [=](auto req) {
+        return HttpResponse(HTTP_OK, "OK\n");
+    });
 
     // Prometheus metrics
-    m_router.route(HTTP_GET, "/_metrics", [=](auto req) { return handleMetricsRequest(req, m_metrics); });
+    m_router.route(HTTP_GET, "/_metrics", [=](auto req) {
+        return handleMetricsRequest(req, m_metrics);
+    });
 
     // Document API
-    m_router.route(HTTP_HEAD, "/:index/_doc/:docId",
-                   [=](auto req) { return handleHeadDocumentRequest(req, m_indexes); });
-    m_router.route(HTTP_GET, "/:index/_doc/:docId", [=](auto req) { return handleGetDocumentRequest(req, m_indexes); });
-    m_router.route(HTTP_PUT, "/:index/_doc/:docId", [=](auto req) { return handlePutDocumentRequest(req, m_indexes); });
-    m_router.route(HTTP_DELETE, "/:index/_doc/:docId",
-                   [=](auto req) { return handleDeleteDocumentRequest(req, m_indexes); });
+    m_router.route(HTTP_HEAD, "/:index/_doc/:docId", [=](auto req) {
+        return handleHeadDocumentRequest(req, m_indexes);
+    });
+    m_router.route(HTTP_GET, "/:index/_doc/:docId", [=](auto req) {
+        return handleGetDocumentRequest(req, m_indexes);
+    });
+    m_router.route(HTTP_PUT, "/:index/_doc/:docId", [=](auto req) {
+        return handlePutDocumentRequest(req, m_indexes);
+    });
+    m_router.route(HTTP_DELETE, "/:index/_doc/:docId", [=](auto req) {
+        return handleDeleteDocumentRequest(req, m_indexes);
+    });
+
+    // Bulk API
+    m_router.route(HTTP_POST, "/:index/_bulk", [=](auto req) {
+        return handleBulkRequest(req, m_indexes);
+    });
 
     // Search API
-    m_router.route(HTTP_GET, "/:index/_search", [=](auto req) { return handleSearchRequest(req, m_indexes); });
+    m_router.route(HTTP_GET, "/:index/_search", [=](auto req) {
+        return handleSearchRequest(req, m_indexes);
+    });
 
     // Index API
-    m_router.route(HTTP_HEAD, "/:index", [=](auto req) { return handleHeadIndexRequest(req, m_indexes); });
-    m_router.route(HTTP_GET, "/:index", [=](auto req) { return handleGetIndexRequest(req, m_indexes); });
-    m_router.route(HTTP_PUT, "/:index", [=](auto req) { return handlePutIndexRequest(req, m_indexes); });
-    m_router.route(HTTP_DELETE, "/:index", [=](auto req) { return handleDeleteIndexRequest(req, m_indexes); });
+    m_router.route(HTTP_HEAD, "/:index", [=](auto req) {
+        return handleHeadIndexRequest(req, m_indexes);
+    });
+    m_router.route(HTTP_GET, "/:index", [=](auto req) {
+        return handleGetIndexRequest(req, m_indexes);
+    });
+    m_router.route(HTTP_PUT, "/:index", [=](auto req) {
+        return handlePutIndexRequest(req, m_indexes);
+    });
+    m_router.route(HTTP_DELETE, "/:index", [=](auto req) {
+        return handleDeleteIndexRequest(req, m_indexes);
+    });
 }
 
 }  // namespace Server

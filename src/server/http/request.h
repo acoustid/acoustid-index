@@ -35,6 +35,8 @@ class HttpRequest {
 
     QJsonDocument json() const;
 
+    QByteArray body() const { return m_body; }
+
     void setMethod(HttpMethod method) { m_method = method; }
 
     void setUrl(const QUrl &url) {
@@ -43,6 +45,7 @@ class HttpRequest {
     }
 
     void setHeaders(const qhttp::THeaderHash &headers) { m_headers = headers; }
+    void setHeader(const QString &name, const QString &value) { m_headers.insert(name.toUtf8(), value.toUtf8()); }
 
     void setBody(const QByteArray &data) { m_body = data; }
     void setBody(const QJsonDocument &doc);
