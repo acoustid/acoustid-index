@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
     auto httpHandler = QSharedPointer<HttpRequestHandler>::create(indexes, metrics);
     auto httpListener = QSharedPointer<QHttpServer>::create(&app);
     httpListener->listen(QHostAddress(httpAddress), httpPort,
-                         [=](QHttpRequest *req, QHttpResponse *res) { httpHandler->handleRequest(req, res); });
+                         [=](auto req, auto res) { httpHandler->router().handle(req, res); });
     qDebug() << "HTTP server listening on" << httpAddress << "port" << httpPort;
     qDebug() << "Prometheus metrics available at" << QString("http://%1:%2/metrics").arg(httpAddress).arg(httpPort);
 

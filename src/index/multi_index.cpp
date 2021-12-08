@@ -28,6 +28,10 @@ QSharedPointer<Index> MultiIndex::getIndex(const QString &name, bool create) {
     return index;
 }
 
+void MultiIndex::createIndex(const QString &name) {
+    getIndex(name, true);
+}
+
 void MultiIndex::deleteIndex(const QString &name) {
     QMutexLocker locker(&m_mutex);
     m_indexes.remove(name);

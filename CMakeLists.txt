@@ -81,18 +81,6 @@ set(fpindexlib_SOURCES
 add_library(fpindexlib ${fpindexlib_SOURCES})
 target_link_libraries(fpindexlib Qt5::Core Qt5::Network Qt5::Concurrent)
 
-set(fpserver_SOURCES
-	src/server/listener.cpp
-	src/server/protocol.cpp
-	src/server/session.cpp
-	src/server/connection.cpp
-	src/server/metrics.cpp
-	src/server/request.cpp
-	src/server/http.cpp
-)
-add_library(fpserverlib ${fpserver_SOURCES})
-target_link_libraries(fpserverlib fpindexlib)
-
 set(qhttp_SOURCES
     ./src/3rdparty/qhttp/src/qhttpserverconnection.cpp
     ./src/3rdparty/qhttp/src/qhttpabstracts.cpp
@@ -106,6 +94,24 @@ set(qhttp_SOURCES
 )
 add_library(qhttp ${qhttp_SOURCES})
 target_link_libraries(qhttp Qt5::Core Qt5::Network Qt5::Concurrent)
+
+set(fpserver_SOURCES
+	src/server/listener.cpp
+	src/server/protocol.cpp
+	src/server/session.cpp
+	src/server/connection.cpp
+	src/server/metrics.cpp
+	src/server/request.cpp
+	src/server/http.cpp
+	src/server/http/request.h
+	src/server/http/request.cpp
+	src/server/http/response.h
+	src/server/http/response.cpp
+	src/server/http/router.h
+	src/server/http/router.cpp
+)
+add_library(fpserverlib ${fpserver_SOURCES})
+target_link_libraries(fpserverlib fpindexlib qhttp)
 
 include_directories(
 	${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -154,6 +160,7 @@ set(tests_SOURCES
 	src/util/exceptions_test.cpp
 	src/util/tests.cpp
 	src/server/session_test.cpp
+	src/server/http_test.cpp
 )
 
 install(
