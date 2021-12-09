@@ -25,11 +25,11 @@ TEST(IndexReaderTest, Search)
     auto fp2len = 3;
 
 	{
-		IndexWriter writer(index);
-		writer.addDocument(1, fp1, fp1len);
-		writer.commit();
-		writer.addDocument(2, fp2, fp2len);
-		writer.commit();
+		auto writer = index->openWriter();
+		writer->addDocument(1, fp1, fp1len);
+		writer->commit();
+		writer->addDocument(2, fp2, fp2len);
+		writer->commit();
 	}
 
 	{

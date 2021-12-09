@@ -44,6 +44,10 @@ static HttpResponse errBadRequest(const QString &type, const QString &descriptio
     return makeJsonErrorResponse(HTTP_BAD_REQUEST, type, description);
 }
 
+static HttpResponse errServiceUnavailable(const QString &description) {
+    return makeJsonErrorResponse(HTTP_SERVICE_UNAVAILABLE, "service_unavailable", description);
+}
+
 static HttpResponse errInvalidParameter(const QString &description) {
     return errBadRequest("invalid_parameter", description);
 }
@@ -168,9 +172,13 @@ static HttpResponse handlePutDocumentRequest(const HttpRequest &request, const Q
     }
     auto terms = parseTerms(body.value("terms"));
 
-    auto writer = QSharedPointer<IndexWriter>::create(index);
-    writer->addDocument(docId, terms.data(), terms.size());
-    writer->commit();
+    try {
+        auto writer = index->openWriter(true, 1000);
+        writer->addDocument(docId, terms.data(), terms.size());
+        writer->commit();
+    } catch (const IndexIsLocked &e) {
+        return errServiceUnavailable("index is locked");
+    }
 
     QJsonObject responseJson;
     return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
@@ -194,10 +202,11 @@ static HttpResponse handleSearchRequest(const HttpRequest &request, const QShare
         limit = 100;
     }
 
-    auto reader = QSharedPointer<IndexReader>::create(index);
     auto collector = QSharedPointer<TopHitsCollector>::create(limit);
-    reader->search(query.data(), query.size(), collector.data());
-    
+    {
+        auto reader = index->openReader();
+        reader->search(query.data(), query.size(), collector.data());
+    }
     auto results = collector->topResults();
 
     QJsonArray resultsJson;
@@ -217,37 +226,39 @@ static HttpResponse handleSearchRequest(const HttpRequest &request, const QShare
 static HttpResponse handleBulkRequest(const HttpRequest &request, const QSharedPointer<Index> &indexes) {
     auto index = getIndex(request, indexes);
 
-    auto writer = QSharedPointer<IndexWriter>::create(index);
-
     auto body = request.json();
     if (!body.isArray()) {
         return errBadRequest("invalid_bulk_operation", "invalid bulk operation");
     }
-
     auto operations = body.array();
-    for (auto operation : operations) {
-        if (!operation.isObject()) {
-            return errBadRequest("invalid_bulk_operation", "invalid bulk operation");
-        }
-        auto operationObj = operation.toObject();
-        if (operationObj.contains("upsert")) {
-            auto docObj = operationObj.value("upsert").toObject();
-            auto docId = docObj.value("id").toInt();
-            auto terms = parseTerms(docObj.value("terms"));
-            writer->addDocument(docId, terms.data(), terms.size());
-        }
-        if (operationObj.contains("delete")) {
-            return errNotImplemented("not implemented in this version of acoustid-index");
-        }
-        if (operationObj.contains("set")) {
-            auto attrObj = operationObj.value("set").toObject();
-            auto name = attrObj.value("name").toString();
-            auto value = attrObj.value("value").toString();
-            writer->setAttribute(name, value);
-        }
-    }
 
-    writer->commit();
+    try {
+        auto writer = index->openWriter(true, 1000);
+        for (auto operation : operations) {
+            if (!operation.isObject()) {
+                return errBadRequest("invalid_bulk_operation", "invalid bulk operation");
+            }
+            auto operationObj = operation.toObject();
+            if (operationObj.contains("upsert")) {
+                auto docObj = operationObj.value("upsert").toObject();
+                auto docId = docObj.value("id").toInt();
+                auto terms = parseTerms(docObj.value("terms"));
+                writer->addDocument(docId, terms.data(), terms.size());
+            }
+            if (operationObj.contains("delete")) {
+                return errNotImplemented("not implemented in this version of acoustid-index");
+            }
+            if (operationObj.contains("set")) {
+                auto attrObj = operationObj.value("set").toObject();
+                auto name = attrObj.value("name").toString();
+                auto value = attrObj.value("value").toString();
+                writer->setAttribute(name, value);
+            }
+        }
+        writer->commit();
+    } catch (const IndexIsLocked &e) {
+        return errServiceUnavailable("index is locked");
+    }
 
     QJsonObject responseJson;
     return HttpResponse(HTTP_OK, QJsonDocument(responseJson));

@@ -3,9 +3,9 @@
 
 #include "session.h"
 #include "errors.h"
-#include "index/top_hits_collector.h"
-#include "index/index_reader.h"
+#include "index/index.h"
 #include "index/index_writer.h"
+#include "index/top_hits_collector.h"
 
 using namespace Acoustid;
 using namespace Acoustid::Server;
@@ -15,7 +15,7 @@ void Session::begin() {
     if (!m_indexWriter.isNull()) {
         throw AlreadyInTransactionException();
     }
-    m_indexWriter = QSharedPointer<IndexWriter>::create(m_index);
+    m_indexWriter = m_index->openWriter();
 }
 
 void Session::commit() {
@@ -106,9 +106,9 @@ void Session::insert(uint32_t id, const QVector<uint32_t> &hashes) {
 QList<Result> Session::search(const QVector<uint32_t> &hashes) {
     QMutexLocker locker(&m_mutex);
     TopHitsCollector collector(m_maxResults, m_topScorePercent);
-    IndexReader reader(m_index);
     try {
-        reader.search(hashes.data(), hashes.size(), &collector, m_timeout);
+        auto reader = m_index->openReader();
+        reader->search(hashes.data(), hashes.size(), &collector, m_timeout);
     } catch (TimeoutExceeded) {
         throw HandlerException("timeout exceeded");
     }

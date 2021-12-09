@@ -14,6 +14,7 @@ const auto HTTP_OK = qhttp::ESTATUS_OK;
 const auto HTTP_NOT_FOUND = qhttp::ESTATUS_NOT_FOUND;
 const auto HTTP_BAD_REQUEST = qhttp::ESTATUS_BAD_REQUEST;
 const auto HTTP_INTERNAL_SERVER_ERROR = qhttp::ESTATUS_INTERNAL_SERVER_ERROR;
+const auto HTTP_SERVICE_UNAVAILABLE = qhttp::ESTATUS_SERVICE_UNAVAILABLE;
 
 class HttpResponse {
  public:
