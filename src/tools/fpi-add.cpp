@@ -11,8 +11,6 @@ int main(int argc, char **argv)
 	DirectorySharedPtr dir(new FSDirectory("."));
 	IndexSharedPtr index(new Index(dir, true));
 
-	std::unique_ptr<IndexWriter> writer(new IndexWriter(index));
-
 	size_t length = argc - 2;
 	uint32_t id = strtoul(argv[1], NULL, 10);
 	qDebug() << "id=" << id;
@@ -21,6 +19,7 @@ int main(int argc, char **argv)
 		fp[i - 2] = strtoul(argv[i], NULL, 10);
 	}
 
+    auto writer = index->openWriter();
 	writer->addDocument(id, fp, length);
 	writer->commit();
 

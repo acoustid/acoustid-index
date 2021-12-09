@@ -29,6 +29,8 @@ public:
     QSharedPointer<Metrics> metrics() const { return m_metrics; }
     void setMetrics(const QSharedPointer<Metrics> &metrics) { m_metrics = metrics; }
 
+    QSharedPointer<Index> index() const { return m_index; }
+
 	static void setupSignalHandlers();
 
 signals:
