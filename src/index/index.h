@@ -5,6 +5,8 @@
 #define ACOUSTID_INDEX_H_
 
 #include <QMutex>
+#include <QWaitCondition>
+#include <QDeadlineTimer>
 
 #include "base_index.h"
 #include "common.h"
@@ -15,6 +17,8 @@
 namespace Acoustid {
 
 class IndexFileDeleter;
+class IndexReader;
+class IndexWriter;
 
 // Class for working with an on-disk index.
 //
@@ -36,8 +40,11 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
 
     IndexInfo info() { return m_info; }
 
-    void acquireWriterLock();
-    void releaseWriterLock();
+    QSharedPointer<IndexReader> openReader();
+    QSharedPointer<IndexWriter> openWriter(bool wait = false, int64_t timeoutInMSecs = 0);
+
+  	void acquireWriterLock(bool wait = false, int64_t timeoutInMSecs = 0);
+	  void releaseWriterLock();
 
     IndexInfo acquireInfo();
     void releaseInfo(const IndexInfo &info);
@@ -62,6 +69,7 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     QMutex m_mutex;
     DirectorySharedPtr m_dir;
     bool m_hasWriter;
+    QWaitCondition m_writerReleased;
     std::unique_ptr<IndexFileDeleter> m_deleter;
     IndexInfo m_info;
     bool m_open;

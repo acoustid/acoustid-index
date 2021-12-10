@@ -18,11 +18,11 @@ TEST(IndexReaderTest, Search)
 	IndexSharedPtr index(new Index(dir, true));
 
 	{
-		IndexWriter writer(index);
-		writer.insertOrUpdateDocument(1, { 7, 9, 12});
-		writer.commit();
-		writer.insertOrUpdateDocument(2, { 7, 9, 11 });
-		writer.commit();
+		auto writer = index->openWriter();
+		writer->insertOrUpdateDocument(1, { 7, 9, 12});
+		writer->commit();
+		writer->insertOrUpdateDocument(2, { 7, 9, 11 });
+		writer->commit();
 	}
 
 	{

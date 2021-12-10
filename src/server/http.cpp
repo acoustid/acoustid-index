@@ -34,8 +34,16 @@ static HttpResponse errNotFound(const QString &description) {
     return makeJsonErrorResponse(HTTP_NOT_FOUND, "not_found", description);
 }
 
+static HttpResponse errNotImplemented(const QString &description) {
+    return makeJsonErrorResponse(HTTP_INTERNAL_SERVER_ERROR, "not_implemented", description);
+}
+
 static HttpResponse errBadRequest(const QString &type, const QString &description) {
     return makeJsonErrorResponse(HTTP_BAD_REQUEST, type, description);
+}
+
+static HttpResponse errServiceUnavailable(const QString &description) {
+    return makeJsonErrorResponse(HTTP_SERVICE_UNAVAILABLE, "service_unavailable", description);
 }
 
 static HttpResponse errInvalidParameter(const QString &description) {
@@ -113,6 +121,9 @@ static QSharedPointer<Index> getIndex(const HttpRequest &request, const QSharedP
     } catch (const IndexNotFoundException &e) {
         throw HttpResponseException(errNotFound("index does not exist"));
     }
+
+    QJsonObject responseJson;
+    return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
 }
 
 static HttpResponse handleHeadIndexRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
@@ -279,7 +290,11 @@ static HttpResponse handleBulkRequest(const HttpRequest &request, const QSharedP
         }
     }
 
-    index->applyUpdates(batch);
+    try {
+        index->applyUpdates(batch);
+    } catch (const IndexIsLocked &e) {
+        return errServiceUnavailable("index is locked");
+    }
 
     QJsonObject responseJson;
     return HttpResponse(HTTP_OK, QJsonDocument(responseJson));

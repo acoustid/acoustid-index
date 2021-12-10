@@ -102,6 +102,52 @@ bool Index::containsDocument(uint32_t docId) {
     return reader.containsDocument(docId);
 }
 
+QSharedPointer<IndexReader> Index::openReader()
+{
+    QMutexLocker locker(&m_mutex);
+    if (!m_open) {
+       throw IndexIsNotOpen("index is not open");
+    }
+    return QSharedPointer<IndexReader>::create(sharedFromThis());
+}
+
+QSharedPointer<IndexWriter> Index::openWriter(bool wait, int64_t timeoutInMSecs)
+{
+    QMutexLocker locker(&m_mutex);
+    if (!m_open) {
+        throw IndexIsNotOpen("index is not open");
+    }
+    acquireWriterLockInt(wait, timeoutInMSecs);
+    return QSharedPointer<IndexWriter>::create(sharedFromThis(), true);
+}
+
+void Index::acquireWriterLockInt(bool wait, int64_t timeoutInMSecs)
+{
+	if (m_hasWriter) {
+        if (wait) {
+            if (m_writerReleased.wait(&m_mutex, QDeadlineTimer(timeoutInMSecs))) {
+                m_hasWriter = true;
+                return;
+            }
+        }
+        throw IndexIsLocked("there already is an index writer open");
+	}
+	m_hasWriter = true;
+}
+
+void Index::acquireWriterLock(bool wait, int64_t timeoutInMSecs)
+{
+	QMutexLocker locker(&m_mutex);
+    acquireWriterLockInt(wait, timeoutInMSecs);
+}
+
+void Index::releaseWriterLock()
+{
+	QMutexLocker locker(&m_mutex);
+	m_hasWriter = false;
+    m_writerReleased.notify_one();
+}
+
 std::vector<SearchResult> Index::search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs) {
     IndexReader reader(sharedFromThis());
     return reader.search(terms, timeoutInMSecs);
