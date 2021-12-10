@@ -4,9 +4,9 @@
 #ifndef ACOUSTID_INDEX_H_
 #define ACOUSTID_INDEX_H_
 
+#include <QDeadlineTimer>
 #include <QMutex>
 #include <QWaitCondition>
-#include <QDeadlineTimer>
 
 #include "base_index.h"
 #include "common.h"
@@ -43,7 +43,7 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     QSharedPointer<IndexReader> openReader();
     QSharedPointer<IndexWriter> openWriter(bool wait = false, int64_t timeoutInMSecs = 0);
 
-  	void acquireWriterLock(bool wait = false, int64_t timeoutInMSecs = 0);
+    void acquireWriterLock(bool wait = false, int64_t timeoutInMSecs = 0);
     void releaseWriterLock();
 
     IndexInfo acquireInfo();
@@ -64,8 +64,9 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
  private:
     ACOUSTID_DISABLE_COPY(Index);
 
+    void acquireWriterLockInt(bool wait, int64_t timeoutInMSecs);
+
     void open(bool create);
-  	void acquireWriterLockInt(bool wait = false, int64_t timeoutInMSecs = 0);
 
     QMutex m_mutex;
     DirectorySharedPtr m_dir;

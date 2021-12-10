@@ -41,16 +41,14 @@ class TimeoutExceeded : public Exception {
     TimeoutExceeded() : Exception("timeout exceeded") {}
 };
 
-class IndexIsNotOpen : public Exception
-{
-public:
-	IndexIsNotOpen(const QString &msg) : Exception(msg) { }
+class IndexIsNotOpen : public Exception {
+ public:
+    IndexIsNotOpen(const QString &msg) : Exception(msg) {}
 };
 
-class IndexIsLocked : public Exception
-{
-public:
-	IndexIsLocked(const QString &msg) : Exception(msg) { }
+class IndexIsLocked : public Exception {
+ public:
+    IndexIsLocked(const QString &msg) : Exception(msg) {}
 };
 
 }  // namespace Acoustid
