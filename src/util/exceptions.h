@@ -36,11 +36,6 @@ class CorruptIndexException : public IOException {
     CorruptIndexException(const QString &msg) : IOException(msg) {}
 };
 
-class TimeoutExceeded : public Exception {
- public:
-    TimeoutExceeded() : Exception("timeout exceeded") {}
-};
-
 class IndexIsNotOpen : public Exception {
  public:
     IndexIsNotOpen(const QString &msg) : Exception(msg) {}
@@ -49,6 +44,11 @@ class IndexIsNotOpen : public Exception {
 class IndexIsLocked : public Exception {
  public:
     IndexIsLocked(const QString &msg) : Exception(msg) {}
+};
+
+class TimeoutExceeded : public Exception {
+ public:
+    TimeoutExceeded() : Exception("timeout exceeded") {}
 };
 
 }  // namespace Acoustid
