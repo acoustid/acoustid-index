@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: acoustid/index
+
 jobs:
   build:
     runs-on: ubuntu-20.04
@@ -16,18 +20,25 @@ jobs:
     - run: make
     - run: make check
     - run: make package
-    - name: Build image
-      run: docker build -t quay.io/acoustid/acoustid-index:${{ github.sha }} .
-    - uses: Azure/docker-login@v1
+
+    - name: Log in to the Container registry
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v1
       with:
-        login-server: quay.io
-        username: ${{ secrets.QUAY_USERNAME }}
-        password: ${{ secrets.QUAY_PASSWORD }}
-    - name: Push image
-      run: |
-        TAG=$(echo $GITHUB_REF | cut -d'/' -f3 | sed 's/^v//')
-        docker tag quay.io/acoustid/acoustid-index:${{ github.sha }} quay.io/acoustid/acoustid-index:$TAG
-        docker push quay.io/acoustid/acoustid-index:$TAG
-        docker tag quay.io/acoustid/acoustid-index:${{ github.sha }} quay.io/acoustid/acoustid-index:latest
-        docker push quay.io/acoustid/acoustid-index:latest
-      if: startsWith(github.ref, 'refs/tags/v')
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata (tags, labels) for Docker
+      id: meta
+      uses: docker/metadata-action@v3
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
