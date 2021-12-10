@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 3.1)
 
 project(fpserver)
 
-set(CMAKE_CXX_STANDARD 14)
+cmake_policy(SET CMP0071 NEW)
+
+set(CMAKE_CXX_STANDARD 17)
 
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules)
 
@@ -12,6 +14,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
+find_package(Threads REQUIRED)
 find_package(GTest)
 find_package(Qt5 COMPONENTS Core Network Concurrent REQUIRED)
 
