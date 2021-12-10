@@ -47,19 +47,6 @@ void Index::open(bool create) {
 
 bool Index::isOpen() const { return m_open; }
 
-void Index::acquireWriterLock() {
-    QMutexLocker locker(&m_mutex);
-    if (m_hasWriter) {
-        throw IOException("there already is an index writer open");
-    }
-    m_hasWriter = true;
-}
-
-void Index::releaseWriterLock() {
-    QMutexLocker locker(&m_mutex);
-    m_hasWriter = false;
-}
-
 IndexInfo Index::acquireInfo() {
     QMutexLocker locker(&m_mutex);
     IndexInfo info = m_info;

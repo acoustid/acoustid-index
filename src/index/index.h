@@ -44,7 +44,7 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     QSharedPointer<IndexWriter> openWriter(bool wait = false, int64_t timeoutInMSecs = 0);
 
   	void acquireWriterLock(bool wait = false, int64_t timeoutInMSecs = 0);
-	  void releaseWriterLock();
+    void releaseWriterLock();
 
     IndexInfo acquireInfo();
     void releaseInfo(const IndexInfo &info);
@@ -65,6 +65,7 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     ACOUSTID_DISABLE_COPY(Index);
 
     void open(bool create);
+  	void acquireWriterLockInt(bool wait = false, int64_t timeoutInMSecs = 0);
 
     QMutex m_mutex;
     DirectorySharedPtr m_dir;

@@ -4,7 +4,6 @@
 #include "session.h"
 #include "errors.h"
 #include "index/index_writer.h"
-#include "index/top_hits_collector.h"
 
 using namespace Acoustid;
 using namespace Acoustid::Server;

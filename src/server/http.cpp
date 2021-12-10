@@ -121,9 +121,6 @@ static QSharedPointer<Index> getIndex(const HttpRequest &request, const QSharedP
     } catch (const IndexNotFoundException &e) {
         throw HttpResponseException(errNotFound("index does not exist"));
     }
-
-    QJsonObject responseJson;
-    return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
 }
 
 static HttpResponse handleHeadIndexRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
