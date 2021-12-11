@@ -12,21 +12,110 @@ integer arrays.
 
 [1]: http://acoustid.org/chromaprint
 
-Reindexing from the Acoustid database:
+## Running
 
-    $ echo "COPY (SELECT id, acoustid_extract_query(fingerprint) FROM fingerprint) TO stdout DELIMITER '|' " \
-           | psql -U acoustid acoustid | ./fpi-import -d idx/ -c -o
-Running:
+Starting server using Docker:
+
+    $ docker run -ti -p 6080 ghcr.io/acoustid/acoustid-index
+
+Starting server locally:
 
     $ ./fpi-server
     Listening on "127.0.0.1" port 6080
 
-Using Docker:
+## Building
 
-    $ docker run -ti -p 6080 quay.io/acoustid/acoustid-index
-    $ docker run -ti quay.io/acoustid/acoustid-index fpi-import -d /var/lib/acoustid-index/ -c -o
+### Dependencies
 
-Simple client session:
+ - C/C++ compiler supporting at least C++17
+ - CMake
+ - Qt5, at least the QtCore, QtNetwork and QtConcurrent components
+ - GoogleTest (optional)
+
+### Building the code
+
+    cmake --build .
+
+## Usage
+
+### REST API
+
+The current version of the REST API is limited to adding documents to the index and searching. This because the internal index structures do not support document updates, the index is effectively append-only. In the next major version of acoustid-index, the API will be extended to support updates as well.
+
+Also, the API is designed to support multiple indices. However, in the current version it's limited to just one index, named "main". Multi-index support will be added later as well.
+
+#### Add document API
+
+Endpoints:
+
+    PUT /<index>/_doc/<id>
+
+Body fields:
+
+ - `terms`: array of 32-bit integers representing the fingerprint to index
+
+Example HTTP request:
+
+    PUT /main/_doc/1 HTTP/1.1
+    Content-Type: application/json
+
+    {"terms":[100,200,300]}
+ 
+Example HTTP response:
+ 
+    HTTP/1.1 200 OK
+    Content-Type: application/json
+    
+    {}
+ 
+#### Search API
+
+Endpoints:
+
+    GET /<index>/_search
+    
+Query parameters:
+
+   - `query` - comma-separated list of 32-bit numbers representing the fingerprint to search for
+   - `limit` - maximum number of results returned, defaults to 100
+
+Example HTTP request:
+
+    GET /main/_search?query=100,200,300&limit=10 HTTP/1.1
+ 
+Example HTTP response:
+ 
+    HTTP/1.1 200 OK
+    Content-Type: application/json
+    
+    {"results":[{"id":1,"score":3}]}
+
+#### Bulk document update API
+
+Endpoints:
+
+    POST /<index>/_bulk
+
+Example HTTP request:
+
+    POST /main/_bulk HTTP/1.1
+    Content-Type: application/json
+    
+    [
+      {"upsert": {"id":1, "terms":[100,200,300]}},
+      {"upsert": {"id":2, "terms":[500,600,700]}},
+    ]
+
+Example HTTP response:
+ 
+    HTTP/1.1 200 OK
+    Content-Type: application/json
+    
+    {}
+
+### Telnet API (legacy)
+
+Example session:
 
     $ telnet 127.0.0.1 6080
     Trying 127.0.0.1...
