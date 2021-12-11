@@ -3,7 +3,7 @@ FROM ubuntu:20.04
 RUN useradd -m -s /bin/bash -u 1000 acoustid
 
 ADD acoustid-index.deb /tmp/
-RUN apt update && apt install /tmp/acoustid-index.deb && rm /tmp/acoustid-index.deb
+RUN apt update && apt install -y /tmp/acoustid-index.deb && rm /tmp/acoustid-index.deb
 
 RUN mkdir -p /var/lib/acoustid-index && chown -R acoustid /var/lib/acoustid-index
 VOLUME ["/var/lib/acoustid-index"]
