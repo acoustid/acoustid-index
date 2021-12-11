@@ -94,8 +94,11 @@ set(fpserver_SOURCES
 	src/server/metrics.cpp
 	src/server/request.cpp
 	src/server/http.cpp
+	src/server/http/request.h
 	src/server/http/request.cpp
+	src/server/http/response.h
 	src/server/http/response.cpp
+	src/server/http/router.h
 	src/server/http/router.cpp
 )
 add_library(fpserverlib ${fpserver_SOURCES})
@@ -161,14 +164,19 @@ install(
 )
 
 if(GTEST_FOUND)
-	include_directories(${GTEST_INCLUDE_DIRS})
-	add_subdirectory(${GTEST_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}/gtest_build EXCLUDE_FROM_ALL)
-	add_executable(tests ${tests_SOURCES})
-	target_link_libraries(tests
-		${GTEST_BOTH_LIBRARIES} -lpthread
-		fpindexlib
-        fpserverlib)
-	enable_testing(true)
-	add_test(IndexTests tests)
-	add_custom_target(check ${CMAKE_CURRENT_BINARY_DIR}/tests $ENV{GTEST_FLAGS} DEPENDS tests)
+    add_library(gtest STATIC ${GTEST_SOURCES})
+    target_include_directories(gtest INTERFACE ${GTEST_INCLUDE_DIRS})
+    target_include_directories(gtest PRIVATE ${GTEST_SOURCE_DIR})
+    target_link_libraries(gtest Threads::Threads)
+
+    add_library(gtest_main STATIC ${GTEST_MAIN_SOURCES})
+    target_link_libraries(gtest_main gtest)
+
+    add_executable(tests ${tests_SOURCES})
+    target_link_libraries(tests gtest gtest_main fpindexlib fpserverlib)
+
+    enable_testing(true)
+    add_test(IndexTests tests)
+
+    add_custom_target(check ${CMAKE_CURRENT_BINARY_DIR}/tests $ENV{GTEST_FLAGS} DEPENDS tests)
 endif()
