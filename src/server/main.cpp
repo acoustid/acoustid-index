@@ -77,6 +77,11 @@ int main(int argc, char **argv)
 	listener.listen(QHostAddress(address), port);
 	qDebug() << "Simple server listening on" << address << "port" << port;
 
+    int foo[10];
+    for (int i = 0; i <= 10; ++i) {
+        foo[i] = i;
+    }
+
 	QHttpServer httpListener(&app);
 	if (httpEnabled) {
         HttpRequestHandler handler(listener.index(), metrics);
