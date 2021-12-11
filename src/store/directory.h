@@ -6,6 +6,8 @@
 
 #include <QString>
 #include <QStringList>
+#include <QSqlDatabase>
+#include <QSqlError>
 
 #include "common.h"
 
@@ -33,6 +35,8 @@ class Directory {
     virtual void ensureExists() = 0;
 
     virtual void deleteDirectory(const QString &name) = 0;
+
+    virtual QSqlDatabase openDatabase(const QString &name) = 0;
 
     /***
      * Ensure that any writes to these files are moved to

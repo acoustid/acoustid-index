@@ -60,6 +60,16 @@ bool RAMDirectory::exists() { return true; }
 
 void RAMDirectory::ensureExists() {}
 
-void RAMDirectory::deleteDirectory(const QString &name) {
-    m_data->directories.take(name);
+void RAMDirectory::deleteDirectory(const QString &name) { m_data->directories.take(name); }
+
+QSqlDatabase RAMDirectory::openDatabase(const QString &name) {
+    if (QSqlDatabase::contains(name)) {
+        return QSqlDatabase::database(name);
+    }
+    auto db = QSqlDatabase::addDatabase("QSQLITE", name);
+    db.setDatabaseName(":memory:");
+    if (!db.open()) {
+        throw IOException(QString("Couldn't open the DB file '%1' (%2)").arg(name).arg(db.lastError().text()));
+    }
+    return db;
 }
