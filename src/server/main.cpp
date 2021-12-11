@@ -67,14 +67,14 @@ int main(int argc, char **argv) {
 
     auto listener = QSharedPointer<Listener>::create(mainIndex, metrics);
     listener->listen(QHostAddress(address), port);
-    qDebug() << "Simple server listening on" << address << "port" << port;
+    qDebug() << "Telnet server listening on" << address << "port" << port;
 
     auto httpHandler = QSharedPointer<HttpRequestHandler>::create(indexes, metrics);
     auto httpListener = QSharedPointer<QHttpServer>::create(&app);
     httpListener->listen(QHostAddress(httpAddress), httpPort,
                          [=](auto req, auto res) { httpHandler->router().handle(req, res); });
     qDebug() << "HTTP server listening on" << httpAddress << "port" << httpPort;
-    qDebug() << "Prometheus metrics available at" << QString("http://%1:%2/metrics").arg(httpAddress).arg(httpPort);
+
 
     return app.exec();
 }
