@@ -46,7 +46,6 @@ int main(int argc, char **argv) {
     QString address = opts->option("address");
     int port = opts->option("port").toInt();
 
-    bool httpEnabled = opts->contains("http");
     QString httpAddress = opts->option("http-address");
     int httpPort = opts->option("http-port").toInt();
 
