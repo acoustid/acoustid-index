@@ -12,21 +12,29 @@ integer arrays.
 
 [1]: http://acoustid.org/chromaprint
 
-## Building
+## Running
 
+Starting server using Docker:
 
+    $ docker run -ti -p 6080 ghcr.io/acoustid/acoustid-index
 
-Building:
-
-Running locally:
+Starting server locally:
 
     $ ./fpi-server
     Listening on "127.0.0.1" port 6080
 
-Using Docker:
+## Building
 
-    $ docker run -ti -p 6080 quay.io/acoustid/acoustid-index
-    $ docker run -ti quay.io/acoustid/acoustid-index fpi-import -d /var/lib/acoustid-index/ -c -o
+### Dependencies
+
+ - C/C++ compiler supporting at least C++17
+ - CMake
+ - Qt5, at least the QtCore, QtNetwork and QtConcurrent components
+ - GoogleTest (optional)
+
+### Building the code
+
+    cmake --build .
 
 ## Usage
 
