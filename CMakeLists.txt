@@ -81,9 +81,10 @@ set(qhttp_SOURCES
     ./src/3rdparty/qhttp/src/qhttpclient.cpp
     ./src/3rdparty/qhttp/src/qhttpserver.cpp
     ./src/3rdparty/qhttp/src/qhttpclientresponse.cpp
-    ./src/3rdparty/qhttp/3rdparty/http-parser/http_parser.c
+    ./src/3rdparty/http-parser/http_parser.c
 )
 add_library(qhttp ${qhttp_SOURCES})
+target_include_directories(qhttp PRIVATE ./src/3rdparty/)
 target_link_libraries(qhttp Qt5::Core Qt5::Network Qt5::Concurrent)
 
 set(fpserver_SOURCES
