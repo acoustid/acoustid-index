@@ -4,6 +4,7 @@
 #ifndef ACOUSTID_INDEX_BASE_INDEX_H_
 #define ACOUSTID_INDEX_BASE_INDEX_H_
 
+#include <QJsonObject>
 #include <QString>
 #include <variant>
 #include <vector>
@@ -22,17 +23,35 @@ struct InsertOrUpdateDocument {
     uint32_t docId;
     std::vector<uint32_t> terms;
     InsertOrUpdateDocument(uint32_t docId, const std::vector<uint32_t> &terms) : docId(docId), terms(terms) {}
+
+    QJsonObject toJson() const;
+    static InsertOrUpdateDocument fromJson(const QJsonObject &obj);
+
+ private:
+    InsertOrUpdateDocument() = default;
 };
 
 struct DeleteDocument {
     uint32_t docId;
     DeleteDocument(uint32_t docId) : docId(docId) {}
+
+    QJsonObject toJson() const;
+    static DeleteDocument fromJson(const QJsonObject &obj);
+
+ private:
+    DeleteDocument() = default;
 };
 
 struct SetAttribute {
     QString name;
     QString value;
     SetAttribute(const QString &name, const QString &value) : name(name), value(value) {}
+
+    QJsonObject toJson() const;
+    static SetAttribute fromJson(const QJsonObject &obj);
+
+ private:
+    SetAttribute() = default;
 };
 
 typedef std::variant<InsertOrUpdateDocument, DeleteDocument, SetAttribute> OpData;
@@ -46,6 +65,9 @@ class Op {
     OpType type() const { return m_type; }
     const OpData &data() const { return m_data; }
 
+    QJsonObject toJson() const;
+    static Op fromJson(const QJsonObject &obj);
+
  private:
     Op(OpType type, OpData data) : m_type(type), m_data(data) {}
 
@@ -57,6 +79,8 @@ class OpBatch {
  public:
     typedef std::vector<Op>::iterator iterator;
     typedef std::vector<Op>::const_iterator const_iterator;
+
+    void add(const Op &op) { m_ops.push_back(op); }
 
     void insertOrUpdateDocument(uint32_t docId, const std::vector<uint32_t> &terms) {
         m_ops.push_back(Op(InsertOrUpdateDocument(docId, terms)));

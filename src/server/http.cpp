@@ -257,34 +257,15 @@ static HttpResponse handleBulkRequest(const HttpRequest &request, const QSharedP
 
     OpBatch batch;
 
-    auto body = request.json();
-    if (!body.isArray()) {
+    auto opsJson = request.json();
+    if (!opsJson.isArray()) {
         return errBadRequest("invalid_bulk_operation", "invalid bulk operation");
     }
-
-    auto operations = body.array();
-    for (auto operation : operations) {
-        if (!operation.isObject()) {
+    for (auto opJson : opsJson.array()) {
+        if (!opJson.isObject()) {
             return errBadRequest("invalid_bulk_operation", "invalid bulk operation");
         }
-        auto operationObj = operation.toObject();
-        if (operationObj.contains("upsert")) {
-            auto docObj = operationObj.value("upsert").toObject();
-            auto docId = docObj.value("id").toInt();
-            auto terms = parseTerms(docObj.value("terms"));
-            batch.insertOrUpdateDocument(docId, terms);
-        }
-        if (operationObj.contains("delete")) {
-            auto docObj = operationObj.value("delete").toObject();
-            auto docId = docObj.value("id").toInt();
-            batch.deleteDocument(docId);
-        }
-        if (operationObj.contains("set")) {
-            auto attrObj = operationObj.value("set").toObject();
-            auto name = attrObj.value("name").toString();
-            auto value = attrObj.value("value").toString();
-            batch.setAttribute(name, value);
-        }
+        batch.add(Op::fromJson(opJson.toObject()));
     }
 
     try {
