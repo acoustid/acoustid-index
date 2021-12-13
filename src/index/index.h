@@ -5,7 +5,10 @@
 #define ACOUSTID_INDEX_H_
 
 #include <QDeadlineTimer>
+#include <QFuture>
 #include <QMutex>
+#include <QPointer>
+#include <QThreadPool>
 #include <QWaitCondition>
 
 #include "base_index.h"
@@ -19,6 +22,7 @@ namespace Acoustid {
 class IndexFileDeleter;
 class IndexReader;
 class IndexWriter;
+class OpLog;
 
 // Class for working with an on-disk index.
 //
@@ -31,6 +35,11 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     virtual ~Index();
 
     bool isOpen() const;
+
+    void close();
+
+    QThreadPool *threadPool() const;
+    void setThreadPool(QThreadPool *pool);
 
     // Return true if the index exists on disk.
     static bool exists(const QSharedPointer<Directory> &dir);
@@ -75,6 +84,9 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     std::unique_ptr<IndexFileDeleter> m_deleter;
     IndexInfo m_info;
     bool m_open;
+    QPointer<QThreadPool> m_threadPool;
+    QFuture<void> m_writerFuture;
+    std::unique_ptr<OpLog> m_oplog;
 };
 
 typedef QWeakPointer<Index> IndexWeakPtr;

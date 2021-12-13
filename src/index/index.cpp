@@ -3,6 +3,7 @@
 
 #include "index.h"
 
+#include "index/oplog.h"
 #include "index_file_deleter.h"
 #include "index_reader.h"
 #include "index_writer.h"
@@ -20,7 +21,31 @@ Index::Index(DirectorySharedPtr dir, bool create)
     open(create);
 }
 
-Index::~Index() {}
+Index::~Index() { close(); }
+
+void Index::close() {
+    QMutexLocker locker(&m_mutex);
+    if (m_open) {
+        qDebug() << "Closing index";
+        m_writerFuture.waitForFinished();
+        setThreadPool(nullptr);
+        m_open = false;
+    }
+}
+
+QThreadPool *Index::threadPool() const { return m_threadPool; }
+
+void Index::setThreadPool(QThreadPool *threadPool) {
+    if (threadPool != m_threadPool) {
+        if (m_threadPool) {
+            m_threadPool->releaseThread();
+        }
+        if (threadPool) {
+            threadPool->reserveThread();
+        }
+        m_threadPool = threadPool;
+    }
+}
 
 bool Index::exists(const QSharedPointer<Directory> &dir) {
     if (!dir->exists()) {
@@ -41,7 +66,9 @@ void Index::open(bool create) {
         }
         throw IndexNotFoundException("there is no index in the directory");
     }
+    m_oplog = std::make_unique<OpLog>(m_dir->openDatabase("oplog.db"));
     m_deleter->incRef(m_info);
+    setThreadPool(QThreadPool::globalInstance());
     m_open = true;
 }
 
@@ -89,17 +116,15 @@ bool Index::containsDocument(uint32_t docId) {
     return reader.containsDocument(docId);
 }
 
-QSharedPointer<IndexReader> Index::openReader()
-{
+QSharedPointer<IndexReader> Index::openReader() {
     QMutexLocker locker(&m_mutex);
     if (!m_open) {
-       throw IndexIsNotOpen("index is not open");
+        throw IndexIsNotOpen("index is not open");
     }
     return QSharedPointer<IndexReader>::create(sharedFromThis());
 }
 
-QSharedPointer<IndexWriter> Index::openWriter(bool wait, int64_t timeoutInMSecs)
-{
+QSharedPointer<IndexWriter> Index::openWriter(bool wait, int64_t timeoutInMSecs) {
     QMutexLocker locker(&m_mutex);
     if (!m_open) {
         throw IndexIsNotOpen("index is not open");
@@ -108,9 +133,8 @@ QSharedPointer<IndexWriter> Index::openWriter(bool wait, int64_t timeoutInMSecs)
     return QSharedPointer<IndexWriter>::create(sharedFromThis(), true);
 }
 
-void Index::acquireWriterLockInt(bool wait, int64_t timeoutInMSecs)
-{
-	if (m_hasWriter) {
+void Index::acquireWriterLockInt(bool wait, int64_t timeoutInMSecs) {
+    if (m_hasWriter) {
         if (wait) {
             if (m_writerReleased.wait(&m_mutex, QDeadlineTimer(timeoutInMSecs))) {
                 m_hasWriter = true;
@@ -118,20 +142,18 @@ void Index::acquireWriterLockInt(bool wait, int64_t timeoutInMSecs)
             }
         }
         throw IndexIsLocked("there already is an index writer open");
-	}
-	m_hasWriter = true;
+    }
+    m_hasWriter = true;
 }
 
-void Index::acquireWriterLock(bool wait, int64_t timeoutInMSecs)
-{
-	QMutexLocker locker(&m_mutex);
+void Index::acquireWriterLock(bool wait, int64_t timeoutInMSecs) {
+    QMutexLocker locker(&m_mutex);
     acquireWriterLockInt(wait, timeoutInMSecs);
 }
 
-void Index::releaseWriterLock()
-{
-	QMutexLocker locker(&m_mutex);
-	m_hasWriter = false;
+void Index::releaseWriterLock() {
+    QMutexLocker locker(&m_mutex);
+    m_hasWriter = false;
     m_writerReleased.notify_one();
 }
 
@@ -157,21 +179,25 @@ void Index::deleteDocument(uint32_t docId) {
 }
 
 void Index::applyUpdates(const OpBatch &batch) {
+    m_oplog->write(batch);
     IndexWriter writer(sharedFromThis());
     for (auto op : batch) {
         switch (op.type()) {
             case INSERT_OR_UPDATE_DOCUMENT: {
                 auto data = std::get<InsertOrUpdateDocument>(op.data());
                 writer.insertOrUpdateDocument(data.docId, data.terms);
-            } break;
+                break;
+            }
             case DELETE_DOCUMENT: {
                 auto data = std::get<DeleteDocument>(op.data());
                 writer.deleteDocument(data.docId);
-            } break;
+                break;
+            }
             case SET_ATTRIBUTE: {
                 auto data = std::get<SetAttribute>(op.data());
                 writer.setAttribute(data.name, data.value);
-            } break;
+                break;
+            }
         }
     }
     writer.commit();
