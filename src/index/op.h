@@ -11,12 +11,6 @@
 
 namespace Acoustid {
 
-enum OpType {
-    INSERT_OR_UPDATE_DOCUMENT = 1,
-    DELETE_DOCUMENT = 2,
-    SET_ATTRIBUTE = 3,
-};
-
 struct InsertOrUpdateDocument {
     uint32_t docId;
     std::vector<uint32_t> terms;
@@ -64,28 +58,45 @@ struct SetAttribute {
     SetAttribute() = default;
 };
 
+enum OpType {
+    UNKNOWN_OPERATION = -1,
+    INSERT_OR_UPDATE_DOCUMENT = 0,
+    DELETE_DOCUMENT = 1,
+    SET_ATTRIBUTE = 2,
+};
+
 typedef std::variant<InsertOrUpdateDocument, DeleteDocument, SetAttribute> OpData;
 
 class Op {
  public:
-    Op(InsertOrUpdateDocument data) : m_type(INSERT_OR_UPDATE_DOCUMENT), m_data(data) {}
-    Op(DeleteDocument data) : m_type(DELETE_DOCUMENT), m_data(data) {}
-    Op(SetAttribute data) : m_type(SET_ATTRIBUTE), m_data(data) {}
+    Op(InsertOrUpdateDocument data) : m_data(data) {}
+    Op(DeleteDocument data) : m_data(data) {}
+    Op(SetAttribute data) : m_data(data) {}
 
-    OpType type() const { return m_type; }
-    const OpData &data() const { return m_data; }
+    OpType type() const {
+        auto i = m_data.index();
+        if (i == std::variant_npos) {
+            return UNKNOWN_OPERATION;
+        } else {
+            return static_cast<OpType>(i);
+        }
+    }
+
+    template <typename T>
+    const T &data() const {
+        return std::get<T>(m_data);
+    }
 
     QJsonObject toJson() const;
     static Op fromJson(const QJsonObject &obj);
 
-    bool operator==(const Op &other) const { return m_type == other.m_type && m_data == other.m_data; }
+    bool operator==(const Op &other) const { return m_data == other.m_data; }
 
     bool operator!=(const Op &other) const { return !(*this == other); }
 
  private:
-    Op(OpType type, OpData data) : m_type(type), m_data(data) {}
+    Op(OpData data) : m_data(data) {}
 
-    OpType m_type;
     OpData m_data;
 };
 

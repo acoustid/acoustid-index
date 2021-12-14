@@ -3,11 +3,11 @@
 
 #include "index.h"
 
+#include "in_memory_index.h"
 #include "index/oplog.h"
 #include "index_file_deleter.h"
 #include "index_reader.h"
 #include "index_writer.h"
-#include "in_memory_index.h"
 #include "segment_data_reader.h"
 #include "segment_index_reader.h"
 #include "segment_searcher.h"
@@ -139,15 +139,11 @@ void Index::updateInfo(const IndexInfo &oldInfo, const IndexInfo &newInfo, bool 
 }
 
 bool Index::containsDocument(uint32_t docId) {
-    if (m_stage->containsDocument(docId)) {
-        return true;
+    bool isDeleted;
+    if (m_stage->containsDocument(docId, isDeleted)) {
+        return !isDeleted;
     }
-    if (openReader()->containsDocument(docId)) {
-        if (!m_stage->containsDeletedDocument(docId)) {
-            return true;
-        }
-    }
-    return false;
+    return openReader()->containsDocument(docId);
 }
 
 QSharedPointer<IndexReader> Index::openReader() {
@@ -198,7 +194,13 @@ std::vector<SearchResult> Index::search(const std::vector<uint32_t> &terms, int6
         return results;
     }
     auto results2 = openReader()->search(terms, deadline.remainingTime());
-    results.insert(results.end(), results2.begin(), results2.end());
+    for (auto result : results2) {
+        bool isDeleted;
+        if (!m_stage->containsDocument(result.docId(), isDeleted)) {
+            results.push_back(result);
+        }
+    }
+    sortSearchResults(results);
     return results;
 }
 
@@ -236,17 +238,17 @@ void Index::applyUpdates(const OpBatch &batch) {
     for (auto op : batch) {
         switch (op.type()) {
             case INSERT_OR_UPDATE_DOCUMENT: {
-                auto data = std::get<InsertOrUpdateDocument>(op.data());
+                auto data = op.data<InsertOrUpdateDocument>();
                 writer.insertOrUpdateDocument(data.docId, data.terms);
                 break;
             }
             case DELETE_DOCUMENT: {
-                auto data = std::get<DeleteDocument>(op.data());
+                auto data = op.data<DeleteDocument>();
                 writer.deleteDocument(data.docId);
                 break;
             }
             case SET_ATTRIBUTE: {
-                auto data = std::get<SetAttribute>(op.data());
+                auto data = op.data<SetAttribute>();
                 writer.setAttribute(data.name, data.value);
                 break;
             }

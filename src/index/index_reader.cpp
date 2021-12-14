@@ -107,8 +107,6 @@ std::vector<SearchResult> IndexReader::search(const std::vector<uint32_t> &terms
         }
     }
 
-    sortSearchResults(results);
-
     return results;
 }
 

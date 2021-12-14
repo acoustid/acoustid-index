@@ -78,15 +78,15 @@ SetAttribute SetAttribute::fromJson(const QJsonObject &json) {
 
 QJsonObject Op::toJson() const {
     QJsonObject json;
-    switch (m_type) {
+    switch (type()) {
         case INSERT_OR_UPDATE_DOCUMENT:
-            json["upsert"] = std::get<InsertOrUpdateDocument>(m_data).toJson();
+            json["upsert"] = data<InsertOrUpdateDocument>().toJson();
             break;
         case DELETE_DOCUMENT:
-            json["delete"] = std::get<DeleteDocument>(m_data).toJson();
+            json["delete"] = data<DeleteDocument>().toJson();
             break;
         case SET_ATTRIBUTE:
-            json["set"] = std::get<SetAttribute>(m_data).toJson();
+            json["set"] = data<SetAttribute>().toJson();
             break;
     }
     return json;
@@ -109,7 +109,7 @@ QString OpBatch::getAttribute(const QString &name, const QString &defaultValue) 
     auto value = defaultValue;
     for (const auto &op : m_ops) {
         if (op.type() == SET_ATTRIBUTE) {
-            const auto &setAttribute = std::get<SetAttribute>(op.data());
+            const auto &setAttribute = op.data<SetAttribute>();
             if (setAttribute.name == name) {
                 value = setAttribute.value;
             }

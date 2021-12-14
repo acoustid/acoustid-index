@@ -107,22 +107,14 @@ bool InMemoryIndex::hasAttribute(const QString &name) {
     return m_data->attributes.contains(name);
 }
 
-bool InMemoryIndex::containsDocument(uint32_t docId) {
+bool InMemoryIndex::containsDocument(uint32_t docId, bool &isDeleted) {
     QReadLocker locker(&m_lock);
     auto it = m_data->docs.find(docId);
     if (it == m_data->docs.end()) {
         return false;
     }
-    return *it;
-}
-
-bool InMemoryIndex::containsDeletedDocument(uint32_t docId) {
-    QReadLocker locker(&m_lock);
-    auto it = m_data->docs.find(docId);
-    if (it == m_data->docs.end()) {
-        return false;
-    }
-    return !*it;
+    isDeleted = !*it;
+    return true;
 }
 
 void InMemoryIndex::applyUpdates(const OpBatch &batch) {
@@ -130,18 +122,18 @@ void InMemoryIndex::applyUpdates(const OpBatch &batch) {
     for (auto op : batch) {
         switch (op.type()) {
             case INSERT_OR_UPDATE_DOCUMENT: {
-                auto data = std::get<InsertOrUpdateDocument>(op.data());
+                auto data = op.data<InsertOrUpdateDocument>();
                 m_data->deleteInternal(data.docId);
                 m_data->insertInternal(data.docId, data.terms);
                 break;
             }
             case DELETE_DOCUMENT: {
-                auto data = std::get<DeleteDocument>(op.data());
+                auto data = op.data<DeleteDocument>();
                 m_data->deleteInternal(data.docId);
                 break;
             }
             case SET_ATTRIBUTE: {
-                auto data = std::get<SetAttribute>(op.data());
+                auto data = op.data<SetAttribute>();
                 m_data->attributes[data.name] = data.value;
                 break;
             }
