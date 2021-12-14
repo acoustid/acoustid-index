@@ -78,6 +78,8 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     QSharedPointer<IndexWriter> openWriterPrivate(bool wait = false, int64_t timeoutInMSecs = 0);
     void acquireWriterLockPrivate(bool wait, int64_t timeoutInMSecs);
 
+    void persistUpdates();
+
     void open(bool create);
 
     QReadWriteLock m_lock;
@@ -90,7 +92,7 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     QPointer<QThreadPool> m_threadPool;
     QFuture<void> m_writerFuture;
     std::unique_ptr<OpLog> m_oplog;
-    std::unique_ptr<InMemoryIndex> m_stage;
+    std::shared_ptr<InMemoryIndex> m_stage;
 };
 
 typedef QWeakPointer<Index> IndexWeakPtr;

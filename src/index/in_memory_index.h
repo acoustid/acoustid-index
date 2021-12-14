@@ -31,6 +31,8 @@ class InMemoryIndex : public BaseIndex {
     // Remove all data from the index
     void clear();
 
+    size_t size();
+
     virtual bool containsDocument(uint32_t docId) override {
         bool isDeleted;
         return getDocument(docId, isDeleted) && !isDeleted;

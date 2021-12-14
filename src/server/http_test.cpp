@@ -22,13 +22,9 @@ class HttpTest : public ::testing::Test {
     }
 
     void TearDown() override {
-        handler.clear();
-        metrics.clear();
-        indexes.clear();
-        dir.clear();
+        indexes->close();
     }
 
- protected:
     QSharedPointer<RAMDirectory> dir;
     QSharedPointer<MultiIndex> indexes;
     QSharedPointer<Metrics> metrics;

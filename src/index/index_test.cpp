@@ -21,6 +21,7 @@ TEST(IndexTest, OpenEmptyCreate) {
     auto dir = QSharedPointer<RAMDirectory>::create();
     auto index = QSharedPointer<Index>::create(dir, true);
     ASSERT_TRUE(index->isOpen());
+    index->close();
 }
 
 TEST(IndexTest, Insert) {
@@ -38,6 +39,8 @@ TEST(IndexTest, Insert) {
 
     ASSERT_TRUE(index->containsDocument(1));
     ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{SearchResult(1, 3)});
+
+    index->close();
 }
 
 TEST(IndexTest, InsertAndUpdate) {
@@ -63,6 +66,8 @@ TEST(IndexTest, InsertAndUpdate) {
     ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
     ASSERT_EQ(index->search({5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
     ASSERT_EQ(index->search({1, 2, 3, 4, 5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
+
+    index->close();
 }
 
 TEST(IndexTest, InsertAndDelete) {
@@ -84,6 +89,8 @@ TEST(IndexTest, InsertAndDelete) {
 
     ASSERT_FALSE(index->containsDocument(1));
     ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
+
+    index->close();
 }
 
 TEST(IndexTest, InsertAndDeleteAndInsert) {
@@ -113,4 +120,6 @@ TEST(IndexTest, InsertAndDeleteAndInsert) {
     ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
     ASSERT_EQ(index->search({5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
     ASSERT_EQ(index->search({1, 2, 3, 4, 5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
+
+    index->close();
 }

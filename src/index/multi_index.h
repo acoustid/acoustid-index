@@ -17,6 +17,8 @@ class MultiIndex {
  public:
     MultiIndex(const QSharedPointer<Directory> &dir);
 
+    void close();
+
     QSharedPointer<Directory> dir() const { return m_dir; }
 
     bool indexExists(const QString &name);

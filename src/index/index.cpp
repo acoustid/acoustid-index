@@ -15,6 +15,8 @@
 #include "store/input_stream.h"
 #include "store/output_stream.h"
 
+#include <QtConcurrent>
+
 using namespace Acoustid;
 
 Index::Index(DirectorySharedPtr dir, bool create)
@@ -38,12 +40,6 @@ QThreadPool *Index::threadPool() const { return m_threadPool; }
 
 void Index::setThreadPool(QThreadPool *threadPool) {
     if (threadPool != m_threadPool) {
-        if (m_threadPool) {
-            m_threadPool->releaseThread();
-        }
-        if (threadPool) {
-            threadPool->reserveThread();
-        }
         m_threadPool = threadPool;
     }
 }
@@ -76,7 +72,7 @@ void Index::open(bool create) {
         throw IndexNotFoundException("there is no index in the directory");
     }
     m_oplog = std::make_unique<OpLog>(m_dir->openDatabase("oplog.db"));
-    m_stage = std::make_unique<InMemoryIndex>();
+    m_stage = std::make_shared<InMemoryIndex>();
 
     std::vector<OpLogEntry> oplogEntries;
     auto lastOplogId = m_info.attribute("last_oplog_id").toInt();
@@ -144,9 +140,7 @@ void Index::updateInfo(const IndexInfo &oldInfo, const IndexInfo &newInfo, bool 
 }
 
 bool Index::containsDocument(uint32_t docId) {
-    qDebug() << "containsDocument" << docId;
     QReadLocker locker(&m_lock);
-    qDebug() << "containsDocument2" << docId;
     if (!m_open) {
         throw IndexIsNotOpen("index is not open");
     }
@@ -252,10 +246,25 @@ void Index::deleteDocument(uint32_t docId) {
     applyUpdates(batch);
 }
 
+void Index::persistUpdates() {
+    qDebug() << "IndexWriter thread started";
+    QThread::sleep(1);
+}
+
 void Index::applyUpdates(const OpBatch &batch) {
     QWriteLocker locker(&m_lock);
     m_oplog->write(batch);
     m_stage->applyUpdates(batch);
+
+    if (m_stage->size() > 100000) {
+        if (!m_writerFuture.isRunning()) {
+            auto sharedThis = sharedFromThis();
+            m_writerFuture = QtConcurrent::run(m_threadPool, [=]() {
+                sharedThis->persistUpdates();
+            });
+        }
+    }
+
     /*
     IndexWriter writer(sharedFromThis());
     for (auto op : batch) {

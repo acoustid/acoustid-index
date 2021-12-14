@@ -59,6 +59,11 @@ void InMemoryIndex::clear() {
     m_data->attributes.clear();
 }
 
+size_t InMemoryIndex::size() {
+    QReadLocker locker(&m_lock);
+    return m_data->docs.size();
+}
+
 std::vector<SearchResult> InMemoryIndex::search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs) {
     QReadLocker locker(&m_lock);
     const auto &index = m_data->index;

@@ -7,6 +7,14 @@ namespace Acoustid {
 
 MultiIndex::MultiIndex(const QSharedPointer<Directory> &dir) : m_dir(dir) {}
 
+void MultiIndex::close() {
+    QMutexLocker locker(&m_mutex);
+    for (auto &index : m_indexes) {
+        index->close();
+    }
+    m_indexes.clear();
+}
+
 bool MultiIndex::indexExists(const QString &name) {
     QMutexLocker locker(&m_mutex);
     if (m_indexes.contains(name)) {

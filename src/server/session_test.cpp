@@ -12,12 +12,28 @@
 using namespace Acoustid;
 using namespace Acoustid::Server;
 
-TEST(SessionTest, Attributes) {
-    auto storage = QSharedPointer<RAMDirectory>::create();
-    auto index = QSharedPointer<Index>::create(storage, true);
-    auto metrics = QSharedPointer<Metrics>::create();
-    auto session = QSharedPointer<Session>::create(index, metrics);
+class SessionTest : public ::testing::Test {
+protected:
+    void SetUp() override
+    {
+        storage = QSharedPointer<RAMDirectory>::create();
+        index = QSharedPointer<Index>::create(storage, true);
+        metrics = QSharedPointer<Metrics>::create();
+        session = QSharedPointer<Session>::create(index, metrics);
+    }
 
+    void TearDown() override
+    {
+        index->close();
+    }
+
+    QSharedPointer<RAMDirectory> storage;
+    QSharedPointer<Index> index;
+    QSharedPointer<Metrics> metrics;
+    QSharedPointer<Session> session;
+};
+
+TEST_F(SessionTest, Attributes) {
     ASSERT_EQ("", session->getAttribute("foo").toStdString());
     session->begin();
     session->setAttribute("foo", "bar");
@@ -38,12 +54,7 @@ TEST(SessionTest, Attributes) {
     ASSERT_EQ("100", session->getAttribute("timeout").toStdString());
 }
 
-TEST(SessionTest, InsertAndSearch) {
-    auto storage = QSharedPointer<RAMDirectory>::create();
-    auto index = QSharedPointer<Index>::create(storage, true);
-    auto metrics = QSharedPointer<Metrics>::create();
-    auto session = QSharedPointer<Session>::create(index, metrics);
-
+TEST_F(SessionTest, InsertAndSearch) {
     session->begin();
     session->insertOrUpdateDocument(1, {1, 2, 3});
     session->insertOrUpdateDocument(2, {1, 200, 300});
