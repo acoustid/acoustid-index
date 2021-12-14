@@ -1,5 +1,6 @@
 #include "op.h"
 
+#include <QDebug>
 #include <QJsonArray>
 #include <QJsonValue>
 #include <QVariant>
@@ -28,7 +29,7 @@ void fromJsonValue(const QJsonValue &value, QString &output) { output = value.to
 void fromJsonArray(const QJsonArray &array, std::vector<uint32_t> &output) {
     output.reserve(array.size());
     for (int i = 0; i < array.size(); ++i) {
-        output[i] = array.at(i).toVariant().toUInt();
+        output.push_back(array.at(i).toVariant().toUInt());
     }
 }
 

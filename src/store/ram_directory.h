@@ -48,6 +48,7 @@ class RAMDirectory : public Directory {
  private:
     RAMDirectory(const QSharedPointer<RAMDirectoryData> &data);
 
+    QString m_dbPrefix;
     QSharedPointer<RAMDirectoryData> m_data;
 };
 

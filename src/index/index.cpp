@@ -7,6 +7,7 @@
 #include "index_file_deleter.h"
 #include "index_reader.h"
 #include "index_writer.h"
+#include "in_memory_index.h"
 #include "segment_data_reader.h"
 #include "segment_index_reader.h"
 #include "segment_searcher.h"
@@ -55,6 +56,14 @@ bool Index::exists(const QSharedPointer<Directory> &dir) {
 }
 
 void Index::open(bool create) {
+    QMutexLocker locker(&m_mutex);
+
+    if (m_open) {
+        return;
+    }
+
+    qDebug() << "Opening index";
+
     if (!m_dir->exists() && !create) {
         throw IndexNotFoundException("index directory does not exist");
     }
@@ -67,6 +76,24 @@ void Index::open(bool create) {
         throw IndexNotFoundException("there is no index in the directory");
     }
     m_oplog = std::make_unique<OpLog>(m_dir->openDatabase("oplog.db"));
+    m_stage = std::make_unique<InMemoryIndex>();
+
+    std::vector<OpLogEntry> oplogEntries;
+    auto lastOplogId = m_info.attribute("last_oplog_id").toInt();
+    while (true) {
+        oplogEntries.clear();
+        lastOplogId = m_oplog->read(oplogEntries, 100, lastOplogId);
+        if (oplogEntries.empty()) {
+            break;
+        }
+        OpBatch batch;
+        for (auto oplogEntry : oplogEntries) {
+            qDebug() << "Applying oplog entry" << oplogEntry.id();
+            batch.add(oplogEntry.op());
+        }
+        m_stage->applyUpdates(batch);
+    }
+
     m_deleter->incRef(m_info);
     setThreadPool(QThreadPool::globalInstance());
     m_open = true;
@@ -112,8 +139,15 @@ void Index::updateInfo(const IndexInfo &oldInfo, const IndexInfo &newInfo, bool 
 }
 
 bool Index::containsDocument(uint32_t docId) {
-    IndexReader reader(sharedFromThis());
-    return reader.containsDocument(docId);
+    if (m_stage->containsDocument(docId)) {
+        return true;
+    }
+    if (openReader()->containsDocument(docId)) {
+        if (!m_stage->containsDeletedDocument(docId)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 QSharedPointer<IndexReader> Index::openReader() {
@@ -158,13 +192,29 @@ void Index::releaseWriterLock() {
 }
 
 std::vector<SearchResult> Index::search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs) {
-    IndexReader reader(sharedFromThis());
-    return reader.search(terms, timeoutInMSecs);
+    QDeadlineTimer deadline(timeoutInMSecs);
+    auto results = m_stage->search(terms, deadline.remainingTime());
+    if (deadline.hasExpired()) {
+        return results;
+    }
+    auto results2 = openReader()->search(terms, deadline.remainingTime());
+    results.insert(results.end(), results2.begin(), results2.end());
+    return results;
 }
 
-bool Index::hasAttribute(const QString &name) { return info().hasAttribute(name); }
+bool Index::hasAttribute(const QString &name) {
+    if (m_stage->hasAttribute(name)) {
+        return true;
+    }
+    return info().hasAttribute(name);
+}
 
-QString Index::getAttribute(const QString &name) { return info().attribute(name); }
+QString Index::getAttribute(const QString &name) {
+    if (m_stage->hasAttribute(name)) {
+        return m_stage->getAttribute(name);
+    }
+    return info().attribute(name);
+}
 
 void Index::insertOrUpdateDocument(uint32_t docId, const std::vector<uint32_t> &terms) {
     OpBatch batch;
@@ -180,6 +230,8 @@ void Index::deleteDocument(uint32_t docId) {
 
 void Index::applyUpdates(const OpBatch &batch) {
     m_oplog->write(batch);
+    m_stage->applyUpdates(batch);
+    /*
     IndexWriter writer(sharedFromThis());
     for (auto op : batch) {
         switch (op.type()) {
@@ -201,4 +253,5 @@ void Index::applyUpdates(const OpBatch &batch) {
         }
     }
     writer.commit();
+    */
 }

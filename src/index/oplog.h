@@ -18,6 +18,10 @@ class OpLogEntry {
     uint64_t id() const { return m_id; }
     const Op &op() const { return m_op; }
 
+    bool operator==(const OpLogEntry &other) const { return m_id == other.m_id && m_op == other.m_op; }
+
+    bool operator!=(const OpLogEntry &other) const { return !(*this == other); }
+
  private:
     uint64_t m_id;
     Op m_op;

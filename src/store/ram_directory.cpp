@@ -6,13 +6,23 @@
 #include "memory_input_stream.h"
 #include "ram_output_stream.h"
 
+#include <QRandomGenerator>
+
 using namespace Acoustid;
 
-RAMDirectory::RAMDirectory() : m_data(QSharedPointer<RAMDirectoryData>::create()) {}
+RAMDirectory::RAMDirectory() : m_data(QSharedPointer<RAMDirectoryData>::create()) {
+    m_dbPrefix = QString("%1_").arg(QRandomGenerator::global()->generate());
+}
 
 RAMDirectory::RAMDirectory(const QSharedPointer<RAMDirectoryData> &data) : m_data(data) {}
 
-RAMDirectory::~RAMDirectory() {}
+RAMDirectory::~RAMDirectory() {
+    for (auto db : QSqlDatabase::connectionNames()) {
+        if (db.startsWith(m_dbPrefix)) {
+            QSqlDatabase::removeDatabase(db);
+        }
+    }
+}
 
 void RAMDirectory::close() {}
 
@@ -63,10 +73,11 @@ void RAMDirectory::ensureExists() {}
 void RAMDirectory::deleteDirectory(const QString &name) { m_data->directories.take(name); }
 
 QSqlDatabase RAMDirectory::openDatabase(const QString &name) {
-    if (QSqlDatabase::contains(name)) {
-        return QSqlDatabase::database(name);
+    auto fullName = m_dbPrefix + name;
+    if (QSqlDatabase::contains(fullName)) {
+        return QSqlDatabase::database(fullName);
     }
-    auto db = QSqlDatabase::addDatabase("QSQLITE", name);
+    auto db = QSqlDatabase::addDatabase("QSQLITE", fullName);
     db.setDatabaseName(":memory:");
     if (!db.open()) {
         throw IOException(QString("Couldn't open the DB file '%1' (%2)").arg(name).arg(db.lastError().text()));

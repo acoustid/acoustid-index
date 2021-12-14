@@ -4,6 +4,7 @@
 #include "index/oplog.h"
 
 #include <QDateTime>
+#include <QDebug>
 #include <QJsonDocument>
 #include <QSqlQuery>
 #include <QVariant>
@@ -33,6 +34,8 @@ void OpLog::createTables() {
 
 uint64_t OpLog::read(std::vector<OpLogEntry> &entries, int limit, uint64_t lastId) {
     QMutexLocker locker(&m_mutex);
+
+    qDebug() << "Reading oplog entries from" << lastId;
 
     QSqlQuery query(m_db);
     query.prepare("SELECT id, data FROM oplog WHERE id > ? ORDER BY id LIMIT ?");

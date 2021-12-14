@@ -22,6 +22,7 @@ namespace Acoustid {
 class IndexFileDeleter;
 class IndexReader;
 class IndexWriter;
+class InMemoryIndex;
 class OpLog;
 
 // Class for working with an on-disk index.
@@ -87,6 +88,7 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     QPointer<QThreadPool> m_threadPool;
     QFuture<void> m_writerFuture;
     std::unique_ptr<OpLog> m_oplog;
+    std::unique_ptr<InMemoryIndex> m_stage;
 };
 
 typedef QWeakPointer<Index> IndexWeakPtr;

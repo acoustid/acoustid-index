@@ -25,6 +25,10 @@ struct InsertOrUpdateDocument {
     QJsonObject toJson() const;
     static InsertOrUpdateDocument fromJson(const QJsonObject &obj);
 
+    bool operator==(const InsertOrUpdateDocument &other) const { return docId == other.docId && terms == other.terms; }
+
+    bool operator!=(const InsertOrUpdateDocument &other) const { return !(*this == other); }
+
  private:
     InsertOrUpdateDocument() = default;
 };
@@ -35,6 +39,10 @@ struct DeleteDocument {
 
     QJsonObject toJson() const;
     static DeleteDocument fromJson(const QJsonObject &obj);
+
+    bool operator==(const DeleteDocument &other) const { return docId == other.docId; }
+
+    bool operator!=(const DeleteDocument &other) const { return !(*this == other); }
 
  private:
     DeleteDocument() = default;
@@ -47,6 +55,10 @@ struct SetAttribute {
 
     QJsonObject toJson() const;
     static SetAttribute fromJson(const QJsonObject &obj);
+
+    bool operator==(const SetAttribute &other) const { return name == other.name && value == other.value; }
+
+    bool operator!=(const SetAttribute &other) const { return !(*this == other); }
 
  private:
     SetAttribute() = default;
@@ -65,6 +77,10 @@ class Op {
 
     QJsonObject toJson() const;
     static Op fromJson(const QJsonObject &obj);
+
+    bool operator==(const Op &other) const { return m_type == other.m_type && m_data == other.m_data; }
+
+    bool operator!=(const Op &other) const { return !(*this == other); }
 
  private:
     Op(OpType type, OpData data) : m_type(type), m_data(data) {}

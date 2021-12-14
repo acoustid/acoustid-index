@@ -61,6 +61,8 @@ set(fpindexlib_SOURCES
 	src/index/segment_merge_policy.cpp
 	src/index/segment_merger.cpp
 	src/index/segment_searcher.cpp
+	src/index/in_memory_index.h
+	src/index/in_memory_index.cpp
 	src/index/op.h
 	src/index/op.cpp
 	src/index/oplog.h
@@ -156,6 +158,7 @@ set(tests_SOURCES
 	src/index/segment_enum_test.cpp
 	src/index/segment_merger_test.cpp
 	src/index/segment_merge_policy_test.cpp
+	src/index/op_test.cpp
 	src/index/oplog_test.cpp
 	src/store/buffered_input_stream_test.cpp
 	src/store/input_stream_test.cpp
