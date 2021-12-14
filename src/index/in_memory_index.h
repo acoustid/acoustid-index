@@ -31,14 +31,12 @@ class InMemoryIndex : public BaseIndex {
     // Remove all data from the index
     void clear();
 
-    // Returns true if the specified document has been deleted.
-    bool isDocumentDeleted(uint32_t docId);
-
     virtual bool containsDocument(uint32_t docId) override {
         bool isDeleted;
-        return containsDocument(docId, isDeleted) && !isDeleted;
+        return getDocument(docId, isDeleted) && !isDeleted;
     }
-    bool containsDocument(uint32_t docId, bool &isDeleted);
+
+    bool getDocument(uint32_t docId, bool &isDeleted);
 
     virtual std::vector<SearchResult> search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs) override;
 

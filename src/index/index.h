@@ -6,7 +6,7 @@
 
 #include <QDeadlineTimer>
 #include <QFuture>
-#include <QMutex>
+#include <QReadWriteLock>
 #include <QPointer>
 #include <QThreadPool>
 #include <QWaitCondition>
@@ -35,7 +35,7 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     Index(DirectorySharedPtr dir, bool create = false);
     virtual ~Index();
 
-    bool isOpen() const;
+    bool isOpen();
 
     void close();
 
@@ -74,13 +74,15 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
  private:
     ACOUSTID_DISABLE_COPY(Index);
 
-    void acquireWriterLockInt(bool wait, int64_t timeoutInMSecs);
+    QSharedPointer<IndexReader> openReaderPrivate();
+    QSharedPointer<IndexWriter> openWriterPrivate(bool wait = false, int64_t timeoutInMSecs = 0);
+    void acquireWriterLockPrivate(bool wait, int64_t timeoutInMSecs);
 
     void open(bool create);
 
-    QMutex m_mutex;
+    QReadWriteLock m_lock;
     DirectorySharedPtr m_dir;
-    bool m_hasWriter;
+    bool m_hasWriter {false};
     QWaitCondition m_writerReleased;
     std::unique_ptr<IndexFileDeleter> m_deleter;
     IndexInfo m_info;

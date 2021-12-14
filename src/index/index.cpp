@@ -18,14 +18,14 @@
 using namespace Acoustid;
 
 Index::Index(DirectorySharedPtr dir, bool create)
-    : m_mutex(QMutex::Recursive), m_dir(dir), m_open(false), m_hasWriter(false), m_deleter(new IndexFileDeleter(dir)) {
+    : m_lock(QReadWriteLock::Recursive), m_dir(dir), m_open(false), m_deleter(new IndexFileDeleter(dir)) {
     open(create);
 }
 
 Index::~Index() { close(); }
 
 void Index::close() {
-    QMutexLocker locker(&m_mutex);
+    QWriteLocker locker(&m_lock);
     if (m_open) {
         qDebug() << "Closing index";
         m_writerFuture.waitForFinished();
@@ -56,7 +56,7 @@ bool Index::exists(const QSharedPointer<Directory> &dir) {
 }
 
 void Index::open(bool create) {
-    QMutexLocker locker(&m_mutex);
+    QWriteLocker locker(&m_lock);
 
     if (m_open) {
         return;
@@ -97,12 +97,17 @@ void Index::open(bool create) {
     m_deleter->incRef(m_info);
     setThreadPool(QThreadPool::globalInstance());
     m_open = true;
+
+    qDebug() << "Index opened";
 }
 
-bool Index::isOpen() const { return m_open; }
+bool Index::isOpen() {
+    QReadLocker locker(&m_lock);
+    return m_open;
+}
 
 IndexInfo Index::acquireInfo() {
-    QMutexLocker locker(&m_mutex);
+    QReadLocker locker(&m_lock);
     IndexInfo info = m_info;
     if (m_open) {
         m_deleter->incRef(info);
@@ -112,7 +117,7 @@ IndexInfo Index::acquireInfo() {
 }
 
 void Index::releaseInfo(const IndexInfo &info) {
-    QMutexLocker locker(&m_mutex);
+    QReadLocker locker(&m_lock);
     if (m_open) {
         m_deleter->decRef(info);
     }
@@ -120,7 +125,7 @@ void Index::releaseInfo(const IndexInfo &info) {
 }
 
 void Index::updateInfo(const IndexInfo &oldInfo, const IndexInfo &newInfo, bool updateIndex) {
-    QMutexLocker locker(&m_mutex);
+    QWriteLocker locker(&m_lock);
     if (m_open) {
         // the infos are opened twice (index + writer), so we need to inc/dec-ref them twice too
         m_deleter->incRef(newInfo);
@@ -139,34 +144,48 @@ void Index::updateInfo(const IndexInfo &oldInfo, const IndexInfo &newInfo, bool 
 }
 
 bool Index::containsDocument(uint32_t docId) {
+    qDebug() << "containsDocument" << docId;
+    QReadLocker locker(&m_lock);
+    qDebug() << "containsDocument2" << docId;
+    if (!m_open) {
+        throw IndexIsNotOpen("index is not open");
+    }
     bool isDeleted;
-    if (m_stage->containsDocument(docId, isDeleted)) {
+    if (m_stage->getDocument(docId, isDeleted)) {
         return !isDeleted;
     }
-    return openReader()->containsDocument(docId);
+    return openReaderPrivate()->containsDocument(docId);
 }
 
 QSharedPointer<IndexReader> Index::openReader() {
-    QMutexLocker locker(&m_mutex);
+    QReadLocker locker(&m_lock);
     if (!m_open) {
         throw IndexIsNotOpen("index is not open");
     }
-    return QSharedPointer<IndexReader>::create(sharedFromThis());
+    return openReaderPrivate();
 }
 
 QSharedPointer<IndexWriter> Index::openWriter(bool wait, int64_t timeoutInMSecs) {
-    QMutexLocker locker(&m_mutex);
+    QReadLocker locker(&m_lock);
     if (!m_open) {
         throw IndexIsNotOpen("index is not open");
     }
-    acquireWriterLockInt(wait, timeoutInMSecs);
+    return openWriterPrivate(wait, timeoutInMSecs);
+}
+
+QSharedPointer<IndexReader> Index::openReaderPrivate() {
+    return QSharedPointer<IndexReader>::create(sharedFromThis());
+}
+
+QSharedPointer<IndexWriter> Index::openWriterPrivate(bool wait, int64_t timeoutInMSecs) {
+    acquireWriterLockPrivate(wait, timeoutInMSecs);
     return QSharedPointer<IndexWriter>::create(sharedFromThis(), true);
 }
 
-void Index::acquireWriterLockInt(bool wait, int64_t timeoutInMSecs) {
+void Index::acquireWriterLockPrivate(bool wait, int64_t timeoutInMSecs) {
     if (m_hasWriter) {
         if (wait) {
-            if (m_writerReleased.wait(&m_mutex, QDeadlineTimer(timeoutInMSecs))) {
+            if (m_writerReleased.wait(&m_lock, QDeadlineTimer(timeoutInMSecs))) {
                 m_hasWriter = true;
                 return;
             }
@@ -177,26 +196,27 @@ void Index::acquireWriterLockInt(bool wait, int64_t timeoutInMSecs) {
 }
 
 void Index::acquireWriterLock(bool wait, int64_t timeoutInMSecs) {
-    QMutexLocker locker(&m_mutex);
-    acquireWriterLockInt(wait, timeoutInMSecs);
+    QWriteLocker locker(&m_lock);
+    acquireWriterLockPrivate(wait, timeoutInMSecs);
 }
 
 void Index::releaseWriterLock() {
-    QMutexLocker locker(&m_mutex);
+    QWriteLocker locker(&m_lock);
     m_hasWriter = false;
     m_writerReleased.notify_one();
 }
 
 std::vector<SearchResult> Index::search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs) {
+    QReadLocker locker(&m_lock);
     QDeadlineTimer deadline(timeoutInMSecs);
     auto results = m_stage->search(terms, deadline.remainingTime());
     if (deadline.hasExpired()) {
         return results;
     }
-    auto results2 = openReader()->search(terms, deadline.remainingTime());
+    auto results2 = openReaderPrivate()->search(terms, deadline.remainingTime());
     for (auto result : results2) {
         bool isDeleted;
-        if (!m_stage->containsDocument(result.docId(), isDeleted)) {
+        if (!m_stage->getDocument(result.docId(), isDeleted)) {
             results.push_back(result);
         }
     }
@@ -205,6 +225,7 @@ std::vector<SearchResult> Index::search(const std::vector<uint32_t> &terms, int6
 }
 
 bool Index::hasAttribute(const QString &name) {
+    QReadLocker locker(&m_lock);
     if (m_stage->hasAttribute(name)) {
         return true;
     }
@@ -212,6 +233,7 @@ bool Index::hasAttribute(const QString &name) {
 }
 
 QString Index::getAttribute(const QString &name) {
+    QReadLocker locker(&m_lock);
     if (m_stage->hasAttribute(name)) {
         return m_stage->getAttribute(name);
     }
@@ -231,6 +253,7 @@ void Index::deleteDocument(uint32_t docId) {
 }
 
 void Index::applyUpdates(const OpBatch &batch) {
+    QWriteLocker locker(&m_lock);
     m_oplog->write(batch);
     m_stage->applyUpdates(batch);
     /*

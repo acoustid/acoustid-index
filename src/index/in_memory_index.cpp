@@ -59,16 +59,6 @@ void InMemoryIndex::clear() {
     m_data->attributes.clear();
 }
 
-bool InMemoryIndex::isDocumentDeleted(uint32_t docId) {
-    QReadLocker locker(&m_lock);
-    auto it = m_data->docs.find(docId);
-    if (it == m_data->docs.end()) {
-        return false;
-    }
-    auto isActive = *it;
-    return !isActive;
-}
-
 std::vector<SearchResult> InMemoryIndex::search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs) {
     QReadLocker locker(&m_lock);
     const auto &index = m_data->index;
@@ -107,7 +97,7 @@ bool InMemoryIndex::hasAttribute(const QString &name) {
     return m_data->attributes.contains(name);
 }
 
-bool InMemoryIndex::containsDocument(uint32_t docId, bool &isDeleted) {
+bool InMemoryIndex::getDocument(uint32_t docId, bool &isDeleted) {
     QReadLocker locker(&m_lock);
     auto it = m_data->docs.find(docId);
     if (it == m_data->docs.end()) {
