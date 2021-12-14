@@ -105,4 +105,17 @@ Op Op::fromJson(const QJsonObject &json) {
     throw Exception("invalid operation");
 }
 
+QString OpBatch::getAttribute(const QString &name, const QString &defaultValue) const {
+    auto value = defaultValue;
+    for (const auto &op : m_ops) {
+        if (op.type() == SET_ATTRIBUTE) {
+            const auto &setAttribute = std::get<SetAttribute>(op.data());
+            if (setAttribute.name == name) {
+                value = setAttribute.value;
+            }
+        }
+    }
+    return value;
+}
+
 }  // namespace Acoustid
