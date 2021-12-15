@@ -54,6 +54,7 @@ bool InMemoryIndexData::deleteInternal(uint32_t docId) {
 
 void InMemoryIndex::clear() {
     QReadLocker locker(&m_lock);
+    m_revision = 0;
     m_data->docs.clear();
     m_data->index.clear();
     m_data->attributes.clear();

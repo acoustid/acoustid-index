@@ -6,8 +6,8 @@
 
 #include <QDeadlineTimer>
 #include <QFuture>
-#include <QReadWriteLock>
 #include <QPointer>
+#include <QReadWriteLock>
 #include <QThreadPool>
 #include <QWaitCondition>
 
@@ -84,7 +84,7 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
 
     QReadWriteLock m_lock;
     DirectorySharedPtr m_dir;
-    bool m_hasWriter {false};
+    bool m_hasWriter{false};
     QWaitCondition m_writerReleased;
     std::unique_ptr<IndexFileDeleter> m_deleter;
     IndexInfo m_info;
@@ -92,7 +92,8 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     QPointer<QThreadPool> m_threadPool;
     QFuture<void> m_writerFuture;
     std::unique_ptr<OpLog> m_oplog;
-    std::shared_ptr<InMemoryIndex> m_stage;
+
+    std::vector<std::shared_ptr<InMemoryIndex>> m_stage;
 };
 
 typedef QWeakPointer<Index> IndexWeakPtr;

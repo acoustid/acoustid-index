@@ -3,6 +3,8 @@
 
 #include "index.h"
 
+#include <QtConcurrent>
+
 #include "in_memory_index.h"
 #include "index/oplog.h"
 #include "index_file_deleter.h"
@@ -14,8 +16,6 @@
 #include "store/directory.h"
 #include "store/input_stream.h"
 #include "store/output_stream.h"
-
-#include <QtConcurrent>
 
 using namespace Acoustid;
 
@@ -71,8 +71,13 @@ void Index::open(bool create) {
         }
         throw IndexNotFoundException("there is no index in the directory");
     }
+
     m_oplog = std::make_unique<OpLog>(m_dir->openDatabase("oplog.db"));
-    m_stage = std::make_shared<InMemoryIndex>();
+
+    auto stage = std::make_shared<InMemoryIndex>();
+    stage->setRevision(m_info.revision() + 1);
+
+    m_stage.push_back(stage);
 
     std::vector<OpLogEntry> oplogEntries;
     auto lastOplogId = m_info.attribute("last_oplog_id").toInt();
@@ -87,7 +92,7 @@ void Index::open(bool create) {
             qDebug() << "Applying oplog entry" << oplogEntry.id();
             batch.add(oplogEntry.op());
         }
-        m_stage->applyUpdates(batch);
+        stage->applyUpdates(batch);
     }
 
     m_deleter->incRef(m_info);
@@ -144,9 +149,11 @@ bool Index::containsDocument(uint32_t docId) {
     if (!m_open) {
         throw IndexIsNotOpen("index is not open");
     }
-    bool isDeleted;
-    if (m_stage->getDocument(docId, isDeleted)) {
-        return !isDeleted;
+    for (auto stage : m_stage) {
+        bool isDeleted;
+        if (stage->getDocument(docId, isDeleted)) {
+            return !isDeleted;
+        }
     }
     return openReaderPrivate()->containsDocument(docId);
 }
@@ -167,9 +174,7 @@ QSharedPointer<IndexWriter> Index::openWriter(bool wait, int64_t timeoutInMSecs)
     return openWriterPrivate(wait, timeoutInMSecs);
 }
 
-QSharedPointer<IndexReader> Index::openReaderPrivate() {
-    return QSharedPointer<IndexReader>::create(sharedFromThis());
-}
+QSharedPointer<IndexReader> Index::openReaderPrivate() { return QSharedPointer<IndexReader>::create(sharedFromThis()); }
 
 QSharedPointer<IndexWriter> Index::openWriterPrivate(bool wait, int64_t timeoutInMSecs) {
     acquireWriterLockPrivate(wait, timeoutInMSecs);
@@ -203,33 +208,61 @@ void Index::releaseWriterLock() {
 std::vector<SearchResult> Index::search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs) {
     QReadLocker locker(&m_lock);
     QDeadlineTimer deadline(timeoutInMSecs);
-    auto results = m_stage->search(terms, deadline.remainingTime());
-    if (deadline.hasExpired()) {
-        return results;
+
+    std::vector<SearchResult> results;
+
+    for (auto it = m_stage.begin(); it != m_stage.end(); ++it) {
+        auto partialResults = (*it)->search(terms, deadline.remainingTime());
+        for (auto result : partialResults) {
+            bool foundNewer = false;
+            for (auto it2 = m_stage.begin(); it2 != it; ++it2) {
+                bool isDeleted;
+                if ((*it2)->getDocument(result.docId(), isDeleted)) {
+                    foundNewer = true;
+                    break;
+                }
+            }
+            if (!foundNewer) {
+                results.push_back(result);
+            }
+        }
     }
-    auto results2 = openReaderPrivate()->search(terms, deadline.remainingTime());
-    for (auto result : results2) {
-        bool isDeleted;
-        if (!m_stage->getDocument(result.docId(), isDeleted)) {
+
+    auto partialResults = openReaderPrivate()->search(terms, deadline.remainingTime());
+    for (auto result : partialResults) {
+        bool foundNewer = false;
+        for (auto it2 = m_stage.begin(); it2 != m_stage.end(); ++it2) {
+            bool isDeleted;
+            if ((*it2)->getDocument(result.docId(), isDeleted)) {
+                foundNewer = true;
+                break;
+            }
+        }
+        if (!foundNewer) {
             results.push_back(result);
         }
     }
+
     sortSearchResults(results);
     return results;
 }
 
 bool Index::hasAttribute(const QString &name) {
     QReadLocker locker(&m_lock);
-    if (m_stage->hasAttribute(name)) {
-        return true;
+    for (auto stage : m_stage) {
+        if (stage->hasAttribute(name)) {
+            return true;
+        }
     }
     return info().hasAttribute(name);
 }
 
 QString Index::getAttribute(const QString &name) {
     QReadLocker locker(&m_lock);
-    if (m_stage->hasAttribute(name)) {
-        return m_stage->getAttribute(name);
+    for (auto stage : m_stage) {
+        if (stage->hasAttribute(name)) {
+            return stage->getAttribute(name);
+        }
     }
     return info().attribute(name);
 }
@@ -254,9 +287,15 @@ void Index::persistUpdates() {
 void Index::applyUpdates(const OpBatch &batch) {
     QWriteLocker locker(&m_lock);
     m_oplog->write(batch);
-    m_stage->applyUpdates(batch);
 
-    if (m_stage->size() > 100000) {
+    auto stage = m_stage.front();
+    qDebug() << "Applying updates to staging area at revision" << stage->revision();
+    stage->applyUpdates(batch);
+
+    if (stage->size() > 100000) {
+        auto nextStage = std::make_shared<InMemoryIndex>();
+        nextStage->setRevision(stage->revision() + 1);
+        m_stage.insert(m_stage.begin(), nextStage);
         if (!m_writerFuture.isRunning()) {
             auto sharedThis = sharedFromThis();
             m_writerFuture = QtConcurrent::run(m_threadPool, [=]() {
