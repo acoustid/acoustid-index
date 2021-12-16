@@ -13,6 +13,7 @@ namespace Acoustid {
 
 class Index;
 class InMemoryIndex;
+class InMemoryIndexSnapshot;
 class SegmentDataWriter;
 
 class IndexWriter : public IndexReader
@@ -53,6 +54,8 @@ private:
 	void maybeFlush();
 	void maybeMerge();
 	void merge(const QList<int>& merge);
+
+    void writeSegment(const std::shared_ptr<InMemoryIndex> &index);
 
 	SegmentDataWriter *segmentDataWriter(const SegmentInfo& info);
 

@@ -229,6 +229,7 @@ std::vector<SearchResult> Index::search(const std::vector<uint32_t> &terms, int6
     std::vector<SearchResult> results;
 
     for (auto it = m_stage.begin(); it != m_stage.end(); ++it) {
+        qDebug() << "Searching in staging area" << (*it)->revision();
         auto partialResults = (*it)->search(terms, deadline.remainingTime());
         for (auto result : partialResults) {
             bool foundNewer = false;
@@ -245,6 +246,7 @@ std::vector<SearchResult> Index::search(const std::vector<uint32_t> &terms, int6
         }
     }
 
+    qDebug() << "Searching in main index";
     auto partialResults = openReaderPrivate()->search(terms, deadline.remainingTime());
     for (auto result : partialResults) {
         bool foundNewer = false;

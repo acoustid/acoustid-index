@@ -9,48 +9,42 @@
 namespace Acoustid {
 
 struct InMemoryIndexData {
-    QHash<uint32_t, bool> docs;
+    InMemoryIndexDocs docs;
     QMultiHash<uint32_t, uint32_t> index;
-    QHash<QString, QString> attributes;
+    QMap<QString, QString> attributes;
     OpBatch updates;
 
-    void insertInternal(uint32_t docId, const std::vector<uint32_t> &terms);
-    bool deleteInternal(uint32_t docId);
+    void insertDocument(uint32_t docId, const std::vector<uint32_t> &terms);
+    void deleteDocument(uint32_t docId);
 };
 
 InMemoryIndex::InMemoryIndex() : m_data(std::make_unique<InMemoryIndexData>()) {}
 
-InMemoryIndex::~InMemoryIndex() {}
+InMemoryIndex::~InMemoryIndex() { QWriteLocker locker(&m_lock); }
 
-void InMemoryIndexData::insertInternal(uint32_t docId, const std::vector<uint32_t> &terms) {
+void InMemoryIndexData::insertDocument(uint32_t docId, const std::vector<uint32_t> &terms) {
     for (size_t i = 0; i < terms.size(); i++) {
         const auto term = terms[i];
         index.insert(term, docId);
     }
-    docs.insert(docId, true);
+    docs.setActive(docId);
 }
 
-bool InMemoryIndexData::deleteInternal(uint32_t docId) {
-    auto it = docs.find(docId);
-    if (it == docs.end()) {
-        docs.insert(docId, false);
-        return false;
-    }
-    auto isActive = *it;
-    if (!isActive) {
-        *it = false;
-        return false;
-    }
-    *it = false;
-    auto i = index.begin();
-    while (i != index.end()) {
-        if (i.value() == docId) {
-            i = index.erase(i);
-        } else {
-            ++i;
+void InMemoryIndexData::deleteDocument(uint32_t docId) {
+    bool isDeleted;
+    if (docs.get(docId, isDeleted)) {
+        if (isDeleted) {
+            return;
+        }
+        for (auto it = index.begin(); it != index.end();) {
+            if (it.value() == docId) {
+                it = index.erase(it);
+            } else {
+                ++it;
+            }
         }
     }
-    return true;
+    docs.setDeleted(docId);
 }
 
 void InMemoryIndex::clear() {
@@ -107,12 +101,7 @@ bool InMemoryIndex::hasAttribute(const QString &name) {
 
 bool InMemoryIndex::getDocument(uint32_t docId, bool &isDeleted) {
     QReadLocker locker(&m_lock);
-    auto it = m_data->docs.find(docId);
-    if (it == m_data->docs.end()) {
-        return false;
-    }
-    isDeleted = !*it;
-    return true;
+    return m_data->docs.get(docId, isDeleted);
 }
 
 void InMemoryIndex::applyUpdates(const OpBatch &batch) {
@@ -122,13 +111,13 @@ void InMemoryIndex::applyUpdates(const OpBatch &batch) {
         switch (op.type()) {
             case INSERT_OR_UPDATE_DOCUMENT: {
                 auto data = op.data<InsertOrUpdateDocument>();
-                m_data->deleteInternal(data.docId);
-                m_data->insertInternal(data.docId, data.terms);
+                m_data->deleteDocument(data.docId);
+                m_data->insertDocument(data.docId, data.terms);
                 break;
             }
             case DELETE_DOCUMENT: {
                 auto data = op.data<DeleteDocument>();
-                m_data->deleteInternal(data.docId);
+                m_data->deleteDocument(data.docId);
                 break;
             }
             case SET_ATTRIBUTE: {
@@ -144,5 +133,11 @@ const OpBatch &InMemoryIndex::updates() {
     QReadLocker locker(&m_lock);
     return m_data->updates;
 }
+
+InMemoryIndexSnapshot InMemoryIndex::snapshot() { return InMemoryIndexSnapshot(&m_lock, m_data.get()); }
+
+const InMemoryIndexDocs &InMemoryIndexSnapshot::docs() const { return m_data->docs; }
+
+const QMap<QString, QString> &InMemoryIndexSnapshot::attributes() const { return m_data->attributes; }
 
 }  // namespace Acoustid

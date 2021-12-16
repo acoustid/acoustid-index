@@ -284,4 +284,14 @@ void IndexWriter::applyUpdates(const OpBatch &batch)
 void IndexWriter::applyUpdatesFrom(const std::shared_ptr<InMemoryIndex> &index)
 {
     applyUpdates(index->updates());
+    writeSegment(index);
+}
+
+void IndexWriter::writeSegment(const std::shared_ptr<InMemoryIndex> &index)
+{
+    auto snapshot = index->snapshot();
+
+    for (auto doc : snapshot.docs()) {
+        qDebug() << "found doc" << doc.id() << doc.isDeleted();
+    }
 }
