@@ -103,7 +103,7 @@ std::vector<SearchResult> IndexReader::search(const std::vector<uint32_t> &terms
             }
         }
         if (currentVersion == version) {
-            results.emplace_back(docId, score);
+            results.emplace_back(docId, score, version);
         }
     }
 

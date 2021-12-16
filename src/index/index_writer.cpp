@@ -15,6 +15,7 @@
 #include "index_file_deleter.h"
 #include "index_utils.h"
 #include "index_writer.h"
+#include "in_memory_index.h"
 
 using namespace Acoustid;
 
@@ -67,6 +68,7 @@ void IndexWriter::commit()
 {
 	flush();
 	IndexInfo info(m_info);
+    info.incRevision();
 	info.save(m_dir.data());
 	if (m_index) {
 		m_index->updateInfo(m_info, info, true);
@@ -256,3 +258,30 @@ void IndexWriter::cleanup()
 	}
 }
 
+void IndexWriter::applyUpdates(const OpBatch &batch)
+{
+    for (auto op : batch) {
+        switch (op.type()) {
+            case INSERT_OR_UPDATE_DOCUMENT: {
+                auto data = op.data<InsertOrUpdateDocument>();
+                insertOrUpdateDocument(data.docId, data.terms);
+                break;
+            }
+            case DELETE_DOCUMENT: {
+                auto data = op.data<DeleteDocument>();
+                deleteDocument(data.docId);
+                break;
+            }
+            case SET_ATTRIBUTE: {
+                auto data = op.data<SetAttribute>();
+                setAttribute(data.name, data.value);
+                break;
+            }
+        }
+    }
+}
+
+void IndexWriter::applyUpdatesFrom(const std::shared_ptr<InMemoryIndex> &index)
+{
+    applyUpdates(index->updates());
+}

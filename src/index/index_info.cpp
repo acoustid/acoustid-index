@@ -114,7 +114,6 @@ void IndexInfo::load(InputStream* rawInput, bool loadIndexes, bool loadDocs, Dir
 void IndexInfo::save(Directory* dir)
 {
 	dir->sync(files(false));
-	d->revision++;
 	QString fileName = indexInfoFileName(d->revision);
 	QString tempFileName = fileName + ".tmp";
 	save(dir->createFile(tempFileName));

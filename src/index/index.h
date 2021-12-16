@@ -42,6 +42,9 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     QThreadPool *threadPool() const;
     void setThreadPool(QThreadPool *pool);
 
+    size_t maxStageSize() const;
+    void setMaxStageSize(size_t size);
+
     // Return true if the index exists on disk.
     static bool exists(const QSharedPointer<Directory> &dir);
 
@@ -51,9 +54,9 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     IndexInfo info() { return m_info; }
 
     QSharedPointer<IndexReader> openReader();
-    QSharedPointer<IndexWriter> openWriter(bool wait = false, int64_t timeoutInMSecs = 0);
+    QSharedPointer<IndexWriter> openWriter(bool wait = false, int64_t timeoutInMSecs = -1);
 
-    void acquireWriterLock(bool wait = false, int64_t timeoutInMSecs = 0);
+    void acquireWriterLock(bool wait = false, int64_t timeoutInMSecs = -1);
     void releaseWriterLock();
 
     IndexInfo acquireInfo();
@@ -75,9 +78,10 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     ACOUSTID_DISABLE_COPY(Index);
 
     QSharedPointer<IndexReader> openReaderPrivate();
-    QSharedPointer<IndexWriter> openWriterPrivate(bool wait = false, int64_t timeoutInMSecs = 0);
-    void acquireWriterLockPrivate(bool wait, int64_t timeoutInMSecs);
+    QSharedPointer<IndexWriter> openWriterPrivate(bool wait, QDeadlineTimer deadline);
+    void acquireWriterLockPrivate(bool wait, QDeadlineTimer deadline);
 
+    void persistUpdates(const std::shared_ptr<InMemoryIndex> &index);
     void persistUpdates();
 
     void open(bool create);
@@ -90,6 +94,7 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     IndexInfo m_info;
     bool m_open;
     QPointer<QThreadPool> m_threadPool;
+    size_t m_maxStageSize{1000*1000};
     QFuture<void> m_writerFuture;
     std::unique_ptr<OpLog> m_oplog;
 

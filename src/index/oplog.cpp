@@ -51,7 +51,7 @@ uint64_t OpLog::read(std::vector<OpLogEntry> &entries, int limit, uint64_t lastI
     return lastId;
 }
 
-void OpLog::write(const OpBatch &batch) {
+uint64_t OpLog::write(const OpBatch &batch) {
     QMutexLocker locker(&m_mutex);
 
     QSqlQuery query(m_db);
@@ -71,6 +71,7 @@ void OpLog::write(const OpBatch &batch) {
     }
     m_db.commit();
     m_lastId = id;
+    return id;
 }
 
 }  // namespace Acoustid

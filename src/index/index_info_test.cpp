@@ -191,6 +191,7 @@ TEST(IndexInfoTest, WriteIntoDir)
 	infos.addSegment(SegmentInfo(1, 66, 200, 456));
 	infos.incLastSegmentId();
 	infos.setAttribute("foo", "bar");
+    infos.incRevision();
 	infos.save(&dir);
 
 	std::unique_ptr<InputStream> input(dir.openFile("info_1"));

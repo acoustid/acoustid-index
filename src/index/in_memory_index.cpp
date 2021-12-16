@@ -12,6 +12,7 @@ struct InMemoryIndexData {
     QHash<uint32_t, bool> docs;
     QMultiHash<uint32_t, uint32_t> index;
     QHash<QString, QString> attributes;
+    OpBatch updates;
 
     void insertInternal(uint32_t docId, const std::vector<uint32_t> &terms);
     bool deleteInternal(uint32_t docId);
@@ -58,6 +59,7 @@ void InMemoryIndex::clear() {
     m_data->docs.clear();
     m_data->index.clear();
     m_data->attributes.clear();
+    m_data->updates.clear();
 }
 
 size_t InMemoryIndex::size() {
@@ -80,7 +82,7 @@ std::vector<SearchResult> InMemoryIndex::search(const std::vector<uint32_t> &ter
     }
     std::vector<SearchResult> results;
     for (auto it = hits.begin(); it != hits.end(); ++it) {
-        results.emplace_back(it.key(), it.value());
+        results.emplace_back(it.key(), it.value(), m_revision);
     }
     std::sort(results.begin(), results.end(), [](const SearchResult &a, const SearchResult &b) {
         return a.score() >= b.score();
@@ -116,6 +118,7 @@ bool InMemoryIndex::getDocument(uint32_t docId, bool &isDeleted) {
 void InMemoryIndex::applyUpdates(const OpBatch &batch) {
     QWriteLocker locker(&m_lock);
     for (auto op : batch) {
+        m_data->updates.add(op);
         switch (op.type()) {
             case INSERT_OR_UPDATE_DOCUMENT: {
                 auto data = op.data<InsertOrUpdateDocument>();
@@ -135,6 +138,11 @@ void InMemoryIndex::applyUpdates(const OpBatch &batch) {
             }
         }
     }
+}
+
+const OpBatch &InMemoryIndex::updates() {
+    QReadLocker locker(&m_lock);
+    return m_data->updates;
 }
 
 }  // namespace Acoustid

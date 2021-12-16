@@ -33,12 +33,12 @@ TEST(IndexTest, Insert) {
 
     index->insertOrUpdateDocument(1, {1, 2, 3});
     ASSERT_TRUE(index->containsDocument(1));
-    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{SearchResult(1, 3)});
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{SearchResult(1, 3, 0)});
 
     index = QSharedPointer<Index>::create(dir, false);
 
     ASSERT_TRUE(index->containsDocument(1));
-    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{SearchResult(1, 3)});
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{SearchResult(1, 3, 0)});
 
     index->close();
 }
@@ -52,20 +52,20 @@ TEST(IndexTest, InsertAndUpdate) {
 
     index->insertOrUpdateDocument(1, {1, 2, 3});
     ASSERT_TRUE(index->containsDocument(1));
-    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{SearchResult(1, 3)});
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{SearchResult(1, 3, 0)});
 
     index->insertOrUpdateDocument(1, {5, 6, 7});
     ASSERT_TRUE(index->containsDocument(1));
     ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
-    ASSERT_EQ(index->search({5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
-    ASSERT_EQ(index->search({1, 2, 3, 4, 5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
+    ASSERT_EQ(index->search({5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3, 0)});
+    ASSERT_EQ(index->search({1, 2, 3, 4, 5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3, 0)});
 
     index = QSharedPointer<Index>::create(dir, false);
 
     ASSERT_TRUE(index->containsDocument(1));
     ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
-    ASSERT_EQ(index->search({5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
-    ASSERT_EQ(index->search({1, 2, 3, 4, 5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
+    ASSERT_EQ(index->search({5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3, 0)});
+    ASSERT_EQ(index->search({1, 2, 3, 4, 5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3, 0)});
 
     index->close();
 }
@@ -79,7 +79,7 @@ TEST(IndexTest, InsertAndDelete) {
 
     index->insertOrUpdateDocument(1, {1, 2, 3});
     ASSERT_TRUE(index->containsDocument(1));
-    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{SearchResult(1, 3)});
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{SearchResult(1, 3, 0)});
 
     index->deleteDocument(1);
     ASSERT_FALSE(index->containsDocument(1));
@@ -102,7 +102,7 @@ TEST(IndexTest, InsertAndDeleteAndInsert) {
 
     index->insertOrUpdateDocument(1, {1, 2, 3});
     ASSERT_TRUE(index->containsDocument(1));
-    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{SearchResult(1, 3)});
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{SearchResult(1, 3, 0)});
 
     index->deleteDocument(1);
     ASSERT_FALSE(index->containsDocument(1));
@@ -111,15 +111,15 @@ TEST(IndexTest, InsertAndDeleteAndInsert) {
     index->insertOrUpdateDocument(1, {5, 6, 7});
     ASSERT_TRUE(index->containsDocument(1));
     ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
-    ASSERT_EQ(index->search({5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
-    ASSERT_EQ(index->search({1, 2, 3, 4, 5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
+    ASSERT_EQ(index->search({5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3, 0)});
+    ASSERT_EQ(index->search({1, 2, 3, 4, 5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3, 0)});
 
     index = QSharedPointer<Index>::create(dir, false);
 
     ASSERT_TRUE(index->containsDocument(1));
     ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
-    ASSERT_EQ(index->search({5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
-    ASSERT_EQ(index->search({1, 2, 3, 4, 5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
+    ASSERT_EQ(index->search({5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3, 0)});
+    ASSERT_EQ(index->search({1, 2, 3, 4, 5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3, 0)});
 
     index->close();
 }

@@ -51,6 +51,8 @@ class InMemoryIndex : public BaseIndex {
 
     virtual void applyUpdates(const OpBatch &batch) override;
 
+    const OpBatch &updates();
+
  private:
     QReadWriteLock m_lock;
     std::atomic<uint64_t> m_revision {0};

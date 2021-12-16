@@ -19,6 +19,18 @@
 
 using namespace Acoustid;
 
+template<typename Idx>
+uint64_t getLastOplogId(const Idx &idx)
+{
+    return idx->getAttribute("status.last_oplog_id").toULongLong();
+}
+
+template<typename Idx>
+void setLastOplogId(Idx &idx, uint64_t id)
+{
+    idx->setAttribute("status.last_oplog_id", QString::number(id));
+}
+
 Index::Index(DirectorySharedPtr dir, bool create)
     : m_lock(QReadWriteLock::Recursive), m_dir(dir), m_open(false), m_deleter(new IndexFileDeleter(dir)) {
     open(create);
@@ -39,9 +51,7 @@ void Index::close() {
 QThreadPool *Index::threadPool() const { return m_threadPool; }
 
 void Index::setThreadPool(QThreadPool *threadPool) {
-    if (threadPool != m_threadPool) {
-        m_threadPool = threadPool;
-    }
+    m_threadPool = threadPool;
 }
 
 bool Index::exists(const QSharedPointer<Directory> &dir) {
@@ -76,6 +86,7 @@ void Index::open(bool create) {
 
     auto stage = std::make_shared<InMemoryIndex>();
     stage->setRevision(m_info.revision() + 1);
+    qDebug() << "Creating new staging area" << stage->revision();
 
     m_stage.push_back(stage);
 
@@ -96,7 +107,6 @@ void Index::open(bool create) {
     }
 
     m_deleter->incRef(m_info);
-    setThreadPool(QThreadPool::globalInstance());
     m_open = true;
 
     qDebug() << "Index opened";
@@ -138,6 +148,13 @@ void Index::updateInfo(const IndexInfo &oldInfo, const IndexInfo &newInfo, bool 
     }
     if (updateIndex) {
         m_info = newInfo;
+        for (auto it = m_stage.begin(); it != m_stage.end(); ++it) {
+            if ((*it)->revision() == m_info.revision()) {
+                qDebug() << "Closing staging area" << (*it)->revision();
+                m_stage.erase(it);
+                break;
+            }
+        }
         for (int i = 0; i < m_info.segmentCount(); i++) {
             assert(!m_info.segment(i).index().isNull());
         }
@@ -171,20 +188,20 @@ QSharedPointer<IndexWriter> Index::openWriter(bool wait, int64_t timeoutInMSecs)
     if (!m_open) {
         throw IndexIsNotOpen("index is not open");
     }
-    return openWriterPrivate(wait, timeoutInMSecs);
+    return openWriterPrivate(wait, QDeadlineTimer(timeoutInMSecs));
 }
 
 QSharedPointer<IndexReader> Index::openReaderPrivate() { return QSharedPointer<IndexReader>::create(sharedFromThis()); }
 
-QSharedPointer<IndexWriter> Index::openWriterPrivate(bool wait, int64_t timeoutInMSecs) {
-    acquireWriterLockPrivate(wait, timeoutInMSecs);
+QSharedPointer<IndexWriter> Index::openWriterPrivate(bool wait, QDeadlineTimer deadline) {
+    acquireWriterLockPrivate(wait, deadline);
     return QSharedPointer<IndexWriter>::create(sharedFromThis(), true);
 }
 
-void Index::acquireWriterLockPrivate(bool wait, int64_t timeoutInMSecs) {
+void Index::acquireWriterLockPrivate(bool wait, QDeadlineTimer deadline) {
     if (m_hasWriter) {
         if (wait) {
-            if (m_writerReleased.wait(&m_lock, QDeadlineTimer(timeoutInMSecs))) {
+            if (m_writerReleased.wait(&m_lock, deadline)) {
                 m_hasWriter = true;
                 return;
             }
@@ -196,7 +213,7 @@ void Index::acquireWriterLockPrivate(bool wait, int64_t timeoutInMSecs) {
 
 void Index::acquireWriterLock(bool wait, int64_t timeoutInMSecs) {
     QWriteLocker locker(&m_lock);
-    acquireWriterLockPrivate(wait, timeoutInMSecs);
+    acquireWriterLockPrivate(wait, QDeadlineTimer(timeoutInMSecs));
 }
 
 void Index::releaseWriterLock() {
@@ -279,52 +296,57 @@ void Index::deleteDocument(uint32_t docId) {
     applyUpdates(batch);
 }
 
+void Index::persistUpdates(const std::shared_ptr<InMemoryIndex> &index) {
+    qDebug() << "Persisting updates from staging area" << index->revision();
+    auto writer = openWriter(true, -1);
+    writer->applyUpdatesFrom(index);
+    writer->commit();
+}
+
 void Index::persistUpdates() {
-    qDebug() << "IndexWriter thread started";
-    QThread::sleep(1);
+    QWriteLocker locker(&m_lock);
+    while (true) {
+        auto numStages = m_stage.size();
+        if (numStages <= 1) {
+            return;
+        }
+        auto stage = m_stage.back();
+        locker.unlock();
+        persistUpdates(stage);
+        locker.relock();
+        assert(m_stage.size() == numStages - 1);
+    }
 }
 
 void Index::applyUpdates(const OpBatch &batch) {
     QWriteLocker locker(&m_lock);
-    m_oplog->write(batch);
 
+    // Store the updates in oplog
+    auto lastOplogId = m_oplog->write(batch);
+
+    // Apply the updates to the staging area
     auto stage = m_stage.front();
-    qDebug() << "Applying updates to staging area at revision" << stage->revision();
+    qDebug() << "Applying" << batch.size() << "updates to staging area" << stage->revision();
     stage->applyUpdates(batch);
+    setLastOplogId(stage, lastOplogId);
 
-    if (stage->size() > 100000) {
+    if (stage->size() > m_maxStageSize) {
         auto nextStage = std::make_shared<InMemoryIndex>();
         nextStage->setRevision(stage->revision() + 1);
+        qDebug() << "Creating new staging area" << nextStage->revision();
         m_stage.insert(m_stage.begin(), nextStage);
-        if (!m_writerFuture.isRunning()) {
-            auto sharedThis = sharedFromThis();
-            m_writerFuture = QtConcurrent::run(m_threadPool, [=]() {
-                sharedThis->persistUpdates();
-            });
-        }
-    }
 
-    /*
-    IndexWriter writer(sharedFromThis());
-    for (auto op : batch) {
-        switch (op.type()) {
-            case INSERT_OR_UPDATE_DOCUMENT: {
-                auto data = op.data<InsertOrUpdateDocument>();
-                writer.insertOrUpdateDocument(data.docId, data.terms);
-                break;
+        if (m_threadPool) {
+            if (!m_writerFuture.isRunning()) {
+                auto sharedThis = sharedFromThis();
+                m_writerFuture = QtConcurrent::run(m_threadPool, [=]() {
+                    sharedThis->persistUpdates();
+                });
             }
-            case DELETE_DOCUMENT: {
-                auto data = op.data<DeleteDocument>();
-                writer.deleteDocument(data.docId);
-                break;
-            }
-            case SET_ATTRIBUTE: {
-                auto data = op.data<SetAttribute>();
-                writer.setAttribute(data.name, data.value);
-                break;
-            }
+        } else {
+            locker.unlock();
+            persistUpdates();
+            locker.relock();
         }
     }
-    writer.commit();
-    */
 }

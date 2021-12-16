@@ -12,6 +12,7 @@
 namespace Acoustid {
 
 class Index;
+class InMemoryIndex;
 class SegmentDataWriter;
 
 class IndexWriter : public IndexReader
@@ -38,6 +39,9 @@ public:
 
 	void insertOrUpdateDocument(uint32_t docId, const std::vector<uint32_t> &terms);
     void deleteDocument(uint32_t docId);
+
+    void applyUpdates(const OpBatch &batch);
+    void applyUpdatesFrom(const std::shared_ptr<InMemoryIndex> &index);
 
 	void setAttribute(const QString &name, const QString &value);
 	void commit();

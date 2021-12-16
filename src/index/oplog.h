@@ -32,7 +32,7 @@ class OpLog {
     explicit OpLog(QSqlDatabase db);
 
     uint64_t read(std::vector<OpLogEntry> &entries, int limit, uint64_t lastId = 0);
-    void write(const OpBatch &batch);
+    uint64_t write(const OpBatch &batch);
 
  protected:
     void createTables();

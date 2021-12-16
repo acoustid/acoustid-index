@@ -15,6 +15,15 @@ void MultiIndex::close() {
     m_indexes.clear();
 }
 
+QThreadPool *MultiIndex::threadPool() const { return m_threadPool; }
+
+void MultiIndex::setThreadPool(QThreadPool *threadPool) {
+    for (auto &index : m_indexes) {
+        index->setThreadPool(threadPool);
+    }
+    m_threadPool = threadPool;
+}
+
 bool MultiIndex::indexExists(const QString &name) {
     QMutexLocker locker(&m_mutex);
     if (m_indexes.contains(name)) {
