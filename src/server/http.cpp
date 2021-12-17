@@ -117,7 +117,7 @@ static QSharedPointer<Index> getIndex(const HttpRequest &request, const QSharedP
                                       bool create = false) {
     auto indexName = getIndexName(request);
     try {
-        return indexes->getIndex(indexName);
+        return indexes->getIndex(indexName, create);
     } catch (const IndexNotFoundException &e) {
         throw HttpResponseException(errNotFound("index does not exist"));
     }

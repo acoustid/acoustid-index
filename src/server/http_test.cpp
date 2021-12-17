@@ -84,6 +84,21 @@ TEST_F(HttpTest, TestGetIndexNotFound) {
               "{\"error\":{\"description\":\"index does not exist\",\"type\":\"not_found\"},\"status\":404}");
 }
 
+TEST_F(HttpTest, TestPutIndex) {
+    auto request = HttpRequest(HTTP_PUT, QUrl("/testidx"));
+    auto response = handler->router().handle(request);
+    ASSERT_EQ(response.status(), HTTP_OK);
+    ASSERT_EQ(response.body().toStdString(), "{\"revision\":1}");
+}
+
+TEST_F(HttpTest, TestPutIndexAleadyExists) {
+    indexes->createIndex("testidx");
+    auto request = HttpRequest(HTTP_PUT, QUrl("/testidx"));
+    auto response = handler->router().handle(request);
+    ASSERT_EQ(response.status(), HTTP_OK);
+    ASSERT_EQ(response.body().toStdString(), "{\"revision\":1}");
+}
+
 TEST_F(HttpTest, TestHeadDocument) {
     indexes->createIndex("testidx");
     indexes->getIndex("testidx")->insertOrUpdateDocument(111, {1, 2, 3});
