@@ -65,7 +65,7 @@ TEST(IndexInfoTest, ReadFromDir)
 	ASSERT_EQ(200, infos.segment(1).lastKey());
 	ASSERT_EQ(456, infos.segment(1).checksum());
 	ASSERT_EQ(1, infos.attributes().size());
-	ASSERT_EQ("bar", infos.attribute("foo"));
+	ASSERT_EQ("bar", infos.getAttribute("foo"));
 }
 
 TEST(IndexInfoTest, ReadFromDirCorruptRecover)
@@ -110,7 +110,7 @@ TEST(IndexInfoTest, ReadFromDirCorruptRecover)
 	ASSERT_EQ(200, infos.segment(1).lastKey());
 	ASSERT_EQ(456, infos.segment(1).checksum());
 	ASSERT_EQ(1, infos.attributes().size());
-	ASSERT_EQ("bar", infos.attribute("foo"));
+	ASSERT_EQ("bar", infos.getAttribute("foo"));
 }
 
 TEST(IndexInfoTest, ReadFromDirCorruptRecover2)
@@ -160,7 +160,7 @@ TEST(IndexInfoTest, ReadFromDirCorruptRecover2)
 	ASSERT_EQ(200, infos.segment(1).lastKey());
 	ASSERT_EQ(456, infos.segment(1).checksum());
 	ASSERT_EQ(1, infos.attributes().size());
-	ASSERT_EQ("bar", infos.attribute("foo"));
+	ASSERT_EQ("bar", infos.getAttribute("foo"));
 }
 
 TEST(IndexInfoTest, ReadFromDirCorruptFail)
@@ -227,11 +227,11 @@ TEST(IndexInfoTest, GetSetAttributes)
 
 	QString value;
 	
-	value = info.attribute("last_fingerprint_id");
+	value = info.getAttribute("last_fingerprint_id");
 	ASSERT_EQ(value, QString());
 
 	info.setAttribute("last_fingerprint_id", "12345");
-	value = info.attribute("last_fingerprint_id");
+	value = info.getAttribute("last_fingerprint_id");
 	ASSERT_EQ(value, QString("12345"));
 }
 

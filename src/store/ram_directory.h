@@ -27,6 +27,8 @@ class RAMDirectory : public Directory {
 
     virtual void close();
 
+    QString path() const override;
+
     const QByteArray &fileData(const QString &name);
 
     virtual OutputStream *createFile(const QString &name);

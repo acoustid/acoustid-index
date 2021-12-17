@@ -127,7 +127,7 @@ public:
 		return d->attribs.contains(name);
 	}
 
-	QString attribute(const QString& name) const
+	QString getAttribute(const QString& name) const
 	{
 		return d->attribs.value(name);
 	}

@@ -10,6 +10,7 @@
 #include <QString>
 #include <map>
 #include <memory>
+#include <set>
 #include <vector>
 
 #include "base_index.h"
@@ -83,11 +84,98 @@ class InMemoryIndexDocs {
     std::map<uint32_t, bool> m_docs;
 };
 
+class InMemoryIndexTerm {
+ public:
+    InMemoryIndexTerm(uint32_t term, uint32_t docId) : m_term(term), m_docId(docId) {}
+
+    uint32_t term() const { return m_term; }
+    uint32_t docId() const { return m_docId; }
+
+ private:
+    uint32_t m_term;
+    uint32_t m_docId;
+};
+
+class InMemoryIndexTermsIterator {
+ public:
+    InMemoryIndexTermsIterator(std::multimap<uint32_t, uint32_t>::const_iterator it) : m_it(it) {}
+
+    InMemoryIndexTerm operator*() const { return InMemoryIndexTerm(m_it->first, m_it->second); }
+
+    uint32_t term() const { return m_it->first; }
+    uint32_t docId() const { return m_it->second; }
+
+    bool operator==(const InMemoryIndexTermsIterator &other) const { return m_it == other.m_it; }
+    bool operator!=(const InMemoryIndexTermsIterator &other) const { return m_it != other.m_it; }
+
+    InMemoryIndexTermsIterator &operator++() {
+        ++m_it;
+        return *this;
+    }
+    InMemoryIndexTermsIterator operator++(int) {
+        InMemoryIndexTermsIterator it = *this;
+        ++m_it;
+        return it;
+    }
+
+ private:
+    std::multimap<uint32_t, uint32_t>::const_iterator m_it;
+};
+
+class InMemoryIndexTerms {
+ public:
+    InMemoryIndexTerms() {}
+
+    void insertDocument(uint32_t docId, const std::vector<uint32_t> &terms) {
+        std::set<uint32_t> uniqueTerms(terms.begin(), terms.end());
+        for (auto term : uniqueTerms) {
+            m_terms.insert({term, docId});
+        }
+    }
+
+    void deleteDocument(uint32_t docId) {
+        for (auto it = m_terms.begin(); it != m_terms.end();) {
+            if (it->second == docId) {
+                it = m_terms.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
+    std::vector<SearchResult> search(const std::vector<uint32_t> &terms) {
+        std::map<uint32_t, int> hits;
+        for (auto term : terms) {
+            auto it = m_terms.find(term);
+            while (it != m_terms.end() && it->first == term) {
+                hits[it->second]++;
+                ++it;
+            }
+        }
+        std::vector<SearchResult> results;
+        results.reserve(hits.size());
+        for (auto it = hits.begin(); it != hits.end(); ++it) {
+            results.emplace_back(it->first, it->second, 0);
+        }
+        sortSearchResults(results);
+        return results;
+    }
+
+    void clear() { m_terms.clear(); }
+
+    InMemoryIndexTermsIterator begin() const { return InMemoryIndexTermsIterator(m_terms.begin()); }
+    InMemoryIndexTermsIterator end() const { return InMemoryIndexTermsIterator(m_terms.end()); }
+
+ private:
+    std::multimap<uint32_t, uint32_t> m_terms;
+};
+
 class InMemoryIndexSnapshot {
  public:
     InMemoryIndexSnapshot(QReadWriteLock *lock, InMemoryIndexData *data) : m_locker(lock), m_data(data) {}
 
     const InMemoryIndexDocs &docs() const;
+    const InMemoryIndexTerms &terms() const;
     const QMap<QString, QString> &attributes() const;
 
  private:

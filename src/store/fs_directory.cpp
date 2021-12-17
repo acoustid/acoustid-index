@@ -31,6 +31,8 @@ void FSDirectory::close() {
     }
 }
 
+QString FSDirectory::path() const { return m_path; }
+
 OutputStream *FSDirectory::createFile(const QString &name) {
     QMutexLocker locker(&m_mutex);
     QString path = filePath(name);

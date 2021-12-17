@@ -53,6 +53,27 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
 
     IndexInfo info() { return m_info; }
 
+    virtual bool containsDocument(uint32_t docId) override;
+    virtual std::vector<SearchResult> search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs = 0) override;
+
+    virtual bool hasAttribute(const QString &name) override;
+    virtual QString getAttribute(const QString &name) override;
+    void setAttribute(const QString &name, const QString &value);
+
+    void insertOrUpdateDocument(uint32_t docId, const std::vector<uint32_t> &terms);
+    void deleteDocument(uint32_t docId);
+
+    virtual void applyUpdates(const OpBatch &batch) override;
+
+    // Make sure all operation are persisted to disk.
+    void flush();
+
+ private:
+    ACOUSTID_DISABLE_COPY(Index);
+
+    friend class IndexReader;
+    friend class IndexWriter;
+
     QSharedPointer<IndexReader> openReader();
     QSharedPointer<IndexWriter> openWriter(bool wait = false, int64_t timeoutInMSecs = -1);
 
@@ -63,22 +84,9 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     void releaseInfo(const IndexInfo &info);
     void updateInfo(const IndexInfo &oldInfo, const IndexInfo &newInfo, bool updateIndex = false);
 
-    virtual bool containsDocument(uint32_t docId) override;
-    virtual std::vector<SearchResult> search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs = 0) override;
-
-    virtual bool hasAttribute(const QString &name) override;
-    virtual QString getAttribute(const QString &name) override;
-
-    void insertOrUpdateDocument(uint32_t docId, const std::vector<uint32_t> &terms);
-    void deleteDocument(uint32_t docId);
-
-    virtual void applyUpdates(const OpBatch &batch) override;
-
- private:
-    ACOUSTID_DISABLE_COPY(Index);
-
     QSharedPointer<IndexReader> openReaderPrivate();
-    QSharedPointer<IndexWriter> openWriterPrivate(bool wait, QDeadlineTimer deadline);
+    QSharedPointer<IndexWriter> openWriterPrivate(bool wait = true,
+                                                  QDeadlineTimer deadline = QDeadlineTimer(QDeadlineTimer::Forever));
     void acquireWriterLockPrivate(bool wait, QDeadlineTimer deadline);
 
     void persistUpdates(const std::shared_ptr<InMemoryIndex> &index);
@@ -94,7 +102,7 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     IndexInfo m_info;
     bool m_open;
     QPointer<QThreadPool> m_threadPool;
-    size_t m_maxStageSize{1000*1000};
+    size_t m_maxStageSize{1000 * 1000};
     QFuture<void> m_writerFuture;
     std::unique_ptr<OpLog> m_oplog;
 

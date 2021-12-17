@@ -22,6 +22,8 @@ class Directory {
 
     virtual void close() = 0;
 
+    virtual QString path() const = 0;
+
     virtual OutputStream *createFile(const QString &name) = 0;
     virtual void deleteFile(const QString &name) = 0;
     virtual InputStream *openFile(const QString &name) = 0;

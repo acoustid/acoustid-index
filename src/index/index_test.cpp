@@ -123,3 +123,52 @@ TEST(IndexTest, InsertAndDeleteAndInsert) {
 
     index->close();
 }
+
+TEST(IndexTest, Flush) {
+    auto dir = QSharedPointer<RAMDirectory>::create();
+    auto index = QSharedPointer<Index>::create(dir, true);
+
+    index->insertOrUpdateDocument(1, {1, 2, 3});
+    index->insertOrUpdateDocument(1, {5, 6, 7});
+    index->flush();
+
+    ASSERT_TRUE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
+    ASSERT_EQ(index->search({5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
+
+    index->close();
+    index = QSharedPointer<Index>::create(dir, true);
+
+    ASSERT_TRUE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
+    ASSERT_EQ(index->search({5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
+
+    index->close();
+}
+
+TEST(IndexTest, FlushMerge) {
+    auto dir = QSharedPointer<RAMDirectory>::create();
+    auto index = QSharedPointer<Index>::create(dir, true);
+
+    for (auto i = 0; i < 100; ++i) {
+        index->insertOrUpdateDocument(1, {1, 2, 3});
+        index->insertOrUpdateDocument(1, {5, 6, 7});
+        index->setAttribute("i", QString::number(i));
+        index->flush();
+    }
+
+    ASSERT_TRUE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
+    ASSERT_EQ(index->search({5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
+    ASSERT_EQ(index->getAttribute("i").toStdString(), "99");
+
+    index->close();
+    index = QSharedPointer<Index>::create(dir, true);
+
+    ASSERT_TRUE(index->containsDocument(1));
+    ASSERT_EQ(index->search({1, 2, 3}), std::vector<SearchResult>{});
+    ASSERT_EQ(index->search({5, 6, 7}), std::vector<SearchResult>{SearchResult(1, 3)});
+    ASSERT_EQ(index->getAttribute("i").toStdString(), "99");
+
+    index->close();
+}

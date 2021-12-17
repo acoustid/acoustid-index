@@ -23,6 +23,8 @@ class FSDirectory : public Directory {
 
     virtual void close();
 
+    virtual QString path() const;
+
     virtual OutputStream *createFile(const QString &name);
     virtual void deleteFile(const QString &name);
     virtual InputStream *openFile(const QString &name);

@@ -26,6 +26,10 @@ RAMDirectory::~RAMDirectory() {
 
 void RAMDirectory::close() {}
 
+QString RAMDirectory::path() const {
+    return QStringLiteral(":memory:");
+}
+
 QStringList RAMDirectory::listFiles() { return m_data->files.keys(); }
 
 bool RAMDirectory::fileExists(const QString &name) { return m_data->files.contains(name); }

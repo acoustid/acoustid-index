@@ -19,15 +19,13 @@
 
 using namespace Acoustid;
 
-template<typename Idx>
-uint64_t getLastOplogId(const Idx &idx)
-{
+template <typename Idx>
+uint64_t getLastOplogId(const Idx &idx) {
     return idx->getAttribute("status.last_oplog_id").toULongLong();
 }
 
-template<typename Idx>
-void setLastOplogId(Idx &idx, uint64_t id)
-{
+template <typename Idx>
+void setLastOplogId(Idx &idx, uint64_t id) {
     idx->setAttribute("status.last_oplog_id", QString::number(id));
 }
 
@@ -50,9 +48,7 @@ void Index::close() {
 
 QThreadPool *Index::threadPool() const { return m_threadPool; }
 
-void Index::setThreadPool(QThreadPool *threadPool) {
-    m_threadPool = threadPool;
-}
+void Index::setThreadPool(QThreadPool *threadPool) { m_threadPool = threadPool; }
 
 bool Index::exists(const QSharedPointer<Directory> &dir) {
     if (!dir->exists()) {
@@ -68,19 +64,22 @@ void Index::open(bool create) {
         return;
     }
 
-    qDebug() << "Opening index";
-
     if (!m_dir->exists() && !create) {
         throw IndexNotFoundException("index directory does not exist");
     }
     if (!m_info.load(m_dir.data(), true, true)) {
         if (create) {
+            qDebug() << "Creating new index" << m_dir->path();
             m_dir->ensureExists();
-            IndexWriter(m_dir, m_info).commit();
+            m_info.incRevision();
+            m_info.save(m_dir.data());
+            locker.unlock();
             return open(false);
         }
         throw IndexNotFoundException("there is no index in the directory");
     }
+
+    qDebug() << "Opening index" << m_dir->path();
 
     m_oplog = std::make_unique<OpLog>(m_dir->openDatabase("oplog.db"));
 
@@ -91,7 +90,7 @@ void Index::open(bool create) {
     m_stage.push_back(stage);
 
     std::vector<OpLogEntry> oplogEntries;
-    auto lastOplogId = m_info.attribute("last_oplog_id").toInt();
+    auto lastOplogId = getLastOplogId(&m_info);
     while (true) {
         oplogEntries.clear();
         lastOplogId = m_oplog->read(oplogEntries, 100, lastOplogId);
@@ -147,6 +146,10 @@ void Index::updateInfo(const IndexInfo &oldInfo, const IndexInfo &newInfo, bool 
         m_deleter->decRef(oldInfo);
     }
     if (updateIndex) {
+        for (int i = 0; i < newInfo.segmentCount(); i++) {
+            assert(!newInfo.segment(i).index().isNull());
+            assert(newInfo.segment(i).docs());
+        }
         m_info = newInfo;
         for (auto it = m_stage.begin(); it != m_stage.end(); ++it) {
             if ((*it)->revision() == m_info.revision()) {
@@ -154,9 +157,6 @@ void Index::updateInfo(const IndexInfo &oldInfo, const IndexInfo &newInfo, bool 
                 m_stage.erase(it);
                 break;
             }
-        }
-        for (int i = 0; i < m_info.segmentCount(); i++) {
-            assert(!m_info.segment(i).index().isNull());
         }
     }
 }
@@ -283,7 +283,13 @@ QString Index::getAttribute(const QString &name) {
             return stage->getAttribute(name);
         }
     }
-    return info().attribute(name);
+    return info().getAttribute(name);
+}
+
+void Index::setAttribute(const QString &name, const QString &value) {
+    OpBatch batch;
+    batch.setAttribute(name, value);
+    applyUpdates(batch);
 }
 
 void Index::insertOrUpdateDocument(uint32_t docId, const std::vector<uint32_t> &terms) {
@@ -299,24 +305,19 @@ void Index::deleteDocument(uint32_t docId) {
 }
 
 void Index::persistUpdates(const std::shared_ptr<InMemoryIndex> &index) {
-    qDebug() << "Persisting updates from staging area" << index->revision();
+    qDebug() << "Persisting operations up to" << getLastOplogId(index) << "from staging area" << index->revision();
     auto writer = openWriter(true, -1);
-    writer->applyUpdatesFrom(index);
+    writer->writeSegment(index);
     writer->commit();
 }
 
 void Index::persistUpdates() {
     QWriteLocker locker(&m_lock);
-    while (true) {
-        auto numStages = m_stage.size();
-        if (numStages <= 1) {
-            return;
-        }
+    while (m_stage.size() > 1) {
         auto stage = m_stage.back();
         locker.unlock();
         persistUpdates(stage);
         locker.relock();
-        assert(m_stage.size() == numStages - 1);
     }
 }
 
@@ -333,22 +334,33 @@ void Index::applyUpdates(const OpBatch &batch) {
     setLastOplogId(stage, lastOplogId);
 
     if (stage->size() > m_maxStageSize) {
-        auto nextStage = std::make_shared<InMemoryIndex>();
-        nextStage->setRevision(stage->revision() + 1);
-        qDebug() << "Creating new staging area" << nextStage->revision();
-        m_stage.insert(m_stage.begin(), nextStage);
+        flush();
+    }
+}
 
-        if (m_threadPool) {
-            if (!m_writerFuture.isRunning()) {
-                auto sharedThis = sharedFromThis();
-                m_writerFuture = QtConcurrent::run(m_threadPool, [=]() {
-                    sharedThis->persistUpdates();
-                });
-            }
-        } else {
-            locker.unlock();
-            persistUpdates();
-            locker.relock();
+void Index::flush() {
+    QWriteLocker locker(&m_lock);
+
+    auto stage = m_stage.front();
+    if (stage->size() == 0) {
+        return;
+    }
+
+    auto nextStage = std::make_shared<InMemoryIndex>();
+    nextStage->setRevision(stage->revision() + 1);
+    qDebug() << "Creating new staging area" << nextStage->revision();
+    m_stage.insert(m_stage.begin(), nextStage);
+
+    if (m_threadPool) {
+        if (!m_writerFuture.isRunning()) {
+            auto self = sharedFromThis();
+            m_writerFuture = QtConcurrent::run(m_threadPool, [=]() {
+                self->persistUpdates();
+            });
         }
+    } else {
+        locker.unlock();
+        persistUpdates();
+        locker.relock();
     }
 }
