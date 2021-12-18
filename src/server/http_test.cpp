@@ -230,3 +230,14 @@ TEST_F(HttpTest, TestBulk) {
     ASSERT_FALSE(indexes->getIndex("testidx")->containsDocument(113));
     ASSERT_EQ(indexes->getIndex("testidx")->getAttribute("foo").toStdString(), "bar");
 }
+
+TEST_F(HttpTest, TestFlush) {
+    indexes->createIndex("testidx");
+    indexes->getIndex("testidx")->insertOrUpdateDocument(111, {1, 2, 3});
+    indexes->getIndex("testidx")->insertOrUpdateDocument(112, {3, 4, 5});
+
+    auto request = HttpRequest(HTTP_POST, QUrl("/testidx/_flush"));
+    auto response = handler->router().handle(request);
+    ASSERT_EQ(response.status(), HTTP_OK);
+    ASSERT_EQ(response.body().toStdString(), "{}");
+}

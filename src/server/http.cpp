@@ -278,6 +278,20 @@ static HttpResponse handleBulkRequest(const HttpRequest &request, const QSharedP
     return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
 }
 
+// Flush all operations from the oplog to the index on disk.
+static HttpResponse handleFlushRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
+    auto index = getIndex(request, indexes);
+
+    try {
+        index->flush();
+    } catch (const IndexIsLocked &e) {
+        return errServiceUnavailable("index is locked");
+    }
+
+    QJsonObject responseJson;
+    return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
+}
+
 HttpRequestHandler::HttpRequestHandler(QSharedPointer<MultiIndex> indexes, QSharedPointer<Metrics> metrics)
     : m_indexes(indexes), m_metrics(metrics) {
     // Healthchecks
@@ -310,6 +324,10 @@ HttpRequestHandler::HttpRequestHandler(QSharedPointer<MultiIndex> indexes, QShar
     // Bulk API
     m_router.route(HTTP_POST, "/:index/_bulk", [=](auto req) {
         return handleBulkRequest(req, m_indexes);
+    });
+
+    m_router.route(HTTP_POST, "/:index/_flush", [=](auto req) {
+        return handleFlushRequest(req, m_indexes);
     });
 
     // Search API
