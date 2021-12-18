@@ -4,8 +4,9 @@
 #ifndef ACOUSTID_INDEX_INDEX_OPLOG_H_
 #define ACOUSTID_INDEX_INDEX_OPLOG_H_
 
+#include <sqlite3.h>
+
 #include <QMutex>
-#include <QSqlDatabase>
 
 #include "index/op.h"
 
@@ -29,7 +30,8 @@ class OpLogEntry {
 
 class OpLog {
  public:
-    explicit OpLog(QSqlDatabase db);
+    explicit OpLog(sqlite3 *db);
+    ~OpLog();
 
     uint64_t read(std::vector<OpLogEntry> &entries, int limit, uint64_t lastId = 0);
     uint64_t write(const OpBatch &batch);
@@ -38,8 +40,8 @@ class OpLog {
     void createTables();
 
  private:
-    QSqlDatabase m_db;
     QMutex m_mutex;
+    sqlite3 *m_db;
     uint64_t m_lastId = 0;
 };
 

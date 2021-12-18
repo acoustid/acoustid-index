@@ -11,6 +11,8 @@
 #include <QMutexLocker>
 #include <QString>
 
+#include <sqlite3.h>
+
 #include "common.h"
 #include "fs_input_stream.h"
 #include "fs_output_stream.h"
@@ -136,15 +138,13 @@ void FSDirectory::deleteDirectory(const QString &name) {
     dir.removeRecursively();
 }
 
-QSqlDatabase FSDirectory::openDatabase(const QString &name) {
-    if (QSqlDatabase::contains(name)) {
-        return QSqlDatabase::database(name);
-    }
-    auto db = QSqlDatabase::addDatabase("QSQLITE", name);
+sqlite3 *FSDirectory::openDatabase(const QString &name) {
+    sqlite3 *db;
     auto fileName = filePath(name);
-    db.setDatabaseName(fileName);
-    if (!db.open()) {
-        throw IOException(QString("Couldn't open the DB file '%1' (%2)").arg(fileName).arg(db.lastError().text()));
+    auto encodedFileName = QFile::encodeName(fileName);
+    int rc = sqlite3_open_v2(encodedFileName.data(), &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
+    if (rc != SQLITE_OK) {
+        throw IOException(QString("Couldn't open database '%1' (%2)").arg(fileName).arg(sqlite3_errstr(rc)));
     }
     return db;
 }

@@ -6,29 +6,43 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QJsonDocument>
-#include <QSqlQuery>
 #include <QVariant>
+
+#include "util/defer.h"
+#include "util/exceptions.h"
 
 namespace Acoustid {
 
-OpLog::OpLog(QSqlDatabase db) : m_db(db) { createTables(); }
+OpLog::OpLog(sqlite3 *db) : m_db(db) { createTables(); }
+
+OpLog::~OpLog() {
+    if (m_db) {
+        sqlite3_close(m_db);
+        m_db = nullptr;
+    }
+}
 
 void OpLog::createTables() {
     QMutexLocker locker(&m_mutex);
 
-    QSqlQuery query(m_db);
-    query.exec(
-        "CREATE TABLE IF NOT EXISTS oplog ("
-        "id INTEGER PRIMARY KEY, "
-        "ts INTEGER NOT NULL, "
-        "data TEXT NOT NULL"
-        ")");
+    int rc;
 
-    query.exec("SELECT max(id) FROM oplog");
-    if (query.first()) {
-        m_lastId = query.value(0).toULongLong();
-    } else {
-        m_lastId = 0;
+    const auto createTableSql =
+        "CREATE TABLE IF NOT EXISTS oplog (\n"
+        "  id INTEGER PRIMARY KEY,\n"
+        "  data TEXT NOT NULL\n"
+        ")\n";
+
+    sqlite3_stmt *stmt = nullptr;
+    rc = sqlite3_prepare_v2(m_db, createTableSql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        throw Exception(QString("failed to prepare statement: %1").arg(sqlite3_errstr(rc)));
+    }
+    defer { sqlite3_finalize(stmt); };
+
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE) {
+        throw Exception(QString("failed to execute statement: %1").arg(sqlite3_errstr(rc)));
     }
 }
 
@@ -37,14 +51,38 @@ uint64_t OpLog::read(std::vector<OpLogEntry> &entries, int limit, uint64_t lastI
 
     qDebug() << "Reading oplog entries from" << lastId;
 
-    QSqlQuery query(m_db);
-    query.prepare("SELECT id, data FROM oplog WHERE id > ? ORDER BY id LIMIT ?");
-    query.bindValue(0, qulonglong(lastId));
-    query.bindValue(1, limit);
-    query.exec();
-    while (query.next()) {
-        auto id = uint64_t(query.value(0).toULongLong());
-        auto op = Op::fromJson(QJsonDocument::fromJson(query.value(1).toByteArray()).object());
+    int rc;
+    const auto selectSql = "SELECT id, data FROM oplog WHERE id > ? ORDER BY id LIMIT ?";
+
+    sqlite3_stmt *stmt = nullptr;
+    rc = sqlite3_prepare_v2(m_db, selectSql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        throw Exception(QString("failed to prepare statement: %1").arg(sqlite3_errstr(rc)));
+    }
+    defer { sqlite3_finalize(stmt); };
+
+    rc = sqlite3_bind_int64(stmt, 1, lastId);
+    if (rc != SQLITE_OK) {
+        throw Exception(QString("failed to bind parameter: %1").arg(sqlite3_errstr(rc)));
+    }
+
+    rc = sqlite3_bind_int(stmt, 2, limit);
+    if (rc != SQLITE_OK) {
+        throw Exception(QString("failed to bind parameter: %1").arg(sqlite3_errstr(rc)));
+    }
+
+    while (true) {
+        rc = sqlite3_step(stmt);
+        if (rc != SQLITE_ROW) {
+            if (rc == SQLITE_DONE) {
+                qDebug() << "No more oplog entries";
+                break;
+            }
+            throw Exception(QString("failed to execute statement: %1").arg(sqlite3_errstr(rc)));
+        }
+        auto id = static_cast<uint64_t>(sqlite3_column_int64(stmt, 0));
+        auto opJson = QByteArray(reinterpret_cast<const char *>(sqlite3_column_blob(stmt, 1)), sqlite3_column_bytes(stmt, 1));
+        auto op = Op::fromJson(QJsonDocument::fromJson(opJson).object());
         entries.emplace_back(id, op);
         lastId = id;
     }
@@ -54,24 +92,39 @@ uint64_t OpLog::read(std::vector<OpLogEntry> &entries, int limit, uint64_t lastI
 uint64_t OpLog::write(const OpBatch &batch) {
     QMutexLocker locker(&m_mutex);
 
-    QSqlQuery query(m_db);
-    m_db.transaction();
-    auto id = m_lastId;
-    try {
-        query.prepare(QStringLiteral("INSERT INTO oplog (id, ts, data) VALUES (?, ?, ?)"));
-        for (const auto &op : batch) {
-            query.bindValue(0, qulonglong(++id));
-            query.bindValue(1, QDateTime::currentMSecsSinceEpoch());
-            query.bindValue(2, QJsonDocument(op.toJson()).toJson(QJsonDocument::Compact));
-            query.exec();
-        }
-    } catch (...) {
-        m_db.rollback();
-        throw;
+    int rc;
+    const auto insertSql = "INSERT INTO oplog (data) VALUES (?)";
+
+    sqlite3_stmt *stmt = nullptr;
+    rc = sqlite3_prepare_v2(m_db, insertSql, -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        throw Exception(QString("failed to prepare statement: %1").arg(sqlite3_errstr(rc)));
     }
-    m_db.commit();
-    m_lastId = id;
-    return id;
+    defer { sqlite3_finalize(stmt); };
+
+    uint64_t lastId;
+
+    for (const auto &op : batch) {
+        auto opJson = QJsonDocument(op.toJson()).toJson(QJsonDocument::Compact);
+        rc = sqlite3_bind_blob(stmt, 1, opJson.data(), opJson.size(), SQLITE_STATIC);
+        if (rc != SQLITE_OK) {
+            throw Exception(QString("failed to bind parameter: %1").arg(sqlite3_errstr(rc)));
+        }
+
+        rc = sqlite3_step(stmt);
+        if (rc != SQLITE_DONE) {
+            throw Exception(QString("failed to execute statement: %1").arg(sqlite3_errstr(rc)));
+        }
+
+        lastId = static_cast<uint64_t>(sqlite3_last_insert_rowid(m_db));
+
+        rc = sqlite3_reset(stmt);
+        if (rc != SQLITE_OK) {
+            throw Exception(QString("failed to reset statement: %1").arg(sqlite3_errstr(rc)));
+        }
+    }
+
+    return lastId;
 }
 
 }  // namespace Acoustid
