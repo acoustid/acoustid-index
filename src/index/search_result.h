@@ -20,8 +20,8 @@ class SearchResult {
 
  private:
     uint32_t m_docId;
-    uint32_t m_version;
     int m_score;
+    uint32_t m_version;
 };
 
 inline void sortSearchResults(std::vector<SearchResult> &results)
@@ -37,7 +37,7 @@ inline void sortSearchResults(std::vector<SearchResult> &results)
     });
 }
 
-inline void filterSearchResults(std::vector<SearchResult> &results, int limit = 0, int minScorePercent = 0) {
+inline void filterSearchResults(std::vector<SearchResult> &results, size_t limit = 0, int minScorePercent = 0) {
     if (results.empty()) {
         return;
     }

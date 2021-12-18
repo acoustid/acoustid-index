@@ -30,7 +30,7 @@ void setLastOpId(Idx &idx, int64_t id) {
 }
 
 Index::Index(DirectorySharedPtr dir, bool create)
-    : m_lock(QReadWriteLock::Recursive), m_dir(dir), m_open(false), m_deleter(new IndexFileDeleter(dir)) {
+    : m_lock(QReadWriteLock::Recursive), m_dir(dir), m_deleter(new IndexFileDeleter(dir)) {
     open(create);
 }
 
@@ -148,7 +148,7 @@ void Index::updateInfo(const IndexInfo &oldInfo, const IndexInfo &newInfo, bool 
         m_deleter->decRef(oldInfo);
     }
     if (updateIndex) {
-        for (int i = 0; i < newInfo.segmentCount(); i++) {
+        for (size_t i = 0; i < newInfo.segmentCount(); i++) {
             assert(!newInfo.segment(i).index().isNull());
             assert(newInfo.segment(i).docs());
         }

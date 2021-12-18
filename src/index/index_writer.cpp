@@ -66,7 +66,7 @@ void IndexWriter::merge(const QList<int>& merge) {
 
     auto docs = std::make_shared<SegmentDocs>();
     {
-        for (size_t i = 0; i < merge.size(); i++) {
+        for (int i = 0; i < merge.size(); i++) {
             auto j = merge.at(i);
             const auto s = segments.at(j);
             for (auto doc : *s.docs()) {
@@ -78,7 +78,7 @@ void IndexWriter::merge(const QList<int>& merge) {
 
     {
         SegmentMerger merger(segmentDataWriter(segment));
-        for (size_t i = 0; i < merge.size(); i++) {
+        for (int i = 0; i < merge.size(); i++) {
             int j = merge.at(i);
             const SegmentInfo& s = segments.at(j);
             QSet<uint32_t> excludeDocIds;
@@ -104,7 +104,7 @@ void IndexWriter::merge(const QList<int>& merge) {
 
     QSet<int> merged = merge.toSet();
     info.clearSegments();
-    for (size_t i = 0; i < segments.size(); i++) {
+    for (int i = 0; i < segments.size(); i++) {
         const SegmentInfo& s = segments.at(i);
         if (!merged.contains(i)) {
             info.addSegment(s);

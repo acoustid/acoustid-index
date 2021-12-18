@@ -45,7 +45,7 @@ QList<int> SegmentMergePolicy::findMerges(const SegmentInfoList& infos)
 	}
 
 	QList<int> segments;
-	for (size_t i = 0; i < infos.size(); i++) {
+	for (int i = 0; i < infos.size(); i++) {
 		segments.append(i);
 	}
 	qStableSort(segments.begin(), segments.end(), SegmentSizeLessThan(&infos));

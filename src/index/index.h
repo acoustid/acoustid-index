@@ -69,7 +69,7 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     void flush();
 
  private:
-    ACOUSTID_DISABLE_COPY(Index);
+    ACOUSTID_DISABLE_COPY(Index)
 
     friend class IndexReader;
     friend class IndexWriter;
@@ -100,7 +100,7 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     QWaitCondition m_writerReleased;
     std::unique_ptr<IndexFileDeleter> m_deleter;
     IndexInfo m_info;
-    bool m_open;
+    bool m_open{false};
     QPointer<QThreadPool> m_threadPool;
     size_t m_maxStageSize{1000 * 1000};
     QFuture<void> m_writerFuture;

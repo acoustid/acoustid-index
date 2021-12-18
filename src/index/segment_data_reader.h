@@ -44,8 +44,8 @@ public:
 
 private:
 	InputStream *m_input;
-	size_t m_position;
 	size_t m_length;
+	size_t m_position;
 	uint32_t m_key, m_value;
 };
 

@@ -59,7 +59,6 @@ struct SetAttribute {
 };
 
 enum OpType {
-    UNKNOWN_OPERATION = -1,
     INSERT_OR_UPDATE_DOCUMENT = 0,
     DELETE_DOCUMENT = 1,
     SET_ATTRIBUTE = 2,
@@ -75,11 +74,7 @@ class Op {
 
     OpType type() const {
         auto i = m_data.index();
-        if (i == std::variant_npos) {
-            return UNKNOWN_OPERATION;
-        } else {
-            return static_cast<OpType>(i);
-        }
+        return static_cast<OpType>(i);
     }
 
     template <typename T>

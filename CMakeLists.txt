@@ -31,7 +31,7 @@ set(CPACK_COMPONENTS_ALL application)
 include(CPack)
 
 if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -pedantic")
+  add_compile_options(-Wall -pedantic)
 endif()
 
 add_definitions(

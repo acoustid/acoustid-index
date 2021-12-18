@@ -24,7 +24,7 @@ public:
 	void decRef(const QString& file);
 
 protected:
-	ACOUSTID_DISABLE_COPY(IndexFileDeleter);
+	ACOUSTID_DISABLE_COPY(IndexFileDeleter)
 
 	DirectorySharedPtr m_dir;
 	QMap<QString, int> m_refCounts;

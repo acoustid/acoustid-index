@@ -90,7 +90,7 @@ QJsonObject Op::toJson() const {
             break;
     }
     return json;
-};
+}
 
 Op Op::fromJson(const QJsonObject &json) {
     for (auto it = json.begin(); it != json.end(); ++it) {
