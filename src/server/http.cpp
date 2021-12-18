@@ -34,10 +34,6 @@ static HttpResponse errNotFound(const QString &description) {
     return makeJsonErrorResponse(HTTP_NOT_FOUND, "not_found", description);
 }
 
-static HttpResponse errNotImplemented(const QString &description) {
-    return makeJsonErrorResponse(HTTP_INTERNAL_SERVER_ERROR, "not_implemented", description);
-}
-
 static HttpResponse errBadRequest(const QString &type, const QString &description) {
     return makeJsonErrorResponse(HTTP_BAD_REQUEST, type, description);
 }

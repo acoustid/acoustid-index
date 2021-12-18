@@ -85,8 +85,8 @@ bool FSDirectory::fileExists(const QString &name) {
 }
 
 void FSDirectory::sync(const QStringList &names) {
-    for (size_t i = 0; i < names.size(); i++) {
-        fsync(names.at(i));
+    for (const QString &name : names) {
+        fsync(name);
     }
 }
 

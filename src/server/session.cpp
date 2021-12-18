@@ -105,7 +105,7 @@ std::vector<SearchResult> Session::search(const std::vector<uint32_t> &terms) {
     std::vector<SearchResult> results;
     try {
         results = m_index->search(terms, m_timeout);
-    } catch (TimeoutExceeded) {
+    } catch (const TimeoutExceeded &e) {
         throw HandlerException("timeout exceeded");
     }
     filterSearchResults(results, m_maxResults, m_topScorePercent);

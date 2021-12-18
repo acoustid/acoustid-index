@@ -43,9 +43,9 @@ int main(int argc, char **argv)
 		timer.start();
 		auto results = index->search(fp);
 		qDebug() << "Search took" << timer.elapsed() << "ms";
-		for (int j = 0; j < results.size(); j++) {
-			qDebug() << "Matches" << results[j].docId() << results[j].score();
-		}
+        for (auto result : results) {
+			qDebug() << "Matches" << result.docId() << result.score();
+        }
 	}
 
 	return 0;

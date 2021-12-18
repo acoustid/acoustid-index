@@ -51,10 +51,10 @@ class FSDirectory : public Directory {
 
     QString filePath(const QString &name) { return m_path + "/" + name; }
 
-    bool m_mmap;
     QMutex m_mutex;
     QHash<QString, FSFileSharedPtr> m_openInputFiles;
     QString m_path;
+    bool m_mmap{false};
     bool m_autoDelete{false};
 };
 
