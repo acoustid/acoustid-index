@@ -194,8 +194,8 @@ class InMemoryIndex : public BaseIndex {
     InMemoryIndex &operator=(const InMemoryIndex &) = delete;
     InMemoryIndex &operator=(InMemoryIndex &&) = delete;
 
-    uint64_t revision() const { return m_revision; }
-    void setRevision(uint64_t revision) { m_revision = revision; }
+    int64_t revision() const { return m_revision; }
+    void setRevision(int64_t revision) { m_revision = revision; }
 
     // Remove all data from the index
     void clear();
@@ -223,7 +223,7 @@ class InMemoryIndex : public BaseIndex {
 
  private:
     QReadWriteLock m_lock;
-    std::atomic<uint64_t> m_revision{0};
+    std::atomic<int64_t> m_revision{0};
     std::unique_ptr<InMemoryIndexData> m_data;
 };
 

@@ -37,9 +37,9 @@ class ReplicationSlotAlreadyExistsError : public OplogError {
 
 class OplogEntry {
  public:
-    OplogEntry(uint64_t id, const Op &op) : m_id(id), m_op(op) {}
+    OplogEntry(int64_t id, const Op &op) : m_id(id), m_op(op) {}
 
-    uint64_t id() const { return m_id; }
+    int64_t id() const { return m_id; }
     const Op &op() const { return m_op; }
 
     bool operator==(const OplogEntry &other) const { return m_id == other.m_id && m_op == other.m_op; }
@@ -47,7 +47,7 @@ class OplogEntry {
     bool operator!=(const OplogEntry &other) const { return !(*this == other); }
 
  private:
-    uint64_t m_id;
+    int64_t m_id;
     Op m_op;
 };
 
@@ -61,11 +61,16 @@ class Oplog {
     void updateReplicationSlot(const QString &slotName, int64_t lastOpId);
     void deleteReplicationSlot(const QString &slotName);
 
+    int64_t getFirstOpId();
+    int64_t getFirstUsedOpId();
+
     int64_t getLastOpId();
     int64_t getLastOpId(const QString &slotName);
 
     int64_t read(std::vector<OplogEntry> &entries, int limit, int64_t lastOpId = 0);
     int64_t write(const OpBatch &batch);
+
+    void cleanup();
 
  protected:
     void createTables();
@@ -75,7 +80,6 @@ class Oplog {
  private:
     QMutex m_mutex;
     sqlite3 *m_db;
-    uint64_t m_lastId = 0;
 };
 
 }  // namespace Acoustid

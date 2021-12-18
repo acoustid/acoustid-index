@@ -20,13 +20,13 @@
 using namespace Acoustid;
 
 template <typename Idx>
-uint64_t getLastOpId(const Idx &idx) {
-    return idx->getAttribute("status.last_oplog_id").toULongLong();
+int64_t getLastOpId(const Idx &idx) {
+    return idx->getAttribute("status.last_op_id").toLongLong();
 }
 
 template <typename Idx>
-void setLastOpId(Idx &idx, uint64_t id) {
-    idx->setAttribute("status.last_oplog_id", QString::number(id));
+void setLastOpId(Idx &idx, int64_t id) {
+    idx->setAttribute("status.last_op_id", QString::number(id));
 }
 
 Index::Index(DirectorySharedPtr dir, bool create)
@@ -316,6 +316,7 @@ void Index::persistUpdates(const std::shared_ptr<InMemoryIndex> &index) {
     writer->commit();
 
     m_oplog->updateReplicationSlot("main", lastOpId);
+    m_oplog->cleanup();
 }
 
 void Index::persistUpdates() {

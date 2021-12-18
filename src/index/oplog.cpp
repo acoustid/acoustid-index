@@ -143,7 +143,7 @@ void Oplog::createOrUpdateReplicationSlot(const QString &slotName, int64_t lastO
                            "VALUES (?, ?, COALESCE((SELECT op_time FROM oplog WHERE op_id = ?), 0)) "
                            "ON CONFLICT(slot_name) DO "
                            "UPDATE SET last_op_id=excluded.last_op_id, last_op_time=excluded.last_op_time",
-                            -1, &stmt, nullptr) != SQLITE_OK) {
+                           -1, &stmt, nullptr) != SQLITE_OK) {
     }
     defer { sqlite3_finalize(stmt); };
     if (sqlite3_bind_text(stmt, 1, slotName.toUtf8().constData(), -1, SQLITE_TRANSIENT) != SQLITE_OK) {
@@ -164,6 +164,34 @@ int64_t Oplog::getLastOpId() {
     QMutexLocker locker(&m_mutex);
     sqlite3_stmt *stmt;
     if (sqlite3_prepare_v2(m_db, "SELECT MAX(op_id) FROM oplog", -1, &stmt, nullptr) != SQLITE_OK) {
+        throw OplogError(sqlite3_errmsg(m_db));
+    }
+    defer { sqlite3_finalize(stmt); };
+    if (sqlite3_step(stmt) != SQLITE_ROW) {
+        throw OplogError(sqlite3_errmsg(m_db));
+    }
+    return sqlite3_column_int64(stmt, 0);
+}
+
+// Find the smallest op id from the oplog.
+int64_t Oplog::getFirstOpId() {
+    QMutexLocker locker(&m_mutex);
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(m_db, "SELECT MIN(op_id) FROM oplog", -1, &stmt, nullptr) != SQLITE_OK) {
+        throw OplogError(sqlite3_errmsg(m_db));
+    }
+    defer { sqlite3_finalize(stmt); };
+    if (sqlite3_step(stmt) != SQLITE_ROW) {
+        throw OplogError(sqlite3_errmsg(m_db));
+    }
+    return sqlite3_column_int64(stmt, 0);
+}
+
+// Find the smallest used op id from the oplog.
+int64_t Oplog::getFirstUsedOpId() {
+    QMutexLocker locker(&m_mutex);
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(m_db, "SELECT MIN(last_op_id) FROM replication_slots", -1, &stmt, nullptr) != SQLITE_OK) {
         throw OplogError(sqlite3_errmsg(m_db));
     }
     defer { sqlite3_finalize(stmt); };
@@ -279,6 +307,28 @@ int64_t Oplog::write(const OpBatch &batch) {
     }
 
     return lastId;
+}
+
+void Oplog::cleanup() {
+    auto firstUsedOpId = getFirstUsedOpId();
+    if (firstUsedOpId == 0) {
+        return;
+    }
+
+    QMutexLocker locker(&m_mutex);
+    qDebug() << "Cleaning up oplog entries older than" << firstUsedOpId;
+
+    sqlite3_stmt *stmt;
+    if (sqlite3_prepare_v2(m_db, "DELETE FROM oplog WHERE op_id < ?", -1, &stmt, nullptr) != SQLITE_OK) {
+        throw OplogError(sqlite3_errmsg(m_db));
+    }
+    defer { sqlite3_finalize(stmt); };
+    if (sqlite3_bind_int64(stmt, 1, firstUsedOpId) != SQLITE_OK) {
+        throw OplogError(sqlite3_errmsg(m_db));
+    }
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        throw OplogError(sqlite3_errmsg(m_db));
+    }
 }
 
 }  // namespace Acoustid
