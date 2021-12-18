@@ -20,12 +20,12 @@
 using namespace Acoustid;
 
 template <typename Idx>
-uint64_t getLastOplogId(const Idx &idx) {
+uint64_t getLastOpId(const Idx &idx) {
     return idx->getAttribute("status.last_oplog_id").toULongLong();
 }
 
 template <typename Idx>
-void setLastOplogId(Idx &idx, uint64_t id) {
+void setLastOpId(Idx &idx, uint64_t id) {
     idx->setAttribute("status.last_oplog_id", QString::number(id));
 }
 
@@ -81,7 +81,7 @@ void Index::open(bool create) {
 
     qDebug() << "Opening index" << m_dir->path();
 
-    m_oplog = std::make_unique<OpLog>(m_dir->openDatabase("oplog.db"));
+    m_oplog = std::make_unique<Oplog>(m_dir->openDatabase("oplog.db"));
 
     auto stage = std::make_shared<InMemoryIndex>();
     stage->setRevision(m_info.revision() + 1);
@@ -89,11 +89,13 @@ void Index::open(bool create) {
 
     m_stage.push_back(stage);
 
-    std::vector<OpLogEntry> oplogEntries;
-    auto lastOplogId = getLastOplogId(&m_info);
+    auto lastOpId = getLastOpId(&m_info);
+    m_oplog->createOrUpdateReplicationSlot("main", lastOpId);
+
+    std::vector<OplogEntry> oplogEntries;
     while (true) {
         oplogEntries.clear();
-        lastOplogId = m_oplog->read(oplogEntries, 100, lastOplogId);
+        lastOpId = m_oplog->read(oplogEntries, 100, lastOpId);
         if (oplogEntries.empty()) {
             break;
         }
@@ -305,10 +307,15 @@ void Index::deleteDocument(uint32_t docId) {
 }
 
 void Index::persistUpdates(const std::shared_ptr<InMemoryIndex> &index) {
-    qDebug() << "Persisting operations up to" << getLastOplogId(index) << "from staging area" << index->revision();
+    auto lastOpId = getLastOpId(index);
+
+    qDebug() << "Persisting operations up to" << getLastOpId(index) << "from staging area" << index->revision();
+
     auto writer = openWriter(true, -1);
     writer->writeSegment(index);
     writer->commit();
+
+    m_oplog->updateReplicationSlot("main", lastOpId);
 }
 
 void Index::persistUpdates() {
@@ -325,13 +332,13 @@ void Index::applyUpdates(const OpBatch &batch) {
     QWriteLocker locker(&m_lock);
 
     // Store the updates in oplog
-    auto lastOplogId = m_oplog->write(batch);
+    auto lastOpId = m_oplog->write(batch);
 
     // Apply the updates to the staging area
     auto stage = m_stage.front();
     qDebug() << "Applying" << batch.size() << "updates to staging area" << stage->revision();
     stage->applyUpdates(batch);
-    setLastOplogId(stage, lastOplogId);
+    setLastOpId(stage, lastOpId);
 
     if (stage->size() > m_maxStageSize) {
         flush();

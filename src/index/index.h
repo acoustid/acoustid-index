@@ -23,7 +23,7 @@ class IndexFileDeleter;
 class IndexReader;
 class IndexWriter;
 class InMemoryIndex;
-class OpLog;
+class Oplog;
 
 // Class for working with an on-disk index.
 //
@@ -104,7 +104,7 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     QPointer<QThreadPool> m_threadPool;
     size_t m_maxStageSize{1000 * 1000};
     QFuture<void> m_writerFuture;
-    std::unique_ptr<OpLog> m_oplog;
+    std::unique_ptr<Oplog> m_oplog;
 
     std::vector<std::shared_ptr<InMemoryIndex>> m_stage;
 };
