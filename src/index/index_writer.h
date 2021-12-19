@@ -6,61 +6,43 @@
 
 #include "common.h"
 #include "index_info.h"
-#include "segment_merge_policy.h"
 #include "index_reader.h"
+#include "segment_merge_policy.h"
 
 namespace Acoustid {
 
 class Index;
+class InMemoryIndex;
+class InMemoryIndexSnapshot;
 class SegmentDataWriter;
 
-class IndexWriter : public IndexReader
-{
-public:
-	IndexWriter(DirectorySharedPtr dir, const IndexInfo& info);
-	IndexWriter(IndexSharedPtr index, bool alreadyHasLock = false);
-	virtual ~IndexWriter();
+class IndexWriter : public IndexReader {
+ public:
+    IndexWriter(IndexSharedPtr index, bool alreadyHasLock = false);
+    virtual ~IndexWriter();
 
-	size_t maxSegmentBufferSize() const
-	{
-		return m_maxSegmentBufferSize;
-	}
+    SegmentMergePolicy *segmentMergePolicy() { return m_mergePolicy.get(); }
 
-	void setMaxSegmentBufferSize(size_t maxSegmentBufferSize)
-	{
-		m_maxSegmentBufferSize = maxSegmentBufferSize;
-	}
+    void cleanup();
+    void optimize();
 
-	SegmentMergePolicy* segmentMergePolicy()
-	{
-		return m_mergePolicy.get();
-	}
+    void writeSegment(const std::shared_ptr<InMemoryIndex> &index);
+    void commit();
 
-	void insertOrUpdateDocument(uint32_t docId, const std::vector<uint32_t> &terms);
-    void deleteDocument(uint32_t docId);
+ private:
+    void flush();
+    void maybeFlush();
+    void maybeMerge();
+    void merge(const QList<int> &merge);
 
-	void setAttribute(const QString &name, const QString &value);
-	void commit();
-	void cleanup();
-	void optimize();
-
-private:
-	void flush();
-	void maybeFlush();
-	void maybeMerge();
-	void merge(const QList<int>& merge);
-
-	SegmentDataWriter *segmentDataWriter(const SegmentInfo& info);
+    SegmentDataWriter *segmentDataWriter(const SegmentInfo &info);
 
     void saveSegmentDocs(SegmentInfo &segment, const std::shared_ptr<SegmentDocs> &docs);
 
-	uint32_t m_maxDocumentId;
-	size_t m_maxSegmentBufferSize;
-	std::vector<uint64_t> m_segmentBuffer;
-    std::map<uint32_t, bool> m_segmentBufferDocs;
-	std::unique_ptr<SegmentMergePolicy> m_mergePolicy;
+    uint32_t m_maxDocumentId;
+    std::unique_ptr<SegmentMergePolicy> m_mergePolicy;
 };
 
-}
+}  // namespace Acoustid
 
 #endif

@@ -27,6 +27,8 @@ class RAMDirectory : public Directory {
 
     virtual void close();
 
+    QString path() const override;
+
     const QByteArray &fileData(const QString &name);
 
     virtual OutputStream *createFile(const QString &name);
@@ -36,7 +38,7 @@ class RAMDirectory : public Directory {
     QStringList listFiles();
     bool fileExists(const QString &name);
 
-    virtual QSqlDatabase openDatabase(const QString &name) override;
+    virtual sqlite3 *openDatabase(const QString &name) override;
 
     virtual bool exists() override;
     virtual void ensureExists() override;
@@ -48,6 +50,7 @@ class RAMDirectory : public Directory {
  private:
     RAMDirectory(const QSharedPointer<RAMDirectoryData> &data);
 
+    QString m_dbPrefix;
     QSharedPointer<RAMDirectoryData> m_data;
 };
 

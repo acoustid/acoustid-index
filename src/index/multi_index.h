@@ -17,6 +17,11 @@ class MultiIndex {
  public:
     MultiIndex(const QSharedPointer<Directory> &dir);
 
+    void close();
+
+    QThreadPool *threadPool() const;
+    void setThreadPool(QThreadPool *pool);
+
     QSharedPointer<Directory> dir() const { return m_dir; }
 
     bool indexExists(const QString &name);
@@ -28,6 +33,7 @@ class MultiIndex {
     QMutex m_mutex;
     QSharedPointer<Directory> m_dir;
     QMap<QString, QSharedPointer<Index>> m_indexes;
+    QPointer<QThreadPool> m_threadPool;
 };
 
 }  // namespace Acoustid

@@ -8,17 +8,20 @@ namespace Acoustid {
 
 class SearchResult {
  public:
-    SearchResult(uint32_t docId, int score) : m_docId(docId), m_score(score) {}
+    SearchResult(uint32_t docId, int score, uint32_t version = 0) : m_docId(docId), m_score(score), m_version(version) {}
 
     uint32_t docId() const { return m_docId; }
     int score() const { return m_score; }
+    uint32_t version() const { return m_version; }
 
+    // bool operator==(const SearchResult &other) const { return m_docId == other.m_docId && m_score == other.m_score && m_version == other.m_version; }
     bool operator==(const SearchResult &other) const { return m_docId == other.m_docId && m_score == other.m_score; }
     bool operator!=(const SearchResult &other) const { return !operator==(other); }
 
  private:
     uint32_t m_docId;
     int m_score;
+    uint32_t m_version;
 };
 
 inline void sortSearchResults(std::vector<SearchResult> &results)
@@ -34,7 +37,7 @@ inline void sortSearchResults(std::vector<SearchResult> &results)
     });
 }
 
-inline void filterSearchResults(std::vector<SearchResult> &results, int limit = 0, int minScorePercent = 0) {
+inline void filterSearchResults(std::vector<SearchResult> &results, size_t limit = 0, int minScorePercent = 0) {
     if (results.empty()) {
         return;
     }

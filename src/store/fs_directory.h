@@ -23,6 +23,8 @@ class FSDirectory : public Directory {
 
     virtual void close();
 
+    virtual QString path() const;
+
     virtual OutputStream *createFile(const QString &name);
     virtual void deleteFile(const QString &name);
     virtual InputStream *openFile(const QString &name);
@@ -31,7 +33,7 @@ class FSDirectory : public Directory {
     bool fileExists(const QString &name);
     virtual void sync(const QStringList &names);
 
-    virtual QSqlDatabase openDatabase(const QString &name) override;
+    virtual sqlite3 *openDatabase(const QString &name) override;
 
     virtual bool exists() override;
     virtual void ensureExists() override;
@@ -49,10 +51,10 @@ class FSDirectory : public Directory {
 
     QString filePath(const QString &name) { return m_path + "/" + name; }
 
-    bool m_mmap;
     QMutex m_mutex;
     QHash<QString, FSFileSharedPtr> m_openInputFiles;
     QString m_path;
+    bool m_mmap{false};
     bool m_autoDelete{false};
 };
 

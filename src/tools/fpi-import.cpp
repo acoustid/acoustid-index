@@ -17,10 +17,6 @@ int main(int argc, char **argv)
 		.setMetaVar("DIR");
 	parser.addOption("create", 'c')
 		.setHelp("create an index in the directory");
-	parser.addOption("cleanup", 'n')
-		.setHelp("cleanup the index directory after importing the data");
-	parser.addOption("optimize", 'o')
-		.setHelp("optimize the index after importing the data");
 	Options *opts = parser.parse(argc, argv);
 
 	QString path = ".";
@@ -38,14 +34,12 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-    auto writer = index->openWriter();
-
 	const size_t lineSize = 1024 * 1024;
 	char line[lineSize];
     std::vector<uint32_t> fp;
     fp.reserve(10 * 1024);
 
-	size_t counter = 0;
+    OpBatch batch;
 	while (fgets(line, lineSize, stdin) != NULL) {
 		char *ptr = line;
 		long id = strtol(ptr, &ptr, 10);
@@ -66,23 +60,19 @@ int main(int argc, char **argv)
 				continue;
 			}
 		}
-		writer->insertOrUpdateDocument(id, fp);
-		if (counter % 1000 == 0) {
-			qDebug() << "Imported" << counter << "lines";
+		batch.insertOrUpdateDocument(id, fp);
+		if (batch.size() >= 1000) {
+			qDebug() << "Imported" << batch.size() << "lines";
+            index->applyUpdates(batch);
+            batch.clear();
 		}
-		counter++;
-	}
-	writer->commit();
-
-	if (opts->contains("optimize")) {
-		qDebug() << "Optimizing the index";
-		writer->optimize();
 	}
 
-	if (opts->contains("cleanup")) {
-		qDebug() << "Cleaning up the index directory";
-		writer->cleanup();
-	}
+    if (batch.size() > 0) {
+        qDebug() << "Imported" << batch.size() << "lines";
+        index->applyUpdates(batch);
+        batch.clear();
+    }
 
 	return 0;
 }

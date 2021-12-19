@@ -2,52 +2,42 @@
 // Distributed under the MIT license, see the LICENSE file for details.
 
 #include "session.h"
+
 #include "errors.h"
-#include "index/index_writer.h"
+#include "index/index.h"
+#include "index/op.h"
 
 using namespace Acoustid;
 using namespace Acoustid::Server;
 
 void Session::begin() {
     QMutexLocker locker(&m_mutex);
-    if (!m_indexWriter.isNull()) {
+    if (m_transaction) {
         throw AlreadyInTransactionException();
     }
-    m_indexWriter = m_index->openWriter();
+    m_transaction = std::make_unique<OpBatch>();
 }
 
 void Session::commit() {
     QMutexLocker locker(&m_mutex);
-    if (m_indexWriter.isNull()) {
+    if (!m_transaction) {
         throw NotInTransactionException();
     }
-    m_indexWriter->commit();
-    m_indexWriter.clear();
+    m_index->applyUpdates(*m_transaction);
+    m_transaction.reset();
 }
 
 void Session::rollback() {
     QMutexLocker locker(&m_mutex);
-    if (m_indexWriter.isNull()) {
+    if (!m_transaction) {
         throw NotInTransactionException();
     }
-    m_indexWriter.clear();
+    m_transaction.reset();
 }
 
-void Session::optimize() {
-    QMutexLocker locker(&m_mutex);
-    if (m_indexWriter.isNull()) {
-        throw NotInTransactionException();
-    }
-    m_indexWriter->optimize();
-}
+void Session::optimize() {}
 
-void Session::cleanup() {
-    QMutexLocker locker(&m_mutex);
-    if (m_indexWriter.isNull()) {
-        throw NotInTransactionException();
-    }
-    m_indexWriter->cleanup();
-}
+void Session::cleanup() {}
 
 QString Session::getAttribute(const QString &name) {
     QMutexLocker locker(&m_mutex);
@@ -63,10 +53,11 @@ QString Session::getAttribute(const QString &name) {
     if (name == "idle_timeout") {
         return QString("%1").arg(m_idle_timeout);
     }
-    if (m_indexWriter.isNull()) {
-        return m_index->getAttribute(name);
+    auto value = m_index->getAttribute(name);
+    if (m_transaction) {
+        value = m_transaction->getAttribute(name, value);
     }
-    return m_indexWriter->info().attribute(name);
+    return value;
 }
 
 void Session::setAttribute(const QString &name, const QString &value) {
@@ -87,26 +78,26 @@ void Session::setAttribute(const QString &name, const QString &value) {
         m_idle_timeout = value.toInt();
         return;
     }
-    if (m_indexWriter.isNull()) {
+    if (!m_transaction) {
         throw NotInTransactionException();
     }
-    m_indexWriter->setAttribute(name, value);
+    m_transaction->setAttribute(name, value);
 }
 
 void Session::insertOrUpdateDocument(uint32_t id, const std::vector<uint32_t> &terms) {
     QMutexLocker locker(&m_mutex);
-    if (m_indexWriter.isNull()) {
+    if (!m_transaction) {
         throw NotInTransactionException();
     }
-    m_indexWriter->insertOrUpdateDocument(id, terms);
+    m_transaction->insertOrUpdateDocument(id, terms);
 }
 
 void Session::deleteDocument(uint32_t id) {
     QMutexLocker locker(&m_mutex);
-    if (m_indexWriter.isNull()) {
+    if (!m_transaction) {
         throw NotInTransactionException();
     }
-    m_indexWriter->deleteDocument(id);
+    m_transaction->deleteDocument(id);
 }
 
 std::vector<SearchResult> Session::search(const std::vector<uint32_t> &terms) {
@@ -114,7 +105,7 @@ std::vector<SearchResult> Session::search(const std::vector<uint32_t> &terms) {
     std::vector<SearchResult> results;
     try {
         results = m_index->search(terms, m_timeout);
-    } catch (TimeoutExceeded) {
+    } catch (const TimeoutExceeded &e) {
         throw HandlerException("timeout exceeded");
     }
     filterSearchResults(results, m_maxResults, m_topScorePercent);

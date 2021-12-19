@@ -6,15 +6,25 @@
 #include "memory_input_stream.h"
 #include "ram_output_stream.h"
 
+#include <sqlite3.h>
+
+#include <QRandomGenerator>
+
 using namespace Acoustid;
 
-RAMDirectory::RAMDirectory() : m_data(QSharedPointer<RAMDirectoryData>::create()) {}
+RAMDirectory::RAMDirectory() : m_data(QSharedPointer<RAMDirectoryData>::create()) {
+    m_dbPrefix = QString("%1_").arg(QRandomGenerator::global()->generate());
+}
 
 RAMDirectory::RAMDirectory(const QSharedPointer<RAMDirectoryData> &data) : m_data(data) {}
 
 RAMDirectory::~RAMDirectory() {}
 
 void RAMDirectory::close() {}
+
+QString RAMDirectory::path() const {
+    return QStringLiteral(":memory:");
+}
 
 QStringList RAMDirectory::listFiles() { return m_data->files.keys(); }
 
@@ -62,14 +72,13 @@ void RAMDirectory::ensureExists() {}
 
 void RAMDirectory::deleteDirectory(const QString &name) { m_data->directories.take(name); }
 
-QSqlDatabase RAMDirectory::openDatabase(const QString &name) {
-    if (QSqlDatabase::contains(name)) {
-        return QSqlDatabase::database(name);
-    }
-    auto db = QSqlDatabase::addDatabase("QSQLITE", name);
-    db.setDatabaseName(":memory:");
-    if (!db.open()) {
-        throw IOException(QString("Couldn't open the DB file '%1' (%2)").arg(name).arg(db.lastError().text()));
+sqlite3 *RAMDirectory::openDatabase(const QString &name) {
+    sqlite3 *db;
+    auto fileName = QString("file:%1?mode=memory&cache=shared").arg(m_dbPrefix + name);
+    auto encodedFileName = fileName.toUtf8();
+    int rc = sqlite3_open_v2(encodedFileName.data(), &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
+    if (rc != SQLITE_OK) {
+        throw IOException(QString("Couldn't open database '%1' (%2)").arg(fileName).arg(sqlite3_errstr(rc)));
     }
     return db;
 }

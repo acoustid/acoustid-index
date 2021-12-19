@@ -101,8 +101,8 @@ ScopedHandlerFunc buildHandler(const QString &command, const QStringList &args) 
             auto results = session->search(hashes);
             QStringList output;
             output.reserve(results.size());
-            for (int i = 0; i < results.size(); i++) {
-                output.append(QString("%1:%2").arg(results[i].docId()).arg(results[i].score()));
+            for (auto result : results) {
+                output.append(QString("%1:%2").arg(result.docId()).arg(result.score()));
             }
             return output.join(" ");
         };

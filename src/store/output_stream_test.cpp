@@ -10,7 +10,7 @@ using namespace Acoustid;
 class SimpleOutputStream : public OutputStream
 {
 public:
-	SimpleOutputStream(uint8_t *data) : m_data(data), m_length(0) { }
+	SimpleOutputStream(uint8_t *data) : m_data(data) { }
 
 	void reset()
 	{
@@ -32,8 +32,8 @@ public:
 	}
 
 private:
-	size_t m_length;
 	uint8_t *m_data;
+	size_t m_length{0};
 };
 
 TEST(OutputStreamTest, WriteByte)

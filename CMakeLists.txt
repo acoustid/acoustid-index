@@ -16,7 +16,7 @@ set(CMAKE_AUTORCC ON)
 
 find_package(Threads REQUIRED)
 find_package(GTest)
-find_package(Qt5 COMPONENTS Core Network Concurrent Sql REQUIRED)
+find_package(Qt5 COMPONENTS Core Network Concurrent REQUIRED)
 
 set(CPACK_GENERATOR "DEB")
 set(CPACK_PACKAGE_NAME acoustid-index)
@@ -30,16 +30,28 @@ set(CPACK_COMPONENTS_ALL application)
 
 include(CPack)
 
+if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
+    add_compile_options(-Wall -pedantic)
+endif()
+
 add_definitions(
     -D__STDC_LIMIT_MACROS
     -D__STDC_CONSTANT_MACROS
     -DQHTTP_HAS_CLIENT
 )
 
+set(sqlite3_SOURCES
+    ./src/3rdparty/sqlite/sqlite3.h
+    ./src/3rdparty/sqlite/sqlite3.c
+)
+add_library(sqlite3 ${sqlite3_SOURCES})
+target_compile_definitions(sqlite3 PUBLIC SQLITE_USE_URI=1 SQLITE_THREADSAFE=1 SQLITE_OMIT_DEPRECATED=1)
+target_include_directories(sqlite3 INTERFACE ./src/3rdparty/sqlite/)
+target_link_libraries(sqlite3 Threads::Threads ${CMAKE_DL_LIBS})
+
 set(fpindexlib_SOURCES
     src/index/search_result.h
     src/index/base_index.h
-    src/index/base_index.cpp
 	src/index/index.cpp
 	src/index/index_file_deleter.cpp
 	src/index/index_info.cpp
@@ -62,6 +74,12 @@ set(fpindexlib_SOURCES
 	src/index/segment_merge_policy.cpp
 	src/index/segment_merger.cpp
 	src/index/segment_searcher.cpp
+	src/index/in_memory_index.h
+	src/index/in_memory_index.cpp
+	src/index/op.h
+	src/index/op.cpp
+	src/index/oplog.h
+	src/index/oplog.cpp
 	src/store/buffered_input_stream.cpp
 	src/store/buffered_output_stream.cpp
 	src/store/checksum_output_stream.cpp
@@ -76,12 +94,16 @@ set(fpindexlib_SOURCES
 	src/store/output_stream.cpp
 	src/store/ram_directory.cpp
 	src/store/ram_output_stream.cpp
+	src/store/sqlite/database.h
+	src/store/sqlite/database.cpp
+	src/store/sqlite/statement.h
+	src/store/sqlite/statement.cpp
 	src/util/crc.c
 	src/util/options.cpp
 )
 
 add_library(fpindexlib ${fpindexlib_SOURCES})
-target_link_libraries(fpindexlib Qt5::Core Qt5::Network Qt5::Concurrent Qt5::Sql)
+target_link_libraries(fpindexlib Qt5::Core Qt5::Network Qt5::Concurrent sqlite3)
 
 set(qhttp_SOURCES
     ./src/3rdparty/qhttp/src/qhttpserverconnection.cpp
@@ -124,7 +146,7 @@ include_directories(
 )
 
 add_executable(fpi-server src/server/main.cpp)
-target_link_libraries(fpi-server fpserverlib qhttp)
+target_link_libraries(fpi-server fpserverlib qhttp sqlite3)
 
 add_executable(fpi-add src/tools/fpi-add.cpp)
 target_link_libraries(fpi-add fpindexlib)
@@ -147,12 +169,13 @@ set(tests_SOURCES
 	src/index/multi_index_test.cpp
 	src/index/index_test.cpp
 	src/index/index_info_test.cpp
-	src/index/index_reader_test.cpp
 	src/index/index_writer_test.cpp
 	src/index/index_file_deleter_test.cpp
 	src/index/segment_enum_test.cpp
 	src/index/segment_merger_test.cpp
 	src/index/segment_merge_policy_test.cpp
+	src/index/op_test.cpp
+	src/index/oplog_test.cpp
 	src/store/buffered_input_stream_test.cpp
 	src/store/input_stream_test.cpp
 	src/store/output_stream_test.cpp

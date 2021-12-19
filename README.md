@@ -29,7 +29,7 @@ Starting server locally:
 
  - C/C++ compiler supporting at least C++17
  - CMake
- - Qt5, at least the QtCore, QtNetwork, QtSql and QtConcurrent components
+ - Qt5, at least the QtCore, QtNetwork and QtConcurrent components
  - GoogleTest (optional)
 
 ### Building the code

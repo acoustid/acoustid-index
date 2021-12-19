@@ -43,13 +43,13 @@ private:
 	std::unique_ptr<SegmentIndexWriter> m_indexWriter;
 	SegmentIndexSharedPtr m_index;
 	std::vector<uint32_t> m_indexData;
-	size_t m_blockSize;
-	uint32_t m_lastKey;
-	uint32_t m_lastValue;
-	uint32_t m_checksum;
-	size_t m_itemCount;
-	size_t m_blockCount;
-	uint8_t *m_ptr;
+	size_t m_blockSize{0};
+	uint32_t m_lastKey{0};
+	uint32_t m_lastValue{0};
+	uint32_t m_checksum{0};
+	size_t m_itemCount{0};
+	size_t m_blockCount{0};
+	uint8_t *m_ptr{nullptr};
 	std::unique_ptr<uint8_t[]> m_buffer;
 };
 

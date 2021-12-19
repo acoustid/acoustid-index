@@ -21,10 +21,9 @@ QList<QString> IndexInfo::files(bool includeIndexInfo) const
 	if (includeIndexInfo) {
 		files.append(indexInfoFileName(d->revision));
 	}
-	for (size_t i = 0; i < d->segments.size(); i++) {
-		const SegmentInfo& segment = d->segments.at(i);
-		files.append(segment.files());
-	}
+    for (auto segment : d->segments) {
+        files.append(segment.files());
+    }
 	return files;
 }
 
@@ -40,17 +39,15 @@ QString IndexInfo::indexInfoFileName(int revision)
 
 int IndexInfo::findCurrentRevision(Directory* dir, int maxRevision)
 {
-	const QStringList& fileNames = dir->listFiles();
 	int currentRev = -1;
-	for (size_t i = 0; i < fileNames.size(); i++) {
-		const QString& fileName = fileNames.at(i);
-		if (fileName.startsWith("info_")) {
-			int rev = indexInfoRevision(fileName);
+    for (auto fileName : dir->listFiles()) {
+        if (fileName.startsWith("info_")) {
+            int rev = indexInfoRevision(fileName);
 			if (rev > currentRev && (!maxRevision || rev < maxRevision)) {
 				currentRev = rev;
 			}
-		}
-	}
+        }
+    }
 	return currentRev;
 }
 
@@ -114,7 +111,6 @@ void IndexInfo::load(InputStream* rawInput, bool loadIndexes, bool loadDocs, Dir
 void IndexInfo::save(Directory* dir)
 {
 	dir->sync(files(false));
-	d->revision++;
 	QString fileName = indexInfoFileName(d->revision);
 	QString tempFileName = fileName + ".tmp";
 	save(dir->createFile(tempFileName));

@@ -1,22 +1,39 @@
 // Copyright (C) 2020  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
+#include "server/session.h"
+
 #include <gtest/gtest.h>
-#include "store/ram_directory.h"
+
 #include "index/index.h"
 #include "server/metrics.h"
-#include "server/session.h"
+#include "store/ram_directory.h"
 
 using namespace Acoustid;
 using namespace Acoustid::Server;
 
-TEST(SessionTest, Attributes)
-{
-	auto storage = QSharedPointer<RAMDirectory>::create();
-	auto index = QSharedPointer<Index>::create(storage, true);
-    auto metrics = QSharedPointer<Metrics>::create();
-    auto session = QSharedPointer<Session>::create(index, metrics);
+class SessionTest : public ::testing::Test {
+protected:
+    void SetUp() override
+    {
+        storage = QSharedPointer<RAMDirectory>::create();
+        index = QSharedPointer<Index>::create(storage, true);
+        metrics = QSharedPointer<Metrics>::create();
+        session = QSharedPointer<Session>::create(index, metrics);
+    }
 
+    void TearDown() override
+    {
+        index->close();
+    }
+
+    QSharedPointer<RAMDirectory> storage;
+    QSharedPointer<Index> index;
+    QSharedPointer<Metrics> metrics;
+    QSharedPointer<Session> session;
+};
+
+TEST_F(SessionTest, Attributes) {
     ASSERT_EQ("", session->getAttribute("foo").toStdString());
     session->begin();
     session->setAttribute("foo", "bar");
@@ -37,20 +54,14 @@ TEST(SessionTest, Attributes)
     ASSERT_EQ("100", session->getAttribute("timeout").toStdString());
 }
 
-TEST(SessionTest, InsertAndSearch)
-{
-	auto storage = QSharedPointer<RAMDirectory>::create();
-	auto index = QSharedPointer<Index>::create(storage, true);
-    auto metrics = QSharedPointer<Metrics>::create();
-    auto session = QSharedPointer<Session>::create(index, metrics);
-
+TEST_F(SessionTest, InsertAndSearch) {
     session->begin();
-    session->insertOrUpdateDocument(1, { 1, 2, 3 });
-    session->insertOrUpdateDocument(2, { 1, 200, 300 });
+    session->insertOrUpdateDocument(1, {1, 2, 3});
+    session->insertOrUpdateDocument(2, {1, 200, 300});
     session->commit();
 
     {
-        auto results = session->search({ 1, 2, 3 });
+        auto results = session->search({1, 2, 3});
         ASSERT_EQ(2, results.size());
         ASSERT_EQ(1, results[0].docId());
         ASSERT_EQ(3, results[0].score());
@@ -59,7 +70,7 @@ TEST(SessionTest, InsertAndSearch)
     }
 
     {
-        auto results = session->search({ 1, 200, 300 });
+        auto results = session->search({1, 200, 300});
         ASSERT_EQ(2, results.size());
         ASSERT_EQ(2, results[0].docId());
         ASSERT_EQ(3, results[0].score());
@@ -70,7 +81,7 @@ TEST(SessionTest, InsertAndSearch)
     session->setAttribute("max_results", "1");
 
     {
-        auto results = session->search({ 1, 2, 3 });
+        auto results = session->search({1, 2, 3});
         ASSERT_EQ(1, results.size());
         ASSERT_EQ(1, results[0].docId());
         ASSERT_EQ(3, results[0].score());

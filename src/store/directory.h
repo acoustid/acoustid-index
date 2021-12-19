@@ -6,10 +6,10 @@
 
 #include <QString>
 #include <QStringList>
-#include <QSqlDatabase>
-#include <QSqlError>
 
 #include "common.h"
+
+struct sqlite3;
 
 namespace Acoustid {
 
@@ -21,6 +21,8 @@ class Directory {
     virtual ~Directory();
 
     virtual void close() = 0;
+
+    virtual QString path() const = 0;
 
     virtual OutputStream *createFile(const QString &name) = 0;
     virtual void deleteFile(const QString &name) = 0;
@@ -36,7 +38,7 @@ class Directory {
 
     virtual void deleteDirectory(const QString &name) = 0;
 
-    virtual QSqlDatabase openDatabase(const QString &name) = 0;
+    virtual sqlite3 *openDatabase(const QString &name) = 0;
 
     /***
      * Ensure that any writes to these files are moved to
