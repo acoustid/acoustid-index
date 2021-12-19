@@ -2,7 +2,6 @@
 #define ACOUSTID_INDEX_STORE_SQL_STATEMENT_H_
 
 #include <QString>
-
 #include <memory>
 
 #include "util/exceptions.h"
@@ -11,8 +10,7 @@ class sqlite3_stmt;
 
 namespace Acoustid {
 
-class SQLiteStatement
-{
+class SQLiteStatement {
  public:
     SQLiteStatement(sqlite3_stmt *stmt);
 
@@ -29,7 +27,7 @@ class SQLiteStatement
     int64_t lastInsertRowId();
 
  private:
-    std::unique_ptr<sqlite3_stmt, int(*)(sqlite3_stmt *)> m_stmt;
+    std::unique_ptr<sqlite3_stmt, int (*)(sqlite3_stmt *)> m_stmt;
 };
 
 }  // namespace Acoustid

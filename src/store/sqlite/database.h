@@ -2,11 +2,10 @@
 #define ACOUSTID_INDEX_STORE_SQL_DATABASE_H_
 
 #include <QString>
-
 #include <memory>
 
-#include "util/exceptions.h"
 #include "store/sqlite/statement.h"
+#include "util/exceptions.h"
 
 class sqlite3;
 
@@ -17,13 +16,14 @@ class SQLiteException : public Exception {
     SQLiteException(const QString &msg) : Exception(msg) {}
 };
 
-class SQLiteDatabase
-{
+class SQLiteDatabase {
  public:
     SQLiteDatabase(const QString &name);
     ~SQLiteDatabase();
 
     SQLiteStatement prepare(const QString &sql);
+
+    sqlite3 *handle() const { return m_db.get(); }
 
  private:
     std::shared_ptr<sqlite3> m_db;

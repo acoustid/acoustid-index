@@ -13,5 +13,4 @@ using namespace Acoustid;
 TEST(FSDirectory, OpenDatabase) {
     auto dir = std::unique_ptr<FSDirectory>(FSDirectory::openTemporary(true));
     auto db = dir->openDatabase("foo.db");
-    defer { sqlite3_close(db); };
 }

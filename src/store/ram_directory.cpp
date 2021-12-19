@@ -72,13 +72,7 @@ void RAMDirectory::ensureExists() {}
 
 void RAMDirectory::deleteDirectory(const QString &name) { m_data->directories.take(name); }
 
-sqlite3 *RAMDirectory::openDatabase(const QString &name) {
-    sqlite3 *db;
-    auto fileName = QString("file:%1?mode=memory&cache=shared").arg(m_dbPrefix + name);
-    auto encodedFileName = fileName.toUtf8();
-    int rc = sqlite3_open_v2(encodedFileName.data(), &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
-    if (rc != SQLITE_OK) {
-        throw IOException(QString("Couldn't open database '%1' (%2)").arg(fileName).arg(sqlite3_errstr(rc)));
-    }
-    return db;
+SQLiteDatabase RAMDirectory::openDatabase(const QString &name) {
+    auto fileName = QStringLiteral("file:%1?mode=memory&cache=shared").arg(m_dbPrefix + name);
+    return SQLiteDatabase(fileName);
 }
