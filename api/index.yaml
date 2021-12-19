@@ -149,6 +149,7 @@ paths:
   /_health/alive:
     get:
       summary: Is the server running?
+      description: Check if the server is running, to be used in Kubernetes `livenessProbe`.
       operationId: livenessCheck
       tags:
         - healthcheck
@@ -158,10 +159,21 @@ paths:
 
   /_health/ready:
     get:
-      summary: Is the server ready to accept traffic?
+      summary: Is the server ready to serve requests?
+      description: Check if the server is ready to serve requests, to be used in Kubernetes `readinessProbe`.
       operationId: readinessCheck
       tags:
         - healthcheck
+      responses:
+        '200':
+          description: Success
+
+  /_metrics:
+    get:
+      summary: Prometheus metrics
+      description: Exports internal metrics in Prometheus format.
+      tags:
+        - prometheus
       responses:
         '200':
           description: Success
@@ -274,3 +286,5 @@ tags:
     description: Search API
   - name: healthcheck
     description: Healthchecks
+  - name: prometheus
+    description: Prometheus exporter
