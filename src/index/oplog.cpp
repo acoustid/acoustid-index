@@ -267,6 +267,10 @@ int64_t Oplog::read(std::vector<OplogEntry> &entries, int limit, int64_t lastId)
 }
 
 int64_t Oplog::write(const OpBatch &batch) {
+    if (batch.size() == 0) {
+        return 0;
+    }
+
     QMutexLocker locker(&m_mutex);
 
     int rc;
