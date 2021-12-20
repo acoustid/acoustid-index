@@ -23,6 +23,8 @@ class SQLiteDatabase {
 
     SQLiteStatement prepare(const QString &sql);
 
+    SQLiteResult exec(const QString &sql);
+
     sqlite3 *handle() const { return m_db.get(); }
 
  private:

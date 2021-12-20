@@ -34,7 +34,12 @@ SQLiteStatement SQLiteDatabase::prepare(const QString &query) {
     if (rc != SQLITE_OK) {
         throw SQLiteException(sqlite3_errstr(rc));
     }
-    return SQLiteStatement(stmt);
+    return SQLiteStatement(m_db, stmt);
+}
+
+SQLiteResult SQLiteDatabase::exec(const QString &query) {
+    auto stmt = prepare(query);
+    return stmt.exec();
 }
 
 }  // namespace Acoustid

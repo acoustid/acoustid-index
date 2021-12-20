@@ -4,15 +4,17 @@
 #include <QString>
 #include <memory>
 
+#include "store/sqlite/result.h"
 #include "util/exceptions.h"
 
+class sqlite3;
 class sqlite3_stmt;
 
 namespace Acoustid {
 
 class SQLiteStatement {
  public:
-    SQLiteStatement(sqlite3_stmt *stmt);
+    SQLiteStatement(const std::shared_ptr<sqlite3> &db, sqlite3_stmt *stmt);
 
     SQLiteStatement(const SQLiteStatement &other) = delete;
     SQLiteStatement &operator=(const SQLiteStatement &other) = delete;
@@ -22,12 +24,11 @@ class SQLiteStatement {
     void bindBlob(int index, const QByteArray &value);
     void bindText(int index, const QString &value);
 
-    void exec();
-
-    int64_t lastInsertRowId();
+    SQLiteResult exec();
 
  private:
-    std::unique_ptr<sqlite3_stmt, int (*)(sqlite3_stmt *)> m_stmt;
+    std::shared_ptr<sqlite3> m_db;
+    std::unique_ptr<sqlite3_stmt, void (*)(sqlite3_stmt *)> m_stmt;
 };
 
 }  // namespace Acoustid

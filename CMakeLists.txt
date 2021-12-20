@@ -98,6 +98,8 @@ set(fpindexlib_SOURCES
 	src/store/sqlite/database.cpp
 	src/store/sqlite/statement.h
 	src/store/sqlite/statement.cpp
+	src/store/sqlite/result.h
+	src/store/sqlite/result.cpp
 	src/util/crc.c
 	src/util/options.cpp
 )

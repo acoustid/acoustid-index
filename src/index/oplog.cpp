@@ -16,40 +16,35 @@ namespace Acoustid {
 
 Oplog::Oplog(const SQLiteDatabase &db) : m_db(db) { createTables(); }
 
-Oplog::~Oplog() {
-}
+Oplog::~Oplog() {}
 
 void Oplog::createReplicationSlotsTable() {
-    sqlite3_stmt *stmt;
-    if (sqlite3_prepare_v2(m_db.handle(),
-                           "CREATE TABLE IF NOT EXISTS replication_slots (\n"
-                           "    slot_name TEXT PRIMARY KEY,\n"
-                           "    last_op_id INTEGER NOT NULL,\n"
-                           "    last_op_time INTEGER NOT NULL\n"
-                           ")",
-                           -1, &stmt, nullptr) != SQLITE_OK) {
-        throw OplogError(sqlite3_errmsg(m_db.handle()));
-    }
-    defer { sqlite3_finalize(stmt); };
-    if (sqlite3_step(stmt) != SQLITE_DONE) {
-        throw OplogError(sqlite3_errmsg(m_db.handle()));
+    const auto sql = R"(
+        CREATE TABLE IF NOT EXISTS replication_slots (
+            slot_name TEXT PRIMARY KEY,
+            last_op_id INTEGER NOT NULL,
+            last_op_time INTEGER NOT NULL
+        );
+    )";
+    try {
+        m_db.exec(sql);
+    } catch (const SQLiteException &e) {
+        std::throw_with_nested(OplogError("Failed to create replication slots table"));
     }
 }
 
 void Oplog::createOplogTable() {
-    sqlite3_stmt *stmt;
-    if (sqlite3_prepare_v2(m_db.handle(),
-                           "CREATE TABLE IF NOT EXISTS oplog (\n"
-                           "    op_id INTEGER PRIMARY KEY,\n"
-                           "    op_time INTEGER NOT NULL,\n"
-                           "    op_data TEXT NOT NULL\n"
-                           ")",
-                           -1, &stmt, nullptr) != SQLITE_OK) {
-        throw OplogError(sqlite3_errmsg(m_db.handle()));
-    }
-    defer { sqlite3_finalize(stmt); };
-    if (sqlite3_step(stmt) != SQLITE_DONE) {
-        throw OplogError(sqlite3_errmsg(m_db.handle()));
+    const auto sql = R"(
+        CREATE TABLE IF NOT EXISTS oplog (
+            op_id INTEGER PRIMARY KEY,
+            op_time INTEGER NOT NULL,
+            op_data TEXT NOT NULL
+        );
+    )";
+    try {
+        m_db.exec(sql);
+    } catch (const SQLiteException &e) {
+        std::throw_with_nested(OplogError("Failed to create replication slots table"));
     }
 }
 
@@ -62,8 +57,9 @@ void Oplog::createTables() {
 void Oplog::createReplicationSlot(const QString &slotName) {
     QMutexLocker locker(&m_mutex);
     sqlite3_stmt *stmt;
-    if (sqlite3_prepare_v2(m_db.handle(), "INSERT INTO replication_slots (slot_name, last_op_id, last_op_time) VALUES (?, 0, 0)",
-                           -1, &stmt, nullptr) != SQLITE_OK) {
+    if (sqlite3_prepare_v2(m_db.handle(),
+                           "INSERT INTO replication_slots (slot_name, last_op_id, last_op_time) VALUES (?, 0, 0)", -1,
+                           &stmt, nullptr) != SQLITE_OK) {
         throw OplogError(sqlite3_errmsg(m_db.handle()));
     }
     defer { sqlite3_finalize(stmt); };
@@ -187,7 +183,8 @@ int64_t Oplog::getFirstOpId() {
 int64_t Oplog::getFirstUsedOpId() {
     QMutexLocker locker(&m_mutex);
     sqlite3_stmt *stmt;
-    if (sqlite3_prepare_v2(m_db.handle(), "SELECT MIN(last_op_id) FROM replication_slots", -1, &stmt, nullptr) != SQLITE_OK) {
+    if (sqlite3_prepare_v2(m_db.handle(), "SELECT MIN(last_op_id) FROM replication_slots", -1, &stmt, nullptr) !=
+        SQLITE_OK) {
         throw OplogError(sqlite3_errmsg(m_db.handle()));
     }
     defer { sqlite3_finalize(stmt); };
@@ -200,8 +197,8 @@ int64_t Oplog::getFirstUsedOpId() {
 int64_t Oplog::getLastOpId(const QString &slotName) {
     QMutexLocker locker(&m_mutex);
     sqlite3_stmt *stmt;
-    if (sqlite3_prepare_v2(m_db.handle(), "SELECT last_op_id FROM replication_slots WHERE slot_name = ?", -1, &stmt, nullptr) !=
-        SQLITE_OK) {
+    if (sqlite3_prepare_v2(m_db.handle(), "SELECT last_op_id FROM replication_slots WHERE slot_name = ?", -1, &stmt,
+                           nullptr) != SQLITE_OK) {
         throw OplogError(sqlite3_errmsg(m_db.handle()));
     }
     defer { sqlite3_finalize(stmt); };

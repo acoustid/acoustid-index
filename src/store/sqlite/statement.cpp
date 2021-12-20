@@ -1,18 +1,28 @@
 #include <sqlite3.h>
 
 #include <QFile>
+#include <QDebug>
 
 #include "store/sqlite/database.h"
 
 namespace Acoustid {
 
-SQLiteStatement::SQLiteStatement(sqlite3_stmt *stmt) : m_stmt(stmt, &sqlite3_finalize) {}
+static void finalizeSqlite3Statement(sqlite3_stmt *stmt) {
+    auto rc = sqlite3_finalize(stmt);
+    if (rc != SQLITE_OK) {
+        qWarning() << "sqlite3_finalize failed:" << sqlite3_errstr(rc);
+    }
+}
 
-void SQLiteStatement::exec() {
+SQLiteStatement::SQLiteStatement(const std::shared_ptr<sqlite3> &db, sqlite3_stmt *stmt)
+    : m_db(db), m_stmt(stmt, &finalizeSqlite3Statement) {}
+
+SQLiteResult SQLiteStatement::exec() {
     int rc = sqlite3_step(m_stmt.get());
     if (rc != SQLITE_DONE) {
         throw SQLiteException(sqlite3_errstr(rc));
     }
+    return SQLiteResult(m_db);
 }
 
 void SQLiteStatement::bindNull(int index) {
@@ -42,7 +52,5 @@ void SQLiteStatement::bindText(int index, const QString &value) {
         throw SQLiteException(sqlite3_errstr(rc));
     }
 }
-
-int64_t SQLiteStatement::lastInsertRowId() { return sqlite3_last_insert_rowid(sqlite3_db_handle(m_stmt.get())); }
 
 }  // namespace Acoustid
