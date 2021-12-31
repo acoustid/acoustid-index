@@ -226,17 +226,31 @@ static HttpResponse handleSearchRequest(const HttpRequest &request, const QShare
 static HttpResponse handleBulkRequest(const HttpRequest &request, const QSharedPointer<Index> &indexes) {
     auto index = getIndex(request, indexes);
 
-    auto body = request.json();
-    if (!body.isArray()) {
-        return errBadRequest("invalid_bulk_operation", "invalid bulk operation");
+    QJsonArray opsJsonArray;
+
+    auto doc = request.json();
+    if (doc.isObject()) {
+        auto obj = doc.object();
+        if (obj.contains("operations")) {
+            auto value = obj.value("operations");
+            if (value.isArray()) {
+                opsJsonArray = value.toArray();
+            } else {
+                return errBadRequest("invalid_bulk_operation", "'operations' must be an array");
+            }
+        }
+    } else if (doc.isArray()) {
+        opsJsonArray = doc.array();
+    } else {
+        return errBadRequest("invalid_bulk_operation",
+                             "request body must be either an array or an object with 'operations' key in it");
     }
-    auto operations = body.array();
 
     try {
         auto writer = index->openWriter(true, 1000);
-        for (auto operation : operations) {
+        for (auto operation : opsJsonArray) {
             if (!operation.isObject()) {
-                return errBadRequest("invalid_bulk_operation", "invalid bulk operation");
+                return errBadRequest("invalid_bulk_operation", "operation must be an object");
             }
             auto operationObj = operation.toObject();
             if (operationObj.contains("upsert")) {

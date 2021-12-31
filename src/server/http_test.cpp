@@ -135,7 +135,7 @@ TEST_F(HttpTest, TestSearchNoResults) {
     ASSERT_EQ(response.body().toStdString(), "{\"results\":[]}");
 }
 
-TEST_F(HttpTest, TestBulk) {
+TEST_F(HttpTest, TestBulkArray) {
     indexes->createIndex("testidx");
     indexes->getIndex("testidx")->insertOrUpdateDocument(112, {31, 41, 51});
     indexes->getIndex("testidx")->insertOrUpdateDocument(113, {31, 41, 51});
@@ -157,3 +157,22 @@ TEST_F(HttpTest, TestBulk) {
     ASSERT_FALSE(indexes->getIndex("testidx")->containsDocument(113));
     ASSERT_EQ(indexes->getIndex("testidx")->getAttribute("foo").toStdString(), "bar");
 }*/
+
+TEST_F(HttpTest, TestBulkObject) {
+    auto request = HttpRequest(HTTP_POST, QUrl("/main/_bulk"));
+    request.setBody(QJsonDocument(QJsonObject{
+        {"operations", QJsonArray{
+            QJsonObject{{"upsert", QJsonObject{{"id", 111}, {"terms", QJsonArray{1, 2, 3}}}}},
+            QJsonObject{{"upsert", QJsonObject{{"id", 112}, {"terms", QJsonArray{3, 4, 5}}}}},
+            QJsonObject{{"set", QJsonObject{{"name", "foo"}, {"value", "bar"}}}},
+        }},
+    }));
+
+    auto response = handler->router().handle(request);
+    ASSERT_EQ(response.body().toStdString(), "{}");
+    ASSERT_EQ(response.status(), HTTP_OK);
+
+    // ASSERT_TRUE(index->containsDocument(111));
+    // ASSERT_TRUE(index->containsDocument(112));
+    ASSERT_EQ(index->info().attribute("foo").toStdString(), "bar");
+}
