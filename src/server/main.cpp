@@ -32,8 +32,6 @@ int main(int argc, char **argv)
 		.setArgument()
 		.setHelp("listen on this port (default: 6080)")
 		.setDefaultValue("6080");
-	parser.addOption("http")
-		.setHelp("enable http server");
 	parser.addOption("http-address")
 		.setArgument()
 		.setHelp("http server listens on this address (default: 127.0.0.1)")
@@ -57,7 +55,6 @@ int main(int argc, char **argv)
 	QString address = opts->option("address");
 	int port = opts->option("port").toInt();
 
-	bool httpEnabled = opts->contains("http");
 	QString httpAddress = opts->option("http-address");
 	int httpPort = opts->option("http-port").toInt();
 
@@ -77,15 +74,14 @@ int main(int argc, char **argv)
 	listener.listen(QHostAddress(address), port);
 	qDebug() << "Simple server listening on" << address << "port" << port;
 
+    HttpRequestHandler handler(listener.index(), metrics);
+
 	QHttpServer httpListener(&app);
-	if (httpEnabled) {
-        HttpRequestHandler handler(listener.index(), metrics);
-		httpListener.listen(QHostAddress(httpAddress), httpPort, [&](QHttpRequest *req, QHttpResponse *res) {
-			handler.router().handle(req, res);
-		});
-		qDebug() << "HTTP server listening on" << httpAddress << "port" << httpPort;
-		qDebug() << "Prometheus metrics available at" << QString("http://%1:%2/_metrics").arg(httpAddress).arg(httpPort);
-	}
+    httpListener.listen(QHostAddress(httpAddress), httpPort, [&](QHttpRequest *req, QHttpResponse *res) {
+        handler.router().handle(req, res);
+    });
+    qDebug() << "HTTP server listening on" << httpAddress << "port" << httpPort;
+    qDebug() << "Prometheus metrics available at" << QString("http://%1:%2/_metrics").arg(httpAddress).arg(httpPort);
 
 	return app.exec();
 }
