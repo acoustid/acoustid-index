@@ -84,7 +84,7 @@ int main(int argc, char **argv)
 			handler.router().handle(req, res);
 		});
 		qDebug() << "HTTP server listening on" << httpAddress << "port" << httpPort;
-		qDebug() << "Prometheus metrics available at" << QString("http://%1:%2/metrics").arg(httpAddress).arg(httpPort);
+		qDebug() << "Prometheus metrics available at" << QString("http://%1:%2/_metrics").arg(httpAddress).arg(httpPort);
 	}
 
 	return app.exec();
