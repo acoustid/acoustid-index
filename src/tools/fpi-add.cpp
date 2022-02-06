@@ -14,14 +14,12 @@ int main(int argc, char **argv)
 	size_t length = argc - 2;
 	uint32_t id = strtoul(argv[1], NULL, 10);
 	qDebug() << "id=" << id;
-	uint32_t *fp = new uint32_t[length];
+    std::vector<uint32_t> fp(length);
 	for (int i = 2; i < argc; i++) {
 		fp[i - 2] = strtoul(argv[i], NULL, 10);
 	}
 
-    auto writer = index->openWriter();
-	writer->addDocument(id, fp, length);
-	writer->commit();
+	index->insertOrUpdateDocument(id, fp);
 
 	return 0;
 }
