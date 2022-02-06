@@ -55,8 +55,6 @@ set(fpindexlib_SOURCES
 	src/index/multi_index.cpp
 	src/index/index_reader.cpp
 	src/index/index_writer.cpp
-	src/index/multi_index.h
-	src/index/multi_index.cpp
 	src/index/segment_docs.h
 	src/index/segment_docs.cpp
 	src/index/segment_docs_reader.h
