@@ -26,6 +26,11 @@ class IOException : public Exception {
     IOException(const QString &msg) : Exception(msg) {}
 };
 
+class NotImplemented : public Exception {
+ public:
+    NotImplemented(const QString &msg) : Exception(msg) {}
+};
+
 class IndexNotFoundException : public IOException {
  public:
     IndexNotFoundException(const QString &msg) : IOException(msg) {}
