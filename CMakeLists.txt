@@ -34,6 +34,10 @@ set(CPACK_COMPONENTS_ALL application)
 
 include(CPack)
 
+if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
+    add_compile_options(-Wall -pedantic)
+endif()
+
 add_definitions(
     -D__STDC_LIMIT_MACROS
     -D__STDC_CONSTANT_MACROS
@@ -41,8 +45,8 @@ add_definitions(
 )
 
 set(fpindexlib_SOURCES
-	src/index/search_result.h
-	src/index/base_index.h
+    src/index/search_result.h
+    src/index/base_index.h
 	src/index/index.cpp
 	src/index/index_file_deleter.cpp
 	src/index/index_info.cpp
@@ -144,6 +148,7 @@ target_link_libraries(fpi-search fpindexlib)
 #target_link_libraries(fpi-stats ${QT_LIBRARIES} fpindexlib)
 
 set(tests_SOURCES
+	src/index/search_result_test.cpp
 	src/index/segment_data_writer_test.cpp
 	src/index/segment_index_test.cpp
 	src/index/segment_index_reader_test.cpp
@@ -157,6 +162,7 @@ set(tests_SOURCES
 	src/index/segment_merger_test.cpp
 	src/index/segment_merge_policy_test.cpp
 	src/index/top_hits_collector_test.cpp
+	src/index/op_test.cpp
 	src/store/buffered_input_stream_test.cpp
 	src/store/input_stream_test.cpp
 	src/store/output_stream_test.cpp
