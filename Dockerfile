@@ -13,5 +13,7 @@ RUN apt-get update && \
 
 USER acoustid
 EXPOSE 6080
+EXPOSE 6081
+EXPOSE 6082
 
-CMD ["fpi-server", "--directory", "/var/lib/acoustid-index", "--address", "0.0.0.0", "--port", "6080", "--http-address", "0.0.0.0", "--http-port", "6081"]
+CMD ["fpi-server", "--directory", "/var/lib/acoustid-index", "--address", "0.0.0.0", "--port", "6080", "--http-address", "0.0.0.0", "--http-port", "6081", "--grpc-address", "0.0.0.0", "--grpc-port", "6082"]
