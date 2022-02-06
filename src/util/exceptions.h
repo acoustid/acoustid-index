@@ -36,11 +36,6 @@ class CorruptIndexException : public IOException {
     CorruptIndexException(const QString &msg) : IOException(msg) {}
 };
 
-class IndexDoesNotExist : public Exception {
- public:
-    IndexDoesNotExist(const QString &msg) : Exception(msg) {}
-};
-
 class IndexIsNotOpen : public Exception {
  public:
     IndexIsNotOpen(const QString &msg) : Exception(msg) {}
