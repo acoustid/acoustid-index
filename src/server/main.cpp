@@ -61,6 +61,18 @@ int main(int argc, char **argv) {
     parser.addOption("mmap", 'm')
         .setHelp("use mmap to read index files");
 
+    parser.addOption("grpc-address")
+        .setArgument()
+        .setHelp("gRPC server listens on this address (default: 127.0.0.1)")
+        .setMetaVar("ADDRESS")
+        .setDefaultValue("127.0.0.1");
+
+    parser.addOption("grpc-port")
+        .setArgument()
+        .setHelp("gRPC server listens on this port (default: 6082)")
+        .setMetaVar("PORT")
+        .setDefaultValue("6082");
+
     parser.addOption("threads", 't')
         .setArgument()
         .setHelp("use specific number of threads")
@@ -77,6 +89,10 @@ int main(int argc, char **argv) {
 
     QString httpAddress = opts->option("http-address");
     int httpPort = opts->option("http-port").toInt();
+
+    auto grpcAddress = opts->option("grpc-address");
+    auto grpcPort = opts->option("grpc-port").toInt();
+    auto grpcEndpoint = QString("%1:%2").arg(grpcAddress).arg(grpcPort);
 
     QCoreApplication app(argc, argv);
 
@@ -104,7 +120,19 @@ int main(int argc, char **argv) {
         handler.router().handle(req, res);
     });
     qDebug() << "HTTP server listening on" << httpAddress << "port" << httpPort;
-    qDebug() << "Prometheus metrics available at" << QString("http://%1:%2/_metrics").arg(httpAddress).arg(httpPort);
 
-    return app.exec();
+    IndexServiceImpl service(indexes, metrics);
+
+    grpc::ServerBuilder grpcServerBuilder;
+    grpcServerBuilder.AddListeningPort(grpcEndpoint.toStdString(), grpc::InsecureServerCredentials());
+    grpcServerBuilder.RegisterService(&service);
+    qDebug() << "Starting gRPC server at" << grpcAddress << "port" << grpcPort;
+    auto grpcServer = grpcServerBuilder.BuildAndStart();
+
+    auto exitCode = app.exec();
+
+    qDebug() << "Stopping gRPC server";
+    grpcServer->Shutdown();
+
+    return exitCode;
 }

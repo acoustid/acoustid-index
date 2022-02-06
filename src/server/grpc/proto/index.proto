@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package Acoustid.Server.PB;
+
+message GetIndexRequest {
+    string index_name = 1;
+};
+
+message GetIndexResponse {
+};
+
+message CreateIndexRequest {
+    string index_name = 1;
+};
+
+message CreateIndexResponse {
+};
+
+message DeleteIndexRequest {
+    string index_name = 1;
+};
+
+message DeleteIndexResponse {
+};
+
+message GetDocumentRequest {
+    string index_name = 1;
+    uint32 doc_id = 2;
+};
+
+message GetDocumentResponse {
+    repeated uint32 terms = 1;
+};
+
+message InsertOrUpdateDocumentRequest {
+    string index_name = 1;
+    uint32 doc_id = 2;
+    repeated uint32 terms = 3;
+};
+
+message InsertOrUpdateDocumentResponse {
+};
+
+message DeleteDocumentRequest {
+    string index_name = 1;
+    uint32 doc_id = 2;
+};
+
+message DeleteDocumentResponse {
+};
+
+message SearchRequest {
+    string index_name = 1;
+    repeated uint32 terms = 2;
+    int32 max_results = 3;
+};
+
+message SearchResult {
+    uint32 doc_id = 1;
+    float score = 2;
+};
+
+message SearchResponse {
+    repeated SearchResult results = 1;
+};
+
+service Index {
+    rpc GetIndex(GetIndexRequest) returns (GetIndexResponse);
+    rpc CreateIndex(CreateIndexRequest) returns (CreateIndexResponse);
+    rpc DeleteIndex(DeleteIndexRequest) returns (DeleteIndexResponse);
+
+    rpc GetDocument(GetDocumentRequest) returns (GetDocumentResponse);
+    rpc InsertOrUpdateDocument(InsertOrUpdateDocumentRequest) returns (InsertOrUpdateDocumentResponse);
+    rpc DeleteDocument(DeleteDocumentRequest) returns (DeleteDocumentResponse);
+    rpc Search(SearchRequest) returns (SearchResponse);
+};
