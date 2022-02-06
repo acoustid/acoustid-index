@@ -34,6 +34,10 @@ static HttpResponse errNotFound(const QString &description) {
     return makeJsonErrorResponse(HTTP_NOT_FOUND, "not_found", description);
 }
 
+static HttpResponse errNotImplemented(const QString &description) {
+    return makeJsonErrorResponse(HTTP_INTERNAL_SERVER_ERROR, "not_implemented", description);
+}
+
 static HttpResponse errBadRequest(const QString &type, const QString &description) {
     return makeJsonErrorResponse(HTTP_BAD_REQUEST, type, description);
 }
@@ -253,11 +257,27 @@ static HttpResponse handleBulkRequest(const HttpRequest &request, const QSharedP
 
     OpBatch batch;
 
-    auto opsJson = request.json();
-    if (!opsJson.isArray()) {
-        return errBadRequest("invalid_bulk_operation", "invalid bulk operation");
+    QJsonArray opsJsonArray;
+
+    auto doc = request.json();
+    if (doc.isObject()) {
+        auto obj = doc.object();
+        if (obj.contains("operations")) {
+            auto value = obj.value("operations");
+            if (value.isArray()) {
+                opsJsonArray = value.toArray();
+            } else {
+                return errBadRequest("invalid_bulk_operation", "'operations' must be an array");
+            }
+        }
+    } else if (doc.isArray()) {
+        opsJsonArray = doc.array();
+    } else {
+        return errBadRequest("invalid_bulk_operation",
+                             "request body must be either an array or an object with 'operations' key in it");
     }
-    for (auto opJson : opsJson.array()) {
+
+    for (auto opJson : opsJsonArray) {
         if (!opJson.isObject()) {
             return errBadRequest("invalid_bulk_operation", "invalid bulk operation");
         }

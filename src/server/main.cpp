@@ -20,17 +20,25 @@ using namespace Acoustid::Server;
 
 using namespace qhttp::server;
 
-int main(int argc, char **argv) {
-    OptionParser parser("%prog [options]");
-    parser.addOption("directory", 'd').setArgument().setHelp("index directory").setMetaVar("DIR").setDefaultValue(".");
-    parser.addOption("address", 'a')
-        .setArgument()
-        .setHelp("listen on this address (default: 127.0.0.1)")
-        .setDefaultValue("127.0.0.1");
-    parser.addOption("port", 'p').setArgument().setHelp("listen on this port (default: 6080)").setDefaultValue("6080");
-    parser.addOption("http-address")
-        .setArgument()
-        .setHelp("http server listens on this address (default: 127.0.0.1)")
+int main(int argc, char **argv)
+{
+	OptionParser parser("%prog [options]");
+	parser.addOption("directory", 'd')
+		.setArgument()
+		.setHelp("index directory")
+		.setMetaVar("DIR")
+		.setDefaultValue(".");
+	parser.addOption("address", 'a')
+		.setArgument()
+		.setHelp("listen on this address (default: 127.0.0.1)")
+		.setDefaultValue("127.0.0.1");
+	parser.addOption("port", 'p')
+		.setArgument()
+		.setHelp("listen on this port (default: 6080)")
+		.setDefaultValue("6080");
+	parser.addOption("http-address")
+		.setArgument()
+		.setHelp("http server listens on this address (default: 127.0.0.1)")
         .setMetaVar("ADDRESS")
         .setDefaultValue("127.0.0.1");
     parser.addOption("http-port")
@@ -38,7 +46,10 @@ int main(int argc, char **argv) {
         .setHelp("http server listens on this port (default: 6081)")
         .setMetaVar("PORT")
         .setDefaultValue("6081");
-    parser.addOption("threads", 't').setArgument().setHelp("use specific number of threads").setDefaultValue("0");
+    parser.addOption("threads", 't')
+        .setArgument()
+        .setHelp("use specific number of threads")
+        .setDefaultValue("0");
     std::unique_ptr<Options> opts(parser.parse(argc, argv));
 
     QString path = opts->option("directory");
