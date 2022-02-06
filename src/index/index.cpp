@@ -158,6 +158,25 @@ void Index::deleteDocument(uint32_t docId) {
 }
 
 void Index::applyUpdates(const OpBatch &batch) {
+    auto writer = openWriter(true);
+    for (const auto &op : batch) {
+        switch (op.type()) {
+            case INSERT_OR_UPDATE_DOCUMENT: {
+                auto data = op.data<InsertOrUpdateDocument>();
+                writer->addDocument(data.docId, data.terms.data(), data.terms.size());
+                break;
+            }
+            case DELETE_DOCUMENT: {
+                throw NotImplemented("Document deletion is not implemented");
+            }
+            case SET_ATTRIBUTE: {
+                auto data = op.data<SetAttribute>();
+                writer->setAttribute(data.name, data.value);
+                break;
+            }
+        }
+    }
+
 }
 
 std::vector<SearchResult> Index::search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs) {

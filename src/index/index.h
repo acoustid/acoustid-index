@@ -63,7 +63,7 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     void updateInfo(const IndexInfo& oldInfo, const IndexInfo& newInfo, bool updateIndex = false);
 
  private:
-    ACOUSTID_DISABLE_COPY(Index);
+    ACOUSTID_DISABLE_COPY(Index)
 
     void acquireWriterLockInt(bool wait, int64_t timeoutInMSecs);
 

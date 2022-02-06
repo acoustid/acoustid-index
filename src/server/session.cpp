@@ -109,7 +109,7 @@ QList<Result> Session::search(const QVector<uint32_t> &hashes) {
     try {
         auto reader = m_index->openReader();
         reader->search(hashes.data(), hashes.size(), &collector, m_timeout);
-    } catch (TimeoutExceeded) {
+    } catch (TimeoutExceeded &ex) {
         throw HandlerException("timeout exceeded");
     }
     return collector.topResults();
