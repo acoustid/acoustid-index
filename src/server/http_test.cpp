@@ -5,6 +5,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 
+#include "index/index.h"
 #include "index/multi_index.h"
 #include "server/metrics.h"
 #include "store/ram_directory.h"

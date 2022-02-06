@@ -101,16 +101,7 @@ int main(int argc, char **argv) {
 
     Listener::setupSignalHandlers();
 
-    Listener listener(path, true);
-    listener.setMetrics(metrics);
-    listener.listen(QHostAddress(address), port);
-    qDebug() << "Simple server listening on" << address << "port" << port;
-
-    indexes->addIndex("main", listener.index());
-
-    Listener::setupSignalHandlers();
-
-    auto listener = QSharedPointer<Listener>::create(mainIndex, metrics);
+    auto listener = QSharedPointer<Listener>::create(indexes->getRootIndex(true), metrics);
     listener->listen(QHostAddress(address), port);
     qDebug() << "Telnet server listening on" << address << "port" << port;
 

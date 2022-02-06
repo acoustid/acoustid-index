@@ -27,9 +27,12 @@ class MultiIndex {
     QSharedPointer<Directory> dir() const { return m_dir; }
 
     bool indexExists(const QString &name);
+    QSharedPointer<Index> getRootIndex(bool create = false);
     QSharedPointer<Index> getIndex(const QString &name, bool create = false);
     void createIndex(const QString &name);
     void deleteIndex(const QString &name);
+
+    constexpr static const char* ROOT_INDEX_NAME = "_root";
 
  private:
     QMutex m_mutex;

@@ -135,7 +135,7 @@ static HttpResponse handleHeadIndexRequest(const HttpRequest &request, const QSh
 }
 
 static HttpResponse handleGetIndexRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
-    auto index = getIndex(request, indexes);
+    auto index = getIndex(request, indexes, false);
 
     QJsonObject responseJson{
         {"revision", index->info().revision()},

@@ -3,6 +3,8 @@
 
 #include "multi_index.h"
 
+#include <QStringLiteral>
+
 namespace Acoustid {
 
 MultiIndex::MultiIndex(const QSharedPointer<Directory> &dir) : m_dir(dir) {}
@@ -29,8 +31,15 @@ bool MultiIndex::indexExists(const QString &name) {
     if (m_indexes.contains(name)) {
         return true;
     }
+    if (name == ROOT_INDEX_NAME) {
+        return Index::exists(m_dir);
+    }
     auto subDir = QSharedPointer<Directory>(m_dir->openDirectory(name));
     return Index::exists(subDir);
+}
+
+QSharedPointer<Index> MultiIndex::getRootIndex(bool create) {
+    return getIndex(ROOT_INDEX_NAME, create);
 }
 
 QSharedPointer<Index> MultiIndex::getIndex(const QString &name, bool create) {
@@ -39,9 +48,14 @@ QSharedPointer<Index> MultiIndex::getIndex(const QString &name, bool create) {
     if (index) {
         return index;
     }
+    if (name == ROOT_INDEX_NAME) {
+        index = QSharedPointer<Index>::create(m_dir, create);
+        m_indexes[name] = index;
+        return index;
+    }
     auto subDir = QSharedPointer<Directory>(m_dir->openDirectory(name));
     index = QSharedPointer<Index>::create(subDir, create);
-    m_indexes.insert(name, index);
+    m_indexes[name] = index;
     return index;
 }
 
@@ -50,6 +64,9 @@ void MultiIndex::createIndex(const QString &name) {
 }
 
 void MultiIndex::deleteIndex(const QString &name) {
+    if (name == ROOT_INDEX_NAME) {
+        throw NotImplemented("Index deletion is not supported");
+    }
     QMutexLocker locker(&m_mutex);
     m_indexes.remove(name);
     m_dir->deleteDirectory(name);
