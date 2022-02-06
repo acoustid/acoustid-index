@@ -41,6 +41,8 @@ add_definitions(
 )
 
 set(fpindexlib_SOURCES
+	src/index/search_result.h
+	src/index/base_index.h
 	src/index/index.cpp
 	src/index/index_file_deleter.cpp
 	src/index/index_info.cpp
@@ -57,6 +59,8 @@ set(fpindexlib_SOURCES
 	src/index/segment_merge_policy.cpp
 	src/index/segment_merger.cpp
 	src/index/segment_searcher.cpp
+	src/index/op.h
+	src/index/op.cpp
 	src/index/top_hits_collector.cpp
 	src/store/buffered_input_stream.cpp
 	src/store/buffered_output_stream.cpp

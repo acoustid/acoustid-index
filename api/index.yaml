@@ -1,0 +1,362 @@
+openapi: 3.0.0
+info:
+  version: 1.0.0
+  title: 'AcoustID Index'
+servers:
+  - url: 'localhost:6081'
+
+paths:
+
+  /{index}:
+    get:
+      summary: Get index details
+      operationId: getIndex
+      tags:
+        - index
+      parameters:
+        - $ref: '#/components/parameters/indexName'
+      responses:
+        '200':
+          description: Index details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Index'
+        '404':
+          description: Index does not exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    put:
+      summary: Create index
+      operationId: createIndex
+      tags:
+        - index
+      parameters:
+        - $ref: '#/components/parameters/indexName'
+      responses:
+        '200':
+          description: Successfully created the index
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Index'
+    delete:
+      summary: Delete index
+      operationId: deleteIndex
+      tags:
+        - index
+      parameters:
+        - $ref: '#/components/parameters/indexName'
+      responses:
+        '200':
+          description: Successfully deleted the index
+
+  /{index}/_doc/{id}:
+    get:
+      summary: Get document details
+      operationId: getDocument
+      tags:
+        - document
+      parameters:
+        - $ref: '#/components/parameters/indexName'
+        - $ref: '#/components/parameters/documentId'
+      responses:
+        '200':
+          description: Document details
+    put:
+      summary: Insert or update document
+      operationId: insertOrUpdateDocument
+      tags:
+        - document
+      parameters:
+        - $ref: '#/components/parameters/indexName'
+        - $ref: '#/components/parameters/documentId'
+      responses:
+        '200':
+          description: Successfully inserted or updated the document
+    delete:
+      summary: Delete document
+      operationId: deleteDocument
+      tags:
+        - document
+      parameters:
+        - $ref: '#/components/parameters/indexName'
+        - $ref: '#/components/parameters/documentId'
+      responses:
+        '200':
+          description: Successfully deleted the document
+      
+  /{index}/_bulk:
+    post:
+      summary: Perform multiple operations on the index
+      operationId: bulkUpdate
+      tags:
+        - document
+      parameters:
+        - $ref: '#/components/parameters/indexName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkUpdate'
+      responses:
+        '200':
+          description: Successfully applied all the operations
+
+  /{index}/_flush:
+    post:
+      summary: Flush all index data to persistent storage
+      description: |
+        Flushing the index is an operation which ensures any data currently only
+        stored in the operation log (oplog) is also permanently stored in the
+        main index structure on disk. This avoids having to load operations from
+        the oplog when the server is restarted. Flushing happens automatically,
+        but there might be situations when you want to trigger it manually.
+      operationId: flush
+      tags:
+        - index
+      parameters:
+        - $ref: '#/components/parameters/indexName'
+      responses:
+        '200':
+          description: Successfully flushed index data to persistent storage
+
+  /{index}/_search:
+    get:
+      summary: Search in the index
+      operationId: search
+      tags:
+        - search
+      parameters:
+        - $ref: '#/components/parameters/indexName'
+        - name: query
+          in: query
+          required: true
+          style: form
+          explode: false
+          schema:
+            $ref: '#/components/schemas/DocumentTerms'
+            
+      responses:
+        '200':
+          description: Successfully applied all the operations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResults'
+
+  /_health/alive:
+    get:
+      summary: Is the server running?
+      description: Check if the server is running, to be used in Kubernetes `livenessProbe`.
+      operationId: livenessCheck
+      tags:
+        - healthcheck
+      responses:
+        '200':
+          description: Success
+
+  /_health/ready:
+    get:
+      summary: Is the server ready to serve requests?
+      description: Check if the server is ready to serve requests, to be used in Kubernetes `readinessProbe`.
+      operationId: readinessCheck
+      tags:
+        - healthcheck
+      responses:
+        '200':
+          description: Success
+
+  /_metrics:
+    get:
+      summary: Prometheus metrics
+      description: Exports internal metrics in Prometheus format.
+      tags:
+        - prometheus
+      responses:
+        '200':
+          description: Success
+
+components:
+
+  parameters:
+
+    indexName:
+      name: index
+      in: path
+      description: Index name
+      required: true
+      schema:
+        type: string
+        example: main
+
+    documentId:
+      name: id
+      in: path
+      description: Document ID
+      required: true
+      schema:
+        type: number
+        format: uint32
+        example: 12345
+
+  schemas:
+
+    Index:
+      type: object
+      required:
+        - name
+        - revision
+      properties:
+        name:
+          type: string
+          description: Index name
+          example: main
+        revision:
+          type: integer
+          format: int64
+          description: Revision of the index
+          example: 1
+
+    SearchResult:
+      type: object
+      required:
+        - id
+        - score
+      properties:
+        id:
+          type: number
+          format: uint32
+          description: Document ID
+          example: 12345
+        score:
+          type: number
+          format: uint32
+          description: How well does the document match the query
+          example: 3
+
+    SearchResults:
+      type: object
+      required:
+        - results
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchResult'
+
+    DocumentTerms:
+      type: array
+      items:
+        type: number
+        format: uint32
+      example: [198178303,198047167,164426175,164426173]
+
+    InsertOrUpdateDocument:
+      type: object
+      required:
+        - id
+        - terms
+      properties:
+        id:
+          type: number
+          format: uint32
+          description: Document ID
+          example: 12345
+        terms:
+          $ref: '#/components/schemas/DocumentTerms'
+
+    DeleteDocument:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: number
+          format: uint32
+          description: Document ID
+          example: 12345
+
+    SetAttribute:
+      type: object
+      required:
+        - name
+        - value
+      properties:
+        name:
+          type: string
+          description: Attribute name
+          example: foo
+        value:
+          type: string
+          description: Attribute value
+          example: bar
+
+    BulkUpdate:
+      type: array
+      items:
+        oneOf:
+          - type: object
+            required:
+              - upsert
+            properties:
+              upsert:
+                $ref: '#/components/schemas/InsertOrUpdateDocument'
+          - type: object
+            required:
+              - delete
+            properties:
+              delete:
+                $ref: '#/components/schemas/DeleteDocument'
+          - type: object
+            required:
+              - set
+            properties:
+              set:
+                $ref: '#/components/schemas/SetAttribute'
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        status:
+          type: integer
+          format: int32
+          example: 404
+        error:
+          type: object
+          required:
+            - type
+            - description
+          properties:
+            type:
+              type: string
+              example: not_found
+            description:
+              type: string
+              example: index does not exist
+
+  securitySchemes:
+    BasicAuth:
+      type: http
+      scheme: basic
+
+security:
+  - BasicAuth: []
+
+tags:
+  - name: index
+    description: Index management API
+  - name: document
+    description: Document management API
+  - name: search
+    description: Search API
+  - name: healthcheck
+    description: Healthchecks
+  - name: prometheus
+    description: Prometheus exporter

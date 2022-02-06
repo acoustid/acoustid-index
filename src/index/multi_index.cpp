@@ -44,7 +44,7 @@ QSharedPointer<Index> MultiIndex::getIndex(const QString &name, bool create) {
         return index;
     }
     if (!create) {
-        throw IndexDoesNotExist("Index does not exist");
+        throw IndexNotFoundException("Index does not exist");
     }
     throw Exception("Index creation is not supported");
 }

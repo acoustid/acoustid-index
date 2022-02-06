@@ -15,3 +15,11 @@ https://github.com/nodejs/http-parser
 Update:
 
     git subtree pull --squash --prefix src/3rdparty/http-parser https://github.com/nodejs/http-parser v2.9.X
+
+## msgpack-c
+
+https://github.com/msgpack/msgpack-c/tree/cpp_master
+
+Update:
+
+    git subtree pull --squash --prefix src/3rdparty/msgpack https://github.com/msgpack/msgpack-c cpp-4.0.X

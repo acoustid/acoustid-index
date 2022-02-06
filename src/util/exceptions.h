@@ -26,14 +26,14 @@ class IOException : public Exception {
     IOException(const QString &msg) : Exception(msg) {}
 };
 
+class IndexNotFoundException : public IOException {
+ public:
+    IndexNotFoundException(const QString &msg) : IOException(msg) {}
+};
+
 class CorruptIndexException : public IOException {
  public:
     CorruptIndexException(const QString &msg) : IOException(msg) {}
-};
-
-class IndexDoesNotExist : public Exception {
- public:
-    IndexDoesNotExist(const QString &msg) : Exception(msg) {}
 };
 
 class IndexIsNotOpen : public Exception {
