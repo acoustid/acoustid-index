@@ -66,9 +66,9 @@ QString Session::getAttribute(const QString &name) {
         return QString("%1").arg(m_idle_timeout);
     }
     if (m_indexWriter.isNull()) {
-        return m_index->info().attribute(name);
+        return m_index->getAttribute(name);
     }
-    return m_indexWriter->info().attribute(name);
+    return m_indexWriter->info().getAttribute(name);
 }
 
 void Session::setAttribute(const QString &name, const QString &value) {

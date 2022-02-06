@@ -20,7 +20,7 @@ TEST(IndexWriterTest, AddDocument)
 	ASSERT_TRUE(index->directory()->fileExists("info_0"));
 	ASSERT_EQ(0, writer->info().revision());
 	ASSERT_EQ(0, writer->info().segmentCount());
-	ASSERT_EQ("", writer->info().attribute("max_document_id"));
+	ASSERT_EQ("", writer->info().getAttribute("max_document_id"));
 
 	uint32_t fp[] = { 7, 9, 12 };
 	writer->addDocument(1, fp, 3);
@@ -30,7 +30,7 @@ TEST(IndexWriterTest, AddDocument)
 	ASSERT_TRUE(index->directory()->fileExists("segment_0.fid"));
 	ASSERT_EQ(1, writer->info().revision());
 	ASSERT_EQ(1, writer->info().segmentCount());
-	ASSERT_EQ("1", writer->info().attribute("max_document_id"));
+	ASSERT_EQ("1", writer->info().getAttribute("max_document_id"));
 	ASSERT_EQ("segment_0", writer->info().segment(0).name());
 	ASSERT_EQ(1, writer->info().segment(0).blockCount());
 	ASSERT_EQ(3, writer->info().segment(0).checksum());

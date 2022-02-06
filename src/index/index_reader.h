@@ -30,6 +30,7 @@ public:
 	}
 
 	void search(const uint32_t *fingerprint, size_t length, Collector *collector, int64_t timeoutInMSecs = 0);
+    std::vector<SearchResult> search(const uint32_t *fingerprint, size_t length, int64_t timeoutInMSecs = 0);
 
 	SegmentDataReader* segmentDataReader(const SegmentInfo& segment);
 

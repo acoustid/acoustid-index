@@ -165,7 +165,7 @@ void IndexWriter::flush()
 
 	qDebug() << "New segment" << segment.id() << "with checksum" << segment.checksum();
 	info.addSegment(segment);
-	if (info.attribute("max_document_id").toInt() < m_maxDocumentId) {
+	if (info.getAttribute("max_document_id").toInt() < m_maxDocumentId) {
 		info.setAttribute("max_document_id", QString::number(m_maxDocumentId));
 	}
 	if (m_index) {

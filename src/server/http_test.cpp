@@ -174,5 +174,5 @@ TEST_F(HttpTest, TestBulkObject) {
 
     // ASSERT_TRUE(index->containsDocument(111));
     // ASSERT_TRUE(index->containsDocument(112));
-    ASSERT_EQ(index->info().attribute("foo").toStdString(), "bar");
+    ASSERT_EQ(index->info().getAttribute("foo").toStdString(), "bar");
 }

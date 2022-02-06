@@ -122,7 +122,12 @@ public:
 		return d->attribs;
 	}
 
-	QString attribute(const QString& name) const
+    bool hasAttribute(const QString& name) const
+	{
+		return d->attribs.contains(name);
+	}
+
+	QString getAttribute(const QString& name) const
 	{
 		return d->attribs.value(name);
 	}
