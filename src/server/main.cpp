@@ -58,9 +58,6 @@ int main(int argc, char **argv) {
         .setMetaVar("PORT")
         .setDefaultValue("6081");
 
-    parser.addOption("mmap", 'm')
-        .setHelp("use mmap to read index files");
-
     parser.addOption("grpc-address")
         .setArgument()
         .setHelp("gRPC server listens on this address (default: 127.0.0.1)")
@@ -106,7 +103,7 @@ int main(int argc, char **argv) {
 
     Listener::setupSignalHandlers();
 
-    Listener listener(path, opts->contains("mmap"));
+    Listener listener(path, true);
     listener.setMetrics(metrics);
     listener.listen(QHostAddress(address), port);
     qDebug() << "Simple server listening on" << address << "port" << port;
