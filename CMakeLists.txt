@@ -19,6 +19,10 @@ find_package(GTest)
 find_package(SQLite3 REQUIRED)
 find_package(Qt5 COMPONENTS Core Network Concurrent REQUIRED)
 
+find_package(PkgConfig REQUIRED)
+pkg_search_module(PROTOBUF REQUIRED IMPORTED_TARGET protobuf)
+pkg_search_module(GRPCPP REQUIRED IMPORTED_TARGET grpc++)
+
 set(CPACK_GENERATOR "DEB")
 set(CPACK_PACKAGE_NAME acoustid-index)
 set(CPACK_DEB_COMPONENT_INSTALL ON)
@@ -126,9 +130,15 @@ set(fpserver_SOURCES
 	src/server/http/response.cpp
 	src/server/http/router.h
 	src/server/http/router.cpp
+    src/server/grpc/service.h
+    src/server/grpc/service.cpp
+    src/server/grpc/proto/index.pb.h
+    src/server/grpc/proto/index.pb.cc
+    src/server/grpc/proto/index.grpc.pb.h
+    src/server/grpc/proto/index.grpc.pb.cc
 )
 add_library(fpserverlib ${fpserver_SOURCES})
-target_link_libraries(fpserverlib fpindexlib qhttp)
+target_link_libraries(fpserverlib fpindexlib qhttp PkgConfig::GRPCPP PkgConfig::PROTOBUF)
 
 include_directories(
 	${CMAKE_CURRENT_SOURCE_DIR}/src

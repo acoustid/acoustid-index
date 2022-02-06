@@ -236,7 +236,7 @@ TEST_F(HttpTest, TestBulkObject) {
     indexes->getIndex("testidx")->insertOrUpdateDocument(112, {31, 41, 51});
     indexes->getIndex("testidx")->insertOrUpdateDocument(113, {31, 41, 51});
 
-    auto request = HttpRequest(HTTP_POST, QUrl("/main/_bulk"));
+    auto request = HttpRequest(HTTP_POST, QUrl("/testidx/_bulk"));
     request.setBody(QJsonDocument(QJsonObject{
         {"operations", QJsonArray{
             QJsonObject{{"upsert", QJsonObject{{"id", 111}, {"terms", QJsonArray{1, 2, 3}}}}},
