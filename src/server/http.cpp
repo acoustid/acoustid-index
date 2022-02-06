@@ -4,6 +4,7 @@
 
 #include "index/index.h"
 #include "index/index_writer.h"
+#include "index/multi_index.h"
 #include "index/top_hits_collector.h"
 #include "metrics.h"
 
@@ -117,28 +118,29 @@ static std::vector<uint32_t> parseTerms(const QJsonValue &value) {
 
 const QString MAIN_INDEX_NAME = "main";
 
-static QSharedPointer<Index> getIndex(const HttpRequest &request, const QSharedPointer<Index> &index,
+static QSharedPointer<Index> getIndex(const HttpRequest &request, const QSharedPointer<MultiIndex> &index,
                                       bool create = false) {
     auto indexName = getIndexName(request);
-    if (indexName != MAIN_INDEX_NAME) {
+    try {
+        if (indexName == MAIN_INDEX_NAME) {
+            return index->getRootIndex(create);
+        } else {
+            return index->getIndex(indexName, create);
+        }
+    } catch (const IndexNotFoundException &e) {
         throw HttpResponseException(errNotFound("index does not exist"));
     }
-    return index;
 }
 
-static HttpResponse handleHeadIndexRequest(const HttpRequest &request, const QSharedPointer<Index> &indexes) {
-    auto indexName = getIndexName(request);
-
-    if (indexName != MAIN_INDEX_NAME) {
-        return errNotFound("index does not exist");
-    }
+static HttpResponse handleHeadIndexRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
+    getIndex(request, indexes, false);
 
     QJsonObject responseJson;
     return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
 }
 
-static HttpResponse handleGetIndexRequest(const HttpRequest &request, const QSharedPointer<Index> &indexes) {
-    auto index = getIndex(request, indexes);
+static HttpResponse handleGetIndexRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
+    auto index = getIndex(request, indexes, false);
 
     QJsonObject responseJson{
         {"revision", index->info().revision()},
@@ -146,23 +148,23 @@ static HttpResponse handleGetIndexRequest(const HttpRequest &request, const QSha
     return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
 }
 
-static HttpResponse handlePutIndexRequest(const HttpRequest &request, const QSharedPointer<Index> &indexes) {
+static HttpResponse handlePutIndexRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
     return errNotImplemented("not implemented in this version of acoustid-index");
 }
 
-static HttpResponse handleDeleteIndexRequest(const HttpRequest &request, const QSharedPointer<Index> &indexes) {
+static HttpResponse handleDeleteIndexRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
     return errNotImplemented("not implemented in this version of acoustid-index");
 }
 
-static HttpResponse handleHeadDocumentRequest(const HttpRequest &request, const QSharedPointer<Index> &indexes) {
+static HttpResponse handleHeadDocumentRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
     return errNotImplemented("not implemented in this version of acoustid-index");
 }
 
-static HttpResponse handleGetDocumentRequest(const HttpRequest &request, const QSharedPointer<Index> &indexes) {
+static HttpResponse handleGetDocumentRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
     return errNotImplemented("not implemented in this version of acoustid-index");
 }
 
-static HttpResponse handlePutDocumentRequest(const HttpRequest &request, const QSharedPointer<Index> &indexes) {
+static HttpResponse handlePutDocumentRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
     auto index = getIndex(request, indexes);
     auto docId = getDocId(request);
 
@@ -184,12 +186,12 @@ static HttpResponse handlePutDocumentRequest(const HttpRequest &request, const Q
     return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
 }
 
-static HttpResponse handleDeleteDocumentRequest(const HttpRequest &request, const QSharedPointer<Index> &indexes) {
+static HttpResponse handleDeleteDocumentRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
     return errNotImplemented("not implemented in this version of acoustid-index");
 }
 
 // Handle search requests.
-static HttpResponse handleSearchRequest(const HttpRequest &request, const QSharedPointer<Index> &indexes) {
+static HttpResponse handleSearchRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
     auto index = getIndex(request, indexes);
 
     auto query = parseTerms(request.param("query"));
@@ -223,7 +225,7 @@ static HttpResponse handleSearchRequest(const HttpRequest &request, const QShare
 }
 
 // Handle bulk requests.
-static HttpResponse handleBulkRequest(const HttpRequest &request, const QSharedPointer<Index> &indexes) {
+static HttpResponse handleBulkRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
     auto index = getIndex(request, indexes);
 
     QJsonArray opsJsonArray;
@@ -278,7 +280,7 @@ static HttpResponse handleBulkRequest(const HttpRequest &request, const QSharedP
     return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
 }
 
-HttpRequestHandler::HttpRequestHandler(QSharedPointer<Index> indexes, QSharedPointer<Metrics> metrics)
+HttpRequestHandler::HttpRequestHandler(QSharedPointer<MultiIndex> indexes, QSharedPointer<Metrics> metrics)
     : m_indexes(indexes), m_metrics(metrics) {
     // Healthchecks
     m_router.route(HTTP_GET, "/_health/alive", [=](auto req) {

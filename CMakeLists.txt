@@ -153,6 +153,7 @@ set(tests_SOURCES
 	src/index/segment_index_test.cpp
 	src/index/segment_index_reader_test.cpp
 	src/index/segment_index_writer_test.cpp
+	src/index/multi_index_test.cpp
 	src/index/index_test.cpp
 	src/index/index_info_test.cpp
 	src/index/index_reader_test.cpp

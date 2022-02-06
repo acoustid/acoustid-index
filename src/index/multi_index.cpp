@@ -3,9 +3,12 @@
 
 #include "multi_index.h"
 
+#include <QStringLiteral>
+
 namespace Acoustid {
 
-MultiIndex::MultiIndex() {}
+
+MultiIndex::MultiIndex(const QSharedPointer<Directory> &dir) : m_dir(dir) {}
 
 void MultiIndex::close() {
     QMutexLocker locker(&m_mutex);
@@ -13,11 +16,6 @@ void MultiIndex::close() {
         index->close();
     }
     m_indexes.clear();
-}
-
-void MultiIndex::addIndex(const QString &name, const QSharedPointer<Index> &index) {
-    QMutexLocker locker(&m_mutex);
-    m_indexes.insert(name, index);
 }
 
 QThreadPool *MultiIndex::threadPool() const { return m_threadPool; }
@@ -37,28 +35,33 @@ bool MultiIndex::indexExists(const QString &name) {
     return false;
 }
 
+QSharedPointer<Index> MultiIndex::getRootIndex(bool create) {
+    return getIndex(ROOT_INDEX_NAME, create);
+}
+
 QSharedPointer<Index> MultiIndex::getIndex(const QString &name, bool create) {
     QMutexLocker locker(&m_mutex);
     auto index = m_indexes.value(name);
     if (index) {
         return index;
     }
-    if (!create) {
-        throw IndexNotFoundException("Index does not exist");
+    if (name == ROOT_INDEX_NAME) {
+        index = QSharedPointer<Index>::create(m_dir, create);
+        m_indexes[name] = index;
+        return index;
     }
-    throw Exception("Index creation is not supported");
+    if (create) {
+        throw NotImplemented("Index creation is not supported");
+    }
+    throw IndexNotFoundException("Index does not exist");
 }
 
 void MultiIndex::createIndex(const QString &name) {
-    QMutexLocker locker(&m_mutex);
-    if (m_indexes.contains(name)) {
-        return;
-    }
-    throw Exception("Index creation is not supported");
+    getIndex(name, true);
 }
 
 void MultiIndex::deleteIndex(const QString &name) {
-    throw Exception("Index deletion is not supported");
+    throw NotImplemented("Index deletion is not supported");
 }
 
 }  // namespace Acoustid

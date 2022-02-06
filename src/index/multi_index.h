@@ -17,22 +17,26 @@ namespace Acoustid {
 
 class MultiIndex {
  public:
-    MultiIndex();
-
-    void addIndex(const QString &name, const QSharedPointer<Index> &index);
+    MultiIndex(const QSharedPointer<Directory> &dir);
 
     void close();
 
     QThreadPool *threadPool() const;
     void setThreadPool(QThreadPool *pool);
 
+    QSharedPointer<Directory> dir() const { return m_dir; }
+
     bool indexExists(const QString &name);
+    QSharedPointer<Index> getRootIndex(bool create = false);
     QSharedPointer<Index> getIndex(const QString &name, bool create = false);
     void createIndex(const QString &name);
     void deleteIndex(const QString &name);
 
+    constexpr static const char* ROOT_INDEX_NAME = "_root";
+
  private:
     QMutex m_mutex;
+    QSharedPointer<Directory> m_dir;
     QMap<QString, QSharedPointer<Index>> m_indexes;
     QPointer<QThreadPool> m_threadPool;
 };

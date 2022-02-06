@@ -6,6 +6,7 @@
 #include <QJsonObject>
 
 #include "index/index.h"
+#include "index/multi_index.h"
 #include "server/metrics.h"
 #include "store/ram_directory.h"
 
@@ -16,21 +17,22 @@ class HttpTest : public ::testing::Test {
  protected:
     void SetUp() override {
         dir = QSharedPointer<RAMDirectory>::create();
-        index = QSharedPointer<Index>::create(dir, true);
+        indexes = QSharedPointer<MultiIndex>::create(dir);
+        indexes->getRootIndex(true);
         metrics = QSharedPointer<Metrics>::create();
-        handler = QSharedPointer<HttpRequestHandler>::create(index, metrics);
+        handler = QSharedPointer<HttpRequestHandler>::create(indexes, metrics);
     }
 
     void TearDown() override {
         handler.clear();
         metrics.clear();
-        index.clear();
+        indexes.clear();
         dir.clear();
     }
 
  protected:
     QSharedPointer<RAMDirectory> dir;
-    QSharedPointer<Index> index;
+    QSharedPointer<MultiIndex> indexes;
     QSharedPointer<Metrics> metrics;
     QSharedPointer<HttpRequestHandler> handler;
 };
@@ -174,5 +176,5 @@ TEST_F(HttpTest, TestBulkObject) {
 
     // ASSERT_TRUE(index->containsDocument(111));
     // ASSERT_TRUE(index->containsDocument(112));
-    ASSERT_EQ(index->info().getAttribute("foo").toStdString(), "bar");
+    ASSERT_EQ(indexes->getRootIndex()->info().getAttribute("foo").toStdString(), "bar");
 }

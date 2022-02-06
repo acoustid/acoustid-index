@@ -98,23 +98,20 @@ int main(int argc, char **argv) {
         QThreadPool::globalInstance()->setMaxThreadCount(numThreads);
     }
 
-    auto indexes = QSharedPointer<MultiIndex>::create();
+    auto indexesDir = QSharedPointer<FSDirectory>::create(path, true);
+    auto indexes = QSharedPointer<MultiIndex>::create(indexesDir);
     auto metrics = QSharedPointer<Metrics>::create();
 
     Listener::setupSignalHandlers();
 
-    Listener listener(path, true);
-    listener.setMetrics(metrics);
-    listener.listen(QHostAddress(address), port);
-    qDebug() << "Simple server listening on" << address << "port" << port;
+    auto listener = QSharedPointer<Listener>::create(indexes->getRootIndex(true), metrics);
+    listener->listen(QHostAddress(address), port);
+    qDebug() << "Telnet server listening on" << address << "port" << port;
 
-    indexes->addIndex("main", listener.index());
-
-    HttpRequestHandler handler(listener.index(), metrics);
-
-    QHttpServer httpListener(&app);
-    httpListener.listen(QHostAddress(httpAddress), httpPort, [&](QHttpRequest *req, QHttpResponse *res) {
-        handler.router().handle(req, res);
+    auto httpHandler = QSharedPointer<HttpRequestHandler>::create(indexes, metrics);
+    auto httpListener = QSharedPointer<QHttpServer>::create(&app);
+    httpListener->listen(QHostAddress(httpAddress), httpPort, [=](auto req, auto res) {
+        httpHandler->router().handle(req, res);
     });
     qDebug() << "HTTP server listening on" << httpAddress << "port" << httpPort;
 
