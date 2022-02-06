@@ -5,7 +5,9 @@
 #define ACOUSTID_INDEX_MULTI_INDEX_H_
 
 #include <QMap>
+#include <QPointer>
 #include <QSharedPointer>
+#include <QThreadPool>
 #include <QString>
 
 #include "index.h"

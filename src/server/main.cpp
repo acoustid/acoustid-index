@@ -1,12 +1,12 @@
 // Copyright (C) 2011  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
-#include <QCoreApplication>
-#include <QThreadPool>
-
+#include <grpcpp/security/server_credentials.h>
 #include <grpcpp/server.h>
 #include <grpcpp/server_builder.h>
-#include <grpcpp/security/server_credentials.h>
+
+#include <QCoreApplication>
+#include <QThreadPool>
 
 #include "http.h"
 #include "index/index.h"
@@ -16,55 +16,62 @@
 #include "qhttpserver.hpp"
 #include "qhttpserverrequest.hpp"
 #include "qhttpserverresponse.hpp"
+#include "server/grpc/service.h"
 #include "store/fs_directory.h"
 #include "util/options.h"
-#include "server/grpc/service.h"
 
 using namespace Acoustid;
 using namespace Acoustid::Server;
 
 using namespace qhttp::server;
 
-int main(int argc, char **argv)
-{
-	OptionParser parser("%prog [options]");
-	parser.addOption("directory", 'd')
-		.setArgument()
-		.setHelp("index directory")
-		.setMetaVar("DIR")
-		.setDefaultValue(".");
-	parser.addOption("address", 'a')
-		.setArgument()
-		.setHelp("listen on this address (default: 127.0.0.1)")
-		.setDefaultValue("127.0.0.1");
-	parser.addOption("port", 'p')
-		.setArgument()
-		.setHelp("listen on this port (default: 6080)")
-		.setDefaultValue("6080");
-	parser.addOption("http-address")
-		.setArgument()
-		.setHelp("http server listens on this address (default: 127.0.0.1)")
+int main(int argc, char **argv) {
+    OptionParser parser("%prog [options]");
+
+    // clang-format off
+
+    parser.addOption("directory", 'd')
+        .setArgument()
+        .setHelp("index directory")
+        .setMetaVar("DIR")
+        .setDefaultValue(".");
+
+    parser.addOption("address", 'a')
+        .setArgument()
+        .setHelp("listen on this address (default: 127.0.0.1)")
+        .setDefaultValue("127.0.0.1");
+
+    parser.addOption("port", 'p')
+        .setArgument()
+        .setHelp("listen on this port (default: 6080)")
+        .setDefaultValue("6080");
+
+    parser.addOption("http-address")
+        .setArgument()
+        .setHelp("http server listens on this address (default: 127.0.0.1)")
         .setMetaVar("ADDRESS")
         .setDefaultValue("127.0.0.1");
+
     parser.addOption("http-port")
         .setArgument()
         .setHelp("http server listens on this port (default: 6081)")
         .setMetaVar("PORT")
         .setDefaultValue("6081");
-	parser.addOption("grpc-address")
-		.setArgument()
-		.setHelp("gRPC server listens on this address (default: 127.0.0.1)")
+
+    parser.addOption("grpc-address")
+        .setArgument()
+        .setHelp("gRPC server listens on this address (default: 127.0.0.1)")
         .setMetaVar("ADDRESS")
         .setDefaultValue("127.0.0.1");
+
     parser.addOption("grpc-port")
         .setArgument()
         .setHelp("gRPC server listens on this port (default: 6082)")
         .setMetaVar("PORT")
         .setDefaultValue("6082");
-    parser.addOption("threads", 't')
-        .setArgument()
-        .setHelp("use specific number of threads")
-        .setDefaultValue("0");
+
+    // clang-format on
+
     std::unique_ptr<Options> opts(parser.parse(argc, argv));
 
     QString path = opts->option("directory");
@@ -75,8 +82,9 @@ int main(int argc, char **argv)
     QString httpAddress = opts->option("http-address");
     int httpPort = opts->option("http-port").toInt();
 
-    QString grpcAddress = opts->option("grpc-address");
-    int grpcPort = opts->option("grpc-port").toInt();
+    auto grpcAddress = opts->option("grpc-address");
+    auto grpcPort = opts->option("grpc-port").toInt();
+    auto grpcEndpoint = QString("%1:%2").arg(grpcAddress).arg(grpcPort);
 
     QCoreApplication app(argc, argv);
 
@@ -93,6 +101,15 @@ int main(int argc, char **argv)
 
     Listener::setupSignalHandlers();
 
+    Listener listener(path, true);
+    listener.setMetrics(metrics);
+    listener.listen(QHostAddress(address), port);
+    qDebug() << "Simple server listening on" << address << "port" << port;
+
+    indexes->addIndex("main", listener.index());
+
+    Listener::setupSignalHandlers();
+
     auto listener = QSharedPointer<Listener>::create(mainIndex, metrics);
     listener->listen(QHostAddress(address), port);
     qDebug() << "Telnet server listening on" << address << "port" << port;
@@ -105,11 +122,11 @@ int main(int argc, char **argv)
 
     IndexServiceImpl service(indexes, metrics);
 
-    grpc::ServerBuilder builder;
-    builder.AddListeningPort(grpcAddress.toStdString() + ":" + QString::number(grpcPort).toStdString(), grpc::InsecureServerCredentials());
-    builder.RegisterService(&service);
+    grpc::ServerBuilder grpcServerBuilder;
+    grpcServerBuilder.AddListeningPort(grpcEndpoint.toStdString(), grpc::InsecureServerCredentials());
+    grpcServerBuilder.RegisterService(&service);
     qDebug() << "Starting gRPC server at" << grpcAddress << "port" << grpcPort;
-    auto grpcServer = builder.BuildAndStart();
+    auto grpcServer = grpcServerBuilder.BuildAndStart();
 
     auto exitCode = app.exec();
 
