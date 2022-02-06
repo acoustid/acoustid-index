@@ -70,11 +70,6 @@ int main(int argc, char **argv) {
         .setMetaVar("PORT")
         .setDefaultValue("6082");
 
-    parser.addOption("threads", 't')
-        .setArgument()
-        .setHelp("use specific number of threads")
-        .setDefaultValue("0");
-
     // clang-format on
 
     std::unique_ptr<Options> opts(parser.parse(argc, argv));
@@ -103,6 +98,15 @@ int main(int argc, char **argv) {
     auto metrics = QSharedPointer<Metrics>::create();
 
     auto mainIndex = indexes->getIndex("main", true);
+
+    Listener::setupSignalHandlers();
+
+    Listener listener(path, true);
+    listener.setMetrics(metrics);
+    listener.listen(QHostAddress(address), port);
+    qDebug() << "Simple server listening on" << address << "port" << port;
+
+    indexes->addIndex("main", listener.index());
 
     Listener::setupSignalHandlers();
 

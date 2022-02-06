@@ -51,6 +51,8 @@ set(fpindexlib_SOURCES
 	src/index/index.cpp
 	src/index/index_file_deleter.cpp
 	src/index/index_info.cpp
+	src/index/multi_index.h
+	src/index/multi_index.cpp
 	src/index/index_reader.cpp
 	src/index/index_writer.cpp
 	src/index/multi_index.h
@@ -117,19 +119,19 @@ target_include_directories(qhttp PRIVATE ./src/3rdparty/)
 target_link_libraries(qhttp Qt5::Core Qt5::Network Qt5::Concurrent)
 
 set(fpserver_SOURCES
-	src/server/listener.cpp
-	src/server/protocol.cpp
-	src/server/session.cpp
-	src/server/connection.cpp
-	src/server/metrics.cpp
-	src/server/request.cpp
-	src/server/http.cpp
-	src/server/http/request.h
-	src/server/http/request.cpp
-	src/server/http/response.h
-	src/server/http/response.cpp
-	src/server/http/router.h
-	src/server/http/router.cpp
+    src/server/listener.cpp
+    src/server/protocol.cpp
+    src/server/session.cpp
+    src/server/connection.cpp
+    src/server/metrics.cpp
+    src/server/request.cpp
+    src/server/http.cpp
+    src/server/http/request.h
+    src/server/http/request.cpp
+    src/server/http/response.h
+    src/server/http/response.cpp
+    src/server/http/router.h
+    src/server/http/router.cpp
     src/server/grpc/service.h
     src/server/grpc/service.cpp
     src/server/grpc/proto/index.pb.h
