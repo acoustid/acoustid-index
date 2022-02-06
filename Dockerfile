@@ -12,9 +12,10 @@ RUN mkdir -p /var/lib/acoustid-index && chown -R acoustid /var/lib/acoustid-inde
 VOLUME ["/var/lib/acoustid-index"]
 
 RUN apt-get update && \
-    apt-get install -y rsync
+    apt-get install -y rsync curl
 
 USER acoustid
 EXPOSE 6080
+EXPOSE 6081
 
 CMD ["fpi-server", "--directory", "/var/lib/acoustid-index", "--mmap", "--address", "0.0.0.0", "--port", "6080", "--http-address", "0.0.0.0", "--http-port", "6081"]
