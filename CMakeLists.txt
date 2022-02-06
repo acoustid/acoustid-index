@@ -40,6 +40,8 @@ set(fpindexlib_SOURCES
 	src/index/index.cpp
 	src/index/index_file_deleter.cpp
 	src/index/index_info.cpp
+	src/index/multi_index.h
+	src/index/multi_index.cpp
 	src/index/index_reader.cpp
 	src/index/index_writer.cpp
 	src/index/segment_data_reader.cpp

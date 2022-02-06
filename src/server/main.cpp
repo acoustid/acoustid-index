@@ -3,13 +3,17 @@
 
 #include <QCoreApplication>
 #include <QThreadPool>
+
+#include "http.h"
+#include "index/index.h"
+#include "index/multi_index.h"
+#include "listener.h"
+#include "metrics.h"
 #include "qhttpserver.hpp"
 #include "qhttpserverrequest.hpp"
 #include "qhttpserverresponse.hpp"
+#include "store/fs_directory.h"
 #include "util/options.h"
-#include "listener.h"
-#include "metrics.h"
-#include "http.h"
 
 using namespace Acoustid;
 using namespace Acoustid::Server;
@@ -65,7 +69,8 @@ int main(int argc, char **argv)
 		QThreadPool::globalInstance()->setMaxThreadCount(numThreads);
 	}
 
-	auto metrics = QSharedPointer<Metrics>(new Metrics());
+	auto indexes = QSharedPointer<MultiIndex>::create();
+	auto metrics = QSharedPointer<Metrics>::create();
 
 	Listener::setupSignalHandlers();
 
@@ -73,6 +78,8 @@ int main(int argc, char **argv)
 	listener.setMetrics(metrics);
 	listener.listen(QHostAddress(address), port);
 	qDebug() << "Simple server listening on" << address << "port" << port;
+
+    indexes->addIndex("main", listener.index());
 
     HttpRequestHandler handler(listener.index(), metrics);
 

@@ -6,6 +6,7 @@
 
 #include <QDeadlineTimer>
 #include <QMutex>
+#include <QThreadPool>
 #include <QWaitCondition>
 
 #include "common.h"
@@ -29,6 +30,9 @@ class Index : public QEnableSharedFromThis<Index> {
     // Build a new instance using the given directory
     Index(DirectorySharedPtr dir, bool create = false);
     virtual ~Index();
+
+    void close() {}
+    void setThreadPool(QThreadPool *pool) { }
 
     // Return the directory which contains the index data
     DirectorySharedPtr directory() { return m_dir; }
