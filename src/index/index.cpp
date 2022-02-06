@@ -30,6 +30,10 @@ bool Index::containsDocument(uint32_t docId) {
     return true;
 }
 
+bool Index::exists(const QSharedPointer<Directory> &dir) {
+    return IndexInfo::findCurrentRevision(dir.get()) >= 0;
+}
+
 void Index::open(bool create)
 {
 	if (!m_info.load(m_dir.data(), true)) {

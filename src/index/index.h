@@ -35,6 +35,9 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     void close() {}
     void setThreadPool(QThreadPool *pool) { }
 
+    // Return true if the index exists on disk.
+    static bool exists(const QSharedPointer<Directory> &dir);
+
     // Return the directory which contains the index data
     DirectorySharedPtr directory() { return m_dir; }
 
