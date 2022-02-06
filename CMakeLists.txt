@@ -16,6 +16,7 @@ set(CMAKE_AUTORCC ON)
 
 find_package(Threads REQUIRED)
 find_package(GTest)
+find_package(SQLite3 REQUIRED)
 find_package(Qt5 COMPONENTS Core Network Concurrent REQUIRED)
 
 set(CPACK_GENERATOR "DEB")
@@ -39,15 +40,6 @@ add_definitions(
     -D__STDC_CONSTANT_MACROS
     -DQHTTP_HAS_CLIENT
 )
-
-set(sqlite3_SOURCES
-    ./src/3rdparty/sqlite/sqlite3.h
-    ./src/3rdparty/sqlite/sqlite3.c
-)
-add_library(sqlite3 ${sqlite3_SOURCES})
-target_compile_definitions(sqlite3 PUBLIC SQLITE_USE_URI=1 SQLITE_THREADSAFE=1 SQLITE_OMIT_DEPRECATED=1)
-target_include_directories(sqlite3 INTERFACE ./src/3rdparty/sqlite/)
-target_link_libraries(sqlite3 Threads::Threads ${CMAKE_DL_LIBS})
 
 set(fpindexlib_SOURCES
     src/index/search_result.h
@@ -103,7 +95,7 @@ set(fpindexlib_SOURCES
 )
 
 add_library(fpindexlib ${fpindexlib_SOURCES})
-target_link_libraries(fpindexlib Qt5::Core Qt5::Network Qt5::Concurrent sqlite3)
+target_link_libraries(fpindexlib Qt5::Core Qt5::Network Qt5::Concurrent SQLite::SQLite3)
 
 set(qhttp_SOURCES
     ./src/3rdparty/qhttp/src/qhttpserverconnection.cpp
@@ -146,7 +138,7 @@ include_directories(
 )
 
 add_executable(fpi-server src/server/main.cpp)
-target_link_libraries(fpi-server fpserverlib qhttp sqlite3)
+target_link_libraries(fpi-server fpserverlib qhttp SQLite::SQLite3)
 
 add_executable(fpi-add src/tools/fpi-add.cpp)
 target_link_libraries(fpi-add fpindexlib)

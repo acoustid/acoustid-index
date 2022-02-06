@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v2
       - run: |
           sudo apt-get update
-          sudo apt-get install -y qtbase5-dev libgtest-dev
+          sudo apt-get install -y qtbase5-dev libgtest-dev libsqlite3-dev
       - run: cmake -DCMAKE_BUILD_TYPE=Release .
       - run: make
       - run: make check
