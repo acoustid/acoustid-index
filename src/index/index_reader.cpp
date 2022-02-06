@@ -12,7 +12,6 @@
 #include "segment_docs.h"
 #include "index.h"
 #include "index_reader.h"
-#include "top_hits_collector.h"
 
 using namespace Acoustid;
 
@@ -108,16 +107,5 @@ std::vector<SearchResult> IndexReader::search(const std::vector<uint32_t> &terms
         }
     }
 
-    return results;
-}
-
-std::vector<SearchResult> IndexReader::search(const uint32_t* fingerprint, size_t length, int64_t timeoutInMSecs)
-{
-    TopHitsCollector collector(1000);
-    search(fingerprint, length, &collector, timeoutInMSecs);
-    std::vector<SearchResult> results;
-    for (const auto result : collector.topResults()) {
-        results.emplace_back(result.id(), result.score());
-    }
     return results;
 }
