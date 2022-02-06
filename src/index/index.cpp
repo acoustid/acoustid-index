@@ -372,3 +372,39 @@ void Index::flush() {
         locker.relock();
     }
 }
+
+bool Index::hasAttribute(const QString &name) {
+    QMutexLocker locker(&m_mutex);
+    return info().hasAttribute(name);
+}
+
+QString Index::getAttribute(const QString &name) {
+    QMutexLocker locker(&m_mutex);
+    return info().getAttribute(name);
+}
+
+void Index::setAttribute(const QString &name, const QString &value) {
+    OpBatch batch;
+    batch.setAttribute(name, value);
+    applyUpdates(batch);
+}
+
+void Index::insertOrUpdateDocument(uint32_t docId, const std::vector<uint32_t> &terms) {
+    OpBatch batch;
+    batch.insertOrUpdateDocument(docId, terms);
+    applyUpdates(batch);
+}
+
+void Index::deleteDocument(uint32_t docId) {
+    OpBatch batch;
+    batch.deleteDocument(docId);
+    applyUpdates(batch);
+}
+
+void Index::applyUpdates(const OpBatch &batch) {
+}
+
+std::vector<SearchResult> Index::search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs) {
+    auto reader = openReader();
+    return reader->search(terms.data(), terms.size(), timeoutInMSecs);
+}

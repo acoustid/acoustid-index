@@ -23,7 +23,7 @@ TEST(IndexWriterTest, AddDocument) {
     ASSERT_TRUE(index->directory()->fileExists("info_1"));
     ASSERT_EQ(1, writer->info().revision());
     ASSERT_EQ(0, writer->info().segmentCount());
-    ASSERT_EQ("", writer->info().attribute("max_document_id"));
+    ASSERT_EQ("", writer->info().getAttribute("max_document_id"));
 
     std::vector<uint32_t> fp{7, 9, 12};
     writer->insertOrUpdateDocument(1, fp);
