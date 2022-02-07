@@ -20,11 +20,48 @@
 // @@protoc_insertion_point(includes)
 
 namespace protobuf_index_2eproto {
+extern PROTOBUF_INTERNAL_EXPORT_protobuf_index_2eproto ::google::protobuf::internal::SCCInfo<0> scc_info_DeleteDocumentOp;
+extern PROTOBUF_INTERNAL_EXPORT_protobuf_index_2eproto ::google::protobuf::internal::SCCInfo<0> scc_info_InsertOrUpdateDocumentOp;
 extern PROTOBUF_INTERNAL_EXPORT_protobuf_index_2eproto ::google::protobuf::internal::SCCInfo<0> scc_info_SearchResult;
+extern PROTOBUF_INTERNAL_EXPORT_protobuf_index_2eproto ::google::protobuf::internal::SCCInfo<0> scc_info_SetAttributeOp;
+extern PROTOBUF_INTERNAL_EXPORT_protobuf_index_2eproto ::google::protobuf::internal::SCCInfo<3> scc_info_Operation;
 }  // namespace protobuf_index_2eproto
 namespace Acoustid {
 namespace Server {
 namespace PB {
+class InsertOrUpdateDocumentOpDefaultTypeInternal {
+ public:
+  ::google::protobuf::internal::ExplicitlyConstructed<InsertOrUpdateDocumentOp>
+      _instance;
+} _InsertOrUpdateDocumentOp_default_instance_;
+class DeleteDocumentOpDefaultTypeInternal {
+ public:
+  ::google::protobuf::internal::ExplicitlyConstructed<DeleteDocumentOp>
+      _instance;
+} _DeleteDocumentOp_default_instance_;
+class SetAttributeOpDefaultTypeInternal {
+ public:
+  ::google::protobuf::internal::ExplicitlyConstructed<SetAttributeOp>
+      _instance;
+} _SetAttributeOp_default_instance_;
+class OperationDefaultTypeInternal {
+ public:
+  ::google::protobuf::internal::ExplicitlyConstructed<Operation>
+      _instance;
+  const ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* insert_or_update_document_;
+  const ::Acoustid::Server::PB::DeleteDocumentOp* delete_document_;
+  const ::Acoustid::Server::PB::SetAttributeOp* set_attribute_;
+} _Operation_default_instance_;
+class BulkUpdateRequestDefaultTypeInternal {
+ public:
+  ::google::protobuf::internal::ExplicitlyConstructed<BulkUpdateRequest>
+      _instance;
+} _BulkUpdateRequest_default_instance_;
+class BulkUpdateResponseDefaultTypeInternal {
+ public:
+  ::google::protobuf::internal::ExplicitlyConstructed<BulkUpdateResponse>
+      _instance;
+} _BulkUpdateResponse_default_instance_;
 class SearchResultDefaultTypeInternal {
  public:
   ::google::protobuf::internal::ExplicitlyConstructed<SearchResult>
@@ -44,6 +81,94 @@ class SearchResponseDefaultTypeInternal {
 }  // namespace Server
 }  // namespace Acoustid
 namespace protobuf_index_2eproto {
+static void InitDefaultsInsertOrUpdateDocumentOp() {
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+
+  {
+    void* ptr = &::Acoustid::Server::PB::_InsertOrUpdateDocumentOp_default_instance_;
+    new (ptr) ::Acoustid::Server::PB::InsertOrUpdateDocumentOp();
+    ::google::protobuf::internal::OnShutdownDestroyMessage(ptr);
+  }
+  ::Acoustid::Server::PB::InsertOrUpdateDocumentOp::InitAsDefaultInstance();
+}
+
+::google::protobuf::internal::SCCInfo<0> scc_info_InsertOrUpdateDocumentOp =
+    {{ATOMIC_VAR_INIT(::google::protobuf::internal::SCCInfoBase::kUninitialized), 0, InitDefaultsInsertOrUpdateDocumentOp}, {}};
+
+static void InitDefaultsDeleteDocumentOp() {
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+
+  {
+    void* ptr = &::Acoustid::Server::PB::_DeleteDocumentOp_default_instance_;
+    new (ptr) ::Acoustid::Server::PB::DeleteDocumentOp();
+    ::google::protobuf::internal::OnShutdownDestroyMessage(ptr);
+  }
+  ::Acoustid::Server::PB::DeleteDocumentOp::InitAsDefaultInstance();
+}
+
+::google::protobuf::internal::SCCInfo<0> scc_info_DeleteDocumentOp =
+    {{ATOMIC_VAR_INIT(::google::protobuf::internal::SCCInfoBase::kUninitialized), 0, InitDefaultsDeleteDocumentOp}, {}};
+
+static void InitDefaultsSetAttributeOp() {
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+
+  {
+    void* ptr = &::Acoustid::Server::PB::_SetAttributeOp_default_instance_;
+    new (ptr) ::Acoustid::Server::PB::SetAttributeOp();
+    ::google::protobuf::internal::OnShutdownDestroyMessage(ptr);
+  }
+  ::Acoustid::Server::PB::SetAttributeOp::InitAsDefaultInstance();
+}
+
+::google::protobuf::internal::SCCInfo<0> scc_info_SetAttributeOp =
+    {{ATOMIC_VAR_INIT(::google::protobuf::internal::SCCInfoBase::kUninitialized), 0, InitDefaultsSetAttributeOp}, {}};
+
+static void InitDefaultsOperation() {
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+
+  {
+    void* ptr = &::Acoustid::Server::PB::_Operation_default_instance_;
+    new (ptr) ::Acoustid::Server::PB::Operation();
+    ::google::protobuf::internal::OnShutdownDestroyMessage(ptr);
+  }
+  ::Acoustid::Server::PB::Operation::InitAsDefaultInstance();
+}
+
+::google::protobuf::internal::SCCInfo<3> scc_info_Operation =
+    {{ATOMIC_VAR_INIT(::google::protobuf::internal::SCCInfoBase::kUninitialized), 3, InitDefaultsOperation}, {
+      &protobuf_index_2eproto::scc_info_InsertOrUpdateDocumentOp.base,
+      &protobuf_index_2eproto::scc_info_DeleteDocumentOp.base,
+      &protobuf_index_2eproto::scc_info_SetAttributeOp.base,}};
+
+static void InitDefaultsBulkUpdateRequest() {
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+
+  {
+    void* ptr = &::Acoustid::Server::PB::_BulkUpdateRequest_default_instance_;
+    new (ptr) ::Acoustid::Server::PB::BulkUpdateRequest();
+    ::google::protobuf::internal::OnShutdownDestroyMessage(ptr);
+  }
+  ::Acoustid::Server::PB::BulkUpdateRequest::InitAsDefaultInstance();
+}
+
+::google::protobuf::internal::SCCInfo<1> scc_info_BulkUpdateRequest =
+    {{ATOMIC_VAR_INIT(::google::protobuf::internal::SCCInfoBase::kUninitialized), 1, InitDefaultsBulkUpdateRequest}, {
+      &protobuf_index_2eproto::scc_info_Operation.base,}};
+
+static void InitDefaultsBulkUpdateResponse() {
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+
+  {
+    void* ptr = &::Acoustid::Server::PB::_BulkUpdateResponse_default_instance_;
+    new (ptr) ::Acoustid::Server::PB::BulkUpdateResponse();
+    ::google::protobuf::internal::OnShutdownDestroyMessage(ptr);
+  }
+  ::Acoustid::Server::PB::BulkUpdateResponse::InitAsDefaultInstance();
+}
+
+::google::protobuf::internal::SCCInfo<0> scc_info_BulkUpdateResponse =
+    {{ATOMIC_VAR_INIT(::google::protobuf::internal::SCCInfoBase::kUninitialized), 0, InitDefaultsBulkUpdateResponse}, {}};
+
 static void InitDefaultsSearchResult() {
   GOOGLE_PROTOBUF_VERIFY_VERSION;
 
@@ -88,14 +213,61 @@ static void InitDefaultsSearchResponse() {
       &protobuf_index_2eproto::scc_info_SearchResult.base,}};
 
 void InitDefaults() {
+  ::google::protobuf::internal::InitSCC(&scc_info_InsertOrUpdateDocumentOp.base);
+  ::google::protobuf::internal::InitSCC(&scc_info_DeleteDocumentOp.base);
+  ::google::protobuf::internal::InitSCC(&scc_info_SetAttributeOp.base);
+  ::google::protobuf::internal::InitSCC(&scc_info_Operation.base);
+  ::google::protobuf::internal::InitSCC(&scc_info_BulkUpdateRequest.base);
+  ::google::protobuf::internal::InitSCC(&scc_info_BulkUpdateResponse.base);
   ::google::protobuf::internal::InitSCC(&scc_info_SearchResult.base);
   ::google::protobuf::internal::InitSCC(&scc_info_SearchRequest.base);
   ::google::protobuf::internal::InitSCC(&scc_info_SearchResponse.base);
 }
 
-::google::protobuf::Metadata file_level_metadata[3];
+::google::protobuf::Metadata file_level_metadata[9];
 
 const ::google::protobuf::uint32 TableStruct::offsets[] GOOGLE_PROTOBUF_ATTRIBUTE_SECTION_VARIABLE(protodesc_cold) = {
+  ~0u,  // no _has_bits_
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::InsertOrUpdateDocumentOp, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::InsertOrUpdateDocumentOp, doc_id_),
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::InsertOrUpdateDocumentOp, terms_),
+  ~0u,  // no _has_bits_
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::DeleteDocumentOp, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::DeleteDocumentOp, doc_id_),
+  ~0u,  // no _has_bits_
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::SetAttributeOp, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::SetAttributeOp, name_),
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::SetAttributeOp, value_),
+  ~0u,  // no _has_bits_
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::Operation, _internal_metadata_),
+  ~0u,  // no _extensions_
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::Operation, _oneof_case_[0]),
+  ~0u,  // no _weak_field_map_
+  offsetof(::Acoustid::Server::PB::OperationDefaultTypeInternal, insert_or_update_document_),
+  offsetof(::Acoustid::Server::PB::OperationDefaultTypeInternal, delete_document_),
+  offsetof(::Acoustid::Server::PB::OperationDefaultTypeInternal, set_attribute_),
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::Operation, op_),
+  ~0u,  // no _has_bits_
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::BulkUpdateRequest, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::BulkUpdateRequest, index_name_),
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::BulkUpdateRequest, ops_),
+  ~0u,  // no _has_bits_
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::BulkUpdateResponse, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
   ~0u,  // no _has_bits_
   GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::SearchResult, _internal_metadata_),
   ~0u,  // no _extensions_
@@ -119,12 +291,24 @@ const ::google::protobuf::uint32 TableStruct::offsets[] GOOGLE_PROTOBUF_ATTRIBUT
   GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::SearchResponse, results_),
 };
 static const ::google::protobuf::internal::MigrationSchema schemas[] GOOGLE_PROTOBUF_ATTRIBUTE_SECTION_VARIABLE(protodesc_cold) = {
-  { 0, -1, sizeof(::Acoustid::Server::PB::SearchResult)},
-  { 7, -1, sizeof(::Acoustid::Server::PB::SearchRequest)},
-  { 15, -1, sizeof(::Acoustid::Server::PB::SearchResponse)},
+  { 0, -1, sizeof(::Acoustid::Server::PB::InsertOrUpdateDocumentOp)},
+  { 7, -1, sizeof(::Acoustid::Server::PB::DeleteDocumentOp)},
+  { 13, -1, sizeof(::Acoustid::Server::PB::SetAttributeOp)},
+  { 20, -1, sizeof(::Acoustid::Server::PB::Operation)},
+  { 29, -1, sizeof(::Acoustid::Server::PB::BulkUpdateRequest)},
+  { 36, -1, sizeof(::Acoustid::Server::PB::BulkUpdateResponse)},
+  { 41, -1, sizeof(::Acoustid::Server::PB::SearchResult)},
+  { 48, -1, sizeof(::Acoustid::Server::PB::SearchRequest)},
+  { 56, -1, sizeof(::Acoustid::Server::PB::SearchResponse)},
 };
 
 static ::google::protobuf::Message const * const file_default_instances[] = {
+  reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_InsertOrUpdateDocumentOp_default_instance_),
+  reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_DeleteDocumentOp_default_instance_),
+  reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_SetAttributeOp_default_instance_),
+  reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_Operation_default_instance_),
+  reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_BulkUpdateRequest_default_instance_),
+  reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_BulkUpdateResponse_default_instance_),
   reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_SearchResult_default_instance_),
   reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_SearchRequest_default_instance_),
   reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_SearchResponse_default_instance_),
@@ -145,23 +329,38 @@ void protobuf_AssignDescriptorsOnce() {
 void protobuf_RegisterTypes(const ::std::string&) GOOGLE_PROTOBUF_ATTRIBUTE_COLD;
 void protobuf_RegisterTypes(const ::std::string&) {
   protobuf_AssignDescriptorsOnce();
-  ::google::protobuf::internal::RegisterAllTypes(file_level_metadata, 3);
+  ::google::protobuf::internal::RegisterAllTypes(file_level_metadata, 9);
 }
 
 void AddDescriptorsImpl() {
   InitDefaults();
   static const char descriptor[] GOOGLE_PROTOBUF_ATTRIBUTE_SECTION_VARIABLE(protodesc_cold) = {
-      "\n\013index.proto\022\022Acoustid.Server.PB\"-\n\014Sea"
-      "rchResult\022\016\n\006doc_id\030\001 \001(\r\022\r\n\005score\030\002 \001(\002"
-      "\"G\n\rSearchRequest\022\022\n\nindex_name\030\001 \001(\t\022\r\n"
-      "\005terms\030\002 \003(\r\022\023\n\013max_results\030\003 \001(\005\"C\n\016Sea"
-      "rchResponse\0221\n\007results\030\001 \003(\0132 .Acoustid."
-      "Server.PB.SearchResult2X\n\005Index\022O\n\006Searc"
-      "h\022!.Acoustid.Server.PB.SearchRequest\032\".A"
-      "coustid.Server.PB.SearchResponseb\006proto3"
+      "\n\013index.proto\022\022Acoustid.Server.PB\"9\n\030Ins"
+      "ertOrUpdateDocumentOp\022\016\n\006doc_id\030\001 \001(\r\022\r\n"
+      "\005terms\030\002 \003(\r\"\"\n\020DeleteDocumentOp\022\016\n\006doc_"
+      "id\030\001 \001(\r\"-\n\016SetAttributeOp\022\014\n\004name\030\001 \001(\t"
+      "\022\r\n\005value\030\002 \001(\t\"\342\001\n\tOperation\022Q\n\031insert_"
+      "or_update_document\030\001 \001(\0132,.Acoustid.Serv"
+      "er.PB.InsertOrUpdateDocumentOpH\000\022\?\n\017dele"
+      "te_document\030\002 \001(\0132$.Acoustid.Server.PB.D"
+      "eleteDocumentOpH\000\022;\n\rset_attribute\030\003 \001(\013"
+      "2\".Acoustid.Server.PB.SetAttributeOpH\000B\004"
+      "\n\002op\"S\n\021BulkUpdateRequest\022\022\n\nindex_name\030"
+      "\001 \001(\t\022*\n\003ops\030\002 \003(\0132\035.Acoustid.Server.PB."
+      "Operation\"\024\n\022BulkUpdateResponse\"-\n\014Searc"
+      "hResult\022\016\n\006doc_id\030\001 \001(\r\022\r\n\005score\030\002 \001(\002\"G"
+      "\n\rSearchRequest\022\022\n\nindex_name\030\001 \001(\t\022\r\n\005t"
+      "erms\030\002 \003(\r\022\023\n\013max_results\030\003 \001(\005\"C\n\016Searc"
+      "hResponse\0221\n\007results\030\001 \003(\0132 .Acoustid.Se"
+      "rver.PB.SearchResult2\265\001\n\005Index\022[\n\nBulkUp"
+      "date\022%.Acoustid.Server.PB.BulkUpdateRequ"
+      "est\032&.Acoustid.Server.PB.BulkUpdateRespo"
+      "nse\022O\n\006Search\022!.Acoustid.Server.PB.Searc"
+      "hRequest\032\".Acoustid.Server.PB.SearchResp"
+      "onseb\006proto3"
   };
   ::google::protobuf::DescriptorPool::InternalAddGeneratedFile(
-      descriptor, 320);
+      descriptor, 892);
   ::google::protobuf::MessageFactory::InternalRegisterGeneratedFile(
     "index.proto", &protobuf_RegisterTypes);
 }
@@ -180,6 +379,1683 @@ struct StaticDescriptorInitializer {
 namespace Acoustid {
 namespace Server {
 namespace PB {
+
+// ===================================================================
+
+void InsertOrUpdateDocumentOp::InitAsDefaultInstance() {
+}
+#if !defined(_MSC_VER) || _MSC_VER >= 1900
+const int InsertOrUpdateDocumentOp::kDocIdFieldNumber;
+const int InsertOrUpdateDocumentOp::kTermsFieldNumber;
+#endif  // !defined(_MSC_VER) || _MSC_VER >= 1900
+
+InsertOrUpdateDocumentOp::InsertOrUpdateDocumentOp()
+  : ::google::protobuf::Message(), _internal_metadata_(NULL) {
+  ::google::protobuf::internal::InitSCC(
+      &protobuf_index_2eproto::scc_info_InsertOrUpdateDocumentOp.base);
+  SharedCtor();
+  // @@protoc_insertion_point(constructor:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+}
+InsertOrUpdateDocumentOp::InsertOrUpdateDocumentOp(const InsertOrUpdateDocumentOp& from)
+  : ::google::protobuf::Message(),
+      _internal_metadata_(NULL),
+      terms_(from.terms_) {
+  _internal_metadata_.MergeFrom(from._internal_metadata_);
+  doc_id_ = from.doc_id_;
+  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+}
+
+void InsertOrUpdateDocumentOp::SharedCtor() {
+  doc_id_ = 0u;
+}
+
+InsertOrUpdateDocumentOp::~InsertOrUpdateDocumentOp() {
+  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+  SharedDtor();
+}
+
+void InsertOrUpdateDocumentOp::SharedDtor() {
+}
+
+void InsertOrUpdateDocumentOp::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+const ::google::protobuf::Descriptor* InsertOrUpdateDocumentOp::descriptor() {
+  ::protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
+  return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages].descriptor;
+}
+
+const InsertOrUpdateDocumentOp& InsertOrUpdateDocumentOp::default_instance() {
+  ::google::protobuf::internal::InitSCC(&protobuf_index_2eproto::scc_info_InsertOrUpdateDocumentOp.base);
+  return *internal_default_instance();
+}
+
+
+void InsertOrUpdateDocumentOp::Clear() {
+// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  terms_.Clear();
+  doc_id_ = 0u;
+  _internal_metadata_.Clear();
+}
+
+bool InsertOrUpdateDocumentOp::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+#define DO_(EXPRESSION) if (!GOOGLE_PREDICT_TRUE(EXPRESSION)) goto failure
+  ::google::protobuf::uint32 tag;
+  // @@protoc_insertion_point(parse_start:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+  for (;;) {
+    ::std::pair<::google::protobuf::uint32, bool> p = input->ReadTagWithCutoffNoLastTag(127u);
+    tag = p.first;
+    if (!p.second) goto handle_unusual;
+    switch (::google::protobuf::internal::WireFormatLite::GetTagFieldNumber(tag)) {
+      // uint32 doc_id = 1;
+      case 1: {
+        if (static_cast< ::google::protobuf::uint8>(tag) ==
+            static_cast< ::google::protobuf::uint8>(8u /* 8 & 0xFF */)) {
+
+          DO_((::google::protobuf::internal::WireFormatLite::ReadPrimitive<
+                   ::google::protobuf::uint32, ::google::protobuf::internal::WireFormatLite::TYPE_UINT32>(
+                 input, &doc_id_)));
+        } else {
+          goto handle_unusual;
+        }
+        break;
+      }
+
+      // repeated uint32 terms = 2;
+      case 2: {
+        if (static_cast< ::google::protobuf::uint8>(tag) ==
+            static_cast< ::google::protobuf::uint8>(18u /* 18 & 0xFF */)) {
+          DO_((::google::protobuf::internal::WireFormatLite::ReadPackedPrimitive<
+                   ::google::protobuf::uint32, ::google::protobuf::internal::WireFormatLite::TYPE_UINT32>(
+                 input, this->mutable_terms())));
+        } else if (
+            static_cast< ::google::protobuf::uint8>(tag) ==
+            static_cast< ::google::protobuf::uint8>(16u /* 16 & 0xFF */)) {
+          DO_((::google::protobuf::internal::WireFormatLite::ReadRepeatedPrimitiveNoInline<
+                   ::google::protobuf::uint32, ::google::protobuf::internal::WireFormatLite::TYPE_UINT32>(
+                 1, 18u, input, this->mutable_terms())));
+        } else {
+          goto handle_unusual;
+        }
+        break;
+      }
+
+      default: {
+      handle_unusual:
+        if (tag == 0) {
+          goto success;
+        }
+        DO_(::google::protobuf::internal::WireFormat::SkipField(
+              input, tag, _internal_metadata_.mutable_unknown_fields()));
+        break;
+      }
+    }
+  }
+success:
+  // @@protoc_insertion_point(parse_success:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+  return true;
+failure:
+  // @@protoc_insertion_point(parse_failure:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+  return false;
+#undef DO_
+}
+
+void InsertOrUpdateDocumentOp::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  // @@protoc_insertion_point(serialize_start:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // uint32 doc_id = 1;
+  if (this->doc_id() != 0) {
+    ::google::protobuf::internal::WireFormatLite::WriteUInt32(1, this->doc_id(), output);
+  }
+
+  // repeated uint32 terms = 2;
+  if (this->terms_size() > 0) {
+    ::google::protobuf::internal::WireFormatLite::WriteTag(2, ::google::protobuf::internal::WireFormatLite::WIRETYPE_LENGTH_DELIMITED, output);
+    output->WriteVarint32(static_cast< ::google::protobuf::uint32>(
+        _terms_cached_byte_size_));
+  }
+  for (int i = 0, n = this->terms_size(); i < n; i++) {
+    ::google::protobuf::internal::WireFormatLite::WriteUInt32NoTag(
+      this->terms(i), output);
+  }
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    ::google::protobuf::internal::WireFormat::SerializeUnknownFields(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), output);
+  }
+  // @@protoc_insertion_point(serialize_end:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+}
+
+::google::protobuf::uint8* InsertOrUpdateDocumentOp::InternalSerializeWithCachedSizesToArray(
+    bool deterministic, ::google::protobuf::uint8* target) const {
+  (void)deterministic; // Unused
+  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // uint32 doc_id = 1;
+  if (this->doc_id() != 0) {
+    target = ::google::protobuf::internal::WireFormatLite::WriteUInt32ToArray(1, this->doc_id(), target);
+  }
+
+  // repeated uint32 terms = 2;
+  if (this->terms_size() > 0) {
+    target = ::google::protobuf::internal::WireFormatLite::WriteTagToArray(
+      2,
+      ::google::protobuf::internal::WireFormatLite::WIRETYPE_LENGTH_DELIMITED,
+      target);
+    target = ::google::protobuf::io::CodedOutputStream::WriteVarint32ToArray(
+        static_cast< ::google::protobuf::int32>(
+            _terms_cached_byte_size_), target);
+    target = ::google::protobuf::internal::WireFormatLite::
+      WriteUInt32NoTagToArray(this->terms_, target);
+  }
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    target = ::google::protobuf::internal::WireFormat::SerializeUnknownFieldsToArray(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), target);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+  return target;
+}
+
+size_t InsertOrUpdateDocumentOp::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+  size_t total_size = 0;
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    total_size +=
+      ::google::protobuf::internal::WireFormat::ComputeUnknownFieldsSize(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()));
+  }
+  // repeated uint32 terms = 2;
+  {
+    size_t data_size = ::google::protobuf::internal::WireFormatLite::
+      UInt32Size(this->terms_);
+    if (data_size > 0) {
+      total_size += 1 +
+        ::google::protobuf::internal::WireFormatLite::Int32Size(
+            static_cast< ::google::protobuf::int32>(data_size));
+    }
+    int cached_size = ::google::protobuf::internal::ToCachedSize(data_size);
+    GOOGLE_SAFE_CONCURRENT_WRITES_BEGIN();
+    _terms_cached_byte_size_ = cached_size;
+    GOOGLE_SAFE_CONCURRENT_WRITES_END();
+    total_size += data_size;
+  }
+
+  // uint32 doc_id = 1;
+  if (this->doc_id() != 0) {
+    total_size += 1 +
+      ::google::protobuf::internal::WireFormatLite::UInt32Size(
+        this->doc_id());
+  }
+
+  int cached_size = ::google::protobuf::internal::ToCachedSize(total_size);
+  SetCachedSize(cached_size);
+  return total_size;
+}
+
+void InsertOrUpdateDocumentOp::MergeFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+  GOOGLE_DCHECK_NE(&from, this);
+  const InsertOrUpdateDocumentOp* source =
+      ::google::protobuf::internal::DynamicCastToGenerated<const InsertOrUpdateDocumentOp>(
+          &from);
+  if (source == NULL) {
+  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+    MergeFrom(*source);
+  }
+}
+
+void InsertOrUpdateDocumentOp::MergeFrom(const InsertOrUpdateDocumentOp& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+  GOOGLE_DCHECK_NE(&from, this);
+  _internal_metadata_.MergeFrom(from._internal_metadata_);
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  terms_.MergeFrom(from.terms_);
+  if (from.doc_id() != 0) {
+    set_doc_id(from.doc_id());
+  }
+}
+
+void InsertOrUpdateDocumentOp::CopyFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void InsertOrUpdateDocumentOp::CopyFrom(const InsertOrUpdateDocumentOp& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool InsertOrUpdateDocumentOp::IsInitialized() const {
+  return true;
+}
+
+void InsertOrUpdateDocumentOp::Swap(InsertOrUpdateDocumentOp* other) {
+  if (other == this) return;
+  InternalSwap(other);
+}
+void InsertOrUpdateDocumentOp::InternalSwap(InsertOrUpdateDocumentOp* other) {
+  using std::swap;
+  terms_.InternalSwap(&other->terms_);
+  swap(doc_id_, other->doc_id_);
+  _internal_metadata_.Swap(&other->_internal_metadata_);
+}
+
+::google::protobuf::Metadata InsertOrUpdateDocumentOp::GetMetadata() const {
+  protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
+  return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages];
+}
+
+
+// ===================================================================
+
+void DeleteDocumentOp::InitAsDefaultInstance() {
+}
+#if !defined(_MSC_VER) || _MSC_VER >= 1900
+const int DeleteDocumentOp::kDocIdFieldNumber;
+#endif  // !defined(_MSC_VER) || _MSC_VER >= 1900
+
+DeleteDocumentOp::DeleteDocumentOp()
+  : ::google::protobuf::Message(), _internal_metadata_(NULL) {
+  ::google::protobuf::internal::InitSCC(
+      &protobuf_index_2eproto::scc_info_DeleteDocumentOp.base);
+  SharedCtor();
+  // @@protoc_insertion_point(constructor:Acoustid.Server.PB.DeleteDocumentOp)
+}
+DeleteDocumentOp::DeleteDocumentOp(const DeleteDocumentOp& from)
+  : ::google::protobuf::Message(),
+      _internal_metadata_(NULL) {
+  _internal_metadata_.MergeFrom(from._internal_metadata_);
+  doc_id_ = from.doc_id_;
+  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.DeleteDocumentOp)
+}
+
+void DeleteDocumentOp::SharedCtor() {
+  doc_id_ = 0u;
+}
+
+DeleteDocumentOp::~DeleteDocumentOp() {
+  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.DeleteDocumentOp)
+  SharedDtor();
+}
+
+void DeleteDocumentOp::SharedDtor() {
+}
+
+void DeleteDocumentOp::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+const ::google::protobuf::Descriptor* DeleteDocumentOp::descriptor() {
+  ::protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
+  return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages].descriptor;
+}
+
+const DeleteDocumentOp& DeleteDocumentOp::default_instance() {
+  ::google::protobuf::internal::InitSCC(&protobuf_index_2eproto::scc_info_DeleteDocumentOp.base);
+  return *internal_default_instance();
+}
+
+
+void DeleteDocumentOp::Clear() {
+// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.DeleteDocumentOp)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  doc_id_ = 0u;
+  _internal_metadata_.Clear();
+}
+
+bool DeleteDocumentOp::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+#define DO_(EXPRESSION) if (!GOOGLE_PREDICT_TRUE(EXPRESSION)) goto failure
+  ::google::protobuf::uint32 tag;
+  // @@protoc_insertion_point(parse_start:Acoustid.Server.PB.DeleteDocumentOp)
+  for (;;) {
+    ::std::pair<::google::protobuf::uint32, bool> p = input->ReadTagWithCutoffNoLastTag(127u);
+    tag = p.first;
+    if (!p.second) goto handle_unusual;
+    switch (::google::protobuf::internal::WireFormatLite::GetTagFieldNumber(tag)) {
+      // uint32 doc_id = 1;
+      case 1: {
+        if (static_cast< ::google::protobuf::uint8>(tag) ==
+            static_cast< ::google::protobuf::uint8>(8u /* 8 & 0xFF */)) {
+
+          DO_((::google::protobuf::internal::WireFormatLite::ReadPrimitive<
+                   ::google::protobuf::uint32, ::google::protobuf::internal::WireFormatLite::TYPE_UINT32>(
+                 input, &doc_id_)));
+        } else {
+          goto handle_unusual;
+        }
+        break;
+      }
+
+      default: {
+      handle_unusual:
+        if (tag == 0) {
+          goto success;
+        }
+        DO_(::google::protobuf::internal::WireFormat::SkipField(
+              input, tag, _internal_metadata_.mutable_unknown_fields()));
+        break;
+      }
+    }
+  }
+success:
+  // @@protoc_insertion_point(parse_success:Acoustid.Server.PB.DeleteDocumentOp)
+  return true;
+failure:
+  // @@protoc_insertion_point(parse_failure:Acoustid.Server.PB.DeleteDocumentOp)
+  return false;
+#undef DO_
+}
+
+void DeleteDocumentOp::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  // @@protoc_insertion_point(serialize_start:Acoustid.Server.PB.DeleteDocumentOp)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // uint32 doc_id = 1;
+  if (this->doc_id() != 0) {
+    ::google::protobuf::internal::WireFormatLite::WriteUInt32(1, this->doc_id(), output);
+  }
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    ::google::protobuf::internal::WireFormat::SerializeUnknownFields(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), output);
+  }
+  // @@protoc_insertion_point(serialize_end:Acoustid.Server.PB.DeleteDocumentOp)
+}
+
+::google::protobuf::uint8* DeleteDocumentOp::InternalSerializeWithCachedSizesToArray(
+    bool deterministic, ::google::protobuf::uint8* target) const {
+  (void)deterministic; // Unused
+  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.DeleteDocumentOp)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // uint32 doc_id = 1;
+  if (this->doc_id() != 0) {
+    target = ::google::protobuf::internal::WireFormatLite::WriteUInt32ToArray(1, this->doc_id(), target);
+  }
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    target = ::google::protobuf::internal::WireFormat::SerializeUnknownFieldsToArray(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), target);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.DeleteDocumentOp)
+  return target;
+}
+
+size_t DeleteDocumentOp::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.DeleteDocumentOp)
+  size_t total_size = 0;
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    total_size +=
+      ::google::protobuf::internal::WireFormat::ComputeUnknownFieldsSize(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()));
+  }
+  // uint32 doc_id = 1;
+  if (this->doc_id() != 0) {
+    total_size += 1 +
+      ::google::protobuf::internal::WireFormatLite::UInt32Size(
+        this->doc_id());
+  }
+
+  int cached_size = ::google::protobuf::internal::ToCachedSize(total_size);
+  SetCachedSize(cached_size);
+  return total_size;
+}
+
+void DeleteDocumentOp::MergeFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.DeleteDocumentOp)
+  GOOGLE_DCHECK_NE(&from, this);
+  const DeleteDocumentOp* source =
+      ::google::protobuf::internal::DynamicCastToGenerated<const DeleteDocumentOp>(
+          &from);
+  if (source == NULL) {
+  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.DeleteDocumentOp)
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.DeleteDocumentOp)
+    MergeFrom(*source);
+  }
+}
+
+void DeleteDocumentOp::MergeFrom(const DeleteDocumentOp& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.DeleteDocumentOp)
+  GOOGLE_DCHECK_NE(&from, this);
+  _internal_metadata_.MergeFrom(from._internal_metadata_);
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if (from.doc_id() != 0) {
+    set_doc_id(from.doc_id());
+  }
+}
+
+void DeleteDocumentOp::CopyFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.DeleteDocumentOp)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void DeleteDocumentOp::CopyFrom(const DeleteDocumentOp& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.DeleteDocumentOp)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool DeleteDocumentOp::IsInitialized() const {
+  return true;
+}
+
+void DeleteDocumentOp::Swap(DeleteDocumentOp* other) {
+  if (other == this) return;
+  InternalSwap(other);
+}
+void DeleteDocumentOp::InternalSwap(DeleteDocumentOp* other) {
+  using std::swap;
+  swap(doc_id_, other->doc_id_);
+  _internal_metadata_.Swap(&other->_internal_metadata_);
+}
+
+::google::protobuf::Metadata DeleteDocumentOp::GetMetadata() const {
+  protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
+  return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages];
+}
+
+
+// ===================================================================
+
+void SetAttributeOp::InitAsDefaultInstance() {
+}
+#if !defined(_MSC_VER) || _MSC_VER >= 1900
+const int SetAttributeOp::kNameFieldNumber;
+const int SetAttributeOp::kValueFieldNumber;
+#endif  // !defined(_MSC_VER) || _MSC_VER >= 1900
+
+SetAttributeOp::SetAttributeOp()
+  : ::google::protobuf::Message(), _internal_metadata_(NULL) {
+  ::google::protobuf::internal::InitSCC(
+      &protobuf_index_2eproto::scc_info_SetAttributeOp.base);
+  SharedCtor();
+  // @@protoc_insertion_point(constructor:Acoustid.Server.PB.SetAttributeOp)
+}
+SetAttributeOp::SetAttributeOp(const SetAttributeOp& from)
+  : ::google::protobuf::Message(),
+      _internal_metadata_(NULL) {
+  _internal_metadata_.MergeFrom(from._internal_metadata_);
+  name_.UnsafeSetDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+  if (from.name().size() > 0) {
+    name_.AssignWithDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), from.name_);
+  }
+  value_.UnsafeSetDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+  if (from.value().size() > 0) {
+    value_.AssignWithDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), from.value_);
+  }
+  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.SetAttributeOp)
+}
+
+void SetAttributeOp::SharedCtor() {
+  name_.UnsafeSetDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+  value_.UnsafeSetDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+
+SetAttributeOp::~SetAttributeOp() {
+  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.SetAttributeOp)
+  SharedDtor();
+}
+
+void SetAttributeOp::SharedDtor() {
+  name_.DestroyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+  value_.DestroyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+
+void SetAttributeOp::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+const ::google::protobuf::Descriptor* SetAttributeOp::descriptor() {
+  ::protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
+  return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages].descriptor;
+}
+
+const SetAttributeOp& SetAttributeOp::default_instance() {
+  ::google::protobuf::internal::InitSCC(&protobuf_index_2eproto::scc_info_SetAttributeOp.base);
+  return *internal_default_instance();
+}
+
+
+void SetAttributeOp::Clear() {
+// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.SetAttributeOp)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  name_.ClearToEmptyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+  value_.ClearToEmptyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+  _internal_metadata_.Clear();
+}
+
+bool SetAttributeOp::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+#define DO_(EXPRESSION) if (!GOOGLE_PREDICT_TRUE(EXPRESSION)) goto failure
+  ::google::protobuf::uint32 tag;
+  // @@protoc_insertion_point(parse_start:Acoustid.Server.PB.SetAttributeOp)
+  for (;;) {
+    ::std::pair<::google::protobuf::uint32, bool> p = input->ReadTagWithCutoffNoLastTag(127u);
+    tag = p.first;
+    if (!p.second) goto handle_unusual;
+    switch (::google::protobuf::internal::WireFormatLite::GetTagFieldNumber(tag)) {
+      // string name = 1;
+      case 1: {
+        if (static_cast< ::google::protobuf::uint8>(tag) ==
+            static_cast< ::google::protobuf::uint8>(10u /* 10 & 0xFF */)) {
+          DO_(::google::protobuf::internal::WireFormatLite::ReadString(
+                input, this->mutable_name()));
+          DO_(::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+            this->name().data(), static_cast<int>(this->name().length()),
+            ::google::protobuf::internal::WireFormatLite::PARSE,
+            "Acoustid.Server.PB.SetAttributeOp.name"));
+        } else {
+          goto handle_unusual;
+        }
+        break;
+      }
+
+      // string value = 2;
+      case 2: {
+        if (static_cast< ::google::protobuf::uint8>(tag) ==
+            static_cast< ::google::protobuf::uint8>(18u /* 18 & 0xFF */)) {
+          DO_(::google::protobuf::internal::WireFormatLite::ReadString(
+                input, this->mutable_value()));
+          DO_(::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+            this->value().data(), static_cast<int>(this->value().length()),
+            ::google::protobuf::internal::WireFormatLite::PARSE,
+            "Acoustid.Server.PB.SetAttributeOp.value"));
+        } else {
+          goto handle_unusual;
+        }
+        break;
+      }
+
+      default: {
+      handle_unusual:
+        if (tag == 0) {
+          goto success;
+        }
+        DO_(::google::protobuf::internal::WireFormat::SkipField(
+              input, tag, _internal_metadata_.mutable_unknown_fields()));
+        break;
+      }
+    }
+  }
+success:
+  // @@protoc_insertion_point(parse_success:Acoustid.Server.PB.SetAttributeOp)
+  return true;
+failure:
+  // @@protoc_insertion_point(parse_failure:Acoustid.Server.PB.SetAttributeOp)
+  return false;
+#undef DO_
+}
+
+void SetAttributeOp::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  // @@protoc_insertion_point(serialize_start:Acoustid.Server.PB.SetAttributeOp)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // string name = 1;
+  if (this->name().size() > 0) {
+    ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+      this->name().data(), static_cast<int>(this->name().length()),
+      ::google::protobuf::internal::WireFormatLite::SERIALIZE,
+      "Acoustid.Server.PB.SetAttributeOp.name");
+    ::google::protobuf::internal::WireFormatLite::WriteStringMaybeAliased(
+      1, this->name(), output);
+  }
+
+  // string value = 2;
+  if (this->value().size() > 0) {
+    ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+      this->value().data(), static_cast<int>(this->value().length()),
+      ::google::protobuf::internal::WireFormatLite::SERIALIZE,
+      "Acoustid.Server.PB.SetAttributeOp.value");
+    ::google::protobuf::internal::WireFormatLite::WriteStringMaybeAliased(
+      2, this->value(), output);
+  }
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    ::google::protobuf::internal::WireFormat::SerializeUnknownFields(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), output);
+  }
+  // @@protoc_insertion_point(serialize_end:Acoustid.Server.PB.SetAttributeOp)
+}
+
+::google::protobuf::uint8* SetAttributeOp::InternalSerializeWithCachedSizesToArray(
+    bool deterministic, ::google::protobuf::uint8* target) const {
+  (void)deterministic; // Unused
+  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.SetAttributeOp)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // string name = 1;
+  if (this->name().size() > 0) {
+    ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+      this->name().data(), static_cast<int>(this->name().length()),
+      ::google::protobuf::internal::WireFormatLite::SERIALIZE,
+      "Acoustid.Server.PB.SetAttributeOp.name");
+    target =
+      ::google::protobuf::internal::WireFormatLite::WriteStringToArray(
+        1, this->name(), target);
+  }
+
+  // string value = 2;
+  if (this->value().size() > 0) {
+    ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+      this->value().data(), static_cast<int>(this->value().length()),
+      ::google::protobuf::internal::WireFormatLite::SERIALIZE,
+      "Acoustid.Server.PB.SetAttributeOp.value");
+    target =
+      ::google::protobuf::internal::WireFormatLite::WriteStringToArray(
+        2, this->value(), target);
+  }
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    target = ::google::protobuf::internal::WireFormat::SerializeUnknownFieldsToArray(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), target);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.SetAttributeOp)
+  return target;
+}
+
+size_t SetAttributeOp::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.SetAttributeOp)
+  size_t total_size = 0;
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    total_size +=
+      ::google::protobuf::internal::WireFormat::ComputeUnknownFieldsSize(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()));
+  }
+  // string name = 1;
+  if (this->name().size() > 0) {
+    total_size += 1 +
+      ::google::protobuf::internal::WireFormatLite::StringSize(
+        this->name());
+  }
+
+  // string value = 2;
+  if (this->value().size() > 0) {
+    total_size += 1 +
+      ::google::protobuf::internal::WireFormatLite::StringSize(
+        this->value());
+  }
+
+  int cached_size = ::google::protobuf::internal::ToCachedSize(total_size);
+  SetCachedSize(cached_size);
+  return total_size;
+}
+
+void SetAttributeOp::MergeFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.SetAttributeOp)
+  GOOGLE_DCHECK_NE(&from, this);
+  const SetAttributeOp* source =
+      ::google::protobuf::internal::DynamicCastToGenerated<const SetAttributeOp>(
+          &from);
+  if (source == NULL) {
+  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.SetAttributeOp)
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.SetAttributeOp)
+    MergeFrom(*source);
+  }
+}
+
+void SetAttributeOp::MergeFrom(const SetAttributeOp& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.SetAttributeOp)
+  GOOGLE_DCHECK_NE(&from, this);
+  _internal_metadata_.MergeFrom(from._internal_metadata_);
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if (from.name().size() > 0) {
+
+    name_.AssignWithDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), from.name_);
+  }
+  if (from.value().size() > 0) {
+
+    value_.AssignWithDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), from.value_);
+  }
+}
+
+void SetAttributeOp::CopyFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.SetAttributeOp)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void SetAttributeOp::CopyFrom(const SetAttributeOp& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.SetAttributeOp)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool SetAttributeOp::IsInitialized() const {
+  return true;
+}
+
+void SetAttributeOp::Swap(SetAttributeOp* other) {
+  if (other == this) return;
+  InternalSwap(other);
+}
+void SetAttributeOp::InternalSwap(SetAttributeOp* other) {
+  using std::swap;
+  name_.Swap(&other->name_, &::google::protobuf::internal::GetEmptyStringAlreadyInited(),
+    GetArenaNoVirtual());
+  value_.Swap(&other->value_, &::google::protobuf::internal::GetEmptyStringAlreadyInited(),
+    GetArenaNoVirtual());
+  _internal_metadata_.Swap(&other->_internal_metadata_);
+}
+
+::google::protobuf::Metadata SetAttributeOp::GetMetadata() const {
+  protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
+  return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages];
+}
+
+
+// ===================================================================
+
+void Operation::InitAsDefaultInstance() {
+  ::Acoustid::Server::PB::_Operation_default_instance_.insert_or_update_document_ = const_cast< ::Acoustid::Server::PB::InsertOrUpdateDocumentOp*>(
+      ::Acoustid::Server::PB::InsertOrUpdateDocumentOp::internal_default_instance());
+  ::Acoustid::Server::PB::_Operation_default_instance_.delete_document_ = const_cast< ::Acoustid::Server::PB::DeleteDocumentOp*>(
+      ::Acoustid::Server::PB::DeleteDocumentOp::internal_default_instance());
+  ::Acoustid::Server::PB::_Operation_default_instance_.set_attribute_ = const_cast< ::Acoustid::Server::PB::SetAttributeOp*>(
+      ::Acoustid::Server::PB::SetAttributeOp::internal_default_instance());
+}
+void Operation::set_allocated_insert_or_update_document(::Acoustid::Server::PB::InsertOrUpdateDocumentOp* insert_or_update_document) {
+  ::google::protobuf::Arena* message_arena = GetArenaNoVirtual();
+  clear_op();
+  if (insert_or_update_document) {
+    ::google::protobuf::Arena* submessage_arena = NULL;
+    if (message_arena != submessage_arena) {
+      insert_or_update_document = ::google::protobuf::internal::GetOwnedMessage(
+          message_arena, insert_or_update_document, submessage_arena);
+    }
+    set_has_insert_or_update_document();
+    op_.insert_or_update_document_ = insert_or_update_document;
+  }
+  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.Operation.insert_or_update_document)
+}
+void Operation::set_allocated_delete_document(::Acoustid::Server::PB::DeleteDocumentOp* delete_document) {
+  ::google::protobuf::Arena* message_arena = GetArenaNoVirtual();
+  clear_op();
+  if (delete_document) {
+    ::google::protobuf::Arena* submessage_arena = NULL;
+    if (message_arena != submessage_arena) {
+      delete_document = ::google::protobuf::internal::GetOwnedMessage(
+          message_arena, delete_document, submessage_arena);
+    }
+    set_has_delete_document();
+    op_.delete_document_ = delete_document;
+  }
+  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.Operation.delete_document)
+}
+void Operation::set_allocated_set_attribute(::Acoustid::Server::PB::SetAttributeOp* set_attribute) {
+  ::google::protobuf::Arena* message_arena = GetArenaNoVirtual();
+  clear_op();
+  if (set_attribute) {
+    ::google::protobuf::Arena* submessage_arena = NULL;
+    if (message_arena != submessage_arena) {
+      set_attribute = ::google::protobuf::internal::GetOwnedMessage(
+          message_arena, set_attribute, submessage_arena);
+    }
+    set_has_set_attribute();
+    op_.set_attribute_ = set_attribute;
+  }
+  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.Operation.set_attribute)
+}
+#if !defined(_MSC_VER) || _MSC_VER >= 1900
+const int Operation::kInsertOrUpdateDocumentFieldNumber;
+const int Operation::kDeleteDocumentFieldNumber;
+const int Operation::kSetAttributeFieldNumber;
+#endif  // !defined(_MSC_VER) || _MSC_VER >= 1900
+
+Operation::Operation()
+  : ::google::protobuf::Message(), _internal_metadata_(NULL) {
+  ::google::protobuf::internal::InitSCC(
+      &protobuf_index_2eproto::scc_info_Operation.base);
+  SharedCtor();
+  // @@protoc_insertion_point(constructor:Acoustid.Server.PB.Operation)
+}
+Operation::Operation(const Operation& from)
+  : ::google::protobuf::Message(),
+      _internal_metadata_(NULL) {
+  _internal_metadata_.MergeFrom(from._internal_metadata_);
+  clear_has_op();
+  switch (from.op_case()) {
+    case kInsertOrUpdateDocument: {
+      mutable_insert_or_update_document()->::Acoustid::Server::PB::InsertOrUpdateDocumentOp::MergeFrom(from.insert_or_update_document());
+      break;
+    }
+    case kDeleteDocument: {
+      mutable_delete_document()->::Acoustid::Server::PB::DeleteDocumentOp::MergeFrom(from.delete_document());
+      break;
+    }
+    case kSetAttribute: {
+      mutable_set_attribute()->::Acoustid::Server::PB::SetAttributeOp::MergeFrom(from.set_attribute());
+      break;
+    }
+    case OP_NOT_SET: {
+      break;
+    }
+  }
+  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.Operation)
+}
+
+void Operation::SharedCtor() {
+  clear_has_op();
+}
+
+Operation::~Operation() {
+  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.Operation)
+  SharedDtor();
+}
+
+void Operation::SharedDtor() {
+  if (has_op()) {
+    clear_op();
+  }
+}
+
+void Operation::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+const ::google::protobuf::Descriptor* Operation::descriptor() {
+  ::protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
+  return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages].descriptor;
+}
+
+const Operation& Operation::default_instance() {
+  ::google::protobuf::internal::InitSCC(&protobuf_index_2eproto::scc_info_Operation.base);
+  return *internal_default_instance();
+}
+
+
+void Operation::clear_op() {
+// @@protoc_insertion_point(one_of_clear_start:Acoustid.Server.PB.Operation)
+  switch (op_case()) {
+    case kInsertOrUpdateDocument: {
+      delete op_.insert_or_update_document_;
+      break;
+    }
+    case kDeleteDocument: {
+      delete op_.delete_document_;
+      break;
+    }
+    case kSetAttribute: {
+      delete op_.set_attribute_;
+      break;
+    }
+    case OP_NOT_SET: {
+      break;
+    }
+  }
+  _oneof_case_[0] = OP_NOT_SET;
+}
+
+
+void Operation::Clear() {
+// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.Operation)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  clear_op();
+  _internal_metadata_.Clear();
+}
+
+bool Operation::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+#define DO_(EXPRESSION) if (!GOOGLE_PREDICT_TRUE(EXPRESSION)) goto failure
+  ::google::protobuf::uint32 tag;
+  // @@protoc_insertion_point(parse_start:Acoustid.Server.PB.Operation)
+  for (;;) {
+    ::std::pair<::google::protobuf::uint32, bool> p = input->ReadTagWithCutoffNoLastTag(127u);
+    tag = p.first;
+    if (!p.second) goto handle_unusual;
+    switch (::google::protobuf::internal::WireFormatLite::GetTagFieldNumber(tag)) {
+      // .Acoustid.Server.PB.InsertOrUpdateDocumentOp insert_or_update_document = 1;
+      case 1: {
+        if (static_cast< ::google::protobuf::uint8>(tag) ==
+            static_cast< ::google::protobuf::uint8>(10u /* 10 & 0xFF */)) {
+          DO_(::google::protobuf::internal::WireFormatLite::ReadMessage(
+               input, mutable_insert_or_update_document()));
+        } else {
+          goto handle_unusual;
+        }
+        break;
+      }
+
+      // .Acoustid.Server.PB.DeleteDocumentOp delete_document = 2;
+      case 2: {
+        if (static_cast< ::google::protobuf::uint8>(tag) ==
+            static_cast< ::google::protobuf::uint8>(18u /* 18 & 0xFF */)) {
+          DO_(::google::protobuf::internal::WireFormatLite::ReadMessage(
+               input, mutable_delete_document()));
+        } else {
+          goto handle_unusual;
+        }
+        break;
+      }
+
+      // .Acoustid.Server.PB.SetAttributeOp set_attribute = 3;
+      case 3: {
+        if (static_cast< ::google::protobuf::uint8>(tag) ==
+            static_cast< ::google::protobuf::uint8>(26u /* 26 & 0xFF */)) {
+          DO_(::google::protobuf::internal::WireFormatLite::ReadMessage(
+               input, mutable_set_attribute()));
+        } else {
+          goto handle_unusual;
+        }
+        break;
+      }
+
+      default: {
+      handle_unusual:
+        if (tag == 0) {
+          goto success;
+        }
+        DO_(::google::protobuf::internal::WireFormat::SkipField(
+              input, tag, _internal_metadata_.mutable_unknown_fields()));
+        break;
+      }
+    }
+  }
+success:
+  // @@protoc_insertion_point(parse_success:Acoustid.Server.PB.Operation)
+  return true;
+failure:
+  // @@protoc_insertion_point(parse_failure:Acoustid.Server.PB.Operation)
+  return false;
+#undef DO_
+}
+
+void Operation::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  // @@protoc_insertion_point(serialize_start:Acoustid.Server.PB.Operation)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // .Acoustid.Server.PB.InsertOrUpdateDocumentOp insert_or_update_document = 1;
+  if (has_insert_or_update_document()) {
+    ::google::protobuf::internal::WireFormatLite::WriteMessageMaybeToArray(
+      1, this->_internal_insert_or_update_document(), output);
+  }
+
+  // .Acoustid.Server.PB.DeleteDocumentOp delete_document = 2;
+  if (has_delete_document()) {
+    ::google::protobuf::internal::WireFormatLite::WriteMessageMaybeToArray(
+      2, this->_internal_delete_document(), output);
+  }
+
+  // .Acoustid.Server.PB.SetAttributeOp set_attribute = 3;
+  if (has_set_attribute()) {
+    ::google::protobuf::internal::WireFormatLite::WriteMessageMaybeToArray(
+      3, this->_internal_set_attribute(), output);
+  }
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    ::google::protobuf::internal::WireFormat::SerializeUnknownFields(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), output);
+  }
+  // @@protoc_insertion_point(serialize_end:Acoustid.Server.PB.Operation)
+}
+
+::google::protobuf::uint8* Operation::InternalSerializeWithCachedSizesToArray(
+    bool deterministic, ::google::protobuf::uint8* target) const {
+  (void)deterministic; // Unused
+  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.Operation)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // .Acoustid.Server.PB.InsertOrUpdateDocumentOp insert_or_update_document = 1;
+  if (has_insert_or_update_document()) {
+    target = ::google::protobuf::internal::WireFormatLite::
+      InternalWriteMessageToArray(
+        1, this->_internal_insert_or_update_document(), deterministic, target);
+  }
+
+  // .Acoustid.Server.PB.DeleteDocumentOp delete_document = 2;
+  if (has_delete_document()) {
+    target = ::google::protobuf::internal::WireFormatLite::
+      InternalWriteMessageToArray(
+        2, this->_internal_delete_document(), deterministic, target);
+  }
+
+  // .Acoustid.Server.PB.SetAttributeOp set_attribute = 3;
+  if (has_set_attribute()) {
+    target = ::google::protobuf::internal::WireFormatLite::
+      InternalWriteMessageToArray(
+        3, this->_internal_set_attribute(), deterministic, target);
+  }
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    target = ::google::protobuf::internal::WireFormat::SerializeUnknownFieldsToArray(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), target);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.Operation)
+  return target;
+}
+
+size_t Operation::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.Operation)
+  size_t total_size = 0;
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    total_size +=
+      ::google::protobuf::internal::WireFormat::ComputeUnknownFieldsSize(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()));
+  }
+  switch (op_case()) {
+    // .Acoustid.Server.PB.InsertOrUpdateDocumentOp insert_or_update_document = 1;
+    case kInsertOrUpdateDocument: {
+      total_size += 1 +
+        ::google::protobuf::internal::WireFormatLite::MessageSize(
+          *op_.insert_or_update_document_);
+      break;
+    }
+    // .Acoustid.Server.PB.DeleteDocumentOp delete_document = 2;
+    case kDeleteDocument: {
+      total_size += 1 +
+        ::google::protobuf::internal::WireFormatLite::MessageSize(
+          *op_.delete_document_);
+      break;
+    }
+    // .Acoustid.Server.PB.SetAttributeOp set_attribute = 3;
+    case kSetAttribute: {
+      total_size += 1 +
+        ::google::protobuf::internal::WireFormatLite::MessageSize(
+          *op_.set_attribute_);
+      break;
+    }
+    case OP_NOT_SET: {
+      break;
+    }
+  }
+  int cached_size = ::google::protobuf::internal::ToCachedSize(total_size);
+  SetCachedSize(cached_size);
+  return total_size;
+}
+
+void Operation::MergeFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.Operation)
+  GOOGLE_DCHECK_NE(&from, this);
+  const Operation* source =
+      ::google::protobuf::internal::DynamicCastToGenerated<const Operation>(
+          &from);
+  if (source == NULL) {
+  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.Operation)
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.Operation)
+    MergeFrom(*source);
+  }
+}
+
+void Operation::MergeFrom(const Operation& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.Operation)
+  GOOGLE_DCHECK_NE(&from, this);
+  _internal_metadata_.MergeFrom(from._internal_metadata_);
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  switch (from.op_case()) {
+    case kInsertOrUpdateDocument: {
+      mutable_insert_or_update_document()->::Acoustid::Server::PB::InsertOrUpdateDocumentOp::MergeFrom(from.insert_or_update_document());
+      break;
+    }
+    case kDeleteDocument: {
+      mutable_delete_document()->::Acoustid::Server::PB::DeleteDocumentOp::MergeFrom(from.delete_document());
+      break;
+    }
+    case kSetAttribute: {
+      mutable_set_attribute()->::Acoustid::Server::PB::SetAttributeOp::MergeFrom(from.set_attribute());
+      break;
+    }
+    case OP_NOT_SET: {
+      break;
+    }
+  }
+}
+
+void Operation::CopyFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.Operation)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void Operation::CopyFrom(const Operation& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.Operation)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool Operation::IsInitialized() const {
+  return true;
+}
+
+void Operation::Swap(Operation* other) {
+  if (other == this) return;
+  InternalSwap(other);
+}
+void Operation::InternalSwap(Operation* other) {
+  using std::swap;
+  swap(op_, other->op_);
+  swap(_oneof_case_[0], other->_oneof_case_[0]);
+  _internal_metadata_.Swap(&other->_internal_metadata_);
+}
+
+::google::protobuf::Metadata Operation::GetMetadata() const {
+  protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
+  return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages];
+}
+
+
+// ===================================================================
+
+void BulkUpdateRequest::InitAsDefaultInstance() {
+}
+#if !defined(_MSC_VER) || _MSC_VER >= 1900
+const int BulkUpdateRequest::kIndexNameFieldNumber;
+const int BulkUpdateRequest::kOpsFieldNumber;
+#endif  // !defined(_MSC_VER) || _MSC_VER >= 1900
+
+BulkUpdateRequest::BulkUpdateRequest()
+  : ::google::protobuf::Message(), _internal_metadata_(NULL) {
+  ::google::protobuf::internal::InitSCC(
+      &protobuf_index_2eproto::scc_info_BulkUpdateRequest.base);
+  SharedCtor();
+  // @@protoc_insertion_point(constructor:Acoustid.Server.PB.BulkUpdateRequest)
+}
+BulkUpdateRequest::BulkUpdateRequest(const BulkUpdateRequest& from)
+  : ::google::protobuf::Message(),
+      _internal_metadata_(NULL),
+      ops_(from.ops_) {
+  _internal_metadata_.MergeFrom(from._internal_metadata_);
+  index_name_.UnsafeSetDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+  if (from.index_name().size() > 0) {
+    index_name_.AssignWithDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), from.index_name_);
+  }
+  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.BulkUpdateRequest)
+}
+
+void BulkUpdateRequest::SharedCtor() {
+  index_name_.UnsafeSetDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+
+BulkUpdateRequest::~BulkUpdateRequest() {
+  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.BulkUpdateRequest)
+  SharedDtor();
+}
+
+void BulkUpdateRequest::SharedDtor() {
+  index_name_.DestroyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+
+void BulkUpdateRequest::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+const ::google::protobuf::Descriptor* BulkUpdateRequest::descriptor() {
+  ::protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
+  return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages].descriptor;
+}
+
+const BulkUpdateRequest& BulkUpdateRequest::default_instance() {
+  ::google::protobuf::internal::InitSCC(&protobuf_index_2eproto::scc_info_BulkUpdateRequest.base);
+  return *internal_default_instance();
+}
+
+
+void BulkUpdateRequest::Clear() {
+// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.BulkUpdateRequest)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  ops_.Clear();
+  index_name_.ClearToEmptyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+  _internal_metadata_.Clear();
+}
+
+bool BulkUpdateRequest::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+#define DO_(EXPRESSION) if (!GOOGLE_PREDICT_TRUE(EXPRESSION)) goto failure
+  ::google::protobuf::uint32 tag;
+  // @@protoc_insertion_point(parse_start:Acoustid.Server.PB.BulkUpdateRequest)
+  for (;;) {
+    ::std::pair<::google::protobuf::uint32, bool> p = input->ReadTagWithCutoffNoLastTag(127u);
+    tag = p.first;
+    if (!p.second) goto handle_unusual;
+    switch (::google::protobuf::internal::WireFormatLite::GetTagFieldNumber(tag)) {
+      // string index_name = 1;
+      case 1: {
+        if (static_cast< ::google::protobuf::uint8>(tag) ==
+            static_cast< ::google::protobuf::uint8>(10u /* 10 & 0xFF */)) {
+          DO_(::google::protobuf::internal::WireFormatLite::ReadString(
+                input, this->mutable_index_name()));
+          DO_(::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+            this->index_name().data(), static_cast<int>(this->index_name().length()),
+            ::google::protobuf::internal::WireFormatLite::PARSE,
+            "Acoustid.Server.PB.BulkUpdateRequest.index_name"));
+        } else {
+          goto handle_unusual;
+        }
+        break;
+      }
+
+      // repeated .Acoustid.Server.PB.Operation ops = 2;
+      case 2: {
+        if (static_cast< ::google::protobuf::uint8>(tag) ==
+            static_cast< ::google::protobuf::uint8>(18u /* 18 & 0xFF */)) {
+          DO_(::google::protobuf::internal::WireFormatLite::ReadMessage(
+                input, add_ops()));
+        } else {
+          goto handle_unusual;
+        }
+        break;
+      }
+
+      default: {
+      handle_unusual:
+        if (tag == 0) {
+          goto success;
+        }
+        DO_(::google::protobuf::internal::WireFormat::SkipField(
+              input, tag, _internal_metadata_.mutable_unknown_fields()));
+        break;
+      }
+    }
+  }
+success:
+  // @@protoc_insertion_point(parse_success:Acoustid.Server.PB.BulkUpdateRequest)
+  return true;
+failure:
+  // @@protoc_insertion_point(parse_failure:Acoustid.Server.PB.BulkUpdateRequest)
+  return false;
+#undef DO_
+}
+
+void BulkUpdateRequest::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  // @@protoc_insertion_point(serialize_start:Acoustid.Server.PB.BulkUpdateRequest)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // string index_name = 1;
+  if (this->index_name().size() > 0) {
+    ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+      this->index_name().data(), static_cast<int>(this->index_name().length()),
+      ::google::protobuf::internal::WireFormatLite::SERIALIZE,
+      "Acoustid.Server.PB.BulkUpdateRequest.index_name");
+    ::google::protobuf::internal::WireFormatLite::WriteStringMaybeAliased(
+      1, this->index_name(), output);
+  }
+
+  // repeated .Acoustid.Server.PB.Operation ops = 2;
+  for (unsigned int i = 0,
+      n = static_cast<unsigned int>(this->ops_size()); i < n; i++) {
+    ::google::protobuf::internal::WireFormatLite::WriteMessageMaybeToArray(
+      2,
+      this->ops(static_cast<int>(i)),
+      output);
+  }
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    ::google::protobuf::internal::WireFormat::SerializeUnknownFields(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), output);
+  }
+  // @@protoc_insertion_point(serialize_end:Acoustid.Server.PB.BulkUpdateRequest)
+}
+
+::google::protobuf::uint8* BulkUpdateRequest::InternalSerializeWithCachedSizesToArray(
+    bool deterministic, ::google::protobuf::uint8* target) const {
+  (void)deterministic; // Unused
+  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.BulkUpdateRequest)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // string index_name = 1;
+  if (this->index_name().size() > 0) {
+    ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+      this->index_name().data(), static_cast<int>(this->index_name().length()),
+      ::google::protobuf::internal::WireFormatLite::SERIALIZE,
+      "Acoustid.Server.PB.BulkUpdateRequest.index_name");
+    target =
+      ::google::protobuf::internal::WireFormatLite::WriteStringToArray(
+        1, this->index_name(), target);
+  }
+
+  // repeated .Acoustid.Server.PB.Operation ops = 2;
+  for (unsigned int i = 0,
+      n = static_cast<unsigned int>(this->ops_size()); i < n; i++) {
+    target = ::google::protobuf::internal::WireFormatLite::
+      InternalWriteMessageToArray(
+        2, this->ops(static_cast<int>(i)), deterministic, target);
+  }
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    target = ::google::protobuf::internal::WireFormat::SerializeUnknownFieldsToArray(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), target);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.BulkUpdateRequest)
+  return target;
+}
+
+size_t BulkUpdateRequest::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.BulkUpdateRequest)
+  size_t total_size = 0;
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    total_size +=
+      ::google::protobuf::internal::WireFormat::ComputeUnknownFieldsSize(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()));
+  }
+  // repeated .Acoustid.Server.PB.Operation ops = 2;
+  {
+    unsigned int count = static_cast<unsigned int>(this->ops_size());
+    total_size += 1UL * count;
+    for (unsigned int i = 0; i < count; i++) {
+      total_size +=
+        ::google::protobuf::internal::WireFormatLite::MessageSize(
+          this->ops(static_cast<int>(i)));
+    }
+  }
+
+  // string index_name = 1;
+  if (this->index_name().size() > 0) {
+    total_size += 1 +
+      ::google::protobuf::internal::WireFormatLite::StringSize(
+        this->index_name());
+  }
+
+  int cached_size = ::google::protobuf::internal::ToCachedSize(total_size);
+  SetCachedSize(cached_size);
+  return total_size;
+}
+
+void BulkUpdateRequest::MergeFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.BulkUpdateRequest)
+  GOOGLE_DCHECK_NE(&from, this);
+  const BulkUpdateRequest* source =
+      ::google::protobuf::internal::DynamicCastToGenerated<const BulkUpdateRequest>(
+          &from);
+  if (source == NULL) {
+  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.BulkUpdateRequest)
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.BulkUpdateRequest)
+    MergeFrom(*source);
+  }
+}
+
+void BulkUpdateRequest::MergeFrom(const BulkUpdateRequest& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.BulkUpdateRequest)
+  GOOGLE_DCHECK_NE(&from, this);
+  _internal_metadata_.MergeFrom(from._internal_metadata_);
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  ops_.MergeFrom(from.ops_);
+  if (from.index_name().size() > 0) {
+
+    index_name_.AssignWithDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), from.index_name_);
+  }
+}
+
+void BulkUpdateRequest::CopyFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.BulkUpdateRequest)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void BulkUpdateRequest::CopyFrom(const BulkUpdateRequest& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.BulkUpdateRequest)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool BulkUpdateRequest::IsInitialized() const {
+  return true;
+}
+
+void BulkUpdateRequest::Swap(BulkUpdateRequest* other) {
+  if (other == this) return;
+  InternalSwap(other);
+}
+void BulkUpdateRequest::InternalSwap(BulkUpdateRequest* other) {
+  using std::swap;
+  CastToBase(&ops_)->InternalSwap(CastToBase(&other->ops_));
+  index_name_.Swap(&other->index_name_, &::google::protobuf::internal::GetEmptyStringAlreadyInited(),
+    GetArenaNoVirtual());
+  _internal_metadata_.Swap(&other->_internal_metadata_);
+}
+
+::google::protobuf::Metadata BulkUpdateRequest::GetMetadata() const {
+  protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
+  return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages];
+}
+
+
+// ===================================================================
+
+void BulkUpdateResponse::InitAsDefaultInstance() {
+}
+#if !defined(_MSC_VER) || _MSC_VER >= 1900
+#endif  // !defined(_MSC_VER) || _MSC_VER >= 1900
+
+BulkUpdateResponse::BulkUpdateResponse()
+  : ::google::protobuf::Message(), _internal_metadata_(NULL) {
+  ::google::protobuf::internal::InitSCC(
+      &protobuf_index_2eproto::scc_info_BulkUpdateResponse.base);
+  SharedCtor();
+  // @@protoc_insertion_point(constructor:Acoustid.Server.PB.BulkUpdateResponse)
+}
+BulkUpdateResponse::BulkUpdateResponse(const BulkUpdateResponse& from)
+  : ::google::protobuf::Message(),
+      _internal_metadata_(NULL) {
+  _internal_metadata_.MergeFrom(from._internal_metadata_);
+  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.BulkUpdateResponse)
+}
+
+void BulkUpdateResponse::SharedCtor() {
+}
+
+BulkUpdateResponse::~BulkUpdateResponse() {
+  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.BulkUpdateResponse)
+  SharedDtor();
+}
+
+void BulkUpdateResponse::SharedDtor() {
+}
+
+void BulkUpdateResponse::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+const ::google::protobuf::Descriptor* BulkUpdateResponse::descriptor() {
+  ::protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
+  return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages].descriptor;
+}
+
+const BulkUpdateResponse& BulkUpdateResponse::default_instance() {
+  ::google::protobuf::internal::InitSCC(&protobuf_index_2eproto::scc_info_BulkUpdateResponse.base);
+  return *internal_default_instance();
+}
+
+
+void BulkUpdateResponse::Clear() {
+// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.BulkUpdateResponse)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  _internal_metadata_.Clear();
+}
+
+bool BulkUpdateResponse::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+#define DO_(EXPRESSION) if (!GOOGLE_PREDICT_TRUE(EXPRESSION)) goto failure
+  ::google::protobuf::uint32 tag;
+  // @@protoc_insertion_point(parse_start:Acoustid.Server.PB.BulkUpdateResponse)
+  for (;;) {
+    ::std::pair<::google::protobuf::uint32, bool> p = input->ReadTagWithCutoffNoLastTag(127u);
+    tag = p.first;
+    if (!p.second) goto handle_unusual;
+  handle_unusual:
+    if (tag == 0) {
+      goto success;
+    }
+    DO_(::google::protobuf::internal::WireFormat::SkipField(
+          input, tag, _internal_metadata_.mutable_unknown_fields()));
+  }
+success:
+  // @@protoc_insertion_point(parse_success:Acoustid.Server.PB.BulkUpdateResponse)
+  return true;
+failure:
+  // @@protoc_insertion_point(parse_failure:Acoustid.Server.PB.BulkUpdateResponse)
+  return false;
+#undef DO_
+}
+
+void BulkUpdateResponse::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  // @@protoc_insertion_point(serialize_start:Acoustid.Server.PB.BulkUpdateResponse)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    ::google::protobuf::internal::WireFormat::SerializeUnknownFields(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), output);
+  }
+  // @@protoc_insertion_point(serialize_end:Acoustid.Server.PB.BulkUpdateResponse)
+}
+
+::google::protobuf::uint8* BulkUpdateResponse::InternalSerializeWithCachedSizesToArray(
+    bool deterministic, ::google::protobuf::uint8* target) const {
+  (void)deterministic; // Unused
+  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.BulkUpdateResponse)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    target = ::google::protobuf::internal::WireFormat::SerializeUnknownFieldsToArray(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), target);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.BulkUpdateResponse)
+  return target;
+}
+
+size_t BulkUpdateResponse::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.BulkUpdateResponse)
+  size_t total_size = 0;
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    total_size +=
+      ::google::protobuf::internal::WireFormat::ComputeUnknownFieldsSize(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()));
+  }
+  int cached_size = ::google::protobuf::internal::ToCachedSize(total_size);
+  SetCachedSize(cached_size);
+  return total_size;
+}
+
+void BulkUpdateResponse::MergeFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.BulkUpdateResponse)
+  GOOGLE_DCHECK_NE(&from, this);
+  const BulkUpdateResponse* source =
+      ::google::protobuf::internal::DynamicCastToGenerated<const BulkUpdateResponse>(
+          &from);
+  if (source == NULL) {
+  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.BulkUpdateResponse)
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.BulkUpdateResponse)
+    MergeFrom(*source);
+  }
+}
+
+void BulkUpdateResponse::MergeFrom(const BulkUpdateResponse& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.BulkUpdateResponse)
+  GOOGLE_DCHECK_NE(&from, this);
+  _internal_metadata_.MergeFrom(from._internal_metadata_);
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+}
+
+void BulkUpdateResponse::CopyFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.BulkUpdateResponse)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void BulkUpdateResponse::CopyFrom(const BulkUpdateResponse& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.BulkUpdateResponse)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool BulkUpdateResponse::IsInitialized() const {
+  return true;
+}
+
+void BulkUpdateResponse::Swap(BulkUpdateResponse* other) {
+  if (other == this) return;
+  InternalSwap(other);
+}
+void BulkUpdateResponse::InternalSwap(BulkUpdateResponse* other) {
+  using std::swap;
+  _internal_metadata_.Swap(&other->_internal_metadata_);
+}
+
+::google::protobuf::Metadata BulkUpdateResponse::GetMetadata() const {
+  protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
+  return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages];
+}
+
 
 // ===================================================================
 
@@ -1024,6 +2900,24 @@ void SearchResponse::InternalSwap(SearchResponse* other) {
 }  // namespace Acoustid
 namespace google {
 namespace protobuf {
+template<> GOOGLE_PROTOBUF_ATTRIBUTE_NOINLINE ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::InsertOrUpdateDocumentOp >(Arena* arena) {
+  return Arena::CreateInternal< ::Acoustid::Server::PB::InsertOrUpdateDocumentOp >(arena);
+}
+template<> GOOGLE_PROTOBUF_ATTRIBUTE_NOINLINE ::Acoustid::Server::PB::DeleteDocumentOp* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::DeleteDocumentOp >(Arena* arena) {
+  return Arena::CreateInternal< ::Acoustid::Server::PB::DeleteDocumentOp >(arena);
+}
+template<> GOOGLE_PROTOBUF_ATTRIBUTE_NOINLINE ::Acoustid::Server::PB::SetAttributeOp* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::SetAttributeOp >(Arena* arena) {
+  return Arena::CreateInternal< ::Acoustid::Server::PB::SetAttributeOp >(arena);
+}
+template<> GOOGLE_PROTOBUF_ATTRIBUTE_NOINLINE ::Acoustid::Server::PB::Operation* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::Operation >(Arena* arena) {
+  return Arena::CreateInternal< ::Acoustid::Server::PB::Operation >(arena);
+}
+template<> GOOGLE_PROTOBUF_ATTRIBUTE_NOINLINE ::Acoustid::Server::PB::BulkUpdateRequest* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::BulkUpdateRequest >(Arena* arena) {
+  return Arena::CreateInternal< ::Acoustid::Server::PB::BulkUpdateRequest >(arena);
+}
+template<> GOOGLE_PROTOBUF_ATTRIBUTE_NOINLINE ::Acoustid::Server::PB::BulkUpdateResponse* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::BulkUpdateResponse >(Arena* arena) {
+  return Arena::CreateInternal< ::Acoustid::Server::PB::BulkUpdateResponse >(arena);
+}
 template<> GOOGLE_PROTOBUF_ATTRIBUTE_NOINLINE ::Acoustid::Server::PB::SearchResult* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::SearchResult >(Arena* arena) {
   return Arena::CreateInternal< ::Acoustid::Server::PB::SearchResult >(arena);
 }

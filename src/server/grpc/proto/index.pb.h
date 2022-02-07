@@ -38,7 +38,7 @@ namespace protobuf_index_2eproto {
 struct TableStruct {
   static const ::google::protobuf::internal::ParseTableField entries[];
   static const ::google::protobuf::internal::AuxillaryParseTableField aux[];
-  static const ::google::protobuf::internal::ParseTable schema[3];
+  static const ::google::protobuf::internal::ParseTable schema[9];
   static const ::google::protobuf::internal::FieldMetadata field_metadata[];
   static const ::google::protobuf::internal::SerializationTable serialization_table[];
   static const ::google::protobuf::uint32 offsets[];
@@ -48,6 +48,21 @@ void AddDescriptors();
 namespace Acoustid {
 namespace Server {
 namespace PB {
+class BulkUpdateRequest;
+class BulkUpdateRequestDefaultTypeInternal;
+extern BulkUpdateRequestDefaultTypeInternal _BulkUpdateRequest_default_instance_;
+class BulkUpdateResponse;
+class BulkUpdateResponseDefaultTypeInternal;
+extern BulkUpdateResponseDefaultTypeInternal _BulkUpdateResponse_default_instance_;
+class DeleteDocumentOp;
+class DeleteDocumentOpDefaultTypeInternal;
+extern DeleteDocumentOpDefaultTypeInternal _DeleteDocumentOp_default_instance_;
+class InsertOrUpdateDocumentOp;
+class InsertOrUpdateDocumentOpDefaultTypeInternal;
+extern InsertOrUpdateDocumentOpDefaultTypeInternal _InsertOrUpdateDocumentOp_default_instance_;
+class Operation;
+class OperationDefaultTypeInternal;
+extern OperationDefaultTypeInternal _Operation_default_instance_;
 class SearchRequest;
 class SearchRequestDefaultTypeInternal;
 extern SearchRequestDefaultTypeInternal _SearchRequest_default_instance_;
@@ -57,14 +72,23 @@ extern SearchResponseDefaultTypeInternal _SearchResponse_default_instance_;
 class SearchResult;
 class SearchResultDefaultTypeInternal;
 extern SearchResultDefaultTypeInternal _SearchResult_default_instance_;
+class SetAttributeOp;
+class SetAttributeOpDefaultTypeInternal;
+extern SetAttributeOpDefaultTypeInternal _SetAttributeOp_default_instance_;
 }  // namespace PB
 }  // namespace Server
 }  // namespace Acoustid
 namespace google {
 namespace protobuf {
+template<> ::Acoustid::Server::PB::BulkUpdateRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::BulkUpdateRequest>(Arena*);
+template<> ::Acoustid::Server::PB::BulkUpdateResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::BulkUpdateResponse>(Arena*);
+template<> ::Acoustid::Server::PB::DeleteDocumentOp* Arena::CreateMaybeMessage<::Acoustid::Server::PB::DeleteDocumentOp>(Arena*);
+template<> ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* Arena::CreateMaybeMessage<::Acoustid::Server::PB::InsertOrUpdateDocumentOp>(Arena*);
+template<> ::Acoustid::Server::PB::Operation* Arena::CreateMaybeMessage<::Acoustid::Server::PB::Operation>(Arena*);
 template<> ::Acoustid::Server::PB::SearchRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::SearchRequest>(Arena*);
 template<> ::Acoustid::Server::PB::SearchResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::SearchResponse>(Arena*);
 template<> ::Acoustid::Server::PB::SearchResult* Arena::CreateMaybeMessage<::Acoustid::Server::PB::SearchResult>(Arena*);
+template<> ::Acoustid::Server::PB::SetAttributeOp* Arena::CreateMaybeMessage<::Acoustid::Server::PB::SetAttributeOp>(Arena*);
 }  // namespace protobuf
 }  // namespace google
 namespace Acoustid {
@@ -72,6 +96,727 @@ namespace Server {
 namespace PB {
 
 // ===================================================================
+
+class InsertOrUpdateDocumentOp : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.InsertOrUpdateDocumentOp) */ {
+ public:
+  InsertOrUpdateDocumentOp();
+  virtual ~InsertOrUpdateDocumentOp();
+
+  InsertOrUpdateDocumentOp(const InsertOrUpdateDocumentOp& from);
+
+  inline InsertOrUpdateDocumentOp& operator=(const InsertOrUpdateDocumentOp& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  #if LANG_CXX11
+  InsertOrUpdateDocumentOp(InsertOrUpdateDocumentOp&& from) noexcept
+    : InsertOrUpdateDocumentOp() {
+    *this = ::std::move(from);
+  }
+
+  inline InsertOrUpdateDocumentOp& operator=(InsertOrUpdateDocumentOp&& from) noexcept {
+    if (GetArenaNoVirtual() == from.GetArenaNoVirtual()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+  #endif
+  static const ::google::protobuf::Descriptor* descriptor();
+  static const InsertOrUpdateDocumentOp& default_instance();
+
+  static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
+  static inline const InsertOrUpdateDocumentOp* internal_default_instance() {
+    return reinterpret_cast<const InsertOrUpdateDocumentOp*>(
+               &_InsertOrUpdateDocumentOp_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    0;
+
+  void Swap(InsertOrUpdateDocumentOp* other);
+  friend void swap(InsertOrUpdateDocumentOp& a, InsertOrUpdateDocumentOp& b) {
+    a.Swap(&b);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline InsertOrUpdateDocumentOp* New() const final {
+    return CreateMaybeMessage<InsertOrUpdateDocumentOp>(NULL);
+  }
+
+  InsertOrUpdateDocumentOp* New(::google::protobuf::Arena* arena) const final {
+    return CreateMaybeMessage<InsertOrUpdateDocumentOp>(arena);
+  }
+  void CopyFrom(const ::google::protobuf::Message& from) final;
+  void MergeFrom(const ::google::protobuf::Message& from) final;
+  void CopyFrom(const InsertOrUpdateDocumentOp& from);
+  void MergeFrom(const InsertOrUpdateDocumentOp& from);
+  void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input) final;
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const final;
+  ::google::protobuf::uint8* InternalSerializeWithCachedSizesToArray(
+      bool deterministic, ::google::protobuf::uint8* target) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(InsertOrUpdateDocumentOp* other);
+  private:
+  inline ::google::protobuf::Arena* GetArenaNoVirtual() const {
+    return NULL;
+  }
+  inline void* MaybeArenaPtr() const {
+    return NULL;
+  }
+  public:
+
+  ::google::protobuf::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // repeated uint32 terms = 2;
+  int terms_size() const;
+  void clear_terms();
+  static const int kTermsFieldNumber = 2;
+  ::google::protobuf::uint32 terms(int index) const;
+  void set_terms(int index, ::google::protobuf::uint32 value);
+  void add_terms(::google::protobuf::uint32 value);
+  const ::google::protobuf::RepeatedField< ::google::protobuf::uint32 >&
+      terms() const;
+  ::google::protobuf::RepeatedField< ::google::protobuf::uint32 >*
+      mutable_terms();
+
+  // uint32 doc_id = 1;
+  void clear_doc_id();
+  static const int kDocIdFieldNumber = 1;
+  ::google::protobuf::uint32 doc_id() const;
+  void set_doc_id(::google::protobuf::uint32 value);
+
+  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+ private:
+
+  ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
+  ::google::protobuf::RepeatedField< ::google::protobuf::uint32 > terms_;
+  mutable int _terms_cached_byte_size_;
+  ::google::protobuf::uint32 doc_id_;
+  mutable ::google::protobuf::internal::CachedSize _cached_size_;
+  friend struct ::protobuf_index_2eproto::TableStruct;
+};
+// -------------------------------------------------------------------
+
+class DeleteDocumentOp : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.DeleteDocumentOp) */ {
+ public:
+  DeleteDocumentOp();
+  virtual ~DeleteDocumentOp();
+
+  DeleteDocumentOp(const DeleteDocumentOp& from);
+
+  inline DeleteDocumentOp& operator=(const DeleteDocumentOp& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  #if LANG_CXX11
+  DeleteDocumentOp(DeleteDocumentOp&& from) noexcept
+    : DeleteDocumentOp() {
+    *this = ::std::move(from);
+  }
+
+  inline DeleteDocumentOp& operator=(DeleteDocumentOp&& from) noexcept {
+    if (GetArenaNoVirtual() == from.GetArenaNoVirtual()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+  #endif
+  static const ::google::protobuf::Descriptor* descriptor();
+  static const DeleteDocumentOp& default_instance();
+
+  static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
+  static inline const DeleteDocumentOp* internal_default_instance() {
+    return reinterpret_cast<const DeleteDocumentOp*>(
+               &_DeleteDocumentOp_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    1;
+
+  void Swap(DeleteDocumentOp* other);
+  friend void swap(DeleteDocumentOp& a, DeleteDocumentOp& b) {
+    a.Swap(&b);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline DeleteDocumentOp* New() const final {
+    return CreateMaybeMessage<DeleteDocumentOp>(NULL);
+  }
+
+  DeleteDocumentOp* New(::google::protobuf::Arena* arena) const final {
+    return CreateMaybeMessage<DeleteDocumentOp>(arena);
+  }
+  void CopyFrom(const ::google::protobuf::Message& from) final;
+  void MergeFrom(const ::google::protobuf::Message& from) final;
+  void CopyFrom(const DeleteDocumentOp& from);
+  void MergeFrom(const DeleteDocumentOp& from);
+  void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input) final;
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const final;
+  ::google::protobuf::uint8* InternalSerializeWithCachedSizesToArray(
+      bool deterministic, ::google::protobuf::uint8* target) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(DeleteDocumentOp* other);
+  private:
+  inline ::google::protobuf::Arena* GetArenaNoVirtual() const {
+    return NULL;
+  }
+  inline void* MaybeArenaPtr() const {
+    return NULL;
+  }
+  public:
+
+  ::google::protobuf::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // uint32 doc_id = 1;
+  void clear_doc_id();
+  static const int kDocIdFieldNumber = 1;
+  ::google::protobuf::uint32 doc_id() const;
+  void set_doc_id(::google::protobuf::uint32 value);
+
+  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.DeleteDocumentOp)
+ private:
+
+  ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
+  ::google::protobuf::uint32 doc_id_;
+  mutable ::google::protobuf::internal::CachedSize _cached_size_;
+  friend struct ::protobuf_index_2eproto::TableStruct;
+};
+// -------------------------------------------------------------------
+
+class SetAttributeOp : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.SetAttributeOp) */ {
+ public:
+  SetAttributeOp();
+  virtual ~SetAttributeOp();
+
+  SetAttributeOp(const SetAttributeOp& from);
+
+  inline SetAttributeOp& operator=(const SetAttributeOp& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  #if LANG_CXX11
+  SetAttributeOp(SetAttributeOp&& from) noexcept
+    : SetAttributeOp() {
+    *this = ::std::move(from);
+  }
+
+  inline SetAttributeOp& operator=(SetAttributeOp&& from) noexcept {
+    if (GetArenaNoVirtual() == from.GetArenaNoVirtual()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+  #endif
+  static const ::google::protobuf::Descriptor* descriptor();
+  static const SetAttributeOp& default_instance();
+
+  static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
+  static inline const SetAttributeOp* internal_default_instance() {
+    return reinterpret_cast<const SetAttributeOp*>(
+               &_SetAttributeOp_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    2;
+
+  void Swap(SetAttributeOp* other);
+  friend void swap(SetAttributeOp& a, SetAttributeOp& b) {
+    a.Swap(&b);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline SetAttributeOp* New() const final {
+    return CreateMaybeMessage<SetAttributeOp>(NULL);
+  }
+
+  SetAttributeOp* New(::google::protobuf::Arena* arena) const final {
+    return CreateMaybeMessage<SetAttributeOp>(arena);
+  }
+  void CopyFrom(const ::google::protobuf::Message& from) final;
+  void MergeFrom(const ::google::protobuf::Message& from) final;
+  void CopyFrom(const SetAttributeOp& from);
+  void MergeFrom(const SetAttributeOp& from);
+  void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input) final;
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const final;
+  ::google::protobuf::uint8* InternalSerializeWithCachedSizesToArray(
+      bool deterministic, ::google::protobuf::uint8* target) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(SetAttributeOp* other);
+  private:
+  inline ::google::protobuf::Arena* GetArenaNoVirtual() const {
+    return NULL;
+  }
+  inline void* MaybeArenaPtr() const {
+    return NULL;
+  }
+  public:
+
+  ::google::protobuf::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // string name = 1;
+  void clear_name();
+  static const int kNameFieldNumber = 1;
+  const ::std::string& name() const;
+  void set_name(const ::std::string& value);
+  #if LANG_CXX11
+  void set_name(::std::string&& value);
+  #endif
+  void set_name(const char* value);
+  void set_name(const char* value, size_t size);
+  ::std::string* mutable_name();
+  ::std::string* release_name();
+  void set_allocated_name(::std::string* name);
+
+  // string value = 2;
+  void clear_value();
+  static const int kValueFieldNumber = 2;
+  const ::std::string& value() const;
+  void set_value(const ::std::string& value);
+  #if LANG_CXX11
+  void set_value(::std::string&& value);
+  #endif
+  void set_value(const char* value);
+  void set_value(const char* value, size_t size);
+  ::std::string* mutable_value();
+  ::std::string* release_value();
+  void set_allocated_value(::std::string* value);
+
+  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.SetAttributeOp)
+ private:
+
+  ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
+  ::google::protobuf::internal::ArenaStringPtr name_;
+  ::google::protobuf::internal::ArenaStringPtr value_;
+  mutable ::google::protobuf::internal::CachedSize _cached_size_;
+  friend struct ::protobuf_index_2eproto::TableStruct;
+};
+// -------------------------------------------------------------------
+
+class Operation : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.Operation) */ {
+ public:
+  Operation();
+  virtual ~Operation();
+
+  Operation(const Operation& from);
+
+  inline Operation& operator=(const Operation& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  #if LANG_CXX11
+  Operation(Operation&& from) noexcept
+    : Operation() {
+    *this = ::std::move(from);
+  }
+
+  inline Operation& operator=(Operation&& from) noexcept {
+    if (GetArenaNoVirtual() == from.GetArenaNoVirtual()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+  #endif
+  static const ::google::protobuf::Descriptor* descriptor();
+  static const Operation& default_instance();
+
+  enum OpCase {
+    kInsertOrUpdateDocument = 1,
+    kDeleteDocument = 2,
+    kSetAttribute = 3,
+    OP_NOT_SET = 0,
+  };
+
+  static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
+  static inline const Operation* internal_default_instance() {
+    return reinterpret_cast<const Operation*>(
+               &_Operation_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    3;
+
+  void Swap(Operation* other);
+  friend void swap(Operation& a, Operation& b) {
+    a.Swap(&b);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline Operation* New() const final {
+    return CreateMaybeMessage<Operation>(NULL);
+  }
+
+  Operation* New(::google::protobuf::Arena* arena) const final {
+    return CreateMaybeMessage<Operation>(arena);
+  }
+  void CopyFrom(const ::google::protobuf::Message& from) final;
+  void MergeFrom(const ::google::protobuf::Message& from) final;
+  void CopyFrom(const Operation& from);
+  void MergeFrom(const Operation& from);
+  void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input) final;
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const final;
+  ::google::protobuf::uint8* InternalSerializeWithCachedSizesToArray(
+      bool deterministic, ::google::protobuf::uint8* target) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(Operation* other);
+  private:
+  inline ::google::protobuf::Arena* GetArenaNoVirtual() const {
+    return NULL;
+  }
+  inline void* MaybeArenaPtr() const {
+    return NULL;
+  }
+  public:
+
+  ::google::protobuf::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // .Acoustid.Server.PB.InsertOrUpdateDocumentOp insert_or_update_document = 1;
+  bool has_insert_or_update_document() const;
+  void clear_insert_or_update_document();
+  static const int kInsertOrUpdateDocumentFieldNumber = 1;
+  private:
+  const ::Acoustid::Server::PB::InsertOrUpdateDocumentOp& _internal_insert_or_update_document() const;
+  public:
+  const ::Acoustid::Server::PB::InsertOrUpdateDocumentOp& insert_or_update_document() const;
+  ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* release_insert_or_update_document();
+  ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* mutable_insert_or_update_document();
+  void set_allocated_insert_or_update_document(::Acoustid::Server::PB::InsertOrUpdateDocumentOp* insert_or_update_document);
+
+  // .Acoustid.Server.PB.DeleteDocumentOp delete_document = 2;
+  bool has_delete_document() const;
+  void clear_delete_document();
+  static const int kDeleteDocumentFieldNumber = 2;
+  private:
+  const ::Acoustid::Server::PB::DeleteDocumentOp& _internal_delete_document() const;
+  public:
+  const ::Acoustid::Server::PB::DeleteDocumentOp& delete_document() const;
+  ::Acoustid::Server::PB::DeleteDocumentOp* release_delete_document();
+  ::Acoustid::Server::PB::DeleteDocumentOp* mutable_delete_document();
+  void set_allocated_delete_document(::Acoustid::Server::PB::DeleteDocumentOp* delete_document);
+
+  // .Acoustid.Server.PB.SetAttributeOp set_attribute = 3;
+  bool has_set_attribute() const;
+  void clear_set_attribute();
+  static const int kSetAttributeFieldNumber = 3;
+  private:
+  const ::Acoustid::Server::PB::SetAttributeOp& _internal_set_attribute() const;
+  public:
+  const ::Acoustid::Server::PB::SetAttributeOp& set_attribute() const;
+  ::Acoustid::Server::PB::SetAttributeOp* release_set_attribute();
+  ::Acoustid::Server::PB::SetAttributeOp* mutable_set_attribute();
+  void set_allocated_set_attribute(::Acoustid::Server::PB::SetAttributeOp* set_attribute);
+
+  void clear_op();
+  OpCase op_case() const;
+  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.Operation)
+ private:
+  void set_has_insert_or_update_document();
+  void set_has_delete_document();
+  void set_has_set_attribute();
+
+  inline bool has_op() const;
+  inline void clear_has_op();
+
+  ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
+  union OpUnion {
+    OpUnion() {}
+    ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* insert_or_update_document_;
+    ::Acoustid::Server::PB::DeleteDocumentOp* delete_document_;
+    ::Acoustid::Server::PB::SetAttributeOp* set_attribute_;
+  } op_;
+  mutable ::google::protobuf::internal::CachedSize _cached_size_;
+  ::google::protobuf::uint32 _oneof_case_[1];
+
+  friend struct ::protobuf_index_2eproto::TableStruct;
+};
+// -------------------------------------------------------------------
+
+class BulkUpdateRequest : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.BulkUpdateRequest) */ {
+ public:
+  BulkUpdateRequest();
+  virtual ~BulkUpdateRequest();
+
+  BulkUpdateRequest(const BulkUpdateRequest& from);
+
+  inline BulkUpdateRequest& operator=(const BulkUpdateRequest& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  #if LANG_CXX11
+  BulkUpdateRequest(BulkUpdateRequest&& from) noexcept
+    : BulkUpdateRequest() {
+    *this = ::std::move(from);
+  }
+
+  inline BulkUpdateRequest& operator=(BulkUpdateRequest&& from) noexcept {
+    if (GetArenaNoVirtual() == from.GetArenaNoVirtual()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+  #endif
+  static const ::google::protobuf::Descriptor* descriptor();
+  static const BulkUpdateRequest& default_instance();
+
+  static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
+  static inline const BulkUpdateRequest* internal_default_instance() {
+    return reinterpret_cast<const BulkUpdateRequest*>(
+               &_BulkUpdateRequest_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    4;
+
+  void Swap(BulkUpdateRequest* other);
+  friend void swap(BulkUpdateRequest& a, BulkUpdateRequest& b) {
+    a.Swap(&b);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline BulkUpdateRequest* New() const final {
+    return CreateMaybeMessage<BulkUpdateRequest>(NULL);
+  }
+
+  BulkUpdateRequest* New(::google::protobuf::Arena* arena) const final {
+    return CreateMaybeMessage<BulkUpdateRequest>(arena);
+  }
+  void CopyFrom(const ::google::protobuf::Message& from) final;
+  void MergeFrom(const ::google::protobuf::Message& from) final;
+  void CopyFrom(const BulkUpdateRequest& from);
+  void MergeFrom(const BulkUpdateRequest& from);
+  void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input) final;
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const final;
+  ::google::protobuf::uint8* InternalSerializeWithCachedSizesToArray(
+      bool deterministic, ::google::protobuf::uint8* target) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(BulkUpdateRequest* other);
+  private:
+  inline ::google::protobuf::Arena* GetArenaNoVirtual() const {
+    return NULL;
+  }
+  inline void* MaybeArenaPtr() const {
+    return NULL;
+  }
+  public:
+
+  ::google::protobuf::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // repeated .Acoustid.Server.PB.Operation ops = 2;
+  int ops_size() const;
+  void clear_ops();
+  static const int kOpsFieldNumber = 2;
+  ::Acoustid::Server::PB::Operation* mutable_ops(int index);
+  ::google::protobuf::RepeatedPtrField< ::Acoustid::Server::PB::Operation >*
+      mutable_ops();
+  const ::Acoustid::Server::PB::Operation& ops(int index) const;
+  ::Acoustid::Server::PB::Operation* add_ops();
+  const ::google::protobuf::RepeatedPtrField< ::Acoustid::Server::PB::Operation >&
+      ops() const;
+
+  // string index_name = 1;
+  void clear_index_name();
+  static const int kIndexNameFieldNumber = 1;
+  const ::std::string& index_name() const;
+  void set_index_name(const ::std::string& value);
+  #if LANG_CXX11
+  void set_index_name(::std::string&& value);
+  #endif
+  void set_index_name(const char* value);
+  void set_index_name(const char* value, size_t size);
+  ::std::string* mutable_index_name();
+  ::std::string* release_index_name();
+  void set_allocated_index_name(::std::string* index_name);
+
+  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.BulkUpdateRequest)
+ private:
+
+  ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
+  ::google::protobuf::RepeatedPtrField< ::Acoustid::Server::PB::Operation > ops_;
+  ::google::protobuf::internal::ArenaStringPtr index_name_;
+  mutable ::google::protobuf::internal::CachedSize _cached_size_;
+  friend struct ::protobuf_index_2eproto::TableStruct;
+};
+// -------------------------------------------------------------------
+
+class BulkUpdateResponse : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.BulkUpdateResponse) */ {
+ public:
+  BulkUpdateResponse();
+  virtual ~BulkUpdateResponse();
+
+  BulkUpdateResponse(const BulkUpdateResponse& from);
+
+  inline BulkUpdateResponse& operator=(const BulkUpdateResponse& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  #if LANG_CXX11
+  BulkUpdateResponse(BulkUpdateResponse&& from) noexcept
+    : BulkUpdateResponse() {
+    *this = ::std::move(from);
+  }
+
+  inline BulkUpdateResponse& operator=(BulkUpdateResponse&& from) noexcept {
+    if (GetArenaNoVirtual() == from.GetArenaNoVirtual()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+  #endif
+  static const ::google::protobuf::Descriptor* descriptor();
+  static const BulkUpdateResponse& default_instance();
+
+  static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
+  static inline const BulkUpdateResponse* internal_default_instance() {
+    return reinterpret_cast<const BulkUpdateResponse*>(
+               &_BulkUpdateResponse_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    5;
+
+  void Swap(BulkUpdateResponse* other);
+  friend void swap(BulkUpdateResponse& a, BulkUpdateResponse& b) {
+    a.Swap(&b);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline BulkUpdateResponse* New() const final {
+    return CreateMaybeMessage<BulkUpdateResponse>(NULL);
+  }
+
+  BulkUpdateResponse* New(::google::protobuf::Arena* arena) const final {
+    return CreateMaybeMessage<BulkUpdateResponse>(arena);
+  }
+  void CopyFrom(const ::google::protobuf::Message& from) final;
+  void MergeFrom(const ::google::protobuf::Message& from) final;
+  void CopyFrom(const BulkUpdateResponse& from);
+  void MergeFrom(const BulkUpdateResponse& from);
+  void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input) final;
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const final;
+  ::google::protobuf::uint8* InternalSerializeWithCachedSizesToArray(
+      bool deterministic, ::google::protobuf::uint8* target) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(BulkUpdateResponse* other);
+  private:
+  inline ::google::protobuf::Arena* GetArenaNoVirtual() const {
+    return NULL;
+  }
+  inline void* MaybeArenaPtr() const {
+    return NULL;
+  }
+  public:
+
+  ::google::protobuf::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.BulkUpdateResponse)
+ private:
+
+  ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
+  mutable ::google::protobuf::internal::CachedSize _cached_size_;
+  friend struct ::protobuf_index_2eproto::TableStruct;
+};
+// -------------------------------------------------------------------
 
 class SearchResult : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.SearchResult) */ {
  public:
@@ -108,7 +853,7 @@ class SearchResult : public ::google::protobuf::Message /* @@protoc_insertion_po
                &_SearchResult_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    0;
+    6;
 
   void Swap(SearchResult* other);
   friend void swap(SearchResult& a, SearchResult& b) {
@@ -218,7 +963,7 @@ class SearchRequest : public ::google::protobuf::Message /* @@protoc_insertion_p
                &_SearchRequest_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    1;
+    7;
 
   void Swap(SearchRequest* other);
   friend void swap(SearchRequest& a, SearchRequest& b) {
@@ -350,7 +1095,7 @@ class SearchResponse : public ::google::protobuf::Message /* @@protoc_insertion_
                &_SearchResponse_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    2;
+    8;
 
   void Swap(SearchResponse* other);
   friend void swap(SearchResponse& a, SearchResponse& b) {
@@ -431,6 +1176,418 @@ class SearchResponse : public ::google::protobuf::Message /* @@protoc_insertion_
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif  // __GNUC__
+// InsertOrUpdateDocumentOp
+
+// uint32 doc_id = 1;
+inline void InsertOrUpdateDocumentOp::clear_doc_id() {
+  doc_id_ = 0u;
+}
+inline ::google::protobuf::uint32 InsertOrUpdateDocumentOp::doc_id() const {
+  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.InsertOrUpdateDocumentOp.doc_id)
+  return doc_id_;
+}
+inline void InsertOrUpdateDocumentOp::set_doc_id(::google::protobuf::uint32 value) {
+  
+  doc_id_ = value;
+  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.InsertOrUpdateDocumentOp.doc_id)
+}
+
+// repeated uint32 terms = 2;
+inline int InsertOrUpdateDocumentOp::terms_size() const {
+  return terms_.size();
+}
+inline void InsertOrUpdateDocumentOp::clear_terms() {
+  terms_.Clear();
+}
+inline ::google::protobuf::uint32 InsertOrUpdateDocumentOp::terms(int index) const {
+  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.InsertOrUpdateDocumentOp.terms)
+  return terms_.Get(index);
+}
+inline void InsertOrUpdateDocumentOp::set_terms(int index, ::google::protobuf::uint32 value) {
+  terms_.Set(index, value);
+  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.InsertOrUpdateDocumentOp.terms)
+}
+inline void InsertOrUpdateDocumentOp::add_terms(::google::protobuf::uint32 value) {
+  terms_.Add(value);
+  // @@protoc_insertion_point(field_add:Acoustid.Server.PB.InsertOrUpdateDocumentOp.terms)
+}
+inline const ::google::protobuf::RepeatedField< ::google::protobuf::uint32 >&
+InsertOrUpdateDocumentOp::terms() const {
+  // @@protoc_insertion_point(field_list:Acoustid.Server.PB.InsertOrUpdateDocumentOp.terms)
+  return terms_;
+}
+inline ::google::protobuf::RepeatedField< ::google::protobuf::uint32 >*
+InsertOrUpdateDocumentOp::mutable_terms() {
+  // @@protoc_insertion_point(field_mutable_list:Acoustid.Server.PB.InsertOrUpdateDocumentOp.terms)
+  return &terms_;
+}
+
+// -------------------------------------------------------------------
+
+// DeleteDocumentOp
+
+// uint32 doc_id = 1;
+inline void DeleteDocumentOp::clear_doc_id() {
+  doc_id_ = 0u;
+}
+inline ::google::protobuf::uint32 DeleteDocumentOp::doc_id() const {
+  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.DeleteDocumentOp.doc_id)
+  return doc_id_;
+}
+inline void DeleteDocumentOp::set_doc_id(::google::protobuf::uint32 value) {
+  
+  doc_id_ = value;
+  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.DeleteDocumentOp.doc_id)
+}
+
+// -------------------------------------------------------------------
+
+// SetAttributeOp
+
+// string name = 1;
+inline void SetAttributeOp::clear_name() {
+  name_.ClearToEmptyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline const ::std::string& SetAttributeOp::name() const {
+  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.SetAttributeOp.name)
+  return name_.GetNoArena();
+}
+inline void SetAttributeOp::set_name(const ::std::string& value) {
+  
+  name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), value);
+  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.SetAttributeOp.name)
+}
+#if LANG_CXX11
+inline void SetAttributeOp::set_name(::std::string&& value) {
+  
+  name_.SetNoArena(
+    &::google::protobuf::internal::GetEmptyStringAlreadyInited(), ::std::move(value));
+  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.SetAttributeOp.name)
+}
+#endif
+inline void SetAttributeOp::set_name(const char* value) {
+  GOOGLE_DCHECK(value != NULL);
+  
+  name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), ::std::string(value));
+  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.SetAttributeOp.name)
+}
+inline void SetAttributeOp::set_name(const char* value, size_t size) {
+  
+  name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(),
+      ::std::string(reinterpret_cast<const char*>(value), size));
+  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.SetAttributeOp.name)
+}
+inline ::std::string* SetAttributeOp::mutable_name() {
+  
+  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.SetAttributeOp.name)
+  return name_.MutableNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline ::std::string* SetAttributeOp::release_name() {
+  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.SetAttributeOp.name)
+  
+  return name_.ReleaseNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline void SetAttributeOp::set_allocated_name(::std::string* name) {
+  if (name != NULL) {
+    
+  } else {
+    
+  }
+  name_.SetAllocatedNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), name);
+  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.SetAttributeOp.name)
+}
+
+// string value = 2;
+inline void SetAttributeOp::clear_value() {
+  value_.ClearToEmptyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline const ::std::string& SetAttributeOp::value() const {
+  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.SetAttributeOp.value)
+  return value_.GetNoArena();
+}
+inline void SetAttributeOp::set_value(const ::std::string& value) {
+  
+  value_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), value);
+  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.SetAttributeOp.value)
+}
+#if LANG_CXX11
+inline void SetAttributeOp::set_value(::std::string&& value) {
+  
+  value_.SetNoArena(
+    &::google::protobuf::internal::GetEmptyStringAlreadyInited(), ::std::move(value));
+  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.SetAttributeOp.value)
+}
+#endif
+inline void SetAttributeOp::set_value(const char* value) {
+  GOOGLE_DCHECK(value != NULL);
+  
+  value_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), ::std::string(value));
+  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.SetAttributeOp.value)
+}
+inline void SetAttributeOp::set_value(const char* value, size_t size) {
+  
+  value_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(),
+      ::std::string(reinterpret_cast<const char*>(value), size));
+  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.SetAttributeOp.value)
+}
+inline ::std::string* SetAttributeOp::mutable_value() {
+  
+  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.SetAttributeOp.value)
+  return value_.MutableNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline ::std::string* SetAttributeOp::release_value() {
+  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.SetAttributeOp.value)
+  
+  return value_.ReleaseNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline void SetAttributeOp::set_allocated_value(::std::string* value) {
+  if (value != NULL) {
+    
+  } else {
+    
+  }
+  value_.SetAllocatedNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), value);
+  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.SetAttributeOp.value)
+}
+
+// -------------------------------------------------------------------
+
+// Operation
+
+// .Acoustid.Server.PB.InsertOrUpdateDocumentOp insert_or_update_document = 1;
+inline bool Operation::has_insert_or_update_document() const {
+  return op_case() == kInsertOrUpdateDocument;
+}
+inline void Operation::set_has_insert_or_update_document() {
+  _oneof_case_[0] = kInsertOrUpdateDocument;
+}
+inline void Operation::clear_insert_or_update_document() {
+  if (has_insert_or_update_document()) {
+    delete op_.insert_or_update_document_;
+    clear_has_op();
+  }
+}
+inline const ::Acoustid::Server::PB::InsertOrUpdateDocumentOp& Operation::_internal_insert_or_update_document() const {
+  return *op_.insert_or_update_document_;
+}
+inline ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* Operation::release_insert_or_update_document() {
+  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.Operation.insert_or_update_document)
+  if (has_insert_or_update_document()) {
+    clear_has_op();
+      ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* temp = op_.insert_or_update_document_;
+    op_.insert_or_update_document_ = NULL;
+    return temp;
+  } else {
+    return NULL;
+  }
+}
+inline const ::Acoustid::Server::PB::InsertOrUpdateDocumentOp& Operation::insert_or_update_document() const {
+  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.Operation.insert_or_update_document)
+  return has_insert_or_update_document()
+      ? *op_.insert_or_update_document_
+      : *reinterpret_cast< ::Acoustid::Server::PB::InsertOrUpdateDocumentOp*>(&::Acoustid::Server::PB::_InsertOrUpdateDocumentOp_default_instance_);
+}
+inline ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* Operation::mutable_insert_or_update_document() {
+  if (!has_insert_or_update_document()) {
+    clear_op();
+    set_has_insert_or_update_document();
+    op_.insert_or_update_document_ = CreateMaybeMessage< ::Acoustid::Server::PB::InsertOrUpdateDocumentOp >(
+        GetArenaNoVirtual());
+  }
+  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.Operation.insert_or_update_document)
+  return op_.insert_or_update_document_;
+}
+
+// .Acoustid.Server.PB.DeleteDocumentOp delete_document = 2;
+inline bool Operation::has_delete_document() const {
+  return op_case() == kDeleteDocument;
+}
+inline void Operation::set_has_delete_document() {
+  _oneof_case_[0] = kDeleteDocument;
+}
+inline void Operation::clear_delete_document() {
+  if (has_delete_document()) {
+    delete op_.delete_document_;
+    clear_has_op();
+  }
+}
+inline const ::Acoustid::Server::PB::DeleteDocumentOp& Operation::_internal_delete_document() const {
+  return *op_.delete_document_;
+}
+inline ::Acoustid::Server::PB::DeleteDocumentOp* Operation::release_delete_document() {
+  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.Operation.delete_document)
+  if (has_delete_document()) {
+    clear_has_op();
+      ::Acoustid::Server::PB::DeleteDocumentOp* temp = op_.delete_document_;
+    op_.delete_document_ = NULL;
+    return temp;
+  } else {
+    return NULL;
+  }
+}
+inline const ::Acoustid::Server::PB::DeleteDocumentOp& Operation::delete_document() const {
+  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.Operation.delete_document)
+  return has_delete_document()
+      ? *op_.delete_document_
+      : *reinterpret_cast< ::Acoustid::Server::PB::DeleteDocumentOp*>(&::Acoustid::Server::PB::_DeleteDocumentOp_default_instance_);
+}
+inline ::Acoustid::Server::PB::DeleteDocumentOp* Operation::mutable_delete_document() {
+  if (!has_delete_document()) {
+    clear_op();
+    set_has_delete_document();
+    op_.delete_document_ = CreateMaybeMessage< ::Acoustid::Server::PB::DeleteDocumentOp >(
+        GetArenaNoVirtual());
+  }
+  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.Operation.delete_document)
+  return op_.delete_document_;
+}
+
+// .Acoustid.Server.PB.SetAttributeOp set_attribute = 3;
+inline bool Operation::has_set_attribute() const {
+  return op_case() == kSetAttribute;
+}
+inline void Operation::set_has_set_attribute() {
+  _oneof_case_[0] = kSetAttribute;
+}
+inline void Operation::clear_set_attribute() {
+  if (has_set_attribute()) {
+    delete op_.set_attribute_;
+    clear_has_op();
+  }
+}
+inline const ::Acoustid::Server::PB::SetAttributeOp& Operation::_internal_set_attribute() const {
+  return *op_.set_attribute_;
+}
+inline ::Acoustid::Server::PB::SetAttributeOp* Operation::release_set_attribute() {
+  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.Operation.set_attribute)
+  if (has_set_attribute()) {
+    clear_has_op();
+      ::Acoustid::Server::PB::SetAttributeOp* temp = op_.set_attribute_;
+    op_.set_attribute_ = NULL;
+    return temp;
+  } else {
+    return NULL;
+  }
+}
+inline const ::Acoustid::Server::PB::SetAttributeOp& Operation::set_attribute() const {
+  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.Operation.set_attribute)
+  return has_set_attribute()
+      ? *op_.set_attribute_
+      : *reinterpret_cast< ::Acoustid::Server::PB::SetAttributeOp*>(&::Acoustid::Server::PB::_SetAttributeOp_default_instance_);
+}
+inline ::Acoustid::Server::PB::SetAttributeOp* Operation::mutable_set_attribute() {
+  if (!has_set_attribute()) {
+    clear_op();
+    set_has_set_attribute();
+    op_.set_attribute_ = CreateMaybeMessage< ::Acoustid::Server::PB::SetAttributeOp >(
+        GetArenaNoVirtual());
+  }
+  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.Operation.set_attribute)
+  return op_.set_attribute_;
+}
+
+inline bool Operation::has_op() const {
+  return op_case() != OP_NOT_SET;
+}
+inline void Operation::clear_has_op() {
+  _oneof_case_[0] = OP_NOT_SET;
+}
+inline Operation::OpCase Operation::op_case() const {
+  return Operation::OpCase(_oneof_case_[0]);
+}
+// -------------------------------------------------------------------
+
+// BulkUpdateRequest
+
+// string index_name = 1;
+inline void BulkUpdateRequest::clear_index_name() {
+  index_name_.ClearToEmptyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline const ::std::string& BulkUpdateRequest::index_name() const {
+  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.BulkUpdateRequest.index_name)
+  return index_name_.GetNoArena();
+}
+inline void BulkUpdateRequest::set_index_name(const ::std::string& value) {
+  
+  index_name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), value);
+  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.BulkUpdateRequest.index_name)
+}
+#if LANG_CXX11
+inline void BulkUpdateRequest::set_index_name(::std::string&& value) {
+  
+  index_name_.SetNoArena(
+    &::google::protobuf::internal::GetEmptyStringAlreadyInited(), ::std::move(value));
+  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.BulkUpdateRequest.index_name)
+}
+#endif
+inline void BulkUpdateRequest::set_index_name(const char* value) {
+  GOOGLE_DCHECK(value != NULL);
+  
+  index_name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), ::std::string(value));
+  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.BulkUpdateRequest.index_name)
+}
+inline void BulkUpdateRequest::set_index_name(const char* value, size_t size) {
+  
+  index_name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(),
+      ::std::string(reinterpret_cast<const char*>(value), size));
+  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.BulkUpdateRequest.index_name)
+}
+inline ::std::string* BulkUpdateRequest::mutable_index_name() {
+  
+  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.BulkUpdateRequest.index_name)
+  return index_name_.MutableNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline ::std::string* BulkUpdateRequest::release_index_name() {
+  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.BulkUpdateRequest.index_name)
+  
+  return index_name_.ReleaseNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline void BulkUpdateRequest::set_allocated_index_name(::std::string* index_name) {
+  if (index_name != NULL) {
+    
+  } else {
+    
+  }
+  index_name_.SetAllocatedNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), index_name);
+  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.BulkUpdateRequest.index_name)
+}
+
+// repeated .Acoustid.Server.PB.Operation ops = 2;
+inline int BulkUpdateRequest::ops_size() const {
+  return ops_.size();
+}
+inline void BulkUpdateRequest::clear_ops() {
+  ops_.Clear();
+}
+inline ::Acoustid::Server::PB::Operation* BulkUpdateRequest::mutable_ops(int index) {
+  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.BulkUpdateRequest.ops)
+  return ops_.Mutable(index);
+}
+inline ::google::protobuf::RepeatedPtrField< ::Acoustid::Server::PB::Operation >*
+BulkUpdateRequest::mutable_ops() {
+  // @@protoc_insertion_point(field_mutable_list:Acoustid.Server.PB.BulkUpdateRequest.ops)
+  return &ops_;
+}
+inline const ::Acoustid::Server::PB::Operation& BulkUpdateRequest::ops(int index) const {
+  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.BulkUpdateRequest.ops)
+  return ops_.Get(index);
+}
+inline ::Acoustid::Server::PB::Operation* BulkUpdateRequest::add_ops() {
+  // @@protoc_insertion_point(field_add:Acoustid.Server.PB.BulkUpdateRequest.ops)
+  return ops_.Add();
+}
+inline const ::google::protobuf::RepeatedPtrField< ::Acoustid::Server::PB::Operation >&
+BulkUpdateRequest::ops() const {
+  // @@protoc_insertion_point(field_list:Acoustid.Server.PB.BulkUpdateRequest.ops)
+  return ops_;
+}
+
+// -------------------------------------------------------------------
+
+// BulkUpdateResponse
+
+// -------------------------------------------------------------------
+
 // SearchResult
 
 // uint32 doc_id = 1;
@@ -599,6 +1756,18 @@ SearchResponse::results() const {
 #ifdef __GNUC__
   #pragma GCC diagnostic pop
 #endif  // __GNUC__
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
 // -------------------------------------------------------------------
 
 // -------------------------------------------------------------------

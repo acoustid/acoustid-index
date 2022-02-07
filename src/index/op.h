@@ -109,6 +109,7 @@ class OpBatch {
     void deleteDocument(uint32_t docId) { m_ops.emplace_back(DeleteDocument(docId)); }
 
     void setAttribute(const QString &name, const QString &value) { m_ops.emplace_back(SetAttribute(name, value)); }
+    void setAttribute(const std::string &name, const std::string &value) { setAttribute(QString::fromStdString(name), QString::fromStdString(value)); }
     QString getAttribute(const QString &name, const QString &defaultValue = QString()) const;
 
     void clear() { m_ops.clear(); }
