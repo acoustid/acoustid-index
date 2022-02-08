@@ -2,6 +2,15 @@ syntax = "proto3";
 
 package Acoustid.Server.PB;
 
+message GetAttributeRequest {
+  string index_name = 1;
+  string name = 2;
+}
+
+message GetAttributeResponse {
+  string value = 2;
+}
+
 message InsertOrUpdateDocumentOp {
   uint32 doc_id = 1;
   repeated uint32 terms = 2;
@@ -48,6 +57,7 @@ message SearchResponse {
 };
 
 service Index {
+    rpc GetAttribute(GetAttributeRequest) returns (GetAttributeResponse);
     rpc BulkUpdate(BulkUpdateRequest) returns (BulkUpdateResponse);
     rpc Search(SearchRequest) returns (SearchResponse);
 };
