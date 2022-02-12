@@ -38,7 +38,7 @@ namespace protobuf_index_2eproto {
 struct TableStruct {
   static const ::google::protobuf::internal::ParseTableField entries[];
   static const ::google::protobuf::internal::AuxillaryParseTableField aux[];
-  static const ::google::protobuf::internal::ParseTable schema[11];
+  static const ::google::protobuf::internal::ParseTable schema[13];
   static const ::google::protobuf::internal::FieldMetadata field_metadata[];
   static const ::google::protobuf::internal::SerializationTable serialization_table[];
   static const ::google::protobuf::uint32 offsets[];
@@ -63,6 +63,12 @@ extern GetAttributeRequestDefaultTypeInternal _GetAttributeRequest_default_insta
 class GetAttributeResponse;
 class GetAttributeResponseDefaultTypeInternal;
 extern GetAttributeResponseDefaultTypeInternal _GetAttributeResponse_default_instance_;
+class GetDocumentRequest;
+class GetDocumentRequestDefaultTypeInternal;
+extern GetDocumentRequestDefaultTypeInternal _GetDocumentRequest_default_instance_;
+class GetDocumentResponse;
+class GetDocumentResponseDefaultTypeInternal;
+extern GetDocumentResponseDefaultTypeInternal _GetDocumentResponse_default_instance_;
 class InsertOrUpdateDocumentOp;
 class InsertOrUpdateDocumentOpDefaultTypeInternal;
 extern InsertOrUpdateDocumentOpDefaultTypeInternal _InsertOrUpdateDocumentOp_default_instance_;
@@ -91,6 +97,8 @@ template<> ::Acoustid::Server::PB::BulkUpdateResponse* Arena::CreateMaybeMessage
 template<> ::Acoustid::Server::PB::DeleteDocumentOp* Arena::CreateMaybeMessage<::Acoustid::Server::PB::DeleteDocumentOp>(Arena*);
 template<> ::Acoustid::Server::PB::GetAttributeRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::GetAttributeRequest>(Arena*);
 template<> ::Acoustid::Server::PB::GetAttributeResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::GetAttributeResponse>(Arena*);
+template<> ::Acoustid::Server::PB::GetDocumentRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::GetDocumentRequest>(Arena*);
+template<> ::Acoustid::Server::PB::GetDocumentResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::GetDocumentResponse>(Arena*);
 template<> ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* Arena::CreateMaybeMessage<::Acoustid::Server::PB::InsertOrUpdateDocumentOp>(Arena*);
 template<> ::Acoustid::Server::PB::Operation* Arena::CreateMaybeMessage<::Acoustid::Server::PB::Operation>(Arena*);
 template<> ::Acoustid::Server::PB::SearchRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::SearchRequest>(Arena*);
@@ -104,6 +112,234 @@ namespace Server {
 namespace PB {
 
 // ===================================================================
+
+class GetDocumentRequest : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.GetDocumentRequest) */ {
+ public:
+  GetDocumentRequest();
+  virtual ~GetDocumentRequest();
+
+  GetDocumentRequest(const GetDocumentRequest& from);
+
+  inline GetDocumentRequest& operator=(const GetDocumentRequest& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  #if LANG_CXX11
+  GetDocumentRequest(GetDocumentRequest&& from) noexcept
+    : GetDocumentRequest() {
+    *this = ::std::move(from);
+  }
+
+  inline GetDocumentRequest& operator=(GetDocumentRequest&& from) noexcept {
+    if (GetArenaNoVirtual() == from.GetArenaNoVirtual()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+  #endif
+  static const ::google::protobuf::Descriptor* descriptor();
+  static const GetDocumentRequest& default_instance();
+
+  static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
+  static inline const GetDocumentRequest* internal_default_instance() {
+    return reinterpret_cast<const GetDocumentRequest*>(
+               &_GetDocumentRequest_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    0;
+
+  void Swap(GetDocumentRequest* other);
+  friend void swap(GetDocumentRequest& a, GetDocumentRequest& b) {
+    a.Swap(&b);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline GetDocumentRequest* New() const final {
+    return CreateMaybeMessage<GetDocumentRequest>(NULL);
+  }
+
+  GetDocumentRequest* New(::google::protobuf::Arena* arena) const final {
+    return CreateMaybeMessage<GetDocumentRequest>(arena);
+  }
+  void CopyFrom(const ::google::protobuf::Message& from) final;
+  void MergeFrom(const ::google::protobuf::Message& from) final;
+  void CopyFrom(const GetDocumentRequest& from);
+  void MergeFrom(const GetDocumentRequest& from);
+  void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input) final;
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const final;
+  ::google::protobuf::uint8* InternalSerializeWithCachedSizesToArray(
+      bool deterministic, ::google::protobuf::uint8* target) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(GetDocumentRequest* other);
+  private:
+  inline ::google::protobuf::Arena* GetArenaNoVirtual() const {
+    return NULL;
+  }
+  inline void* MaybeArenaPtr() const {
+    return NULL;
+  }
+  public:
+
+  ::google::protobuf::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // string index_name = 1;
+  void clear_index_name();
+  static const int kIndexNameFieldNumber = 1;
+  const ::std::string& index_name() const;
+  void set_index_name(const ::std::string& value);
+  #if LANG_CXX11
+  void set_index_name(::std::string&& value);
+  #endif
+  void set_index_name(const char* value);
+  void set_index_name(const char* value, size_t size);
+  ::std::string* mutable_index_name();
+  ::std::string* release_index_name();
+  void set_allocated_index_name(::std::string* index_name);
+
+  // uint32 doc_id = 2;
+  void clear_doc_id();
+  static const int kDocIdFieldNumber = 2;
+  ::google::protobuf::uint32 doc_id() const;
+  void set_doc_id(::google::protobuf::uint32 value);
+
+  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.GetDocumentRequest)
+ private:
+
+  ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
+  ::google::protobuf::internal::ArenaStringPtr index_name_;
+  ::google::protobuf::uint32 doc_id_;
+  mutable ::google::protobuf::internal::CachedSize _cached_size_;
+  friend struct ::protobuf_index_2eproto::TableStruct;
+};
+// -------------------------------------------------------------------
+
+class GetDocumentResponse : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.GetDocumentResponse) */ {
+ public:
+  GetDocumentResponse();
+  virtual ~GetDocumentResponse();
+
+  GetDocumentResponse(const GetDocumentResponse& from);
+
+  inline GetDocumentResponse& operator=(const GetDocumentResponse& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  #if LANG_CXX11
+  GetDocumentResponse(GetDocumentResponse&& from) noexcept
+    : GetDocumentResponse() {
+    *this = ::std::move(from);
+  }
+
+  inline GetDocumentResponse& operator=(GetDocumentResponse&& from) noexcept {
+    if (GetArenaNoVirtual() == from.GetArenaNoVirtual()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+  #endif
+  static const ::google::protobuf::Descriptor* descriptor();
+  static const GetDocumentResponse& default_instance();
+
+  static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
+  static inline const GetDocumentResponse* internal_default_instance() {
+    return reinterpret_cast<const GetDocumentResponse*>(
+               &_GetDocumentResponse_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    1;
+
+  void Swap(GetDocumentResponse* other);
+  friend void swap(GetDocumentResponse& a, GetDocumentResponse& b) {
+    a.Swap(&b);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline GetDocumentResponse* New() const final {
+    return CreateMaybeMessage<GetDocumentResponse>(NULL);
+  }
+
+  GetDocumentResponse* New(::google::protobuf::Arena* arena) const final {
+    return CreateMaybeMessage<GetDocumentResponse>(arena);
+  }
+  void CopyFrom(const ::google::protobuf::Message& from) final;
+  void MergeFrom(const ::google::protobuf::Message& from) final;
+  void CopyFrom(const GetDocumentResponse& from);
+  void MergeFrom(const GetDocumentResponse& from);
+  void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input) final;
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const final;
+  ::google::protobuf::uint8* InternalSerializeWithCachedSizesToArray(
+      bool deterministic, ::google::protobuf::uint8* target) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(GetDocumentResponse* other);
+  private:
+  inline ::google::protobuf::Arena* GetArenaNoVirtual() const {
+    return NULL;
+  }
+  inline void* MaybeArenaPtr() const {
+    return NULL;
+  }
+  public:
+
+  ::google::protobuf::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // repeated uint32 terms = 2;
+  int terms_size() const;
+  void clear_terms();
+  static const int kTermsFieldNumber = 2;
+  ::google::protobuf::uint32 terms(int index) const;
+  void set_terms(int index, ::google::protobuf::uint32 value);
+  void add_terms(::google::protobuf::uint32 value);
+  const ::google::protobuf::RepeatedField< ::google::protobuf::uint32 >&
+      terms() const;
+  ::google::protobuf::RepeatedField< ::google::protobuf::uint32 >*
+      mutable_terms();
+
+  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.GetDocumentResponse)
+ private:
+
+  ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
+  ::google::protobuf::RepeatedField< ::google::protobuf::uint32 > terms_;
+  mutable int _terms_cached_byte_size_;
+  mutable ::google::protobuf::internal::CachedSize _cached_size_;
+  friend struct ::protobuf_index_2eproto::TableStruct;
+};
+// -------------------------------------------------------------------
 
 class GetAttributeRequest : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.GetAttributeRequest) */ {
  public:
@@ -140,7 +376,7 @@ class GetAttributeRequest : public ::google::protobuf::Message /* @@protoc_inser
                &_GetAttributeRequest_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    0;
+    2;
 
   void Swap(GetAttributeRequest* other);
   friend void swap(GetAttributeRequest& a, GetAttributeRequest& b) {
@@ -266,7 +502,7 @@ class GetAttributeResponse : public ::google::protobuf::Message /* @@protoc_inse
                &_GetAttributeResponse_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    1;
+    3;
 
   void Swap(GetAttributeResponse* other);
   friend void swap(GetAttributeResponse& a, GetAttributeResponse& b) {
@@ -377,7 +613,7 @@ class InsertOrUpdateDocumentOp : public ::google::protobuf::Message /* @@protoc_
                &_InsertOrUpdateDocumentOp_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    2;
+    4;
 
   void Swap(InsertOrUpdateDocumentOp* other);
   friend void swap(InsertOrUpdateDocumentOp& a, InsertOrUpdateDocumentOp& b) {
@@ -494,7 +730,7 @@ class DeleteDocumentOp : public ::google::protobuf::Message /* @@protoc_insertio
                &_DeleteDocumentOp_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    3;
+    5;
 
   void Swap(DeleteDocumentOp* other);
   friend void swap(DeleteDocumentOp& a, DeleteDocumentOp& b) {
@@ -597,7 +833,7 @@ class SetAttributeOp : public ::google::protobuf::Message /* @@protoc_insertion_
                &_SetAttributeOp_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    4;
+    6;
 
   void Swap(SetAttributeOp* other);
   friend void swap(SetAttributeOp& a, SetAttributeOp& b) {
@@ -730,7 +966,7 @@ class Operation : public ::google::protobuf::Message /* @@protoc_insertion_point
                &_Operation_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    5;
+    7;
 
   void Swap(Operation* other);
   friend void swap(Operation& a, Operation& b) {
@@ -878,7 +1114,7 @@ class BulkUpdateRequest : public ::google::protobuf::Message /* @@protoc_inserti
                &_BulkUpdateRequest_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    6;
+    8;
 
   void Swap(BulkUpdateRequest* other);
   friend void swap(BulkUpdateRequest& a, BulkUpdateRequest& b) {
@@ -1002,7 +1238,7 @@ class BulkUpdateResponse : public ::google::protobuf::Message /* @@protoc_insert
                &_BulkUpdateResponse_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    7;
+    9;
 
   void Swap(BulkUpdateResponse* other);
   friend void swap(BulkUpdateResponse& a, BulkUpdateResponse& b) {
@@ -1098,7 +1334,7 @@ class SearchResult : public ::google::protobuf::Message /* @@protoc_insertion_po
                &_SearchResult_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    8;
+    10;
 
   void Swap(SearchResult* other);
   friend void swap(SearchResult& a, SearchResult& b) {
@@ -1208,7 +1444,7 @@ class SearchRequest : public ::google::protobuf::Message /* @@protoc_insertion_p
                &_SearchRequest_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    9;
+    11;
 
   void Swap(SearchRequest* other);
   friend void swap(SearchRequest& a, SearchRequest& b) {
@@ -1340,7 +1576,7 @@ class SearchResponse : public ::google::protobuf::Message /* @@protoc_insertion_
                &_SearchResponse_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    10;
+    12;
 
   void Swap(SearchResponse* other);
   friend void swap(SearchResponse& a, SearchResponse& b) {
@@ -1421,6 +1657,111 @@ class SearchResponse : public ::google::protobuf::Message /* @@protoc_insertion_
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif  // __GNUC__
+// GetDocumentRequest
+
+// string index_name = 1;
+inline void GetDocumentRequest::clear_index_name() {
+  index_name_.ClearToEmptyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline const ::std::string& GetDocumentRequest::index_name() const {
+  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.GetDocumentRequest.index_name)
+  return index_name_.GetNoArena();
+}
+inline void GetDocumentRequest::set_index_name(const ::std::string& value) {
+  
+  index_name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), value);
+  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.GetDocumentRequest.index_name)
+}
+#if LANG_CXX11
+inline void GetDocumentRequest::set_index_name(::std::string&& value) {
+  
+  index_name_.SetNoArena(
+    &::google::protobuf::internal::GetEmptyStringAlreadyInited(), ::std::move(value));
+  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.GetDocumentRequest.index_name)
+}
+#endif
+inline void GetDocumentRequest::set_index_name(const char* value) {
+  GOOGLE_DCHECK(value != NULL);
+  
+  index_name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), ::std::string(value));
+  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.GetDocumentRequest.index_name)
+}
+inline void GetDocumentRequest::set_index_name(const char* value, size_t size) {
+  
+  index_name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(),
+      ::std::string(reinterpret_cast<const char*>(value), size));
+  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.GetDocumentRequest.index_name)
+}
+inline ::std::string* GetDocumentRequest::mutable_index_name() {
+  
+  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.GetDocumentRequest.index_name)
+  return index_name_.MutableNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline ::std::string* GetDocumentRequest::release_index_name() {
+  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.GetDocumentRequest.index_name)
+  
+  return index_name_.ReleaseNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline void GetDocumentRequest::set_allocated_index_name(::std::string* index_name) {
+  if (index_name != NULL) {
+    
+  } else {
+    
+  }
+  index_name_.SetAllocatedNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), index_name);
+  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.GetDocumentRequest.index_name)
+}
+
+// uint32 doc_id = 2;
+inline void GetDocumentRequest::clear_doc_id() {
+  doc_id_ = 0u;
+}
+inline ::google::protobuf::uint32 GetDocumentRequest::doc_id() const {
+  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.GetDocumentRequest.doc_id)
+  return doc_id_;
+}
+inline void GetDocumentRequest::set_doc_id(::google::protobuf::uint32 value) {
+  
+  doc_id_ = value;
+  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.GetDocumentRequest.doc_id)
+}
+
+// -------------------------------------------------------------------
+
+// GetDocumentResponse
+
+// repeated uint32 terms = 2;
+inline int GetDocumentResponse::terms_size() const {
+  return terms_.size();
+}
+inline void GetDocumentResponse::clear_terms() {
+  terms_.Clear();
+}
+inline ::google::protobuf::uint32 GetDocumentResponse::terms(int index) const {
+  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.GetDocumentResponse.terms)
+  return terms_.Get(index);
+}
+inline void GetDocumentResponse::set_terms(int index, ::google::protobuf::uint32 value) {
+  terms_.Set(index, value);
+  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.GetDocumentResponse.terms)
+}
+inline void GetDocumentResponse::add_terms(::google::protobuf::uint32 value) {
+  terms_.Add(value);
+  // @@protoc_insertion_point(field_add:Acoustid.Server.PB.GetDocumentResponse.terms)
+}
+inline const ::google::protobuf::RepeatedField< ::google::protobuf::uint32 >&
+GetDocumentResponse::terms() const {
+  // @@protoc_insertion_point(field_list:Acoustid.Server.PB.GetDocumentResponse.terms)
+  return terms_;
+}
+inline ::google::protobuf::RepeatedField< ::google::protobuf::uint32 >*
+GetDocumentResponse::mutable_terms() {
+  // @@protoc_insertion_point(field_mutable_list:Acoustid.Server.PB.GetDocumentResponse.terms)
+  return &terms_;
+}
+
+// -------------------------------------------------------------------
+
 // GetAttributeRequest
 
 // string index_name = 1;
@@ -2168,6 +2509,10 @@ SearchResponse::results() const {
 #ifdef __GNUC__
   #pragma GCC diagnostic pop
 #endif  // __GNUC__
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
 // -------------------------------------------------------------------
 
 // -------------------------------------------------------------------

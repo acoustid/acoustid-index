@@ -29,6 +29,16 @@ extern PROTOBUF_INTERNAL_EXPORT_protobuf_index_2eproto ::google::protobuf::inter
 namespace Acoustid {
 namespace Server {
 namespace PB {
+class GetDocumentRequestDefaultTypeInternal {
+ public:
+  ::google::protobuf::internal::ExplicitlyConstructed<GetDocumentRequest>
+      _instance;
+} _GetDocumentRequest_default_instance_;
+class GetDocumentResponseDefaultTypeInternal {
+ public:
+  ::google::protobuf::internal::ExplicitlyConstructed<GetDocumentResponse>
+      _instance;
+} _GetDocumentResponse_default_instance_;
 class GetAttributeRequestDefaultTypeInternal {
  public:
   ::google::protobuf::internal::ExplicitlyConstructed<GetAttributeRequest>
@@ -91,6 +101,34 @@ class SearchResponseDefaultTypeInternal {
 }  // namespace Server
 }  // namespace Acoustid
 namespace protobuf_index_2eproto {
+static void InitDefaultsGetDocumentRequest() {
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+
+  {
+    void* ptr = &::Acoustid::Server::PB::_GetDocumentRequest_default_instance_;
+    new (ptr) ::Acoustid::Server::PB::GetDocumentRequest();
+    ::google::protobuf::internal::OnShutdownDestroyMessage(ptr);
+  }
+  ::Acoustid::Server::PB::GetDocumentRequest::InitAsDefaultInstance();
+}
+
+::google::protobuf::internal::SCCInfo<0> scc_info_GetDocumentRequest =
+    {{ATOMIC_VAR_INIT(::google::protobuf::internal::SCCInfoBase::kUninitialized), 0, InitDefaultsGetDocumentRequest}, {}};
+
+static void InitDefaultsGetDocumentResponse() {
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+
+  {
+    void* ptr = &::Acoustid::Server::PB::_GetDocumentResponse_default_instance_;
+    new (ptr) ::Acoustid::Server::PB::GetDocumentResponse();
+    ::google::protobuf::internal::OnShutdownDestroyMessage(ptr);
+  }
+  ::Acoustid::Server::PB::GetDocumentResponse::InitAsDefaultInstance();
+}
+
+::google::protobuf::internal::SCCInfo<0> scc_info_GetDocumentResponse =
+    {{ATOMIC_VAR_INIT(::google::protobuf::internal::SCCInfoBase::kUninitialized), 0, InitDefaultsGetDocumentResponse}, {}};
+
 static void InitDefaultsGetAttributeRequest() {
   GOOGLE_PROTOBUF_VERIFY_VERSION;
 
@@ -251,6 +289,8 @@ static void InitDefaultsSearchResponse() {
       &protobuf_index_2eproto::scc_info_SearchResult.base,}};
 
 void InitDefaults() {
+  ::google::protobuf::internal::InitSCC(&scc_info_GetDocumentRequest.base);
+  ::google::protobuf::internal::InitSCC(&scc_info_GetDocumentResponse.base);
   ::google::protobuf::internal::InitSCC(&scc_info_GetAttributeRequest.base);
   ::google::protobuf::internal::InitSCC(&scc_info_GetAttributeResponse.base);
   ::google::protobuf::internal::InitSCC(&scc_info_InsertOrUpdateDocumentOp.base);
@@ -264,9 +304,22 @@ void InitDefaults() {
   ::google::protobuf::internal::InitSCC(&scc_info_SearchResponse.base);
 }
 
-::google::protobuf::Metadata file_level_metadata[11];
+::google::protobuf::Metadata file_level_metadata[13];
 
 const ::google::protobuf::uint32 TableStruct::offsets[] GOOGLE_PROTOBUF_ATTRIBUTE_SECTION_VARIABLE(protodesc_cold) = {
+  ~0u,  // no _has_bits_
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::GetDocumentRequest, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::GetDocumentRequest, index_name_),
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::GetDocumentRequest, doc_id_),
+  ~0u,  // no _has_bits_
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::GetDocumentResponse, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::GetDocumentResponse, terms_),
   ~0u,  // no _has_bits_
   GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::GetAttributeRequest, _internal_metadata_),
   ~0u,  // no _extensions_
@@ -344,20 +397,24 @@ const ::google::protobuf::uint32 TableStruct::offsets[] GOOGLE_PROTOBUF_ATTRIBUT
   GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::SearchResponse, results_),
 };
 static const ::google::protobuf::internal::MigrationSchema schemas[] GOOGLE_PROTOBUF_ATTRIBUTE_SECTION_VARIABLE(protodesc_cold) = {
-  { 0, -1, sizeof(::Acoustid::Server::PB::GetAttributeRequest)},
-  { 7, -1, sizeof(::Acoustid::Server::PB::GetAttributeResponse)},
-  { 13, -1, sizeof(::Acoustid::Server::PB::InsertOrUpdateDocumentOp)},
-  { 20, -1, sizeof(::Acoustid::Server::PB::DeleteDocumentOp)},
-  { 26, -1, sizeof(::Acoustid::Server::PB::SetAttributeOp)},
-  { 33, -1, sizeof(::Acoustid::Server::PB::Operation)},
-  { 42, -1, sizeof(::Acoustid::Server::PB::BulkUpdateRequest)},
-  { 49, -1, sizeof(::Acoustid::Server::PB::BulkUpdateResponse)},
-  { 54, -1, sizeof(::Acoustid::Server::PB::SearchResult)},
-  { 61, -1, sizeof(::Acoustid::Server::PB::SearchRequest)},
-  { 69, -1, sizeof(::Acoustid::Server::PB::SearchResponse)},
+  { 0, -1, sizeof(::Acoustid::Server::PB::GetDocumentRequest)},
+  { 7, -1, sizeof(::Acoustid::Server::PB::GetDocumentResponse)},
+  { 13, -1, sizeof(::Acoustid::Server::PB::GetAttributeRequest)},
+  { 20, -1, sizeof(::Acoustid::Server::PB::GetAttributeResponse)},
+  { 26, -1, sizeof(::Acoustid::Server::PB::InsertOrUpdateDocumentOp)},
+  { 33, -1, sizeof(::Acoustid::Server::PB::DeleteDocumentOp)},
+  { 39, -1, sizeof(::Acoustid::Server::PB::SetAttributeOp)},
+  { 46, -1, sizeof(::Acoustid::Server::PB::Operation)},
+  { 55, -1, sizeof(::Acoustid::Server::PB::BulkUpdateRequest)},
+  { 62, -1, sizeof(::Acoustid::Server::PB::BulkUpdateResponse)},
+  { 67, -1, sizeof(::Acoustid::Server::PB::SearchResult)},
+  { 74, -1, sizeof(::Acoustid::Server::PB::SearchRequest)},
+  { 82, -1, sizeof(::Acoustid::Server::PB::SearchResponse)},
 };
 
 static ::google::protobuf::Message const * const file_default_instances[] = {
+  reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_GetDocumentRequest_default_instance_),
+  reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_GetDocumentResponse_default_instance_),
   reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_GetAttributeRequest_default_instance_),
   reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_GetAttributeResponse_default_instance_),
   reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_InsertOrUpdateDocumentOp_default_instance_),
@@ -386,43 +443,47 @@ void protobuf_AssignDescriptorsOnce() {
 void protobuf_RegisterTypes(const ::std::string&) GOOGLE_PROTOBUF_ATTRIBUTE_COLD;
 void protobuf_RegisterTypes(const ::std::string&) {
   protobuf_AssignDescriptorsOnce();
-  ::google::protobuf::internal::RegisterAllTypes(file_level_metadata, 11);
+  ::google::protobuf::internal::RegisterAllTypes(file_level_metadata, 13);
 }
 
 void AddDescriptorsImpl() {
   InitDefaults();
   static const char descriptor[] GOOGLE_PROTOBUF_ATTRIBUTE_SECTION_VARIABLE(protodesc_cold) = {
-      "\n\013index.proto\022\022Acoustid.Server.PB\"7\n\023Get"
-      "AttributeRequest\022\022\n\nindex_name\030\001 \001(\t\022\014\n\004"
-      "name\030\002 \001(\t\"%\n\024GetAttributeResponse\022\r\n\005va"
-      "lue\030\002 \001(\t\"9\n\030InsertOrUpdateDocumentOp\022\016\n"
-      "\006doc_id\030\001 \001(\r\022\r\n\005terms\030\002 \003(\r\"\"\n\020DeleteDo"
-      "cumentOp\022\016\n\006doc_id\030\001 \001(\r\"-\n\016SetAttribute"
-      "Op\022\014\n\004name\030\001 \001(\t\022\r\n\005value\030\002 \001(\t\"\342\001\n\tOper"
-      "ation\022Q\n\031insert_or_update_document\030\001 \001(\013"
-      "2,.Acoustid.Server.PB.InsertOrUpdateDocu"
-      "mentOpH\000\022\?\n\017delete_document\030\002 \001(\0132$.Acou"
-      "stid.Server.PB.DeleteDocumentOpH\000\022;\n\rset"
-      "_attribute\030\003 \001(\0132\".Acoustid.Server.PB.Se"
-      "tAttributeOpH\000B\004\n\002op\"S\n\021BulkUpdateReques"
-      "t\022\022\n\nindex_name\030\001 \001(\t\022*\n\003ops\030\002 \003(\0132\035.Aco"
-      "ustid.Server.PB.Operation\"\024\n\022BulkUpdateR"
-      "esponse\"-\n\014SearchResult\022\016\n\006doc_id\030\001 \001(\r\022"
-      "\r\n\005score\030\002 \001(\002\"G\n\rSearchRequest\022\022\n\nindex"
-      "_name\030\001 \001(\t\022\r\n\005terms\030\002 \003(\r\022\023\n\013max_result"
-      "s\030\003 \001(\005\"C\n\016SearchResponse\0221\n\007results\030\001 \003"
-      "(\0132 .Acoustid.Server.PB.SearchResult2\230\002\n"
-      "\005Index\022a\n\014GetAttribute\022\'.Acoustid.Server"
-      ".PB.GetAttributeRequest\032(.Acoustid.Serve"
-      "r.PB.GetAttributeResponse\022[\n\nBulkUpdate\022"
-      "%.Acoustid.Server.PB.BulkUpdateRequest\032&"
-      ".Acoustid.Server.PB.BulkUpdateResponse\022O"
-      "\n\006Search\022!.Acoustid.Server.PB.SearchRequ"
-      "est\032\".Acoustid.Server.PB.SearchResponseb"
-      "\006proto3"
+      "\n\013index.proto\022\022Acoustid.Server.PB\"8\n\022Get"
+      "DocumentRequest\022\022\n\nindex_name\030\001 \001(\t\022\016\n\006d"
+      "oc_id\030\002 \001(\r\"$\n\023GetDocumentResponse\022\r\n\005te"
+      "rms\030\002 \003(\r\"7\n\023GetAttributeRequest\022\022\n\ninde"
+      "x_name\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\"%\n\024GetAttribu"
+      "teResponse\022\r\n\005value\030\002 \001(\t\"9\n\030InsertOrUpd"
+      "ateDocumentOp\022\016\n\006doc_id\030\001 \001(\r\022\r\n\005terms\030\002"
+      " \003(\r\"\"\n\020DeleteDocumentOp\022\016\n\006doc_id\030\001 \001(\r"
+      "\"-\n\016SetAttributeOp\022\014\n\004name\030\001 \001(\t\022\r\n\005valu"
+      "e\030\002 \001(\t\"\342\001\n\tOperation\022Q\n\031insert_or_updat"
+      "e_document\030\001 \001(\0132,.Acoustid.Server.PB.In"
+      "sertOrUpdateDocumentOpH\000\022\?\n\017delete_docum"
+      "ent\030\002 \001(\0132$.Acoustid.Server.PB.DeleteDoc"
+      "umentOpH\000\022;\n\rset_attribute\030\003 \001(\0132\".Acous"
+      "tid.Server.PB.SetAttributeOpH\000B\004\n\002op\"S\n\021"
+      "BulkUpdateRequest\022\022\n\nindex_name\030\001 \001(\t\022*\n"
+      "\003ops\030\002 \003(\0132\035.Acoustid.Server.PB.Operatio"
+      "n\"\024\n\022BulkUpdateResponse\"-\n\014SearchResult\022"
+      "\016\n\006doc_id\030\001 \001(\r\022\r\n\005score\030\002 \001(\002\"G\n\rSearch"
+      "Request\022\022\n\nindex_name\030\001 \001(\t\022\r\n\005terms\030\002 \003"
+      "(\r\022\023\n\013max_results\030\003 \001(\005\"C\n\016SearchRespons"
+      "e\0221\n\007results\030\001 \003(\0132 .Acoustid.Server.PB."
+      "SearchResult2\370\002\n\005Index\022^\n\013GetDocument\022&."
+      "Acoustid.Server.PB.GetDocumentRequest\032\'."
+      "Acoustid.Server.PB.GetDocumentResponse\022a"
+      "\n\014GetAttribute\022\'.Acoustid.Server.PB.GetA"
+      "ttributeRequest\032(.Acoustid.Server.PB.Get"
+      "AttributeResponse\022[\n\nBulkUpdate\022%.Acoust"
+      "id.Server.PB.BulkUpdateRequest\032&.Acousti"
+      "d.Server.PB.BulkUpdateResponse\022O\n\006Search"
+      "\022!.Acoustid.Server.PB.SearchRequest\032\".Ac"
+      "oustid.Server.PB.SearchResponseb\006proto3"
   };
   ::google::protobuf::DescriptorPool::InternalAddGeneratedFile(
-      descriptor, 1087);
+      descriptor, 1279);
   ::google::protobuf::MessageFactory::InternalRegisterGeneratedFile(
     "index.proto", &protobuf_RegisterTypes);
 }
@@ -441,6 +502,535 @@ struct StaticDescriptorInitializer {
 namespace Acoustid {
 namespace Server {
 namespace PB {
+
+// ===================================================================
+
+void GetDocumentRequest::InitAsDefaultInstance() {
+}
+#if !defined(_MSC_VER) || _MSC_VER >= 1900
+const int GetDocumentRequest::kIndexNameFieldNumber;
+const int GetDocumentRequest::kDocIdFieldNumber;
+#endif  // !defined(_MSC_VER) || _MSC_VER >= 1900
+
+GetDocumentRequest::GetDocumentRequest()
+  : ::google::protobuf::Message(), _internal_metadata_(NULL) {
+  ::google::protobuf::internal::InitSCC(
+      &protobuf_index_2eproto::scc_info_GetDocumentRequest.base);
+  SharedCtor();
+  // @@protoc_insertion_point(constructor:Acoustid.Server.PB.GetDocumentRequest)
+}
+GetDocumentRequest::GetDocumentRequest(const GetDocumentRequest& from)
+  : ::google::protobuf::Message(),
+      _internal_metadata_(NULL) {
+  _internal_metadata_.MergeFrom(from._internal_metadata_);
+  index_name_.UnsafeSetDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+  if (from.index_name().size() > 0) {
+    index_name_.AssignWithDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), from.index_name_);
+  }
+  doc_id_ = from.doc_id_;
+  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.GetDocumentRequest)
+}
+
+void GetDocumentRequest::SharedCtor() {
+  index_name_.UnsafeSetDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+  doc_id_ = 0u;
+}
+
+GetDocumentRequest::~GetDocumentRequest() {
+  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.GetDocumentRequest)
+  SharedDtor();
+}
+
+void GetDocumentRequest::SharedDtor() {
+  index_name_.DestroyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+
+void GetDocumentRequest::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+const ::google::protobuf::Descriptor* GetDocumentRequest::descriptor() {
+  ::protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
+  return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages].descriptor;
+}
+
+const GetDocumentRequest& GetDocumentRequest::default_instance() {
+  ::google::protobuf::internal::InitSCC(&protobuf_index_2eproto::scc_info_GetDocumentRequest.base);
+  return *internal_default_instance();
+}
+
+
+void GetDocumentRequest::Clear() {
+// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.GetDocumentRequest)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  index_name_.ClearToEmptyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+  doc_id_ = 0u;
+  _internal_metadata_.Clear();
+}
+
+bool GetDocumentRequest::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+#define DO_(EXPRESSION) if (!GOOGLE_PREDICT_TRUE(EXPRESSION)) goto failure
+  ::google::protobuf::uint32 tag;
+  // @@protoc_insertion_point(parse_start:Acoustid.Server.PB.GetDocumentRequest)
+  for (;;) {
+    ::std::pair<::google::protobuf::uint32, bool> p = input->ReadTagWithCutoffNoLastTag(127u);
+    tag = p.first;
+    if (!p.second) goto handle_unusual;
+    switch (::google::protobuf::internal::WireFormatLite::GetTagFieldNumber(tag)) {
+      // string index_name = 1;
+      case 1: {
+        if (static_cast< ::google::protobuf::uint8>(tag) ==
+            static_cast< ::google::protobuf::uint8>(10u /* 10 & 0xFF */)) {
+          DO_(::google::protobuf::internal::WireFormatLite::ReadString(
+                input, this->mutable_index_name()));
+          DO_(::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+            this->index_name().data(), static_cast<int>(this->index_name().length()),
+            ::google::protobuf::internal::WireFormatLite::PARSE,
+            "Acoustid.Server.PB.GetDocumentRequest.index_name"));
+        } else {
+          goto handle_unusual;
+        }
+        break;
+      }
+
+      // uint32 doc_id = 2;
+      case 2: {
+        if (static_cast< ::google::protobuf::uint8>(tag) ==
+            static_cast< ::google::protobuf::uint8>(16u /* 16 & 0xFF */)) {
+
+          DO_((::google::protobuf::internal::WireFormatLite::ReadPrimitive<
+                   ::google::protobuf::uint32, ::google::protobuf::internal::WireFormatLite::TYPE_UINT32>(
+                 input, &doc_id_)));
+        } else {
+          goto handle_unusual;
+        }
+        break;
+      }
+
+      default: {
+      handle_unusual:
+        if (tag == 0) {
+          goto success;
+        }
+        DO_(::google::protobuf::internal::WireFormat::SkipField(
+              input, tag, _internal_metadata_.mutable_unknown_fields()));
+        break;
+      }
+    }
+  }
+success:
+  // @@protoc_insertion_point(parse_success:Acoustid.Server.PB.GetDocumentRequest)
+  return true;
+failure:
+  // @@protoc_insertion_point(parse_failure:Acoustid.Server.PB.GetDocumentRequest)
+  return false;
+#undef DO_
+}
+
+void GetDocumentRequest::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  // @@protoc_insertion_point(serialize_start:Acoustid.Server.PB.GetDocumentRequest)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // string index_name = 1;
+  if (this->index_name().size() > 0) {
+    ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+      this->index_name().data(), static_cast<int>(this->index_name().length()),
+      ::google::protobuf::internal::WireFormatLite::SERIALIZE,
+      "Acoustid.Server.PB.GetDocumentRequest.index_name");
+    ::google::protobuf::internal::WireFormatLite::WriteStringMaybeAliased(
+      1, this->index_name(), output);
+  }
+
+  // uint32 doc_id = 2;
+  if (this->doc_id() != 0) {
+    ::google::protobuf::internal::WireFormatLite::WriteUInt32(2, this->doc_id(), output);
+  }
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    ::google::protobuf::internal::WireFormat::SerializeUnknownFields(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), output);
+  }
+  // @@protoc_insertion_point(serialize_end:Acoustid.Server.PB.GetDocumentRequest)
+}
+
+::google::protobuf::uint8* GetDocumentRequest::InternalSerializeWithCachedSizesToArray(
+    bool deterministic, ::google::protobuf::uint8* target) const {
+  (void)deterministic; // Unused
+  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.GetDocumentRequest)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // string index_name = 1;
+  if (this->index_name().size() > 0) {
+    ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
+      this->index_name().data(), static_cast<int>(this->index_name().length()),
+      ::google::protobuf::internal::WireFormatLite::SERIALIZE,
+      "Acoustid.Server.PB.GetDocumentRequest.index_name");
+    target =
+      ::google::protobuf::internal::WireFormatLite::WriteStringToArray(
+        1, this->index_name(), target);
+  }
+
+  // uint32 doc_id = 2;
+  if (this->doc_id() != 0) {
+    target = ::google::protobuf::internal::WireFormatLite::WriteUInt32ToArray(2, this->doc_id(), target);
+  }
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    target = ::google::protobuf::internal::WireFormat::SerializeUnknownFieldsToArray(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), target);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.GetDocumentRequest)
+  return target;
+}
+
+size_t GetDocumentRequest::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.GetDocumentRequest)
+  size_t total_size = 0;
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    total_size +=
+      ::google::protobuf::internal::WireFormat::ComputeUnknownFieldsSize(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()));
+  }
+  // string index_name = 1;
+  if (this->index_name().size() > 0) {
+    total_size += 1 +
+      ::google::protobuf::internal::WireFormatLite::StringSize(
+        this->index_name());
+  }
+
+  // uint32 doc_id = 2;
+  if (this->doc_id() != 0) {
+    total_size += 1 +
+      ::google::protobuf::internal::WireFormatLite::UInt32Size(
+        this->doc_id());
+  }
+
+  int cached_size = ::google::protobuf::internal::ToCachedSize(total_size);
+  SetCachedSize(cached_size);
+  return total_size;
+}
+
+void GetDocumentRequest::MergeFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.GetDocumentRequest)
+  GOOGLE_DCHECK_NE(&from, this);
+  const GetDocumentRequest* source =
+      ::google::protobuf::internal::DynamicCastToGenerated<const GetDocumentRequest>(
+          &from);
+  if (source == NULL) {
+  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.GetDocumentRequest)
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.GetDocumentRequest)
+    MergeFrom(*source);
+  }
+}
+
+void GetDocumentRequest::MergeFrom(const GetDocumentRequest& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.GetDocumentRequest)
+  GOOGLE_DCHECK_NE(&from, this);
+  _internal_metadata_.MergeFrom(from._internal_metadata_);
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if (from.index_name().size() > 0) {
+
+    index_name_.AssignWithDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), from.index_name_);
+  }
+  if (from.doc_id() != 0) {
+    set_doc_id(from.doc_id());
+  }
+}
+
+void GetDocumentRequest::CopyFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.GetDocumentRequest)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void GetDocumentRequest::CopyFrom(const GetDocumentRequest& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.GetDocumentRequest)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool GetDocumentRequest::IsInitialized() const {
+  return true;
+}
+
+void GetDocumentRequest::Swap(GetDocumentRequest* other) {
+  if (other == this) return;
+  InternalSwap(other);
+}
+void GetDocumentRequest::InternalSwap(GetDocumentRequest* other) {
+  using std::swap;
+  index_name_.Swap(&other->index_name_, &::google::protobuf::internal::GetEmptyStringAlreadyInited(),
+    GetArenaNoVirtual());
+  swap(doc_id_, other->doc_id_);
+  _internal_metadata_.Swap(&other->_internal_metadata_);
+}
+
+::google::protobuf::Metadata GetDocumentRequest::GetMetadata() const {
+  protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
+  return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages];
+}
+
+
+// ===================================================================
+
+void GetDocumentResponse::InitAsDefaultInstance() {
+}
+#if !defined(_MSC_VER) || _MSC_VER >= 1900
+const int GetDocumentResponse::kTermsFieldNumber;
+#endif  // !defined(_MSC_VER) || _MSC_VER >= 1900
+
+GetDocumentResponse::GetDocumentResponse()
+  : ::google::protobuf::Message(), _internal_metadata_(NULL) {
+  ::google::protobuf::internal::InitSCC(
+      &protobuf_index_2eproto::scc_info_GetDocumentResponse.base);
+  SharedCtor();
+  // @@protoc_insertion_point(constructor:Acoustid.Server.PB.GetDocumentResponse)
+}
+GetDocumentResponse::GetDocumentResponse(const GetDocumentResponse& from)
+  : ::google::protobuf::Message(),
+      _internal_metadata_(NULL),
+      terms_(from.terms_) {
+  _internal_metadata_.MergeFrom(from._internal_metadata_);
+  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.GetDocumentResponse)
+}
+
+void GetDocumentResponse::SharedCtor() {
+}
+
+GetDocumentResponse::~GetDocumentResponse() {
+  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.GetDocumentResponse)
+  SharedDtor();
+}
+
+void GetDocumentResponse::SharedDtor() {
+}
+
+void GetDocumentResponse::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+const ::google::protobuf::Descriptor* GetDocumentResponse::descriptor() {
+  ::protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
+  return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages].descriptor;
+}
+
+const GetDocumentResponse& GetDocumentResponse::default_instance() {
+  ::google::protobuf::internal::InitSCC(&protobuf_index_2eproto::scc_info_GetDocumentResponse.base);
+  return *internal_default_instance();
+}
+
+
+void GetDocumentResponse::Clear() {
+// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.GetDocumentResponse)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  terms_.Clear();
+  _internal_metadata_.Clear();
+}
+
+bool GetDocumentResponse::MergePartialFromCodedStream(
+    ::google::protobuf::io::CodedInputStream* input) {
+#define DO_(EXPRESSION) if (!GOOGLE_PREDICT_TRUE(EXPRESSION)) goto failure
+  ::google::protobuf::uint32 tag;
+  // @@protoc_insertion_point(parse_start:Acoustid.Server.PB.GetDocumentResponse)
+  for (;;) {
+    ::std::pair<::google::protobuf::uint32, bool> p = input->ReadTagWithCutoffNoLastTag(127u);
+    tag = p.first;
+    if (!p.second) goto handle_unusual;
+    switch (::google::protobuf::internal::WireFormatLite::GetTagFieldNumber(tag)) {
+      // repeated uint32 terms = 2;
+      case 2: {
+        if (static_cast< ::google::protobuf::uint8>(tag) ==
+            static_cast< ::google::protobuf::uint8>(18u /* 18 & 0xFF */)) {
+          DO_((::google::protobuf::internal::WireFormatLite::ReadPackedPrimitive<
+                   ::google::protobuf::uint32, ::google::protobuf::internal::WireFormatLite::TYPE_UINT32>(
+                 input, this->mutable_terms())));
+        } else if (
+            static_cast< ::google::protobuf::uint8>(tag) ==
+            static_cast< ::google::protobuf::uint8>(16u /* 16 & 0xFF */)) {
+          DO_((::google::protobuf::internal::WireFormatLite::ReadRepeatedPrimitiveNoInline<
+                   ::google::protobuf::uint32, ::google::protobuf::internal::WireFormatLite::TYPE_UINT32>(
+                 1, 18u, input, this->mutable_terms())));
+        } else {
+          goto handle_unusual;
+        }
+        break;
+      }
+
+      default: {
+      handle_unusual:
+        if (tag == 0) {
+          goto success;
+        }
+        DO_(::google::protobuf::internal::WireFormat::SkipField(
+              input, tag, _internal_metadata_.mutable_unknown_fields()));
+        break;
+      }
+    }
+  }
+success:
+  // @@protoc_insertion_point(parse_success:Acoustid.Server.PB.GetDocumentResponse)
+  return true;
+failure:
+  // @@protoc_insertion_point(parse_failure:Acoustid.Server.PB.GetDocumentResponse)
+  return false;
+#undef DO_
+}
+
+void GetDocumentResponse::SerializeWithCachedSizes(
+    ::google::protobuf::io::CodedOutputStream* output) const {
+  // @@protoc_insertion_point(serialize_start:Acoustid.Server.PB.GetDocumentResponse)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // repeated uint32 terms = 2;
+  if (this->terms_size() > 0) {
+    ::google::protobuf::internal::WireFormatLite::WriteTag(2, ::google::protobuf::internal::WireFormatLite::WIRETYPE_LENGTH_DELIMITED, output);
+    output->WriteVarint32(static_cast< ::google::protobuf::uint32>(
+        _terms_cached_byte_size_));
+  }
+  for (int i = 0, n = this->terms_size(); i < n; i++) {
+    ::google::protobuf::internal::WireFormatLite::WriteUInt32NoTag(
+      this->terms(i), output);
+  }
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    ::google::protobuf::internal::WireFormat::SerializeUnknownFields(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), output);
+  }
+  // @@protoc_insertion_point(serialize_end:Acoustid.Server.PB.GetDocumentResponse)
+}
+
+::google::protobuf::uint8* GetDocumentResponse::InternalSerializeWithCachedSizesToArray(
+    bool deterministic, ::google::protobuf::uint8* target) const {
+  (void)deterministic; // Unused
+  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.GetDocumentResponse)
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // repeated uint32 terms = 2;
+  if (this->terms_size() > 0) {
+    target = ::google::protobuf::internal::WireFormatLite::WriteTagToArray(
+      2,
+      ::google::protobuf::internal::WireFormatLite::WIRETYPE_LENGTH_DELIMITED,
+      target);
+    target = ::google::protobuf::io::CodedOutputStream::WriteVarint32ToArray(
+        static_cast< ::google::protobuf::int32>(
+            _terms_cached_byte_size_), target);
+    target = ::google::protobuf::internal::WireFormatLite::
+      WriteUInt32NoTagToArray(this->terms_, target);
+  }
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    target = ::google::protobuf::internal::WireFormat::SerializeUnknownFieldsToArray(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), target);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.GetDocumentResponse)
+  return target;
+}
+
+size_t GetDocumentResponse::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.GetDocumentResponse)
+  size_t total_size = 0;
+
+  if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
+    total_size +=
+      ::google::protobuf::internal::WireFormat::ComputeUnknownFieldsSize(
+        (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()));
+  }
+  // repeated uint32 terms = 2;
+  {
+    size_t data_size = ::google::protobuf::internal::WireFormatLite::
+      UInt32Size(this->terms_);
+    if (data_size > 0) {
+      total_size += 1 +
+        ::google::protobuf::internal::WireFormatLite::Int32Size(
+            static_cast< ::google::protobuf::int32>(data_size));
+    }
+    int cached_size = ::google::protobuf::internal::ToCachedSize(data_size);
+    GOOGLE_SAFE_CONCURRENT_WRITES_BEGIN();
+    _terms_cached_byte_size_ = cached_size;
+    GOOGLE_SAFE_CONCURRENT_WRITES_END();
+    total_size += data_size;
+  }
+
+  int cached_size = ::google::protobuf::internal::ToCachedSize(total_size);
+  SetCachedSize(cached_size);
+  return total_size;
+}
+
+void GetDocumentResponse::MergeFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.GetDocumentResponse)
+  GOOGLE_DCHECK_NE(&from, this);
+  const GetDocumentResponse* source =
+      ::google::protobuf::internal::DynamicCastToGenerated<const GetDocumentResponse>(
+          &from);
+  if (source == NULL) {
+  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.GetDocumentResponse)
+    ::google::protobuf::internal::ReflectionOps::Merge(from, this);
+  } else {
+  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.GetDocumentResponse)
+    MergeFrom(*source);
+  }
+}
+
+void GetDocumentResponse::MergeFrom(const GetDocumentResponse& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.GetDocumentResponse)
+  GOOGLE_DCHECK_NE(&from, this);
+  _internal_metadata_.MergeFrom(from._internal_metadata_);
+  ::google::protobuf::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  terms_.MergeFrom(from.terms_);
+}
+
+void GetDocumentResponse::CopyFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.GetDocumentResponse)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void GetDocumentResponse::CopyFrom(const GetDocumentResponse& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.GetDocumentResponse)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool GetDocumentResponse::IsInitialized() const {
+  return true;
+}
+
+void GetDocumentResponse::Swap(GetDocumentResponse* other) {
+  if (other == this) return;
+  InternalSwap(other);
+}
+void GetDocumentResponse::InternalSwap(GetDocumentResponse* other) {
+  using std::swap;
+  terms_.InternalSwap(&other->terms_);
+  _internal_metadata_.Swap(&other->_internal_metadata_);
+}
+
+::google::protobuf::Metadata GetDocumentResponse::GetMetadata() const {
+  protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
+  return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages];
+}
+
 
 // ===================================================================
 
@@ -3504,6 +4094,12 @@ void SearchResponse::InternalSwap(SearchResponse* other) {
 }  // namespace Acoustid
 namespace google {
 namespace protobuf {
+template<> GOOGLE_PROTOBUF_ATTRIBUTE_NOINLINE ::Acoustid::Server::PB::GetDocumentRequest* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::GetDocumentRequest >(Arena* arena) {
+  return Arena::CreateInternal< ::Acoustid::Server::PB::GetDocumentRequest >(arena);
+}
+template<> GOOGLE_PROTOBUF_ATTRIBUTE_NOINLINE ::Acoustid::Server::PB::GetDocumentResponse* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::GetDocumentResponse >(Arena* arena) {
+  return Arena::CreateInternal< ::Acoustid::Server::PB::GetDocumentResponse >(arena);
+}
 template<> GOOGLE_PROTOBUF_ATTRIBUTE_NOINLINE ::Acoustid::Server::PB::GetAttributeRequest* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::GetAttributeRequest >(Arena* arena) {
   return Arena::CreateInternal< ::Acoustid::Server::PB::GetAttributeRequest >(arena);
 }
