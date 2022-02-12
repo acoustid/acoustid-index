@@ -97,8 +97,6 @@ int main(int argc, char **argv) {
     auto indexes = QSharedPointer<MultiIndex>::create(indexesDir);
     auto metrics = QSharedPointer<Metrics>::create();
 
-    auto mainIndex = indexes->getIndex("main", true);
-
     Listener::setupSignalHandlers();
 
     auto listener = QSharedPointer<Listener>::create(indexes->getRootIndex(true), metrics);
