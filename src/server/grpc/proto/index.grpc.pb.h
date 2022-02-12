@@ -37,6 +37,27 @@ class Index final {
   class StubInterface {
    public:
     virtual ~StubInterface() {}
+    virtual ::grpc::Status GetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest& request, ::Acoustid::Server::PB::GetDocumentResponse* response) = 0;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetDocumentResponse>> AsyncGetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetDocumentResponse>>(AsyncGetDocumentRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetDocumentResponse>> PrepareAsyncGetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetDocumentResponse>>(PrepareAsyncGetDocumentRaw(context, request, cq));
+    }
+    virtual ::grpc::Status GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::Acoustid::Server::PB::GetAttributeResponse* response) = 0;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetAttributeResponse>> AsyncGetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetAttributeResponse>>(AsyncGetAttributeRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetAttributeResponse>> PrepareAsyncGetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetAttributeResponse>>(PrepareAsyncGetAttributeRaw(context, request, cq));
+    }
+    virtual ::grpc::Status BulkUpdate(::grpc::ClientContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest& request, ::Acoustid::Server::PB::BulkUpdateResponse* response) = 0;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::BulkUpdateResponse>> AsyncBulkUpdate(::grpc::ClientContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::BulkUpdateResponse>>(AsyncBulkUpdateRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::BulkUpdateResponse>> PrepareAsyncBulkUpdate(::grpc::ClientContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::BulkUpdateResponse>>(PrepareAsyncBulkUpdateRaw(context, request, cq));
+    }
     virtual ::grpc::Status Search(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest& request, ::Acoustid::Server::PB::SearchResponse* response) = 0;
     std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::SearchResponse>> AsyncSearch(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest& request, ::grpc::CompletionQueue* cq) {
       return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::SearchResponse>>(AsyncSearchRaw(context, request, cq));
@@ -47,16 +68,46 @@ class Index final {
     class experimental_async_interface {
      public:
       virtual ~experimental_async_interface() {}
+      virtual void GetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response, std::function<void(::grpc::Status)>) = 0;
+      virtual void GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response, std::function<void(::grpc::Status)>) = 0;
+      virtual void BulkUpdate(::grpc::ClientContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest* request, ::Acoustid::Server::PB::BulkUpdateResponse* response, std::function<void(::grpc::Status)>) = 0;
       virtual void Search(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest* request, ::Acoustid::Server::PB::SearchResponse* response, std::function<void(::grpc::Status)>) = 0;
     };
     virtual class experimental_async_interface* experimental_async() { return nullptr; }
   private:
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetDocumentResponse>* AsyncGetDocumentRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetDocumentResponse>* PrepareAsyncGetDocumentRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetAttributeResponse>* AsyncGetAttributeRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetAttributeResponse>* PrepareAsyncGetAttributeRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::BulkUpdateResponse>* AsyncBulkUpdateRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::BulkUpdateResponse>* PrepareAsyncBulkUpdateRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::SearchResponse>* AsyncSearchRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::SearchResponse>* PrepareAsyncSearchRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest& request, ::grpc::CompletionQueue* cq) = 0;
   };
   class Stub final : public StubInterface {
    public:
     Stub(const std::shared_ptr< ::grpc::ChannelInterface>& channel);
+    ::grpc::Status GetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest& request, ::Acoustid::Server::PB::GetDocumentResponse* response) override;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetDocumentResponse>> AsyncGetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetDocumentResponse>>(AsyncGetDocumentRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetDocumentResponse>> PrepareAsyncGetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetDocumentResponse>>(PrepareAsyncGetDocumentRaw(context, request, cq));
+    }
+    ::grpc::Status GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::Acoustid::Server::PB::GetAttributeResponse* response) override;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetAttributeResponse>> AsyncGetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetAttributeResponse>>(AsyncGetAttributeRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetAttributeResponse>> PrepareAsyncGetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetAttributeResponse>>(PrepareAsyncGetAttributeRaw(context, request, cq));
+    }
+    ::grpc::Status BulkUpdate(::grpc::ClientContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest& request, ::Acoustid::Server::PB::BulkUpdateResponse* response) override;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::BulkUpdateResponse>> AsyncBulkUpdate(::grpc::ClientContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::BulkUpdateResponse>>(AsyncBulkUpdateRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::BulkUpdateResponse>> PrepareAsyncBulkUpdate(::grpc::ClientContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::BulkUpdateResponse>>(PrepareAsyncBulkUpdateRaw(context, request, cq));
+    }
     ::grpc::Status Search(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest& request, ::Acoustid::Server::PB::SearchResponse* response) override;
     std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::SearchResponse>> AsyncSearch(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest& request, ::grpc::CompletionQueue* cq) {
       return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::SearchResponse>>(AsyncSearchRaw(context, request, cq));
@@ -67,6 +118,9 @@ class Index final {
     class experimental_async final :
       public StubInterface::experimental_async_interface {
      public:
+      void GetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response, std::function<void(::grpc::Status)>) override;
+      void GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response, std::function<void(::grpc::Status)>) override;
+      void BulkUpdate(::grpc::ClientContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest* request, ::Acoustid::Server::PB::BulkUpdateResponse* response, std::function<void(::grpc::Status)>) override;
       void Search(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest* request, ::Acoustid::Server::PB::SearchResponse* response, std::function<void(::grpc::Status)>) override;
      private:
       friend class Stub;
@@ -79,8 +133,17 @@ class Index final {
    private:
     std::shared_ptr< ::grpc::ChannelInterface> channel_;
     class experimental_async async_stub_{this};
+    ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetDocumentResponse>* AsyncGetDocumentRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetDocumentResponse>* PrepareAsyncGetDocumentRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetAttributeResponse>* AsyncGetAttributeRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetAttributeResponse>* PrepareAsyncGetAttributeRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::BulkUpdateResponse>* AsyncBulkUpdateRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::BulkUpdateResponse>* PrepareAsyncBulkUpdateRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::SearchResponse>* AsyncSearchRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::SearchResponse>* PrepareAsyncSearchRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest& request, ::grpc::CompletionQueue* cq) override;
+    const ::grpc::internal::RpcMethod rpcmethod_GetDocument_;
+    const ::grpc::internal::RpcMethod rpcmethod_GetAttribute_;
+    const ::grpc::internal::RpcMethod rpcmethod_BulkUpdate_;
     const ::grpc::internal::RpcMethod rpcmethod_Search_;
   };
   static std::unique_ptr<Stub> NewStub(const std::shared_ptr< ::grpc::ChannelInterface>& channel, const ::grpc::StubOptions& options = ::grpc::StubOptions());
@@ -89,7 +152,70 @@ class Index final {
    public:
     Service();
     virtual ~Service();
+    virtual ::grpc::Status GetDocument(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response);
+    virtual ::grpc::Status GetAttribute(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response);
+    virtual ::grpc::Status BulkUpdate(::grpc::ServerContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest* request, ::Acoustid::Server::PB::BulkUpdateResponse* response);
     virtual ::grpc::Status Search(::grpc::ServerContext* context, const ::Acoustid::Server::PB::SearchRequest* request, ::Acoustid::Server::PB::SearchResponse* response);
+  };
+  template <class BaseClass>
+  class WithAsyncMethod_GetDocument : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service *service) {}
+   public:
+    WithAsyncMethod_GetDocument() {
+      ::grpc::Service::MarkMethodAsync(0);
+    }
+    ~WithAsyncMethod_GetDocument() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status GetDocument(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestGetDocument(::grpc::ServerContext* context, ::Acoustid::Server::PB::GetDocumentRequest* request, ::grpc::ServerAsyncResponseWriter< ::Acoustid::Server::PB::GetDocumentResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(0, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
+  class WithAsyncMethod_GetAttribute : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service *service) {}
+   public:
+    WithAsyncMethod_GetAttribute() {
+      ::grpc::Service::MarkMethodAsync(1);
+    }
+    ~WithAsyncMethod_GetAttribute() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status GetAttribute(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestGetAttribute(::grpc::ServerContext* context, ::Acoustid::Server::PB::GetAttributeRequest* request, ::grpc::ServerAsyncResponseWriter< ::Acoustid::Server::PB::GetAttributeResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(1, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
+  class WithAsyncMethod_BulkUpdate : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service *service) {}
+   public:
+    WithAsyncMethod_BulkUpdate() {
+      ::grpc::Service::MarkMethodAsync(2);
+    }
+    ~WithAsyncMethod_BulkUpdate() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status BulkUpdate(::grpc::ServerContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest* request, ::Acoustid::Server::PB::BulkUpdateResponse* response) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestBulkUpdate(::grpc::ServerContext* context, ::Acoustid::Server::PB::BulkUpdateRequest* request, ::grpc::ServerAsyncResponseWriter< ::Acoustid::Server::PB::BulkUpdateResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(2, context, request, response, new_call_cq, notification_cq, tag);
+    }
   };
   template <class BaseClass>
   class WithAsyncMethod_Search : public BaseClass {
@@ -97,7 +223,7 @@ class Index final {
     void BaseClassMustBeDerivedFromService(const Service *service) {}
    public:
     WithAsyncMethod_Search() {
-      ::grpc::Service::MarkMethodAsync(0);
+      ::grpc::Service::MarkMethodAsync(3);
     }
     ~WithAsyncMethod_Search() override {
       BaseClassMustBeDerivedFromService(this);
@@ -108,17 +234,68 @@ class Index final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestSearch(::grpc::ServerContext* context, ::Acoustid::Server::PB::SearchRequest* request, ::grpc::ServerAsyncResponseWriter< ::Acoustid::Server::PB::SearchResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(0, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(3, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
-  typedef WithAsyncMethod_Search<Service > AsyncService;
+  typedef WithAsyncMethod_GetDocument<WithAsyncMethod_GetAttribute<WithAsyncMethod_BulkUpdate<WithAsyncMethod_Search<Service > > > > AsyncService;
+  template <class BaseClass>
+  class WithGenericMethod_GetDocument : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service *service) {}
+   public:
+    WithGenericMethod_GetDocument() {
+      ::grpc::Service::MarkMethodGeneric(0);
+    }
+    ~WithGenericMethod_GetDocument() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status GetDocument(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+  };
+  template <class BaseClass>
+  class WithGenericMethod_GetAttribute : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service *service) {}
+   public:
+    WithGenericMethod_GetAttribute() {
+      ::grpc::Service::MarkMethodGeneric(1);
+    }
+    ~WithGenericMethod_GetAttribute() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status GetAttribute(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+  };
+  template <class BaseClass>
+  class WithGenericMethod_BulkUpdate : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service *service) {}
+   public:
+    WithGenericMethod_BulkUpdate() {
+      ::grpc::Service::MarkMethodGeneric(2);
+    }
+    ~WithGenericMethod_BulkUpdate() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status BulkUpdate(::grpc::ServerContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest* request, ::Acoustid::Server::PB::BulkUpdateResponse* response) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+  };
   template <class BaseClass>
   class WithGenericMethod_Search : public BaseClass {
    private:
     void BaseClassMustBeDerivedFromService(const Service *service) {}
    public:
     WithGenericMethod_Search() {
-      ::grpc::Service::MarkMethodGeneric(0);
+      ::grpc::Service::MarkMethodGeneric(3);
     }
     ~WithGenericMethod_Search() override {
       BaseClassMustBeDerivedFromService(this);
@@ -130,12 +307,72 @@ class Index final {
     }
   };
   template <class BaseClass>
+  class WithRawMethod_GetDocument : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service *service) {}
+   public:
+    WithRawMethod_GetDocument() {
+      ::grpc::Service::MarkMethodRaw(0);
+    }
+    ~WithRawMethod_GetDocument() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status GetDocument(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestGetDocument(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(0, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
+  class WithRawMethod_GetAttribute : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service *service) {}
+   public:
+    WithRawMethod_GetAttribute() {
+      ::grpc::Service::MarkMethodRaw(1);
+    }
+    ~WithRawMethod_GetAttribute() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status GetAttribute(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestGetAttribute(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(1, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
+  class WithRawMethod_BulkUpdate : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service *service) {}
+   public:
+    WithRawMethod_BulkUpdate() {
+      ::grpc::Service::MarkMethodRaw(2);
+    }
+    ~WithRawMethod_BulkUpdate() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status BulkUpdate(::grpc::ServerContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest* request, ::Acoustid::Server::PB::BulkUpdateResponse* response) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestBulkUpdate(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(2, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
   class WithRawMethod_Search : public BaseClass {
    private:
     void BaseClassMustBeDerivedFromService(const Service *service) {}
    public:
     WithRawMethod_Search() {
-      ::grpc::Service::MarkMethodRaw(0);
+      ::grpc::Service::MarkMethodRaw(3);
     }
     ~WithRawMethod_Search() override {
       BaseClassMustBeDerivedFromService(this);
@@ -146,8 +383,68 @@ class Index final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestSearch(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(0, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(3, context, request, response, new_call_cq, notification_cq, tag);
     }
+  };
+  template <class BaseClass>
+  class WithStreamedUnaryMethod_GetDocument : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service *service) {}
+   public:
+    WithStreamedUnaryMethod_GetDocument() {
+      ::grpc::Service::MarkMethodStreamed(0,
+        new ::grpc::internal::StreamedUnaryHandler< ::Acoustid::Server::PB::GetDocumentRequest, ::Acoustid::Server::PB::GetDocumentResponse>(std::bind(&WithStreamedUnaryMethod_GetDocument<BaseClass>::StreamedGetDocument, this, std::placeholders::_1, std::placeholders::_2)));
+    }
+    ~WithStreamedUnaryMethod_GetDocument() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable regular version of this method
+    ::grpc::Status GetDocument(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    // replace default version of method with streamed unary
+    virtual ::grpc::Status StreamedGetDocument(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::Acoustid::Server::PB::GetDocumentRequest,::Acoustid::Server::PB::GetDocumentResponse>* server_unary_streamer) = 0;
+  };
+  template <class BaseClass>
+  class WithStreamedUnaryMethod_GetAttribute : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service *service) {}
+   public:
+    WithStreamedUnaryMethod_GetAttribute() {
+      ::grpc::Service::MarkMethodStreamed(1,
+        new ::grpc::internal::StreamedUnaryHandler< ::Acoustid::Server::PB::GetAttributeRequest, ::Acoustid::Server::PB::GetAttributeResponse>(std::bind(&WithStreamedUnaryMethod_GetAttribute<BaseClass>::StreamedGetAttribute, this, std::placeholders::_1, std::placeholders::_2)));
+    }
+    ~WithStreamedUnaryMethod_GetAttribute() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable regular version of this method
+    ::grpc::Status GetAttribute(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    // replace default version of method with streamed unary
+    virtual ::grpc::Status StreamedGetAttribute(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::Acoustid::Server::PB::GetAttributeRequest,::Acoustid::Server::PB::GetAttributeResponse>* server_unary_streamer) = 0;
+  };
+  template <class BaseClass>
+  class WithStreamedUnaryMethod_BulkUpdate : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service *service) {}
+   public:
+    WithStreamedUnaryMethod_BulkUpdate() {
+      ::grpc::Service::MarkMethodStreamed(2,
+        new ::grpc::internal::StreamedUnaryHandler< ::Acoustid::Server::PB::BulkUpdateRequest, ::Acoustid::Server::PB::BulkUpdateResponse>(std::bind(&WithStreamedUnaryMethod_BulkUpdate<BaseClass>::StreamedBulkUpdate, this, std::placeholders::_1, std::placeholders::_2)));
+    }
+    ~WithStreamedUnaryMethod_BulkUpdate() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable regular version of this method
+    ::grpc::Status BulkUpdate(::grpc::ServerContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest* request, ::Acoustid::Server::PB::BulkUpdateResponse* response) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    // replace default version of method with streamed unary
+    virtual ::grpc::Status StreamedBulkUpdate(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::Acoustid::Server::PB::BulkUpdateRequest,::Acoustid::Server::PB::BulkUpdateResponse>* server_unary_streamer) = 0;
   };
   template <class BaseClass>
   class WithStreamedUnaryMethod_Search : public BaseClass {
@@ -155,7 +452,7 @@ class Index final {
     void BaseClassMustBeDerivedFromService(const Service *service) {}
    public:
     WithStreamedUnaryMethod_Search() {
-      ::grpc::Service::MarkMethodStreamed(0,
+      ::grpc::Service::MarkMethodStreamed(3,
         new ::grpc::internal::StreamedUnaryHandler< ::Acoustid::Server::PB::SearchRequest, ::Acoustid::Server::PB::SearchResponse>(std::bind(&WithStreamedUnaryMethod_Search<BaseClass>::StreamedSearch, this, std::placeholders::_1, std::placeholders::_2)));
     }
     ~WithStreamedUnaryMethod_Search() override {
@@ -169,9 +466,9 @@ class Index final {
     // replace default version of method with streamed unary
     virtual ::grpc::Status StreamedSearch(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::Acoustid::Server::PB::SearchRequest,::Acoustid::Server::PB::SearchResponse>* server_unary_streamer) = 0;
   };
-  typedef WithStreamedUnaryMethod_Search<Service > StreamedUnaryService;
+  typedef WithStreamedUnaryMethod_GetDocument<WithStreamedUnaryMethod_GetAttribute<WithStreamedUnaryMethod_BulkUpdate<WithStreamedUnaryMethod_Search<Service > > > > StreamedUnaryService;
   typedef Service SplitStreamedService;
-  typedef WithStreamedUnaryMethod_Search<Service > StreamedService;
+  typedef WithStreamedUnaryMethod_GetDocument<WithStreamedUnaryMethod_GetAttribute<WithStreamedUnaryMethod_BulkUpdate<WithStreamedUnaryMethod_Search<Service > > > > StreamedService;
 };
 
 }  // namespace PB
