@@ -38,7 +38,7 @@ namespace protobuf_index_2eproto {
 struct TableStruct {
   static const ::google::protobuf::internal::ParseTableField entries[];
   static const ::google::protobuf::internal::AuxillaryParseTableField aux[];
-  static const ::google::protobuf::internal::ParseTable schema[13];
+  static const ::google::protobuf::internal::ParseTable schema[19];
   static const ::google::protobuf::internal::FieldMetadata field_metadata[];
   static const ::google::protobuf::internal::SerializationTable serialization_table[];
   static const ::google::protobuf::uint32 offsets[];
@@ -54,9 +54,21 @@ extern BulkUpdateRequestDefaultTypeInternal _BulkUpdateRequest_default_instance_
 class BulkUpdateResponse;
 class BulkUpdateResponseDefaultTypeInternal;
 extern BulkUpdateResponseDefaultTypeInternal _BulkUpdateResponse_default_instance_;
+class CreateIndexRequest;
+class CreateIndexRequestDefaultTypeInternal;
+extern CreateIndexRequestDefaultTypeInternal _CreateIndexRequest_default_instance_;
+class CreateIndexResponse;
+class CreateIndexResponseDefaultTypeInternal;
+extern CreateIndexResponseDefaultTypeInternal _CreateIndexResponse_default_instance_;
 class DeleteDocumentOp;
 class DeleteDocumentOpDefaultTypeInternal;
 extern DeleteDocumentOpDefaultTypeInternal _DeleteDocumentOp_default_instance_;
+class DeleteIndexRequest;
+class DeleteIndexRequestDefaultTypeInternal;
+extern DeleteIndexRequestDefaultTypeInternal _DeleteIndexRequest_default_instance_;
+class DeleteIndexResponse;
+class DeleteIndexResponseDefaultTypeInternal;
+extern DeleteIndexResponseDefaultTypeInternal _DeleteIndexResponse_default_instance_;
 class GetAttributeRequest;
 class GetAttributeRequestDefaultTypeInternal;
 extern GetAttributeRequestDefaultTypeInternal _GetAttributeRequest_default_instance_;
@@ -69,6 +81,12 @@ extern GetDocumentRequestDefaultTypeInternal _GetDocumentRequest_default_instanc
 class GetDocumentResponse;
 class GetDocumentResponseDefaultTypeInternal;
 extern GetDocumentResponseDefaultTypeInternal _GetDocumentResponse_default_instance_;
+class GetIndexRequest;
+class GetIndexRequestDefaultTypeInternal;
+extern GetIndexRequestDefaultTypeInternal _GetIndexRequest_default_instance_;
+class GetIndexResponse;
+class GetIndexResponseDefaultTypeInternal;
+extern GetIndexResponseDefaultTypeInternal _GetIndexResponse_default_instance_;
 class InsertOrUpdateDocumentOp;
 class InsertOrUpdateDocumentOpDefaultTypeInternal;
 extern InsertOrUpdateDocumentOpDefaultTypeInternal _InsertOrUpdateDocumentOp_default_instance_;
@@ -94,11 +112,17 @@ namespace google {
 namespace protobuf {
 template<> ::Acoustid::Server::PB::BulkUpdateRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::BulkUpdateRequest>(Arena*);
 template<> ::Acoustid::Server::PB::BulkUpdateResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::BulkUpdateResponse>(Arena*);
+template<> ::Acoustid::Server::PB::CreateIndexRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::CreateIndexRequest>(Arena*);
+template<> ::Acoustid::Server::PB::CreateIndexResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::CreateIndexResponse>(Arena*);
 template<> ::Acoustid::Server::PB::DeleteDocumentOp* Arena::CreateMaybeMessage<::Acoustid::Server::PB::DeleteDocumentOp>(Arena*);
+template<> ::Acoustid::Server::PB::DeleteIndexRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::DeleteIndexRequest>(Arena*);
+template<> ::Acoustid::Server::PB::DeleteIndexResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::DeleteIndexResponse>(Arena*);
 template<> ::Acoustid::Server::PB::GetAttributeRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::GetAttributeRequest>(Arena*);
 template<> ::Acoustid::Server::PB::GetAttributeResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::GetAttributeResponse>(Arena*);
 template<> ::Acoustid::Server::PB::GetDocumentRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::GetDocumentRequest>(Arena*);
 template<> ::Acoustid::Server::PB::GetDocumentResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::GetDocumentResponse>(Arena*);
+template<> ::Acoustid::Server::PB::GetIndexRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::GetIndexRequest>(Arena*);
+template<> ::Acoustid::Server::PB::GetIndexResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::GetIndexResponse>(Arena*);
 template<> ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* Arena::CreateMaybeMessage<::Acoustid::Server::PB::InsertOrUpdateDocumentOp>(Arena*);
 template<> ::Acoustid::Server::PB::Operation* Arena::CreateMaybeMessage<::Acoustid::Server::PB::Operation>(Arena*);
 template<> ::Acoustid::Server::PB::SearchRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::SearchRequest>(Arena*);
@@ -1648,6 +1672,627 @@ class SearchResponse : public ::google::protobuf::Message /* @@protoc_insertion_
   mutable ::google::protobuf::internal::CachedSize _cached_size_;
   friend struct ::protobuf_index_2eproto::TableStruct;
 };
+// -------------------------------------------------------------------
+
+class GetIndexRequest : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.GetIndexRequest) */ {
+ public:
+  GetIndexRequest();
+  virtual ~GetIndexRequest();
+
+  GetIndexRequest(const GetIndexRequest& from);
+
+  inline GetIndexRequest& operator=(const GetIndexRequest& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  #if LANG_CXX11
+  GetIndexRequest(GetIndexRequest&& from) noexcept
+    : GetIndexRequest() {
+    *this = ::std::move(from);
+  }
+
+  inline GetIndexRequest& operator=(GetIndexRequest&& from) noexcept {
+    if (GetArenaNoVirtual() == from.GetArenaNoVirtual()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+  #endif
+  static const ::google::protobuf::Descriptor* descriptor();
+  static const GetIndexRequest& default_instance();
+
+  static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
+  static inline const GetIndexRequest* internal_default_instance() {
+    return reinterpret_cast<const GetIndexRequest*>(
+               &_GetIndexRequest_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    13;
+
+  void Swap(GetIndexRequest* other);
+  friend void swap(GetIndexRequest& a, GetIndexRequest& b) {
+    a.Swap(&b);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline GetIndexRequest* New() const final {
+    return CreateMaybeMessage<GetIndexRequest>(NULL);
+  }
+
+  GetIndexRequest* New(::google::protobuf::Arena* arena) const final {
+    return CreateMaybeMessage<GetIndexRequest>(arena);
+  }
+  void CopyFrom(const ::google::protobuf::Message& from) final;
+  void MergeFrom(const ::google::protobuf::Message& from) final;
+  void CopyFrom(const GetIndexRequest& from);
+  void MergeFrom(const GetIndexRequest& from);
+  void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input) final;
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const final;
+  ::google::protobuf::uint8* InternalSerializeWithCachedSizesToArray(
+      bool deterministic, ::google::protobuf::uint8* target) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(GetIndexRequest* other);
+  private:
+  inline ::google::protobuf::Arena* GetArenaNoVirtual() const {
+    return NULL;
+  }
+  inline void* MaybeArenaPtr() const {
+    return NULL;
+  }
+  public:
+
+  ::google::protobuf::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // string index_name = 1;
+  void clear_index_name();
+  static const int kIndexNameFieldNumber = 1;
+  const ::std::string& index_name() const;
+  void set_index_name(const ::std::string& value);
+  #if LANG_CXX11
+  void set_index_name(::std::string&& value);
+  #endif
+  void set_index_name(const char* value);
+  void set_index_name(const char* value, size_t size);
+  ::std::string* mutable_index_name();
+  ::std::string* release_index_name();
+  void set_allocated_index_name(::std::string* index_name);
+
+  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.GetIndexRequest)
+ private:
+
+  ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
+  ::google::protobuf::internal::ArenaStringPtr index_name_;
+  mutable ::google::protobuf::internal::CachedSize _cached_size_;
+  friend struct ::protobuf_index_2eproto::TableStruct;
+};
+// -------------------------------------------------------------------
+
+class GetIndexResponse : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.GetIndexResponse) */ {
+ public:
+  GetIndexResponse();
+  virtual ~GetIndexResponse();
+
+  GetIndexResponse(const GetIndexResponse& from);
+
+  inline GetIndexResponse& operator=(const GetIndexResponse& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  #if LANG_CXX11
+  GetIndexResponse(GetIndexResponse&& from) noexcept
+    : GetIndexResponse() {
+    *this = ::std::move(from);
+  }
+
+  inline GetIndexResponse& operator=(GetIndexResponse&& from) noexcept {
+    if (GetArenaNoVirtual() == from.GetArenaNoVirtual()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+  #endif
+  static const ::google::protobuf::Descriptor* descriptor();
+  static const GetIndexResponse& default_instance();
+
+  static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
+  static inline const GetIndexResponse* internal_default_instance() {
+    return reinterpret_cast<const GetIndexResponse*>(
+               &_GetIndexResponse_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    14;
+
+  void Swap(GetIndexResponse* other);
+  friend void swap(GetIndexResponse& a, GetIndexResponse& b) {
+    a.Swap(&b);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline GetIndexResponse* New() const final {
+    return CreateMaybeMessage<GetIndexResponse>(NULL);
+  }
+
+  GetIndexResponse* New(::google::protobuf::Arena* arena) const final {
+    return CreateMaybeMessage<GetIndexResponse>(arena);
+  }
+  void CopyFrom(const ::google::protobuf::Message& from) final;
+  void MergeFrom(const ::google::protobuf::Message& from) final;
+  void CopyFrom(const GetIndexResponse& from);
+  void MergeFrom(const GetIndexResponse& from);
+  void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input) final;
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const final;
+  ::google::protobuf::uint8* InternalSerializeWithCachedSizesToArray(
+      bool deterministic, ::google::protobuf::uint8* target) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(GetIndexResponse* other);
+  private:
+  inline ::google::protobuf::Arena* GetArenaNoVirtual() const {
+    return NULL;
+  }
+  inline void* MaybeArenaPtr() const {
+    return NULL;
+  }
+  public:
+
+  ::google::protobuf::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.GetIndexResponse)
+ private:
+
+  ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
+  mutable ::google::protobuf::internal::CachedSize _cached_size_;
+  friend struct ::protobuf_index_2eproto::TableStruct;
+};
+// -------------------------------------------------------------------
+
+class CreateIndexRequest : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.CreateIndexRequest) */ {
+ public:
+  CreateIndexRequest();
+  virtual ~CreateIndexRequest();
+
+  CreateIndexRequest(const CreateIndexRequest& from);
+
+  inline CreateIndexRequest& operator=(const CreateIndexRequest& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  #if LANG_CXX11
+  CreateIndexRequest(CreateIndexRequest&& from) noexcept
+    : CreateIndexRequest() {
+    *this = ::std::move(from);
+  }
+
+  inline CreateIndexRequest& operator=(CreateIndexRequest&& from) noexcept {
+    if (GetArenaNoVirtual() == from.GetArenaNoVirtual()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+  #endif
+  static const ::google::protobuf::Descriptor* descriptor();
+  static const CreateIndexRequest& default_instance();
+
+  static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
+  static inline const CreateIndexRequest* internal_default_instance() {
+    return reinterpret_cast<const CreateIndexRequest*>(
+               &_CreateIndexRequest_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    15;
+
+  void Swap(CreateIndexRequest* other);
+  friend void swap(CreateIndexRequest& a, CreateIndexRequest& b) {
+    a.Swap(&b);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline CreateIndexRequest* New() const final {
+    return CreateMaybeMessage<CreateIndexRequest>(NULL);
+  }
+
+  CreateIndexRequest* New(::google::protobuf::Arena* arena) const final {
+    return CreateMaybeMessage<CreateIndexRequest>(arena);
+  }
+  void CopyFrom(const ::google::protobuf::Message& from) final;
+  void MergeFrom(const ::google::protobuf::Message& from) final;
+  void CopyFrom(const CreateIndexRequest& from);
+  void MergeFrom(const CreateIndexRequest& from);
+  void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input) final;
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const final;
+  ::google::protobuf::uint8* InternalSerializeWithCachedSizesToArray(
+      bool deterministic, ::google::protobuf::uint8* target) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(CreateIndexRequest* other);
+  private:
+  inline ::google::protobuf::Arena* GetArenaNoVirtual() const {
+    return NULL;
+  }
+  inline void* MaybeArenaPtr() const {
+    return NULL;
+  }
+  public:
+
+  ::google::protobuf::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // string index_name = 1;
+  void clear_index_name();
+  static const int kIndexNameFieldNumber = 1;
+  const ::std::string& index_name() const;
+  void set_index_name(const ::std::string& value);
+  #if LANG_CXX11
+  void set_index_name(::std::string&& value);
+  #endif
+  void set_index_name(const char* value);
+  void set_index_name(const char* value, size_t size);
+  ::std::string* mutable_index_name();
+  ::std::string* release_index_name();
+  void set_allocated_index_name(::std::string* index_name);
+
+  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.CreateIndexRequest)
+ private:
+
+  ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
+  ::google::protobuf::internal::ArenaStringPtr index_name_;
+  mutable ::google::protobuf::internal::CachedSize _cached_size_;
+  friend struct ::protobuf_index_2eproto::TableStruct;
+};
+// -------------------------------------------------------------------
+
+class CreateIndexResponse : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.CreateIndexResponse) */ {
+ public:
+  CreateIndexResponse();
+  virtual ~CreateIndexResponse();
+
+  CreateIndexResponse(const CreateIndexResponse& from);
+
+  inline CreateIndexResponse& operator=(const CreateIndexResponse& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  #if LANG_CXX11
+  CreateIndexResponse(CreateIndexResponse&& from) noexcept
+    : CreateIndexResponse() {
+    *this = ::std::move(from);
+  }
+
+  inline CreateIndexResponse& operator=(CreateIndexResponse&& from) noexcept {
+    if (GetArenaNoVirtual() == from.GetArenaNoVirtual()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+  #endif
+  static const ::google::protobuf::Descriptor* descriptor();
+  static const CreateIndexResponse& default_instance();
+
+  static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
+  static inline const CreateIndexResponse* internal_default_instance() {
+    return reinterpret_cast<const CreateIndexResponse*>(
+               &_CreateIndexResponse_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    16;
+
+  void Swap(CreateIndexResponse* other);
+  friend void swap(CreateIndexResponse& a, CreateIndexResponse& b) {
+    a.Swap(&b);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline CreateIndexResponse* New() const final {
+    return CreateMaybeMessage<CreateIndexResponse>(NULL);
+  }
+
+  CreateIndexResponse* New(::google::protobuf::Arena* arena) const final {
+    return CreateMaybeMessage<CreateIndexResponse>(arena);
+  }
+  void CopyFrom(const ::google::protobuf::Message& from) final;
+  void MergeFrom(const ::google::protobuf::Message& from) final;
+  void CopyFrom(const CreateIndexResponse& from);
+  void MergeFrom(const CreateIndexResponse& from);
+  void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input) final;
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const final;
+  ::google::protobuf::uint8* InternalSerializeWithCachedSizesToArray(
+      bool deterministic, ::google::protobuf::uint8* target) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(CreateIndexResponse* other);
+  private:
+  inline ::google::protobuf::Arena* GetArenaNoVirtual() const {
+    return NULL;
+  }
+  inline void* MaybeArenaPtr() const {
+    return NULL;
+  }
+  public:
+
+  ::google::protobuf::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.CreateIndexResponse)
+ private:
+
+  ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
+  mutable ::google::protobuf::internal::CachedSize _cached_size_;
+  friend struct ::protobuf_index_2eproto::TableStruct;
+};
+// -------------------------------------------------------------------
+
+class DeleteIndexRequest : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.DeleteIndexRequest) */ {
+ public:
+  DeleteIndexRequest();
+  virtual ~DeleteIndexRequest();
+
+  DeleteIndexRequest(const DeleteIndexRequest& from);
+
+  inline DeleteIndexRequest& operator=(const DeleteIndexRequest& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  #if LANG_CXX11
+  DeleteIndexRequest(DeleteIndexRequest&& from) noexcept
+    : DeleteIndexRequest() {
+    *this = ::std::move(from);
+  }
+
+  inline DeleteIndexRequest& operator=(DeleteIndexRequest&& from) noexcept {
+    if (GetArenaNoVirtual() == from.GetArenaNoVirtual()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+  #endif
+  static const ::google::protobuf::Descriptor* descriptor();
+  static const DeleteIndexRequest& default_instance();
+
+  static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
+  static inline const DeleteIndexRequest* internal_default_instance() {
+    return reinterpret_cast<const DeleteIndexRequest*>(
+               &_DeleteIndexRequest_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    17;
+
+  void Swap(DeleteIndexRequest* other);
+  friend void swap(DeleteIndexRequest& a, DeleteIndexRequest& b) {
+    a.Swap(&b);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline DeleteIndexRequest* New() const final {
+    return CreateMaybeMessage<DeleteIndexRequest>(NULL);
+  }
+
+  DeleteIndexRequest* New(::google::protobuf::Arena* arena) const final {
+    return CreateMaybeMessage<DeleteIndexRequest>(arena);
+  }
+  void CopyFrom(const ::google::protobuf::Message& from) final;
+  void MergeFrom(const ::google::protobuf::Message& from) final;
+  void CopyFrom(const DeleteIndexRequest& from);
+  void MergeFrom(const DeleteIndexRequest& from);
+  void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input) final;
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const final;
+  ::google::protobuf::uint8* InternalSerializeWithCachedSizesToArray(
+      bool deterministic, ::google::protobuf::uint8* target) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(DeleteIndexRequest* other);
+  private:
+  inline ::google::protobuf::Arena* GetArenaNoVirtual() const {
+    return NULL;
+  }
+  inline void* MaybeArenaPtr() const {
+    return NULL;
+  }
+  public:
+
+  ::google::protobuf::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // string index_name = 1;
+  void clear_index_name();
+  static const int kIndexNameFieldNumber = 1;
+  const ::std::string& index_name() const;
+  void set_index_name(const ::std::string& value);
+  #if LANG_CXX11
+  void set_index_name(::std::string&& value);
+  #endif
+  void set_index_name(const char* value);
+  void set_index_name(const char* value, size_t size);
+  ::std::string* mutable_index_name();
+  ::std::string* release_index_name();
+  void set_allocated_index_name(::std::string* index_name);
+
+  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.DeleteIndexRequest)
+ private:
+
+  ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
+  ::google::protobuf::internal::ArenaStringPtr index_name_;
+  mutable ::google::protobuf::internal::CachedSize _cached_size_;
+  friend struct ::protobuf_index_2eproto::TableStruct;
+};
+// -------------------------------------------------------------------
+
+class DeleteIndexResponse : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.DeleteIndexResponse) */ {
+ public:
+  DeleteIndexResponse();
+  virtual ~DeleteIndexResponse();
+
+  DeleteIndexResponse(const DeleteIndexResponse& from);
+
+  inline DeleteIndexResponse& operator=(const DeleteIndexResponse& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  #if LANG_CXX11
+  DeleteIndexResponse(DeleteIndexResponse&& from) noexcept
+    : DeleteIndexResponse() {
+    *this = ::std::move(from);
+  }
+
+  inline DeleteIndexResponse& operator=(DeleteIndexResponse&& from) noexcept {
+    if (GetArenaNoVirtual() == from.GetArenaNoVirtual()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+  #endif
+  static const ::google::protobuf::Descriptor* descriptor();
+  static const DeleteIndexResponse& default_instance();
+
+  static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
+  static inline const DeleteIndexResponse* internal_default_instance() {
+    return reinterpret_cast<const DeleteIndexResponse*>(
+               &_DeleteIndexResponse_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    18;
+
+  void Swap(DeleteIndexResponse* other);
+  friend void swap(DeleteIndexResponse& a, DeleteIndexResponse& b) {
+    a.Swap(&b);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline DeleteIndexResponse* New() const final {
+    return CreateMaybeMessage<DeleteIndexResponse>(NULL);
+  }
+
+  DeleteIndexResponse* New(::google::protobuf::Arena* arena) const final {
+    return CreateMaybeMessage<DeleteIndexResponse>(arena);
+  }
+  void CopyFrom(const ::google::protobuf::Message& from) final;
+  void MergeFrom(const ::google::protobuf::Message& from) final;
+  void CopyFrom(const DeleteIndexResponse& from);
+  void MergeFrom(const DeleteIndexResponse& from);
+  void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input) final;
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const final;
+  ::google::protobuf::uint8* InternalSerializeWithCachedSizesToArray(
+      bool deterministic, ::google::protobuf::uint8* target) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(DeleteIndexResponse* other);
+  private:
+  inline ::google::protobuf::Arena* GetArenaNoVirtual() const {
+    return NULL;
+  }
+  inline void* MaybeArenaPtr() const {
+    return NULL;
+  }
+  public:
+
+  ::google::protobuf::Metadata GetMetadata() const final;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.DeleteIndexResponse)
+ private:
+
+  ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
+  mutable ::google::protobuf::internal::CachedSize _cached_size_;
+  friend struct ::protobuf_index_2eproto::TableStruct;
+};
 // ===================================================================
 
 
@@ -2506,9 +3151,204 @@ SearchResponse::results() const {
   return results_;
 }
 
+// -------------------------------------------------------------------
+
+// GetIndexRequest
+
+// string index_name = 1;
+inline void GetIndexRequest::clear_index_name() {
+  index_name_.ClearToEmptyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline const ::std::string& GetIndexRequest::index_name() const {
+  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.GetIndexRequest.index_name)
+  return index_name_.GetNoArena();
+}
+inline void GetIndexRequest::set_index_name(const ::std::string& value) {
+  
+  index_name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), value);
+  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.GetIndexRequest.index_name)
+}
+#if LANG_CXX11
+inline void GetIndexRequest::set_index_name(::std::string&& value) {
+  
+  index_name_.SetNoArena(
+    &::google::protobuf::internal::GetEmptyStringAlreadyInited(), ::std::move(value));
+  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.GetIndexRequest.index_name)
+}
+#endif
+inline void GetIndexRequest::set_index_name(const char* value) {
+  GOOGLE_DCHECK(value != NULL);
+  
+  index_name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), ::std::string(value));
+  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.GetIndexRequest.index_name)
+}
+inline void GetIndexRequest::set_index_name(const char* value, size_t size) {
+  
+  index_name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(),
+      ::std::string(reinterpret_cast<const char*>(value), size));
+  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.GetIndexRequest.index_name)
+}
+inline ::std::string* GetIndexRequest::mutable_index_name() {
+  
+  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.GetIndexRequest.index_name)
+  return index_name_.MutableNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline ::std::string* GetIndexRequest::release_index_name() {
+  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.GetIndexRequest.index_name)
+  
+  return index_name_.ReleaseNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline void GetIndexRequest::set_allocated_index_name(::std::string* index_name) {
+  if (index_name != NULL) {
+    
+  } else {
+    
+  }
+  index_name_.SetAllocatedNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), index_name);
+  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.GetIndexRequest.index_name)
+}
+
+// -------------------------------------------------------------------
+
+// GetIndexResponse
+
+// -------------------------------------------------------------------
+
+// CreateIndexRequest
+
+// string index_name = 1;
+inline void CreateIndexRequest::clear_index_name() {
+  index_name_.ClearToEmptyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline const ::std::string& CreateIndexRequest::index_name() const {
+  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.CreateIndexRequest.index_name)
+  return index_name_.GetNoArena();
+}
+inline void CreateIndexRequest::set_index_name(const ::std::string& value) {
+  
+  index_name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), value);
+  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.CreateIndexRequest.index_name)
+}
+#if LANG_CXX11
+inline void CreateIndexRequest::set_index_name(::std::string&& value) {
+  
+  index_name_.SetNoArena(
+    &::google::protobuf::internal::GetEmptyStringAlreadyInited(), ::std::move(value));
+  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.CreateIndexRequest.index_name)
+}
+#endif
+inline void CreateIndexRequest::set_index_name(const char* value) {
+  GOOGLE_DCHECK(value != NULL);
+  
+  index_name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), ::std::string(value));
+  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.CreateIndexRequest.index_name)
+}
+inline void CreateIndexRequest::set_index_name(const char* value, size_t size) {
+  
+  index_name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(),
+      ::std::string(reinterpret_cast<const char*>(value), size));
+  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.CreateIndexRequest.index_name)
+}
+inline ::std::string* CreateIndexRequest::mutable_index_name() {
+  
+  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.CreateIndexRequest.index_name)
+  return index_name_.MutableNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline ::std::string* CreateIndexRequest::release_index_name() {
+  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.CreateIndexRequest.index_name)
+  
+  return index_name_.ReleaseNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline void CreateIndexRequest::set_allocated_index_name(::std::string* index_name) {
+  if (index_name != NULL) {
+    
+  } else {
+    
+  }
+  index_name_.SetAllocatedNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), index_name);
+  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.CreateIndexRequest.index_name)
+}
+
+// -------------------------------------------------------------------
+
+// CreateIndexResponse
+
+// -------------------------------------------------------------------
+
+// DeleteIndexRequest
+
+// string index_name = 1;
+inline void DeleteIndexRequest::clear_index_name() {
+  index_name_.ClearToEmptyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline const ::std::string& DeleteIndexRequest::index_name() const {
+  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.DeleteIndexRequest.index_name)
+  return index_name_.GetNoArena();
+}
+inline void DeleteIndexRequest::set_index_name(const ::std::string& value) {
+  
+  index_name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), value);
+  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.DeleteIndexRequest.index_name)
+}
+#if LANG_CXX11
+inline void DeleteIndexRequest::set_index_name(::std::string&& value) {
+  
+  index_name_.SetNoArena(
+    &::google::protobuf::internal::GetEmptyStringAlreadyInited(), ::std::move(value));
+  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.DeleteIndexRequest.index_name)
+}
+#endif
+inline void DeleteIndexRequest::set_index_name(const char* value) {
+  GOOGLE_DCHECK(value != NULL);
+  
+  index_name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), ::std::string(value));
+  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.DeleteIndexRequest.index_name)
+}
+inline void DeleteIndexRequest::set_index_name(const char* value, size_t size) {
+  
+  index_name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(),
+      ::std::string(reinterpret_cast<const char*>(value), size));
+  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.DeleteIndexRequest.index_name)
+}
+inline ::std::string* DeleteIndexRequest::mutable_index_name() {
+  
+  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.DeleteIndexRequest.index_name)
+  return index_name_.MutableNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline ::std::string* DeleteIndexRequest::release_index_name() {
+  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.DeleteIndexRequest.index_name)
+  
+  return index_name_.ReleaseNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
+}
+inline void DeleteIndexRequest::set_allocated_index_name(::std::string* index_name) {
+  if (index_name != NULL) {
+    
+  } else {
+    
+  }
+  index_name_.SetAllocatedNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), index_name);
+  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.DeleteIndexRequest.index_name)
+}
+
+// -------------------------------------------------------------------
+
+// DeleteIndexResponse
+
 #ifdef __GNUC__
   #pragma GCC diagnostic pop
 #endif  // __GNUC__
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
 // -------------------------------------------------------------------
 
 // -------------------------------------------------------------------

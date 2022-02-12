@@ -12,6 +12,31 @@ static inline int remainingTime(std::chrono::system_clock::time_point deadline) 
     return std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::system_clock::now()).count();
 }
 
+grpc::Status IndexServiceImpl::GetIndex(grpc::ServerContext* context, const PB::GetIndexRequest* request,
+                                          PB::GetIndexResponse* response) {
+    auto indexName = QString::fromStdString(request->index_name());
+    try {
+        m_indexes->getIndex(indexName);
+    } catch (const IndexNotFoundException& e) {
+        return grpc::Status(grpc::NOT_FOUND, e.what());
+    }
+    return grpc::Status::OK;
+}
+
+grpc::Status IndexServiceImpl::CreateIndex(grpc::ServerContext* context, const PB::CreateIndexRequest* request,
+                                          PB::CreateIndexResponse* response) {
+    auto indexName = QString::fromStdString(request->index_name());
+    m_indexes->createIndex(indexName);
+    return grpc::Status::OK;
+}
+
+grpc::Status IndexServiceImpl::DeleteIndex(grpc::ServerContext* context, const PB::DeleteIndexRequest* request,
+                                          PB::DeleteIndexResponse* response) {
+    auto indexName = QString::fromStdString(request->index_name());
+    m_indexes->deleteIndex(indexName);
+    return grpc::Status::OK;
+}
+
 grpc::Status IndexServiceImpl::BulkUpdate(grpc::ServerContext* context, const PB::BulkUpdateRequest* request,
                                           PB::BulkUpdateResponse* response) {
     auto indexName = QString::fromStdString(request->index_name());
