@@ -13,8 +13,9 @@ static inline int remainingTime(std::chrono::system_clock::time_point deadline) 
 }
 
 grpc::Status IndexServiceImpl::GetIndex(grpc::ServerContext* context, const PB::GetIndexRequest* request,
-                                          PB::GetIndexResponse* response) {
+                                        PB::GetIndexResponse* response) {
     auto indexName = QString::fromStdString(request->index_name());
+    qDebug() << "[gRPC] GetIndex " << indexName;
     try {
         m_indexes->getIndex(indexName);
     } catch (const IndexNotFoundException& e) {
@@ -24,22 +25,25 @@ grpc::Status IndexServiceImpl::GetIndex(grpc::ServerContext* context, const PB::
 }
 
 grpc::Status IndexServiceImpl::CreateIndex(grpc::ServerContext* context, const PB::CreateIndexRequest* request,
-                                          PB::CreateIndexResponse* response) {
+                                           PB::CreateIndexResponse* response) {
     auto indexName = QString::fromStdString(request->index_name());
+    qDebug() << "[gRPC] CreateIndex " << indexName;
     m_indexes->createIndex(indexName);
     return grpc::Status::OK;
 }
 
 grpc::Status IndexServiceImpl::DeleteIndex(grpc::ServerContext* context, const PB::DeleteIndexRequest* request,
-                                          PB::DeleteIndexResponse* response) {
+                                           PB::DeleteIndexResponse* response) {
     auto indexName = QString::fromStdString(request->index_name());
+    qDebug() << "[gRPC] DeleteIndex " << indexName;
     m_indexes->deleteIndex(indexName);
     return grpc::Status::OK;
 }
 
-grpc::Status IndexServiceImpl::BulkUpdate(grpc::ServerContext* context, const PB::BulkUpdateRequest* request,
-                                          PB::BulkUpdateResponse* response) {
+grpc::Status IndexServiceImpl::Update(grpc::ServerContext* context, const PB::UpdateRequest* request,
+                                      PB::UpdateResponse* response) {
     auto indexName = QString::fromStdString(request->index_name());
+    qDebug() << "[gRPC] Update " << indexName;
     OpBatch batch;
     for (const auto& op : request->ops()) {
         switch (op.op_case()) {
@@ -82,6 +86,7 @@ grpc::Status IndexServiceImpl::BulkUpdate(grpc::ServerContext* context, const PB
 grpc::Status IndexServiceImpl::Search(grpc::ServerContext* context, const PB::SearchRequest* request,
                                       PB::SearchResponse* response) {
     auto indexName = QString::fromStdString(request->index_name());
+    qDebug() << "[gRPC] Search " << indexName;
     std::vector<uint32_t> terms;
     terms.assign(request->terms().begin(), request->terms().end());
     try {

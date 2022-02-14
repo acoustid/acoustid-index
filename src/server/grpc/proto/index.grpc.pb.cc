@@ -25,7 +25,7 @@ static const char* Index_method_names[] = {
   "/Acoustid.Server.PB.Index/DeleteIndex",
   "/Acoustid.Server.PB.Index/GetDocument",
   "/Acoustid.Server.PB.Index/GetAttribute",
-  "/Acoustid.Server.PB.Index/BulkUpdate",
+  "/Acoustid.Server.PB.Index/Update",
   "/Acoustid.Server.PB.Index/Search",
 };
 
@@ -41,7 +41,7 @@ Index::Stub::Stub(const std::shared_ptr< ::grpc::ChannelInterface>& channel)
   , rpcmethod_DeleteIndex_(Index_method_names[2], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
   , rpcmethod_GetDocument_(Index_method_names[3], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
   , rpcmethod_GetAttribute_(Index_method_names[4], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
-  , rpcmethod_BulkUpdate_(Index_method_names[5], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_Update_(Index_method_names[5], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
   , rpcmethod_Search_(Index_method_names[6], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
   {}
 
@@ -125,20 +125,20 @@ void Index::Stub::experimental_async::GetAttribute(::grpc::ClientContext* contex
   return ::grpc::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::GetAttributeResponse>::Create(channel_.get(), cq, rpcmethod_GetAttribute_, context, request, false);
 }
 
-::grpc::Status Index::Stub::BulkUpdate(::grpc::ClientContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest& request, ::Acoustid::Server::PB::BulkUpdateResponse* response) {
-  return ::grpc::internal::BlockingUnaryCall(channel_.get(), rpcmethod_BulkUpdate_, context, request, response);
+::grpc::Status Index::Stub::Update(::grpc::ClientContext* context, const ::Acoustid::Server::PB::UpdateRequest& request, ::Acoustid::Server::PB::UpdateResponse* response) {
+  return ::grpc::internal::BlockingUnaryCall(channel_.get(), rpcmethod_Update_, context, request, response);
 }
 
-void Index::Stub::experimental_async::BulkUpdate(::grpc::ClientContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest* request, ::Acoustid::Server::PB::BulkUpdateResponse* response, std::function<void(::grpc::Status)> f) {
-  return ::grpc::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_BulkUpdate_, context, request, response, std::move(f));
+void Index::Stub::experimental_async::Update(::grpc::ClientContext* context, const ::Acoustid::Server::PB::UpdateRequest* request, ::Acoustid::Server::PB::UpdateResponse* response, std::function<void(::grpc::Status)> f) {
+  return ::grpc::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_Update_, context, request, response, std::move(f));
 }
 
-::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::BulkUpdateResponse>* Index::Stub::AsyncBulkUpdateRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest& request, ::grpc::CompletionQueue* cq) {
-  return ::grpc::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::BulkUpdateResponse>::Create(channel_.get(), cq, rpcmethod_BulkUpdate_, context, request, true);
+::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::UpdateResponse>* Index::Stub::AsyncUpdateRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::UpdateRequest& request, ::grpc::CompletionQueue* cq) {
+  return ::grpc::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::UpdateResponse>::Create(channel_.get(), cq, rpcmethod_Update_, context, request, true);
 }
 
-::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::BulkUpdateResponse>* Index::Stub::PrepareAsyncBulkUpdateRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest& request, ::grpc::CompletionQueue* cq) {
-  return ::grpc::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::BulkUpdateResponse>::Create(channel_.get(), cq, rpcmethod_BulkUpdate_, context, request, false);
+::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::UpdateResponse>* Index::Stub::PrepareAsyncUpdateRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::UpdateRequest& request, ::grpc::CompletionQueue* cq) {
+  return ::grpc::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::UpdateResponse>::Create(channel_.get(), cq, rpcmethod_Update_, context, request, false);
 }
 
 ::grpc::Status Index::Stub::Search(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest& request, ::Acoustid::Server::PB::SearchResponse* response) {
@@ -186,8 +186,8 @@ Index::Service::Service() {
   AddMethod(new ::grpc::internal::RpcServiceMethod(
       Index_method_names[5],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
-      new ::grpc::internal::RpcMethodHandler< Index::Service, ::Acoustid::Server::PB::BulkUpdateRequest, ::Acoustid::Server::PB::BulkUpdateResponse>(
-          std::mem_fn(&Index::Service::BulkUpdate), this)));
+      new ::grpc::internal::RpcMethodHandler< Index::Service, ::Acoustid::Server::PB::UpdateRequest, ::Acoustid::Server::PB::UpdateResponse>(
+          std::mem_fn(&Index::Service::Update), this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
       Index_method_names[6],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
@@ -233,7 +233,7 @@ Index::Service::~Service() {
   return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
 }
 
-::grpc::Status Index::Service::BulkUpdate(::grpc::ServerContext* context, const ::Acoustid::Server::PB::BulkUpdateRequest* request, ::Acoustid::Server::PB::BulkUpdateResponse* response) {
+::grpc::Status Index::Service::Update(::grpc::ServerContext* context, const ::Acoustid::Server::PB::UpdateRequest* request, ::Acoustid::Server::PB::UpdateResponse* response) {
   (void) context;
   (void) request;
   (void) response;

@@ -48,12 +48,6 @@ void AddDescriptors();
 namespace Acoustid {
 namespace Server {
 namespace PB {
-class BulkUpdateRequest;
-class BulkUpdateRequestDefaultTypeInternal;
-extern BulkUpdateRequestDefaultTypeInternal _BulkUpdateRequest_default_instance_;
-class BulkUpdateResponse;
-class BulkUpdateResponseDefaultTypeInternal;
-extern BulkUpdateResponseDefaultTypeInternal _BulkUpdateResponse_default_instance_;
 class CreateIndexRequest;
 class CreateIndexRequestDefaultTypeInternal;
 extern CreateIndexRequestDefaultTypeInternal _CreateIndexRequest_default_instance_;
@@ -105,13 +99,17 @@ extern SearchResultDefaultTypeInternal _SearchResult_default_instance_;
 class SetAttributeOp;
 class SetAttributeOpDefaultTypeInternal;
 extern SetAttributeOpDefaultTypeInternal _SetAttributeOp_default_instance_;
+class UpdateRequest;
+class UpdateRequestDefaultTypeInternal;
+extern UpdateRequestDefaultTypeInternal _UpdateRequest_default_instance_;
+class UpdateResponse;
+class UpdateResponseDefaultTypeInternal;
+extern UpdateResponseDefaultTypeInternal _UpdateResponse_default_instance_;
 }  // namespace PB
 }  // namespace Server
 }  // namespace Acoustid
 namespace google {
 namespace protobuf {
-template<> ::Acoustid::Server::PB::BulkUpdateRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::BulkUpdateRequest>(Arena*);
-template<> ::Acoustid::Server::PB::BulkUpdateResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::BulkUpdateResponse>(Arena*);
 template<> ::Acoustid::Server::PB::CreateIndexRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::CreateIndexRequest>(Arena*);
 template<> ::Acoustid::Server::PB::CreateIndexResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::CreateIndexResponse>(Arena*);
 template<> ::Acoustid::Server::PB::DeleteDocumentOp* Arena::CreateMaybeMessage<::Acoustid::Server::PB::DeleteDocumentOp>(Arena*);
@@ -129,6 +127,8 @@ template<> ::Acoustid::Server::PB::SearchRequest* Arena::CreateMaybeMessage<::Ac
 template<> ::Acoustid::Server::PB::SearchResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::SearchResponse>(Arena*);
 template<> ::Acoustid::Server::PB::SearchResult* Arena::CreateMaybeMessage<::Acoustid::Server::PB::SearchResult>(Arena*);
 template<> ::Acoustid::Server::PB::SetAttributeOp* Arena::CreateMaybeMessage<::Acoustid::Server::PB::SetAttributeOp>(Arena*);
+template<> ::Acoustid::Server::PB::UpdateRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::UpdateRequest>(Arena*);
+template<> ::Acoustid::Server::PB::UpdateResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::UpdateResponse>(Arena*);
 }  // namespace protobuf
 }  // namespace google
 namespace Acoustid {
@@ -1103,24 +1103,24 @@ class Operation : public ::google::protobuf::Message /* @@protoc_insertion_point
 };
 // -------------------------------------------------------------------
 
-class BulkUpdateRequest : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.BulkUpdateRequest) */ {
+class UpdateRequest : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.UpdateRequest) */ {
  public:
-  BulkUpdateRequest();
-  virtual ~BulkUpdateRequest();
+  UpdateRequest();
+  virtual ~UpdateRequest();
 
-  BulkUpdateRequest(const BulkUpdateRequest& from);
+  UpdateRequest(const UpdateRequest& from);
 
-  inline BulkUpdateRequest& operator=(const BulkUpdateRequest& from) {
+  inline UpdateRequest& operator=(const UpdateRequest& from) {
     CopyFrom(from);
     return *this;
   }
   #if LANG_CXX11
-  BulkUpdateRequest(BulkUpdateRequest&& from) noexcept
-    : BulkUpdateRequest() {
+  UpdateRequest(UpdateRequest&& from) noexcept
+    : UpdateRequest() {
     *this = ::std::move(from);
   }
 
-  inline BulkUpdateRequest& operator=(BulkUpdateRequest&& from) noexcept {
+  inline UpdateRequest& operator=(UpdateRequest&& from) noexcept {
     if (GetArenaNoVirtual() == from.GetArenaNoVirtual()) {
       if (this != &from) InternalSwap(&from);
     } else {
@@ -1130,34 +1130,34 @@ class BulkUpdateRequest : public ::google::protobuf::Message /* @@protoc_inserti
   }
   #endif
   static const ::google::protobuf::Descriptor* descriptor();
-  static const BulkUpdateRequest& default_instance();
+  static const UpdateRequest& default_instance();
 
   static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
-  static inline const BulkUpdateRequest* internal_default_instance() {
-    return reinterpret_cast<const BulkUpdateRequest*>(
-               &_BulkUpdateRequest_default_instance_);
+  static inline const UpdateRequest* internal_default_instance() {
+    return reinterpret_cast<const UpdateRequest*>(
+               &_UpdateRequest_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
     8;
 
-  void Swap(BulkUpdateRequest* other);
-  friend void swap(BulkUpdateRequest& a, BulkUpdateRequest& b) {
+  void Swap(UpdateRequest* other);
+  friend void swap(UpdateRequest& a, UpdateRequest& b) {
     a.Swap(&b);
   }
 
   // implements Message ----------------------------------------------
 
-  inline BulkUpdateRequest* New() const final {
-    return CreateMaybeMessage<BulkUpdateRequest>(NULL);
+  inline UpdateRequest* New() const final {
+    return CreateMaybeMessage<UpdateRequest>(NULL);
   }
 
-  BulkUpdateRequest* New(::google::protobuf::Arena* arena) const final {
-    return CreateMaybeMessage<BulkUpdateRequest>(arena);
+  UpdateRequest* New(::google::protobuf::Arena* arena) const final {
+    return CreateMaybeMessage<UpdateRequest>(arena);
   }
   void CopyFrom(const ::google::protobuf::Message& from) final;
   void MergeFrom(const ::google::protobuf::Message& from) final;
-  void CopyFrom(const BulkUpdateRequest& from);
-  void MergeFrom(const BulkUpdateRequest& from);
+  void CopyFrom(const UpdateRequest& from);
+  void MergeFrom(const UpdateRequest& from);
   void Clear() final;
   bool IsInitialized() const final;
 
@@ -1174,7 +1174,7 @@ class BulkUpdateRequest : public ::google::protobuf::Message /* @@protoc_inserti
   void SharedCtor();
   void SharedDtor();
   void SetCachedSize(int size) const final;
-  void InternalSwap(BulkUpdateRequest* other);
+  void InternalSwap(UpdateRequest* other);
   private:
   inline ::google::protobuf::Arena* GetArenaNoVirtual() const {
     return NULL;
@@ -1216,7 +1216,7 @@ class BulkUpdateRequest : public ::google::protobuf::Message /* @@protoc_inserti
   ::std::string* release_index_name();
   void set_allocated_index_name(::std::string* index_name);
 
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.BulkUpdateRequest)
+  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.UpdateRequest)
  private:
 
   ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
@@ -1227,24 +1227,24 @@ class BulkUpdateRequest : public ::google::protobuf::Message /* @@protoc_inserti
 };
 // -------------------------------------------------------------------
 
-class BulkUpdateResponse : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.BulkUpdateResponse) */ {
+class UpdateResponse : public ::google::protobuf::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.UpdateResponse) */ {
  public:
-  BulkUpdateResponse();
-  virtual ~BulkUpdateResponse();
+  UpdateResponse();
+  virtual ~UpdateResponse();
 
-  BulkUpdateResponse(const BulkUpdateResponse& from);
+  UpdateResponse(const UpdateResponse& from);
 
-  inline BulkUpdateResponse& operator=(const BulkUpdateResponse& from) {
+  inline UpdateResponse& operator=(const UpdateResponse& from) {
     CopyFrom(from);
     return *this;
   }
   #if LANG_CXX11
-  BulkUpdateResponse(BulkUpdateResponse&& from) noexcept
-    : BulkUpdateResponse() {
+  UpdateResponse(UpdateResponse&& from) noexcept
+    : UpdateResponse() {
     *this = ::std::move(from);
   }
 
-  inline BulkUpdateResponse& operator=(BulkUpdateResponse&& from) noexcept {
+  inline UpdateResponse& operator=(UpdateResponse&& from) noexcept {
     if (GetArenaNoVirtual() == from.GetArenaNoVirtual()) {
       if (this != &from) InternalSwap(&from);
     } else {
@@ -1254,34 +1254,34 @@ class BulkUpdateResponse : public ::google::protobuf::Message /* @@protoc_insert
   }
   #endif
   static const ::google::protobuf::Descriptor* descriptor();
-  static const BulkUpdateResponse& default_instance();
+  static const UpdateResponse& default_instance();
 
   static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
-  static inline const BulkUpdateResponse* internal_default_instance() {
-    return reinterpret_cast<const BulkUpdateResponse*>(
-               &_BulkUpdateResponse_default_instance_);
+  static inline const UpdateResponse* internal_default_instance() {
+    return reinterpret_cast<const UpdateResponse*>(
+               &_UpdateResponse_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
     9;
 
-  void Swap(BulkUpdateResponse* other);
-  friend void swap(BulkUpdateResponse& a, BulkUpdateResponse& b) {
+  void Swap(UpdateResponse* other);
+  friend void swap(UpdateResponse& a, UpdateResponse& b) {
     a.Swap(&b);
   }
 
   // implements Message ----------------------------------------------
 
-  inline BulkUpdateResponse* New() const final {
-    return CreateMaybeMessage<BulkUpdateResponse>(NULL);
+  inline UpdateResponse* New() const final {
+    return CreateMaybeMessage<UpdateResponse>(NULL);
   }
 
-  BulkUpdateResponse* New(::google::protobuf::Arena* arena) const final {
-    return CreateMaybeMessage<BulkUpdateResponse>(arena);
+  UpdateResponse* New(::google::protobuf::Arena* arena) const final {
+    return CreateMaybeMessage<UpdateResponse>(arena);
   }
   void CopyFrom(const ::google::protobuf::Message& from) final;
   void MergeFrom(const ::google::protobuf::Message& from) final;
-  void CopyFrom(const BulkUpdateResponse& from);
-  void MergeFrom(const BulkUpdateResponse& from);
+  void CopyFrom(const UpdateResponse& from);
+  void MergeFrom(const UpdateResponse& from);
   void Clear() final;
   bool IsInitialized() const final;
 
@@ -1298,7 +1298,7 @@ class BulkUpdateResponse : public ::google::protobuf::Message /* @@protoc_insert
   void SharedCtor();
   void SharedDtor();
   void SetCachedSize(int size) const final;
-  void InternalSwap(BulkUpdateResponse* other);
+  void InternalSwap(UpdateResponse* other);
   private:
   inline ::google::protobuf::Arena* GetArenaNoVirtual() const {
     return NULL;
@@ -1314,7 +1314,7 @@ class BulkUpdateResponse : public ::google::protobuf::Message /* @@protoc_insert
 
   // accessors -------------------------------------------------------
 
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.BulkUpdateResponse)
+  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.UpdateResponse)
  private:
 
   ::google::protobuf::internal::InternalMetadataWithArena _internal_metadata_;
@@ -2895,94 +2895,94 @@ inline Operation::OpCase Operation::op_case() const {
 }
 // -------------------------------------------------------------------
 
-// BulkUpdateRequest
+// UpdateRequest
 
 // string index_name = 1;
-inline void BulkUpdateRequest::clear_index_name() {
+inline void UpdateRequest::clear_index_name() {
   index_name_.ClearToEmptyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
 }
-inline const ::std::string& BulkUpdateRequest::index_name() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.BulkUpdateRequest.index_name)
+inline const ::std::string& UpdateRequest::index_name() const {
+  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.UpdateRequest.index_name)
   return index_name_.GetNoArena();
 }
-inline void BulkUpdateRequest::set_index_name(const ::std::string& value) {
+inline void UpdateRequest::set_index_name(const ::std::string& value) {
   
   index_name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), value);
-  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.BulkUpdateRequest.index_name)
+  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.UpdateRequest.index_name)
 }
 #if LANG_CXX11
-inline void BulkUpdateRequest::set_index_name(::std::string&& value) {
+inline void UpdateRequest::set_index_name(::std::string&& value) {
   
   index_name_.SetNoArena(
     &::google::protobuf::internal::GetEmptyStringAlreadyInited(), ::std::move(value));
-  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.BulkUpdateRequest.index_name)
+  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.UpdateRequest.index_name)
 }
 #endif
-inline void BulkUpdateRequest::set_index_name(const char* value) {
+inline void UpdateRequest::set_index_name(const char* value) {
   GOOGLE_DCHECK(value != NULL);
   
   index_name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), ::std::string(value));
-  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.BulkUpdateRequest.index_name)
+  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.UpdateRequest.index_name)
 }
-inline void BulkUpdateRequest::set_index_name(const char* value, size_t size) {
+inline void UpdateRequest::set_index_name(const char* value, size_t size) {
   
   index_name_.SetNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(),
       ::std::string(reinterpret_cast<const char*>(value), size));
-  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.BulkUpdateRequest.index_name)
+  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.UpdateRequest.index_name)
 }
-inline ::std::string* BulkUpdateRequest::mutable_index_name() {
+inline ::std::string* UpdateRequest::mutable_index_name() {
   
-  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.BulkUpdateRequest.index_name)
+  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.UpdateRequest.index_name)
   return index_name_.MutableNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
 }
-inline ::std::string* BulkUpdateRequest::release_index_name() {
-  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.BulkUpdateRequest.index_name)
+inline ::std::string* UpdateRequest::release_index_name() {
+  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.UpdateRequest.index_name)
   
   return index_name_.ReleaseNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
 }
-inline void BulkUpdateRequest::set_allocated_index_name(::std::string* index_name) {
+inline void UpdateRequest::set_allocated_index_name(::std::string* index_name) {
   if (index_name != NULL) {
     
   } else {
     
   }
   index_name_.SetAllocatedNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), index_name);
-  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.BulkUpdateRequest.index_name)
+  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.UpdateRequest.index_name)
 }
 
 // repeated .Acoustid.Server.PB.Operation ops = 2;
-inline int BulkUpdateRequest::ops_size() const {
+inline int UpdateRequest::ops_size() const {
   return ops_.size();
 }
-inline void BulkUpdateRequest::clear_ops() {
+inline void UpdateRequest::clear_ops() {
   ops_.Clear();
 }
-inline ::Acoustid::Server::PB::Operation* BulkUpdateRequest::mutable_ops(int index) {
-  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.BulkUpdateRequest.ops)
+inline ::Acoustid::Server::PB::Operation* UpdateRequest::mutable_ops(int index) {
+  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.UpdateRequest.ops)
   return ops_.Mutable(index);
 }
 inline ::google::protobuf::RepeatedPtrField< ::Acoustid::Server::PB::Operation >*
-BulkUpdateRequest::mutable_ops() {
-  // @@protoc_insertion_point(field_mutable_list:Acoustid.Server.PB.BulkUpdateRequest.ops)
+UpdateRequest::mutable_ops() {
+  // @@protoc_insertion_point(field_mutable_list:Acoustid.Server.PB.UpdateRequest.ops)
   return &ops_;
 }
-inline const ::Acoustid::Server::PB::Operation& BulkUpdateRequest::ops(int index) const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.BulkUpdateRequest.ops)
+inline const ::Acoustid::Server::PB::Operation& UpdateRequest::ops(int index) const {
+  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.UpdateRequest.ops)
   return ops_.Get(index);
 }
-inline ::Acoustid::Server::PB::Operation* BulkUpdateRequest::add_ops() {
-  // @@protoc_insertion_point(field_add:Acoustid.Server.PB.BulkUpdateRequest.ops)
+inline ::Acoustid::Server::PB::Operation* UpdateRequest::add_ops() {
+  // @@protoc_insertion_point(field_add:Acoustid.Server.PB.UpdateRequest.ops)
   return ops_.Add();
 }
 inline const ::google::protobuf::RepeatedPtrField< ::Acoustid::Server::PB::Operation >&
-BulkUpdateRequest::ops() const {
-  // @@protoc_insertion_point(field_list:Acoustid.Server.PB.BulkUpdateRequest.ops)
+UpdateRequest::ops() const {
+  // @@protoc_insertion_point(field_list:Acoustid.Server.PB.UpdateRequest.ops)
   return ops_;
 }
 
 // -------------------------------------------------------------------
 
-// BulkUpdateResponse
+// UpdateResponse
 
 // -------------------------------------------------------------------
 
