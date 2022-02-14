@@ -72,16 +72,16 @@ class OperationDefaultTypeInternal {
   const ::Acoustid::Server::PB::DeleteDocumentOp* delete_document_;
   const ::Acoustid::Server::PB::SetAttributeOp* set_attribute_;
 } _Operation_default_instance_;
-class BulkUpdateRequestDefaultTypeInternal {
+class UpdateRequestDefaultTypeInternal {
  public:
-  ::google::protobuf::internal::ExplicitlyConstructed<BulkUpdateRequest>
+  ::google::protobuf::internal::ExplicitlyConstructed<UpdateRequest>
       _instance;
-} _BulkUpdateRequest_default_instance_;
-class BulkUpdateResponseDefaultTypeInternal {
+} _UpdateRequest_default_instance_;
+class UpdateResponseDefaultTypeInternal {
  public:
-  ::google::protobuf::internal::ExplicitlyConstructed<BulkUpdateResponse>
+  ::google::protobuf::internal::ExplicitlyConstructed<UpdateResponse>
       _instance;
-} _BulkUpdateResponse_default_instance_;
+} _UpdateResponse_default_instance_;
 class SearchResultDefaultTypeInternal {
  public:
   ::google::protobuf::internal::ExplicitlyConstructed<SearchResult>
@@ -216,34 +216,34 @@ static void InitDefaultsOperation() {
       &protobuf_index_2eproto::scc_info_DeleteDocumentOp.base,
       &protobuf_index_2eproto::scc_info_SetAttributeOp.base,}};
 
-static void InitDefaultsBulkUpdateRequest() {
+static void InitDefaultsUpdateRequest() {
   GOOGLE_PROTOBUF_VERIFY_VERSION;
 
   {
-    void* ptr = &::Acoustid::Server::PB::_BulkUpdateRequest_default_instance_;
-    new (ptr) ::Acoustid::Server::PB::BulkUpdateRequest();
+    void* ptr = &::Acoustid::Server::PB::_UpdateRequest_default_instance_;
+    new (ptr) ::Acoustid::Server::PB::UpdateRequest();
     ::google::protobuf::internal::OnShutdownDestroyMessage(ptr);
   }
-  ::Acoustid::Server::PB::BulkUpdateRequest::InitAsDefaultInstance();
+  ::Acoustid::Server::PB::UpdateRequest::InitAsDefaultInstance();
 }
 
-::google::protobuf::internal::SCCInfo<1> scc_info_BulkUpdateRequest =
-    {{ATOMIC_VAR_INIT(::google::protobuf::internal::SCCInfoBase::kUninitialized), 1, InitDefaultsBulkUpdateRequest}, {
+::google::protobuf::internal::SCCInfo<1> scc_info_UpdateRequest =
+    {{ATOMIC_VAR_INIT(::google::protobuf::internal::SCCInfoBase::kUninitialized), 1, InitDefaultsUpdateRequest}, {
       &protobuf_index_2eproto::scc_info_Operation.base,}};
 
-static void InitDefaultsBulkUpdateResponse() {
+static void InitDefaultsUpdateResponse() {
   GOOGLE_PROTOBUF_VERIFY_VERSION;
 
   {
-    void* ptr = &::Acoustid::Server::PB::_BulkUpdateResponse_default_instance_;
-    new (ptr) ::Acoustid::Server::PB::BulkUpdateResponse();
+    void* ptr = &::Acoustid::Server::PB::_UpdateResponse_default_instance_;
+    new (ptr) ::Acoustid::Server::PB::UpdateResponse();
     ::google::protobuf::internal::OnShutdownDestroyMessage(ptr);
   }
-  ::Acoustid::Server::PB::BulkUpdateResponse::InitAsDefaultInstance();
+  ::Acoustid::Server::PB::UpdateResponse::InitAsDefaultInstance();
 }
 
-::google::protobuf::internal::SCCInfo<0> scc_info_BulkUpdateResponse =
-    {{ATOMIC_VAR_INIT(::google::protobuf::internal::SCCInfoBase::kUninitialized), 0, InitDefaultsBulkUpdateResponse}, {}};
+::google::protobuf::internal::SCCInfo<0> scc_info_UpdateResponse =
+    {{ATOMIC_VAR_INIT(::google::protobuf::internal::SCCInfoBase::kUninitialized), 0, InitDefaultsUpdateResponse}, {}};
 
 static void InitDefaultsSearchResult() {
   GOOGLE_PROTOBUF_VERIFY_VERSION;
@@ -297,8 +297,8 @@ void InitDefaults() {
   ::google::protobuf::internal::InitSCC(&scc_info_DeleteDocumentOp.base);
   ::google::protobuf::internal::InitSCC(&scc_info_SetAttributeOp.base);
   ::google::protobuf::internal::InitSCC(&scc_info_Operation.base);
-  ::google::protobuf::internal::InitSCC(&scc_info_BulkUpdateRequest.base);
-  ::google::protobuf::internal::InitSCC(&scc_info_BulkUpdateResponse.base);
+  ::google::protobuf::internal::InitSCC(&scc_info_UpdateRequest.base);
+  ::google::protobuf::internal::InitSCC(&scc_info_UpdateResponse.base);
   ::google::protobuf::internal::InitSCC(&scc_info_SearchResult.base);
   ::google::protobuf::internal::InitSCC(&scc_info_SearchRequest.base);
   ::google::protobuf::internal::InitSCC(&scc_info_SearchResponse.base);
@@ -363,14 +363,14 @@ const ::google::protobuf::uint32 TableStruct::offsets[] GOOGLE_PROTOBUF_ATTRIBUT
   offsetof(::Acoustid::Server::PB::OperationDefaultTypeInternal, set_attribute_),
   GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::Operation, op_),
   ~0u,  // no _has_bits_
-  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::BulkUpdateRequest, _internal_metadata_),
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::UpdateRequest, _internal_metadata_),
   ~0u,  // no _extensions_
   ~0u,  // no _oneof_case_
   ~0u,  // no _weak_field_map_
-  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::BulkUpdateRequest, index_name_),
-  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::BulkUpdateRequest, ops_),
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::UpdateRequest, index_name_),
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::UpdateRequest, ops_),
   ~0u,  // no _has_bits_
-  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::BulkUpdateResponse, _internal_metadata_),
+  GOOGLE_PROTOBUF_GENERATED_MESSAGE_FIELD_OFFSET(::Acoustid::Server::PB::UpdateResponse, _internal_metadata_),
   ~0u,  // no _extensions_
   ~0u,  // no _oneof_case_
   ~0u,  // no _weak_field_map_
@@ -405,8 +405,8 @@ static const ::google::protobuf::internal::MigrationSchema schemas[] GOOGLE_PROT
   { 33, -1, sizeof(::Acoustid::Server::PB::DeleteDocumentOp)},
   { 39, -1, sizeof(::Acoustid::Server::PB::SetAttributeOp)},
   { 46, -1, sizeof(::Acoustid::Server::PB::Operation)},
-  { 55, -1, sizeof(::Acoustid::Server::PB::BulkUpdateRequest)},
-  { 62, -1, sizeof(::Acoustid::Server::PB::BulkUpdateResponse)},
+  { 55, -1, sizeof(::Acoustid::Server::PB::UpdateRequest)},
+  { 62, -1, sizeof(::Acoustid::Server::PB::UpdateResponse)},
   { 67, -1, sizeof(::Acoustid::Server::PB::SearchResult)},
   { 74, -1, sizeof(::Acoustid::Server::PB::SearchRequest)},
   { 82, -1, sizeof(::Acoustid::Server::PB::SearchResponse)},
@@ -421,8 +421,8 @@ static ::google::protobuf::Message const * const file_default_instances[] = {
   reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_DeleteDocumentOp_default_instance_),
   reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_SetAttributeOp_default_instance_),
   reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_Operation_default_instance_),
-  reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_BulkUpdateRequest_default_instance_),
-  reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_BulkUpdateResponse_default_instance_),
+  reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_UpdateRequest_default_instance_),
+  reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_UpdateResponse_default_instance_),
   reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_SearchResult_default_instance_),
   reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_SearchRequest_default_instance_),
   reinterpret_cast<const ::google::protobuf::Message*>(&::Acoustid::Server::PB::_SearchResponse_default_instance_),
@@ -463,27 +463,27 @@ void AddDescriptorsImpl() {
       "sertOrUpdateDocumentOpH\000\022\?\n\017delete_docum"
       "ent\030\002 \001(\0132$.Acoustid.Server.PB.DeleteDoc"
       "umentOpH\000\022;\n\rset_attribute\030\003 \001(\0132\".Acous"
-      "tid.Server.PB.SetAttributeOpH\000B\004\n\002op\"S\n\021"
-      "BulkUpdateRequest\022\022\n\nindex_name\030\001 \001(\t\022*\n"
-      "\003ops\030\002 \003(\0132\035.Acoustid.Server.PB.Operatio"
-      "n\"\024\n\022BulkUpdateResponse\"-\n\014SearchResult\022"
-      "\016\n\006doc_id\030\001 \001(\r\022\r\n\005score\030\002 \001(\002\"G\n\rSearch"
-      "Request\022\022\n\nindex_name\030\001 \001(\t\022\r\n\005terms\030\002 \003"
-      "(\r\022\023\n\013max_results\030\003 \001(\005\"C\n\016SearchRespons"
-      "e\0221\n\007results\030\001 \003(\0132 .Acoustid.Server.PB."
-      "SearchResult2\370\002\n\005Index\022^\n\013GetDocument\022&."
-      "Acoustid.Server.PB.GetDocumentRequest\032\'."
-      "Acoustid.Server.PB.GetDocumentResponse\022a"
-      "\n\014GetAttribute\022\'.Acoustid.Server.PB.GetA"
-      "ttributeRequest\032(.Acoustid.Server.PB.Get"
-      "AttributeResponse\022[\n\nBulkUpdate\022%.Acoust"
-      "id.Server.PB.BulkUpdateRequest\032&.Acousti"
-      "d.Server.PB.BulkUpdateResponse\022O\n\006Search"
-      "\022!.Acoustid.Server.PB.SearchRequest\032\".Ac"
-      "oustid.Server.PB.SearchResponseb\006proto3"
+      "tid.Server.PB.SetAttributeOpH\000B\004\n\002op\"O\n\r"
+      "UpdateRequest\022\022\n\nindex_name\030\001 \001(\t\022*\n\003ops"
+      "\030\002 \003(\0132\035.Acoustid.Server.PB.Operation\"\020\n"
+      "\016UpdateResponse\"-\n\014SearchResult\022\016\n\006doc_i"
+      "d\030\001 \001(\r\022\r\n\005score\030\002 \001(\002\"G\n\rSearchRequest\022"
+      "\022\n\nindex_name\030\001 \001(\t\022\r\n\005terms\030\002 \003(\r\022\023\n\013ma"
+      "x_results\030\003 \001(\005\"C\n\016SearchResponse\0221\n\007res"
+      "ults\030\001 \003(\0132 .Acoustid.Server.PB.SearchRe"
+      "sult2\354\002\n\005Index\022^\n\013GetDocument\022&.Acoustid"
+      ".Server.PB.GetDocumentRequest\032\'.Acoustid"
+      ".Server.PB.GetDocumentResponse\022a\n\014GetAtt"
+      "ribute\022\'.Acoustid.Server.PB.GetAttribute"
+      "Request\032(.Acoustid.Server.PB.GetAttribut"
+      "eResponse\022O\n\006Update\022!.Acoustid.Server.PB"
+      ".UpdateRequest\032\".Acoustid.Server.PB.Upda"
+      "teResponse\022O\n\006Search\022!.Acoustid.Server.P"
+      "B.SearchRequest\032\".Acoustid.Server.PB.Sea"
+      "rchResponseb\006proto3"
   };
   ::google::protobuf::DescriptorPool::InternalAddGeneratedFile(
-      descriptor, 1279);
+      descriptor, 1259);
   ::google::protobuf::MessageFactory::InternalRegisterGeneratedFile(
     "index.proto", &protobuf_RegisterTypes);
 }
@@ -2787,21 +2787,21 @@ void Operation::InternalSwap(Operation* other) {
 
 // ===================================================================
 
-void BulkUpdateRequest::InitAsDefaultInstance() {
+void UpdateRequest::InitAsDefaultInstance() {
 }
 #if !defined(_MSC_VER) || _MSC_VER >= 1900
-const int BulkUpdateRequest::kIndexNameFieldNumber;
-const int BulkUpdateRequest::kOpsFieldNumber;
+const int UpdateRequest::kIndexNameFieldNumber;
+const int UpdateRequest::kOpsFieldNumber;
 #endif  // !defined(_MSC_VER) || _MSC_VER >= 1900
 
-BulkUpdateRequest::BulkUpdateRequest()
+UpdateRequest::UpdateRequest()
   : ::google::protobuf::Message(), _internal_metadata_(NULL) {
   ::google::protobuf::internal::InitSCC(
-      &protobuf_index_2eproto::scc_info_BulkUpdateRequest.base);
+      &protobuf_index_2eproto::scc_info_UpdateRequest.base);
   SharedCtor();
-  // @@protoc_insertion_point(constructor:Acoustid.Server.PB.BulkUpdateRequest)
+  // @@protoc_insertion_point(constructor:Acoustid.Server.PB.UpdateRequest)
 }
-BulkUpdateRequest::BulkUpdateRequest(const BulkUpdateRequest& from)
+UpdateRequest::UpdateRequest(const UpdateRequest& from)
   : ::google::protobuf::Message(),
       _internal_metadata_(NULL),
       ops_(from.ops_) {
@@ -2810,38 +2810,38 @@ BulkUpdateRequest::BulkUpdateRequest(const BulkUpdateRequest& from)
   if (from.index_name().size() > 0) {
     index_name_.AssignWithDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited(), from.index_name_);
   }
-  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.BulkUpdateRequest)
+  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.UpdateRequest)
 }
 
-void BulkUpdateRequest::SharedCtor() {
+void UpdateRequest::SharedCtor() {
   index_name_.UnsafeSetDefault(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
 }
 
-BulkUpdateRequest::~BulkUpdateRequest() {
-  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.BulkUpdateRequest)
+UpdateRequest::~UpdateRequest() {
+  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.UpdateRequest)
   SharedDtor();
 }
 
-void BulkUpdateRequest::SharedDtor() {
+void UpdateRequest::SharedDtor() {
   index_name_.DestroyNoArena(&::google::protobuf::internal::GetEmptyStringAlreadyInited());
 }
 
-void BulkUpdateRequest::SetCachedSize(int size) const {
+void UpdateRequest::SetCachedSize(int size) const {
   _cached_size_.Set(size);
 }
-const ::google::protobuf::Descriptor* BulkUpdateRequest::descriptor() {
+const ::google::protobuf::Descriptor* UpdateRequest::descriptor() {
   ::protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
   return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages].descriptor;
 }
 
-const BulkUpdateRequest& BulkUpdateRequest::default_instance() {
-  ::google::protobuf::internal::InitSCC(&protobuf_index_2eproto::scc_info_BulkUpdateRequest.base);
+const UpdateRequest& UpdateRequest::default_instance() {
+  ::google::protobuf::internal::InitSCC(&protobuf_index_2eproto::scc_info_UpdateRequest.base);
   return *internal_default_instance();
 }
 
 
-void BulkUpdateRequest::Clear() {
-// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.BulkUpdateRequest)
+void UpdateRequest::Clear() {
+// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.UpdateRequest)
   ::google::protobuf::uint32 cached_has_bits = 0;
   // Prevent compiler warnings about cached_has_bits being unused
   (void) cached_has_bits;
@@ -2851,11 +2851,11 @@ void BulkUpdateRequest::Clear() {
   _internal_metadata_.Clear();
 }
 
-bool BulkUpdateRequest::MergePartialFromCodedStream(
+bool UpdateRequest::MergePartialFromCodedStream(
     ::google::protobuf::io::CodedInputStream* input) {
 #define DO_(EXPRESSION) if (!GOOGLE_PREDICT_TRUE(EXPRESSION)) goto failure
   ::google::protobuf::uint32 tag;
-  // @@protoc_insertion_point(parse_start:Acoustid.Server.PB.BulkUpdateRequest)
+  // @@protoc_insertion_point(parse_start:Acoustid.Server.PB.UpdateRequest)
   for (;;) {
     ::std::pair<::google::protobuf::uint32, bool> p = input->ReadTagWithCutoffNoLastTag(127u);
     tag = p.first;
@@ -2870,7 +2870,7 @@ bool BulkUpdateRequest::MergePartialFromCodedStream(
           DO_(::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
             this->index_name().data(), static_cast<int>(this->index_name().length()),
             ::google::protobuf::internal::WireFormatLite::PARSE,
-            "Acoustid.Server.PB.BulkUpdateRequest.index_name"));
+            "Acoustid.Server.PB.UpdateRequest.index_name"));
         } else {
           goto handle_unusual;
         }
@@ -2901,17 +2901,17 @@ bool BulkUpdateRequest::MergePartialFromCodedStream(
     }
   }
 success:
-  // @@protoc_insertion_point(parse_success:Acoustid.Server.PB.BulkUpdateRequest)
+  // @@protoc_insertion_point(parse_success:Acoustid.Server.PB.UpdateRequest)
   return true;
 failure:
-  // @@protoc_insertion_point(parse_failure:Acoustid.Server.PB.BulkUpdateRequest)
+  // @@protoc_insertion_point(parse_failure:Acoustid.Server.PB.UpdateRequest)
   return false;
 #undef DO_
 }
 
-void BulkUpdateRequest::SerializeWithCachedSizes(
+void UpdateRequest::SerializeWithCachedSizes(
     ::google::protobuf::io::CodedOutputStream* output) const {
-  // @@protoc_insertion_point(serialize_start:Acoustid.Server.PB.BulkUpdateRequest)
+  // @@protoc_insertion_point(serialize_start:Acoustid.Server.PB.UpdateRequest)
   ::google::protobuf::uint32 cached_has_bits = 0;
   (void) cached_has_bits;
 
@@ -2920,7 +2920,7 @@ void BulkUpdateRequest::SerializeWithCachedSizes(
     ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
       this->index_name().data(), static_cast<int>(this->index_name().length()),
       ::google::protobuf::internal::WireFormatLite::SERIALIZE,
-      "Acoustid.Server.PB.BulkUpdateRequest.index_name");
+      "Acoustid.Server.PB.UpdateRequest.index_name");
     ::google::protobuf::internal::WireFormatLite::WriteStringMaybeAliased(
       1, this->index_name(), output);
   }
@@ -2938,13 +2938,13 @@ void BulkUpdateRequest::SerializeWithCachedSizes(
     ::google::protobuf::internal::WireFormat::SerializeUnknownFields(
         (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), output);
   }
-  // @@protoc_insertion_point(serialize_end:Acoustid.Server.PB.BulkUpdateRequest)
+  // @@protoc_insertion_point(serialize_end:Acoustid.Server.PB.UpdateRequest)
 }
 
-::google::protobuf::uint8* BulkUpdateRequest::InternalSerializeWithCachedSizesToArray(
+::google::protobuf::uint8* UpdateRequest::InternalSerializeWithCachedSizesToArray(
     bool deterministic, ::google::protobuf::uint8* target) const {
   (void)deterministic; // Unused
-  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.BulkUpdateRequest)
+  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.UpdateRequest)
   ::google::protobuf::uint32 cached_has_bits = 0;
   (void) cached_has_bits;
 
@@ -2953,7 +2953,7 @@ void BulkUpdateRequest::SerializeWithCachedSizes(
     ::google::protobuf::internal::WireFormatLite::VerifyUtf8String(
       this->index_name().data(), static_cast<int>(this->index_name().length()),
       ::google::protobuf::internal::WireFormatLite::SERIALIZE,
-      "Acoustid.Server.PB.BulkUpdateRequest.index_name");
+      "Acoustid.Server.PB.UpdateRequest.index_name");
     target =
       ::google::protobuf::internal::WireFormatLite::WriteStringToArray(
         1, this->index_name(), target);
@@ -2971,12 +2971,12 @@ void BulkUpdateRequest::SerializeWithCachedSizes(
     target = ::google::protobuf::internal::WireFormat::SerializeUnknownFieldsToArray(
         (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), target);
   }
-  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.BulkUpdateRequest)
+  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.UpdateRequest)
   return target;
 }
 
-size_t BulkUpdateRequest::ByteSizeLong() const {
-// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.BulkUpdateRequest)
+size_t UpdateRequest::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.UpdateRequest)
   size_t total_size = 0;
 
   if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
@@ -3007,23 +3007,23 @@ size_t BulkUpdateRequest::ByteSizeLong() const {
   return total_size;
 }
 
-void BulkUpdateRequest::MergeFrom(const ::google::protobuf::Message& from) {
-// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.BulkUpdateRequest)
+void UpdateRequest::MergeFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.UpdateRequest)
   GOOGLE_DCHECK_NE(&from, this);
-  const BulkUpdateRequest* source =
-      ::google::protobuf::internal::DynamicCastToGenerated<const BulkUpdateRequest>(
+  const UpdateRequest* source =
+      ::google::protobuf::internal::DynamicCastToGenerated<const UpdateRequest>(
           &from);
   if (source == NULL) {
-  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.BulkUpdateRequest)
+  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.UpdateRequest)
     ::google::protobuf::internal::ReflectionOps::Merge(from, this);
   } else {
-  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.BulkUpdateRequest)
+  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.UpdateRequest)
     MergeFrom(*source);
   }
 }
 
-void BulkUpdateRequest::MergeFrom(const BulkUpdateRequest& from) {
-// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.BulkUpdateRequest)
+void UpdateRequest::MergeFrom(const UpdateRequest& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.UpdateRequest)
   GOOGLE_DCHECK_NE(&from, this);
   _internal_metadata_.MergeFrom(from._internal_metadata_);
   ::google::protobuf::uint32 cached_has_bits = 0;
@@ -3036,29 +3036,29 @@ void BulkUpdateRequest::MergeFrom(const BulkUpdateRequest& from) {
   }
 }
 
-void BulkUpdateRequest::CopyFrom(const ::google::protobuf::Message& from) {
-// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.BulkUpdateRequest)
+void UpdateRequest::CopyFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.UpdateRequest)
   if (&from == this) return;
   Clear();
   MergeFrom(from);
 }
 
-void BulkUpdateRequest::CopyFrom(const BulkUpdateRequest& from) {
-// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.BulkUpdateRequest)
+void UpdateRequest::CopyFrom(const UpdateRequest& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.UpdateRequest)
   if (&from == this) return;
   Clear();
   MergeFrom(from);
 }
 
-bool BulkUpdateRequest::IsInitialized() const {
+bool UpdateRequest::IsInitialized() const {
   return true;
 }
 
-void BulkUpdateRequest::Swap(BulkUpdateRequest* other) {
+void UpdateRequest::Swap(UpdateRequest* other) {
   if (other == this) return;
   InternalSwap(other);
 }
-void BulkUpdateRequest::InternalSwap(BulkUpdateRequest* other) {
+void UpdateRequest::InternalSwap(UpdateRequest* other) {
   using std::swap;
   CastToBase(&ops_)->InternalSwap(CastToBase(&other->ops_));
   index_name_.Swap(&other->index_name_, &::google::protobuf::internal::GetEmptyStringAlreadyInited(),
@@ -3066,7 +3066,7 @@ void BulkUpdateRequest::InternalSwap(BulkUpdateRequest* other) {
   _internal_metadata_.Swap(&other->_internal_metadata_);
 }
 
-::google::protobuf::Metadata BulkUpdateRequest::GetMetadata() const {
+::google::protobuf::Metadata UpdateRequest::GetMetadata() const {
   protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
   return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages];
 }
@@ -3074,52 +3074,52 @@ void BulkUpdateRequest::InternalSwap(BulkUpdateRequest* other) {
 
 // ===================================================================
 
-void BulkUpdateResponse::InitAsDefaultInstance() {
+void UpdateResponse::InitAsDefaultInstance() {
 }
 #if !defined(_MSC_VER) || _MSC_VER >= 1900
 #endif  // !defined(_MSC_VER) || _MSC_VER >= 1900
 
-BulkUpdateResponse::BulkUpdateResponse()
+UpdateResponse::UpdateResponse()
   : ::google::protobuf::Message(), _internal_metadata_(NULL) {
   ::google::protobuf::internal::InitSCC(
-      &protobuf_index_2eproto::scc_info_BulkUpdateResponse.base);
+      &protobuf_index_2eproto::scc_info_UpdateResponse.base);
   SharedCtor();
-  // @@protoc_insertion_point(constructor:Acoustid.Server.PB.BulkUpdateResponse)
+  // @@protoc_insertion_point(constructor:Acoustid.Server.PB.UpdateResponse)
 }
-BulkUpdateResponse::BulkUpdateResponse(const BulkUpdateResponse& from)
+UpdateResponse::UpdateResponse(const UpdateResponse& from)
   : ::google::protobuf::Message(),
       _internal_metadata_(NULL) {
   _internal_metadata_.MergeFrom(from._internal_metadata_);
-  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.BulkUpdateResponse)
+  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.UpdateResponse)
 }
 
-void BulkUpdateResponse::SharedCtor() {
+void UpdateResponse::SharedCtor() {
 }
 
-BulkUpdateResponse::~BulkUpdateResponse() {
-  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.BulkUpdateResponse)
+UpdateResponse::~UpdateResponse() {
+  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.UpdateResponse)
   SharedDtor();
 }
 
-void BulkUpdateResponse::SharedDtor() {
+void UpdateResponse::SharedDtor() {
 }
 
-void BulkUpdateResponse::SetCachedSize(int size) const {
+void UpdateResponse::SetCachedSize(int size) const {
   _cached_size_.Set(size);
 }
-const ::google::protobuf::Descriptor* BulkUpdateResponse::descriptor() {
+const ::google::protobuf::Descriptor* UpdateResponse::descriptor() {
   ::protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
   return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages].descriptor;
 }
 
-const BulkUpdateResponse& BulkUpdateResponse::default_instance() {
-  ::google::protobuf::internal::InitSCC(&protobuf_index_2eproto::scc_info_BulkUpdateResponse.base);
+const UpdateResponse& UpdateResponse::default_instance() {
+  ::google::protobuf::internal::InitSCC(&protobuf_index_2eproto::scc_info_UpdateResponse.base);
   return *internal_default_instance();
 }
 
 
-void BulkUpdateResponse::Clear() {
-// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.BulkUpdateResponse)
+void UpdateResponse::Clear() {
+// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.UpdateResponse)
   ::google::protobuf::uint32 cached_has_bits = 0;
   // Prevent compiler warnings about cached_has_bits being unused
   (void) cached_has_bits;
@@ -3127,11 +3127,11 @@ void BulkUpdateResponse::Clear() {
   _internal_metadata_.Clear();
 }
 
-bool BulkUpdateResponse::MergePartialFromCodedStream(
+bool UpdateResponse::MergePartialFromCodedStream(
     ::google::protobuf::io::CodedInputStream* input) {
 #define DO_(EXPRESSION) if (!GOOGLE_PREDICT_TRUE(EXPRESSION)) goto failure
   ::google::protobuf::uint32 tag;
-  // @@protoc_insertion_point(parse_start:Acoustid.Server.PB.BulkUpdateResponse)
+  // @@protoc_insertion_point(parse_start:Acoustid.Server.PB.UpdateResponse)
   for (;;) {
     ::std::pair<::google::protobuf::uint32, bool> p = input->ReadTagWithCutoffNoLastTag(127u);
     tag = p.first;
@@ -3144,17 +3144,17 @@ bool BulkUpdateResponse::MergePartialFromCodedStream(
           input, tag, _internal_metadata_.mutable_unknown_fields()));
   }
 success:
-  // @@protoc_insertion_point(parse_success:Acoustid.Server.PB.BulkUpdateResponse)
+  // @@protoc_insertion_point(parse_success:Acoustid.Server.PB.UpdateResponse)
   return true;
 failure:
-  // @@protoc_insertion_point(parse_failure:Acoustid.Server.PB.BulkUpdateResponse)
+  // @@protoc_insertion_point(parse_failure:Acoustid.Server.PB.UpdateResponse)
   return false;
 #undef DO_
 }
 
-void BulkUpdateResponse::SerializeWithCachedSizes(
+void UpdateResponse::SerializeWithCachedSizes(
     ::google::protobuf::io::CodedOutputStream* output) const {
-  // @@protoc_insertion_point(serialize_start:Acoustid.Server.PB.BulkUpdateResponse)
+  // @@protoc_insertion_point(serialize_start:Acoustid.Server.PB.UpdateResponse)
   ::google::protobuf::uint32 cached_has_bits = 0;
   (void) cached_has_bits;
 
@@ -3162,13 +3162,13 @@ void BulkUpdateResponse::SerializeWithCachedSizes(
     ::google::protobuf::internal::WireFormat::SerializeUnknownFields(
         (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), output);
   }
-  // @@protoc_insertion_point(serialize_end:Acoustid.Server.PB.BulkUpdateResponse)
+  // @@protoc_insertion_point(serialize_end:Acoustid.Server.PB.UpdateResponse)
 }
 
-::google::protobuf::uint8* BulkUpdateResponse::InternalSerializeWithCachedSizesToArray(
+::google::protobuf::uint8* UpdateResponse::InternalSerializeWithCachedSizesToArray(
     bool deterministic, ::google::protobuf::uint8* target) const {
   (void)deterministic; // Unused
-  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.BulkUpdateResponse)
+  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.UpdateResponse)
   ::google::protobuf::uint32 cached_has_bits = 0;
   (void) cached_has_bits;
 
@@ -3176,12 +3176,12 @@ void BulkUpdateResponse::SerializeWithCachedSizes(
     target = ::google::protobuf::internal::WireFormat::SerializeUnknownFieldsToArray(
         (::google::protobuf::internal::GetProto3PreserveUnknownsDefault()   ? _internal_metadata_.unknown_fields()   : _internal_metadata_.default_instance()), target);
   }
-  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.BulkUpdateResponse)
+  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.UpdateResponse)
   return target;
 }
 
-size_t BulkUpdateResponse::ByteSizeLong() const {
-// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.BulkUpdateResponse)
+size_t UpdateResponse::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.UpdateResponse)
   size_t total_size = 0;
 
   if ((_internal_metadata_.have_unknown_fields() &&  ::google::protobuf::internal::GetProto3PreserveUnknownsDefault())) {
@@ -3194,23 +3194,23 @@ size_t BulkUpdateResponse::ByteSizeLong() const {
   return total_size;
 }
 
-void BulkUpdateResponse::MergeFrom(const ::google::protobuf::Message& from) {
-// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.BulkUpdateResponse)
+void UpdateResponse::MergeFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.UpdateResponse)
   GOOGLE_DCHECK_NE(&from, this);
-  const BulkUpdateResponse* source =
-      ::google::protobuf::internal::DynamicCastToGenerated<const BulkUpdateResponse>(
+  const UpdateResponse* source =
+      ::google::protobuf::internal::DynamicCastToGenerated<const UpdateResponse>(
           &from);
   if (source == NULL) {
-  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.BulkUpdateResponse)
+  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.UpdateResponse)
     ::google::protobuf::internal::ReflectionOps::Merge(from, this);
   } else {
-  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.BulkUpdateResponse)
+  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.UpdateResponse)
     MergeFrom(*source);
   }
 }
 
-void BulkUpdateResponse::MergeFrom(const BulkUpdateResponse& from) {
-// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.BulkUpdateResponse)
+void UpdateResponse::MergeFrom(const UpdateResponse& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.UpdateResponse)
   GOOGLE_DCHECK_NE(&from, this);
   _internal_metadata_.MergeFrom(from._internal_metadata_);
   ::google::protobuf::uint32 cached_has_bits = 0;
@@ -3218,34 +3218,34 @@ void BulkUpdateResponse::MergeFrom(const BulkUpdateResponse& from) {
 
 }
 
-void BulkUpdateResponse::CopyFrom(const ::google::protobuf::Message& from) {
-// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.BulkUpdateResponse)
+void UpdateResponse::CopyFrom(const ::google::protobuf::Message& from) {
+// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.UpdateResponse)
   if (&from == this) return;
   Clear();
   MergeFrom(from);
 }
 
-void BulkUpdateResponse::CopyFrom(const BulkUpdateResponse& from) {
-// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.BulkUpdateResponse)
+void UpdateResponse::CopyFrom(const UpdateResponse& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.UpdateResponse)
   if (&from == this) return;
   Clear();
   MergeFrom(from);
 }
 
-bool BulkUpdateResponse::IsInitialized() const {
+bool UpdateResponse::IsInitialized() const {
   return true;
 }
 
-void BulkUpdateResponse::Swap(BulkUpdateResponse* other) {
+void UpdateResponse::Swap(UpdateResponse* other) {
   if (other == this) return;
   InternalSwap(other);
 }
-void BulkUpdateResponse::InternalSwap(BulkUpdateResponse* other) {
+void UpdateResponse::InternalSwap(UpdateResponse* other) {
   using std::swap;
   _internal_metadata_.Swap(&other->_internal_metadata_);
 }
 
-::google::protobuf::Metadata BulkUpdateResponse::GetMetadata() const {
+::google::protobuf::Metadata UpdateResponse::GetMetadata() const {
   protobuf_index_2eproto::protobuf_AssignDescriptorsOnce();
   return ::protobuf_index_2eproto::file_level_metadata[kIndexInFileMessages];
 }
@@ -4118,11 +4118,11 @@ template<> GOOGLE_PROTOBUF_ATTRIBUTE_NOINLINE ::Acoustid::Server::PB::SetAttribu
 template<> GOOGLE_PROTOBUF_ATTRIBUTE_NOINLINE ::Acoustid::Server::PB::Operation* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::Operation >(Arena* arena) {
   return Arena::CreateInternal< ::Acoustid::Server::PB::Operation >(arena);
 }
-template<> GOOGLE_PROTOBUF_ATTRIBUTE_NOINLINE ::Acoustid::Server::PB::BulkUpdateRequest* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::BulkUpdateRequest >(Arena* arena) {
-  return Arena::CreateInternal< ::Acoustid::Server::PB::BulkUpdateRequest >(arena);
+template<> GOOGLE_PROTOBUF_ATTRIBUTE_NOINLINE ::Acoustid::Server::PB::UpdateRequest* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::UpdateRequest >(Arena* arena) {
+  return Arena::CreateInternal< ::Acoustid::Server::PB::UpdateRequest >(arena);
 }
-template<> GOOGLE_PROTOBUF_ATTRIBUTE_NOINLINE ::Acoustid::Server::PB::BulkUpdateResponse* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::BulkUpdateResponse >(Arena* arena) {
-  return Arena::CreateInternal< ::Acoustid::Server::PB::BulkUpdateResponse >(arena);
+template<> GOOGLE_PROTOBUF_ATTRIBUTE_NOINLINE ::Acoustid::Server::PB::UpdateResponse* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::UpdateResponse >(Arena* arena) {
+  return Arena::CreateInternal< ::Acoustid::Server::PB::UpdateResponse >(arena);
 }
 template<> GOOGLE_PROTOBUF_ATTRIBUTE_NOINLINE ::Acoustid::Server::PB::SearchResult* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::SearchResult >(Arena* arena) {
   return Arena::CreateInternal< ::Acoustid::Server::PB::SearchResult >(arena);

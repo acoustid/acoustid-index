@@ -13,8 +13,8 @@ class IndexServiceImpl final : public PB::Index::Service {
  public:
     IndexServiceImpl(QSharedPointer<MultiIndex> indexes, QSharedPointer<Metrics> metrics);
 
-    virtual ::grpc::Status BulkUpdate(::grpc::ServerContext* context, const PB::BulkUpdateRequest* request,
-                                      PB::BulkUpdateResponse* response) override;
+    virtual ::grpc::Status Update(::grpc::ServerContext* context, const PB::UpdateRequest* request,
+                                  PB::UpdateResponse* response) override;
 
     virtual ::grpc::Status Search(::grpc::ServerContext* context, const PB::SearchRequest* request,
                                   PB::SearchResponse* response) override;

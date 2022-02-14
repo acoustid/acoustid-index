@@ -42,12 +42,12 @@ message Operation {
     }
 };
 
-message BulkUpdateRequest {
+message UpdateRequest {
   string index_name = 1;
   repeated Operation ops = 2;
 };
 
-message BulkUpdateResponse {
+message UpdateResponse {
 };
 
 message SearchResult {
@@ -68,6 +68,7 @@ message SearchResponse {
 service Index {
     rpc GetDocument(GetDocumentRequest) returns (GetDocumentResponse);
     rpc GetAttribute(GetAttributeRequest) returns (GetAttributeResponse);
-    rpc BulkUpdate(BulkUpdateRequest) returns (BulkUpdateResponse);
+
+    rpc Update(UpdateRequest) returns (UpdateResponse);
     rpc Search(SearchRequest) returns (SearchResponse);
 };

@@ -12,8 +12,8 @@ static inline int remainingTime(std::chrono::system_clock::time_point deadline) 
     return std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::system_clock::now()).count();
 }
 
-grpc::Status IndexServiceImpl::BulkUpdate(grpc::ServerContext* context, const PB::BulkUpdateRequest* request,
-                                          PB::BulkUpdateResponse* response) {
+grpc::Status IndexServiceImpl::Update(grpc::ServerContext* context, const PB::UpdateRequest* request,
+                                      PB::UpdateResponse* response) {
     auto indexName = QString::fromStdString(request->index_name());
     OpBatch batch;
     for (const auto& op : request->ops()) {
