@@ -4,48 +4,58 @@
 #ifndef ACOUSTID_STORE_FS_DIRECTORY_H_
 #define ACOUSTID_STORE_FS_DIRECTORY_H_
 
-#include <QString>
 #include <QHash>
 #include <QMutex>
-#include "fs_file.h"
+#include <QString>
+
 #include "directory.h"
+#include "fs_file.h"
 
 namespace Acoustid {
 
 class InputStream;
 class OutputStream;
 
-class FSDirectory : public Directory
-{
-public:
-	FSDirectory(const QString &path, bool mmap = false);
-	virtual ~FSDirectory();
+class FSDirectory : public Directory {
+ public:
+    FSDirectory(const QString &path, bool mmap = false);
+    virtual ~FSDirectory();
 
-	virtual void close();
+    virtual void close();
 
-	virtual OutputStream *createFile(const QString &name);
-	virtual void deleteFile(const QString &name);
-	virtual InputStream *openFile(const QString &name);
-	virtual void renameFile(const QString &oldName, const QString &newName);
-	QStringList listFiles();
-	bool fileExists(const QString &name);
-	virtual void sync(const QStringList& names);
+    virtual QString path() const;
 
-private:
+    virtual OutputStream *createFile(const QString &name);
+    virtual void deleteFile(const QString &name);
+    virtual InputStream *openFile(const QString &name);
+    virtual void renameFile(const QString &oldName, const QString &newName);
+    QStringList listFiles();
+    bool fileExists(const QString &name);
+    virtual void sync(const QStringList &names);
 
-	void fsync(const QString& name);
+    virtual bool exists() override;
+    virtual void ensureExists() override;
 
-	QString filePath(const QString &name)
-	{
-		return m_path + "/" + name;
-	}
+    virtual Directory *openDirectory(const QString &name);
+    virtual void deleteDirectory(const QString &name) override;
 
-	bool m_mmap;
-	QMutex m_mutex;
-	QHash<QString, FSFileSharedPtr> m_openInputFiles;
-	QString m_path;
+    void setAutoDelete(bool autoDelete) { m_autoDelete = autoDelete; }
+    bool autoDelete() const { return m_autoDelete; }
+
+    static FSDirectory *openTemporary(bool autoDelete = false);
+
+ private:
+    void fsync(const QString &name);
+
+    QString filePath(const QString &name) { return m_path + "/" + name; }
+
+    QMutex m_mutex;
+    QHash<QString, FSFileSharedPtr> m_openInputFiles;
+    QString m_path;
+    bool m_mmap{false};
+    bool m_autoDelete{false};
 };
 
-}
+}  // namespace Acoustid
 
 #endif

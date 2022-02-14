@@ -1,66 +1,71 @@
 // Copyright (C) 2011  Lukas Lalinsky
 // Distributed under the MIT license, see the LICENSE file for details.
 
+#include "ram_directory.h"
+
 #include "memory_input_stream.h"
 #include "ram_output_stream.h"
-#include "ram_directory.h"
+
+#include <QRandomGenerator>
 
 using namespace Acoustid;
 
-RAMDirectory::RAMDirectory()
-{
+RAMDirectory::RAMDirectory() : m_data(QSharedPointer<RAMDirectoryData>::create()) {
+    m_dbPrefix = QString("%1_").arg(QRandomGenerator::global()->generate());
 }
 
-RAMDirectory::~RAMDirectory()
-{
-	qDeleteAll(m_data.values());
+RAMDirectory::RAMDirectory(const QSharedPointer<RAMDirectoryData> &data) : m_data(data) {}
+
+RAMDirectory::~RAMDirectory() {}
+
+void RAMDirectory::close() {}
+
+QString RAMDirectory::path() const {
+    return QStringLiteral(":memory:");
 }
 
-void RAMDirectory::close()
-{
+QStringList RAMDirectory::listFiles() { return m_data->files.keys(); }
+
+bool RAMDirectory::fileExists(const QString &name) { return m_data->files.contains(name); }
+
+void RAMDirectory::deleteFile(const QString &name) {
+    if (!m_data->files.contains(name)) {
+        return;
+    }
+    m_data->files.take(name);
 }
 
-QStringList RAMDirectory::listFiles()
-{
-	return m_data.keys();
+void RAMDirectory::renameFile(const QString &oldName, const QString &newName) {
+    m_data->files.insert(newName, m_data->files.take(oldName));
 }
 
-bool RAMDirectory::fileExists(const QString &name)
-{
-	return m_data.contains(name);
+InputStream *RAMDirectory::openFile(const QString &name) {
+    auto data = m_data->files.value(name);
+    if (!data) {
+        throw IOException("file does not exist");
+    }
+    return new MemoryInputStream(reinterpret_cast<const uint8_t *>(data->constData()), data->size());
 }
 
-void RAMDirectory::deleteFile(const QString &name)
-{
-	if (!m_data.contains(name)) {
-		return;
-	}
-	delete m_data.take(name);
+OutputStream *RAMDirectory::createFile(const QString &name) {
+    auto data = QSharedPointer<QByteArray>::create();
+    m_data->files.insert(name, data);
+    return new RAMOutputStream(data.get());
 }
 
-void RAMDirectory::renameFile(const QString &oldName, const QString &newName)
-{
-	m_data.insert(newName, m_data.take(oldName));
+const QByteArray &RAMDirectory::fileData(const QString &name) { return *m_data->files.value(name); }
+
+Directory *RAMDirectory::openDirectory(const QString &name) {
+    auto data = m_data->directories.value(name);
+    if (!data) {
+        data = QSharedPointer<RAMDirectoryData>::create();
+        m_data->directories.insert(name, data);
+    }
+    return new RAMDirectory(data);
 }
 
-InputStream *RAMDirectory::openFile(const QString &name)
-{
-	QByteArray *data = m_data.value(name);
-	if (!data) {
-		throw IOException("file does not exist");
-	}
-	return new MemoryInputStream(reinterpret_cast<const uint8_t *>(data->constData()), data->size());
-}
+bool RAMDirectory::exists() { return true; }
 
-OutputStream *RAMDirectory::createFile(const QString &name)
-{
-	QByteArray *data = new QByteArray();
-	m_data.insert(name, data);
-	return new RAMOutputStream(data);
-}
+void RAMDirectory::ensureExists() {}
 
-const QByteArray &RAMDirectory::fileData(const QString &name)
-{
-	return *m_data.value(name);
-}
-
+void RAMDirectory::deleteDirectory(const QString &name) { m_data->directories.take(name); }
