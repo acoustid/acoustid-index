@@ -63,7 +63,7 @@ grpc::Status IndexServiceImpl::Search(grpc::ServerContext* context, const PB::Se
         auto index = m_indexes->getIndex(indexName);
         auto results = index->search(terms, remainingTime(context->deadline()));
         for (auto result : results) {
-            if (response->results_size() >= request->max_results()) {
+            if (request->max_results() > 0 && response->results_size() >= request->max_results()) {
                 break;
             }
             auto r = response->add_results();
