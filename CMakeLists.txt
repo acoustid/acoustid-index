@@ -16,6 +16,7 @@ set(CMAKE_AUTORCC ON)
 
 find_package(Threads REQUIRED)
 find_package(GTest)
+find_package(SQLite3 REQUIRED)
 find_package(Qt5 COMPONENTS Core Network Concurrent REQUIRED)
 
 find_package(PkgConfig REQUIRED)
@@ -80,11 +81,18 @@ set(fpindexlib_SOURCES
 	src/store/output_stream.cpp
 	src/store/ram_directory.cpp
 	src/store/ram_output_stream.cpp
+	src/store/sqlite/database.cpp
+	src/store/sqlite/database.h
+	src/store/sqlite/error.cpp
+	src/store/sqlite/error.h
+	src/store/sqlite/statement.cpp
+	src/store/sqlite/statement.h
 	src/util/crc.c
 	src/util/options.cpp
 )
+
 add_library(fpindexlib ${fpindexlib_SOURCES})
-target_link_libraries(fpindexlib Qt5::Core Qt5::Network Qt5::Concurrent)
+target_link_libraries(fpindexlib Qt5::Core Qt5::Network Qt5::Concurrent SQLite::SQLite3)
 
 set(qhttp_SOURCES
     ./src/3rdparty/qhttp/src/qhttpserverconnection.cpp
@@ -133,7 +141,7 @@ include_directories(
 )
 
 add_executable(fpi-server src/server/main.cpp)
-target_link_libraries(fpi-server fpserverlib qhttp)
+target_link_libraries(fpi-server fpserverlib qhttp SQLite::SQLite3)
 
 add_executable(fpi-add src/tools/fpi-add.cpp)
 target_link_libraries(fpi-add fpindexlib)

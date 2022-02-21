@@ -135,3 +135,7 @@ void FSDirectory::deleteDirectory(const QString &name) {
     QDir dir(filePath(name));
     dir.removeRecursively();
 }
+
+SQLiteDatabase FSDirectory::openDatabase(const QString &name) {
+    return SQLiteDatabase(filePath(name));
+}

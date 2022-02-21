@@ -69,3 +69,8 @@ bool RAMDirectory::exists() { return true; }
 void RAMDirectory::ensureExists() {}
 
 void RAMDirectory::deleteDirectory(const QString &name) { m_data->directories.take(name); }
+
+SQLiteDatabase RAMDirectory::openDatabase(const QString &name) {
+    auto fileName = QString("file:%1?mode=memory&cache=shared").arg(m_dbPrefix + name);
+    return SQLiteDatabase(fileName);
+}

@@ -8,6 +8,7 @@
 #include <QStringList>
 
 #include "common.h"
+#include "store/sqlite/database.h"
 
 namespace Acoustid {
 
@@ -35,6 +36,8 @@ class Directory {
     virtual void ensureExists() = 0;
 
     virtual void deleteDirectory(const QString &name) = 0;
+
+    virtual SQLiteDatabase openDatabase(const QString &name) = 0;
 
     /***
      * Ensure that any writes to these files are moved to

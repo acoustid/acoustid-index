@@ -33,6 +33,8 @@ class FSDirectory : public Directory {
     bool fileExists(const QString &name);
     virtual void sync(const QStringList &names);
 
+    virtual SQLiteDatabase openDatabase(const QString &name) override;
+
     virtual bool exists() override;
     virtual void ensureExists() override;
 

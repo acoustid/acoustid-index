@@ -38,6 +38,8 @@ class RAMDirectory : public Directory {
     QStringList listFiles();
     bool fileExists(const QString &name);
 
+    virtual SQLiteDatabase openDatabase(const QString &name) override;
+
     virtual bool exists() override;
     virtual void ensureExists() override;
 
