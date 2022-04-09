@@ -81,5 +81,4 @@ TEST(RAMDirectoryTest, RenameFile) {
 TEST(RAMDirectoryTest, OpenDatabase) {
     RAMDirectory dir;
     auto db = dir.openDatabase("foo.db");
-    defer { sqlite3_close(db); };
 }

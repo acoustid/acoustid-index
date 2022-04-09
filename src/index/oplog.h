@@ -8,6 +8,7 @@
 
 #include "index/op.h"
 #include "util/exceptions.h"
+#include "store/sqlite/database.h"
 
 class sqlite3;
 
@@ -53,7 +54,7 @@ class OplogEntry {
 
 class Oplog {
  public:
-    explicit Oplog(sqlite3 *db);
+    explicit Oplog(const Acoustid::SQLiteDatabase &db);
     ~Oplog();
 
     void createReplicationSlot(const QString &slotName);
@@ -79,7 +80,7 @@ class Oplog {
 
  private:
     QMutex m_mutex;
-    sqlite3 *m_db;
+    SQLiteDatabase m_db;
 };
 
 }  // namespace Acoustid
