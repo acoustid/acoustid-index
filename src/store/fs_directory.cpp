@@ -138,13 +138,6 @@ void FSDirectory::deleteDirectory(const QString &name) {
     dir.removeRecursively();
 }
 
-sqlite3 *FSDirectory::openDatabase(const QString &name) {
-    sqlite3 *db;
-    auto fileName = filePath(name);
-    auto encodedFileName = QFile::encodeName(fileName);
-    int rc = sqlite3_open_v2(encodedFileName.data(), &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
-    if (rc != SQLITE_OK) {
-        throw IOException(QString("Couldn't open database '%1' (%2)").arg(fileName).arg(sqlite3_errstr(rc)));
-    }
-    return db;
+SQLiteDatabase FSDirectory::openDatabase(const QString &name) {
+    return SQLiteDatabase(filePath(name));
 }

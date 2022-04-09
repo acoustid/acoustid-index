@@ -1,27 +1,29 @@
-#ifndef ACOUSTID_INDEX_STORE_SQL_DATABASE_H_
-#define ACOUSTID_INDEX_STORE_SQL_DATABASE_H_
+#pragma once
+
+#include <string>
+#include <memory>
 
 #include <QString>
 
-#include <memory>
-
-#include "util/exceptions.h"
 #include "store/sqlite/statement.h"
 
 class sqlite3;
 
 namespace Acoustid {
 
-class SQLiteException : public Exception {
- public:
-    SQLiteException(const QString &msg) : Exception(msg) {}
-};
-
 class SQLiteDatabase
 {
  public:
     SQLiteDatabase(const QString &name);
     ~SQLiteDatabase();
+
+    SQLiteDatabase(const SQLiteDatabase &other) = default;
+    SQLiteDatabase &operator=(const SQLiteDatabase &other) = default;
+
+    SQLiteDatabase(SQLiteDatabase &&other) = default;
+    SQLiteDatabase &operator=(SQLiteDatabase &&other) = default;
+
+    sqlite3 *handle() const { return m_db.get(); }
 
     SQLiteStatement prepare(const QString &sql);
 
@@ -30,5 +32,3 @@ class SQLiteDatabase
 };
 
 }  // namespace Acoustid
-
-#endif  // ACOUSTID_INDEX_STORE_SQL_DATABASE_H_

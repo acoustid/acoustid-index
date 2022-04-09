@@ -8,6 +8,7 @@
 #include <QStringList>
 
 #include "common.h"
+#include "store/sqlite/database.h"
 
 struct sqlite3;
 
@@ -38,7 +39,7 @@ class Directory {
 
     virtual void deleteDirectory(const QString &name) = 0;
 
-    virtual sqlite3 *openDatabase(const QString &name) = 0;
+    virtual SQLiteDatabase openDatabase(const QString &name) = 0;
 
     /***
      * Ensure that any writes to these files are moved to

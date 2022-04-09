@@ -1,4 +1,5 @@
 #include "store/sqlite/database.h"
+#include "store/sqlite/error.h"
 
 #include <QFile>
 
@@ -15,7 +16,7 @@ void SQLiteStatement::exec()
 {
     int rc = sqlite3_step(m_stmt.get());
     if (rc != SQLITE_DONE) {
-        throw SQLiteException(sqlite3_errstr(rc));
+        throw SQLiteError(rc);
     }
 }
 
@@ -23,7 +24,7 @@ void SQLiteStatement::bindNull(int index)
 {
     int rc = sqlite3_bind_null(m_stmt.get(), index);
     if (rc != SQLITE_OK) {
-        throw SQLiteException(sqlite3_errstr(rc));
+        throw SQLiteError(rc);
     }
 }
 
@@ -31,7 +32,7 @@ void SQLiteStatement::bindInt(int index, int value)
 {
     int rc = sqlite3_bind_int(m_stmt.get(), index, value);
     if (rc != SQLITE_OK) {
-        throw SQLiteException(sqlite3_errstr(rc));
+        throw SQLiteError(rc);
     }
 }
 
@@ -39,7 +40,7 @@ void SQLiteStatement::bindBlob(int index, const QByteArray &value)
 {
     int rc = sqlite3_bind_blob(m_stmt.get(), index, value.constData(), value.size(), SQLITE_TRANSIENT);
     if (rc != SQLITE_OK) {
-        throw SQLiteException(sqlite3_errstr(rc));
+        throw SQLiteError(rc);
     }
 }
 
@@ -47,7 +48,7 @@ void SQLiteStatement::bindText(int index, const QString &value)
 {
     int rc = sqlite3_bind_text(m_stmt.get(), index, value.toUtf8().constData(), -1, SQLITE_TRANSIENT);
     if (rc != SQLITE_OK) {
-        throw SQLiteException(sqlite3_errstr(rc));
+        throw SQLiteError(rc);
     }
 }
 

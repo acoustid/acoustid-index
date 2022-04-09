@@ -1,4 +1,5 @@
 #include "store/sqlite/database.h"
+#include "store/sqlite/error.h"
 
 #include <QFile>
 
@@ -10,10 +11,9 @@ SQLiteDatabase::SQLiteDatabase(const QString &fileName)
 {
     sqlite3 *db;
     auto encodedFileName = QFile::encodeName(fileName);
-    auto encodedFileNamePtr = encodedFileName.data();
-    int rc = sqlite3_open(encodedFileNamePtr, &db);
+    int rc = sqlite3_open_v2(encodedFileName.data(), &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
     if (rc != SQLITE_OK) {
-        throw SQLiteException(sqlite3_errstr(rc));
+        throw SQLiteError(rc);
     }
     m_db = std::shared_ptr<sqlite3>(db, sqlite3_close_v2);
 }
@@ -25,7 +25,7 @@ SQLiteStatement SQLiteDatabase::prepare(const QString &query)
     auto encodedQueryPtr = encodedQuery.data();
     int rc = sqlite3_prepare_v2(m_db.get(), encodedQueryPtr, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
-        throw SQLiteException(sqlite3_errstr(rc));
+        throw SQLiteError(rc);
     }
     return SQLiteStatement(stmt);
 }

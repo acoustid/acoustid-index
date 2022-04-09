@@ -1,11 +1,8 @@
-#ifndef ACOUSTID_INDEX_STORE_SQL_STATEMENT_H_
-#define ACOUSTID_INDEX_STORE_SQL_STATEMENT_H_
-
-#include <QString>
+#pragma once
 
 #include <memory>
 
-#include "util/exceptions.h"
+#include <QString>
 
 class sqlite3_stmt;
 
@@ -19,10 +16,15 @@ class SQLiteStatement
     SQLiteStatement(const SQLiteStatement &other) = delete;
     SQLiteStatement &operator=(const SQLiteStatement &other) = delete;
 
+    SQLiteStatement(SQLiteStatement &&other) = default;
+    SQLiteStatement &operator=(SQLiteStatement &&other) = default;
+
     void bindNull(int index);
     void bindInt(int index, int value);
     void bindBlob(int index, const QByteArray &value);
     void bindText(int index, const QString &value);
+
+    sqlite3_stmt *handle() const { return m_stmt.get(); }
 
     void exec();
 
@@ -33,5 +35,3 @@ class SQLiteStatement
 };
 
 }  // namespace Acoustid
-
-#endif  // ACOUSTID_INDEX_STORE_SQL_STATEMENT_H_

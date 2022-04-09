@@ -90,10 +90,12 @@ set(fpindexlib_SOURCES
 	src/store/output_stream.cpp
 	src/store/ram_directory.cpp
 	src/store/ram_output_stream.cpp
-	src/store/sqlite/database.h
 	src/store/sqlite/database.cpp
-	src/store/sqlite/statement.h
+	src/store/sqlite/database.h
+	src/store/sqlite/error.cpp
+	src/store/sqlite/error.h
 	src/store/sqlite/statement.cpp
+	src/store/sqlite/statement.h
 	src/util/crc.c
 	src/util/options.cpp
 )
