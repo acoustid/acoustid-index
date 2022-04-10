@@ -6,6 +6,8 @@
 #include "memory_input_stream.h"
 #include "ram_output_stream.h"
 
+#include <sqlite3.h>
+
 #include <QRandomGenerator>
 
 using namespace Acoustid;

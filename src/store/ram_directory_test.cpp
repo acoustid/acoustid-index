@@ -4,6 +4,7 @@
 #include "ram_directory.h"
 
 #include <gtest/gtest.h>
+#include <sqlite3.h>
 
 #include "input_stream.h"
 #include "output_stream.h"
@@ -75,4 +76,9 @@ TEST(RAMDirectoryTest, RenameFile) {
     files = dir.listFiles();
     ASSERT_EQ(1, files.size());
     ASSERT_STREQ("newtest.txt", qPrintable(files[0]));
+}
+
+TEST(RAMDirectoryTest, OpenDatabase) {
+    RAMDirectory dir;
+    auto db = dir.openDatabase("foo.db");
 }

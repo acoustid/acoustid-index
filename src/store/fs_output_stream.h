@@ -39,8 +39,8 @@ public:
 	static NamedFSOutputStream *openTemporary(bool autoDelete = false);
 
 private:
-	bool m_autoDelete;
 	QString m_fileName;
+	bool m_autoDelete;
 };
 
 }

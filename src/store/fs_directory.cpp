@@ -11,6 +11,8 @@
 #include <QMutexLocker>
 #include <QString>
 
+#include <sqlite3.h>
+
 #include "common.h"
 #include "fs_input_stream.h"
 #include "fs_output_stream.h"

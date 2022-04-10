@@ -10,6 +10,8 @@
 #include "common.h"
 #include "store/sqlite/database.h"
 
+struct sqlite3;
+
 namespace Acoustid {
 
 class InputStream;

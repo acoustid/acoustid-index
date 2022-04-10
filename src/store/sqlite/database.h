@@ -15,7 +15,6 @@ class SQLiteDatabase
 {
  public:
     SQLiteDatabase(const QString &name);
-    ~SQLiteDatabase();
 
     SQLiteDatabase(const SQLiteDatabase &other) = default;
     SQLiteDatabase &operator=(const SQLiteDatabase &other) = default;
