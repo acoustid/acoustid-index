@@ -32,6 +32,14 @@ Starting server locally:
  - Qt5, at least the QtCore, QtNetwork and QtConcurrent components
  - GoogleTest (optional)
 
+### For Debian  
+```
+# apt install git gcc g++ cmake pkg-config qtbase5-dev libsqlite3-dev libprotobuf-dev libgrpc++-dev libgtest-dev protobuf-compiler protobuf-compiler-grpc
+# cmake --build .
+# ./update_proto.sh 
+# make
+```
+
 ### Building the code
 
     cmake --build .
