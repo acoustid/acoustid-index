@@ -15,7 +15,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: |
           sudo apt-get update
           sudo apt-get install -y qtbase5-dev libgtest-dev libgrpc++-dev protobuf-compiler-grpc protobuf-compiler libsqlite3-dev
