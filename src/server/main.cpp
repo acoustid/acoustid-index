@@ -22,6 +22,8 @@ static QTextStream stderrStream(stderr);
 
 void handleLogMessage(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
+    QString time = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+
     QString level;
     switch (type) {
 	case QtDebugMsg:
@@ -42,9 +44,9 @@ void handleLogMessage(QtMsgType type, const QMessageLogContext &context, const Q
     }
 
     QJsonObject obj;
+    obj.insert("time", time);
     obj.insert("level", level);
     obj.insert("message", msg);
-    obj.insert("source", QString("%1:%2").arg(context.file).arg(context.line));
 
     stderrStream << QJsonDocument(obj).toJson(QJsonDocument::Compact) << Qt::endl;
 
@@ -111,7 +113,7 @@ int main(int argc, char **argv)
 	Listener listener(path, opts->contains("mmap"));
 	listener.setMetrics(metrics);
 	listener.listen(QHostAddress(address), port);
-	qDebug() << "Simple server listening on" << address << "port" << port;
+	qInfo() << "Simple server listening on" << address << "port" << port;
 
     HttpRequestHandler handler(listener.index(), metrics);
 
@@ -119,8 +121,8 @@ int main(int argc, char **argv)
     httpListener.listen(QHostAddress(httpAddress), httpPort, [&](QHttpRequest *req, QHttpResponse *res) {
         handler.router().handle(req, res);
     });
-    qDebug() << "HTTP server listening on" << httpAddress << "port" << httpPort;
-    qDebug() << "Prometheus metrics available at" << QString("http://%1:%2/_metrics").arg(httpAddress).arg(httpPort);
+    qInfo() << "HTTP server listening on" << httpAddress << "port" << httpPort;
+    qInfo() << "Prometheus metrics available at" << QString("http://%1:%2/_metrics").arg(httpAddress).arg(httpPort);
 
 	return app.exec();
 }
