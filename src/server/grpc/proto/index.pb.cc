@@ -69,9 +69,61 @@ class SearchResponseDefaultTypeInternal {
  public:
   ::PROTOBUF_NAMESPACE_ID::internal::ExplicitlyConstructed<SearchResponse> _instance;
 } _SearchResponse_default_instance_;
+class GetIndexRequestDefaultTypeInternal {
+ public:
+  ::PROTOBUF_NAMESPACE_ID::internal::ExplicitlyConstructed<GetIndexRequest> _instance;
+} _GetIndexRequest_default_instance_;
+class GetIndexResponseDefaultTypeInternal {
+ public:
+  ::PROTOBUF_NAMESPACE_ID::internal::ExplicitlyConstructed<GetIndexResponse> _instance;
+} _GetIndexResponse_default_instance_;
+class CreateIndexRequestDefaultTypeInternal {
+ public:
+  ::PROTOBUF_NAMESPACE_ID::internal::ExplicitlyConstructed<CreateIndexRequest> _instance;
+} _CreateIndexRequest_default_instance_;
+class CreateIndexResponseDefaultTypeInternal {
+ public:
+  ::PROTOBUF_NAMESPACE_ID::internal::ExplicitlyConstructed<CreateIndexResponse> _instance;
+} _CreateIndexResponse_default_instance_;
+class DeleteIndexRequestDefaultTypeInternal {
+ public:
+  ::PROTOBUF_NAMESPACE_ID::internal::ExplicitlyConstructed<DeleteIndexRequest> _instance;
+} _DeleteIndexRequest_default_instance_;
+class DeleteIndexResponseDefaultTypeInternal {
+ public:
+  ::PROTOBUF_NAMESPACE_ID::internal::ExplicitlyConstructed<DeleteIndexResponse> _instance;
+} _DeleteIndexResponse_default_instance_;
 }  // namespace PB
 }  // namespace Server
 }  // namespace Acoustid
+static void InitDefaultsscc_info_CreateIndexRequest_index_2eproto() {
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+
+  {
+    void* ptr = &::Acoustid::Server::PB::_CreateIndexRequest_default_instance_;
+    new (ptr) ::Acoustid::Server::PB::CreateIndexRequest();
+    ::PROTOBUF_NAMESPACE_ID::internal::OnShutdownDestroyMessage(ptr);
+  }
+  ::Acoustid::Server::PB::CreateIndexRequest::InitAsDefaultInstance();
+}
+
+::PROTOBUF_NAMESPACE_ID::internal::SCCInfo<0> scc_info_CreateIndexRequest_index_2eproto =
+    {{ATOMIC_VAR_INIT(::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase::kUninitialized), 0, 0, InitDefaultsscc_info_CreateIndexRequest_index_2eproto}, {}};
+
+static void InitDefaultsscc_info_CreateIndexResponse_index_2eproto() {
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+
+  {
+    void* ptr = &::Acoustid::Server::PB::_CreateIndexResponse_default_instance_;
+    new (ptr) ::Acoustid::Server::PB::CreateIndexResponse();
+    ::PROTOBUF_NAMESPACE_ID::internal::OnShutdownDestroyMessage(ptr);
+  }
+  ::Acoustid::Server::PB::CreateIndexResponse::InitAsDefaultInstance();
+}
+
+::PROTOBUF_NAMESPACE_ID::internal::SCCInfo<0> scc_info_CreateIndexResponse_index_2eproto =
+    {{ATOMIC_VAR_INIT(::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase::kUninitialized), 0, 0, InitDefaultsscc_info_CreateIndexResponse_index_2eproto}, {}};
+
 static void InitDefaultsscc_info_DeleteDocumentOp_index_2eproto() {
   GOOGLE_PROTOBUF_VERIFY_VERSION;
 
@@ -85,6 +137,34 @@ static void InitDefaultsscc_info_DeleteDocumentOp_index_2eproto() {
 
 ::PROTOBUF_NAMESPACE_ID::internal::SCCInfo<0> scc_info_DeleteDocumentOp_index_2eproto =
     {{ATOMIC_VAR_INIT(::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase::kUninitialized), 0, 0, InitDefaultsscc_info_DeleteDocumentOp_index_2eproto}, {}};
+
+static void InitDefaultsscc_info_DeleteIndexRequest_index_2eproto() {
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+
+  {
+    void* ptr = &::Acoustid::Server::PB::_DeleteIndexRequest_default_instance_;
+    new (ptr) ::Acoustid::Server::PB::DeleteIndexRequest();
+    ::PROTOBUF_NAMESPACE_ID::internal::OnShutdownDestroyMessage(ptr);
+  }
+  ::Acoustid::Server::PB::DeleteIndexRequest::InitAsDefaultInstance();
+}
+
+::PROTOBUF_NAMESPACE_ID::internal::SCCInfo<0> scc_info_DeleteIndexRequest_index_2eproto =
+    {{ATOMIC_VAR_INIT(::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase::kUninitialized), 0, 0, InitDefaultsscc_info_DeleteIndexRequest_index_2eproto}, {}};
+
+static void InitDefaultsscc_info_DeleteIndexResponse_index_2eproto() {
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+
+  {
+    void* ptr = &::Acoustid::Server::PB::_DeleteIndexResponse_default_instance_;
+    new (ptr) ::Acoustid::Server::PB::DeleteIndexResponse();
+    ::PROTOBUF_NAMESPACE_ID::internal::OnShutdownDestroyMessage(ptr);
+  }
+  ::Acoustid::Server::PB::DeleteIndexResponse::InitAsDefaultInstance();
+}
+
+::PROTOBUF_NAMESPACE_ID::internal::SCCInfo<0> scc_info_DeleteIndexResponse_index_2eproto =
+    {{ATOMIC_VAR_INIT(::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase::kUninitialized), 0, 0, InitDefaultsscc_info_DeleteIndexResponse_index_2eproto}, {}};
 
 static void InitDefaultsscc_info_GetAttributeRequest_index_2eproto() {
   GOOGLE_PROTOBUF_VERIFY_VERSION;
@@ -113,6 +193,34 @@ static void InitDefaultsscc_info_GetAttributeResponse_index_2eproto() {
 
 ::PROTOBUF_NAMESPACE_ID::internal::SCCInfo<0> scc_info_GetAttributeResponse_index_2eproto =
     {{ATOMIC_VAR_INIT(::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase::kUninitialized), 0, 0, InitDefaultsscc_info_GetAttributeResponse_index_2eproto}, {}};
+
+static void InitDefaultsscc_info_GetIndexRequest_index_2eproto() {
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+
+  {
+    void* ptr = &::Acoustid::Server::PB::_GetIndexRequest_default_instance_;
+    new (ptr) ::Acoustid::Server::PB::GetIndexRequest();
+    ::PROTOBUF_NAMESPACE_ID::internal::OnShutdownDestroyMessage(ptr);
+  }
+  ::Acoustid::Server::PB::GetIndexRequest::InitAsDefaultInstance();
+}
+
+::PROTOBUF_NAMESPACE_ID::internal::SCCInfo<0> scc_info_GetIndexRequest_index_2eproto =
+    {{ATOMIC_VAR_INIT(::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase::kUninitialized), 0, 0, InitDefaultsscc_info_GetIndexRequest_index_2eproto}, {}};
+
+static void InitDefaultsscc_info_GetIndexResponse_index_2eproto() {
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+
+  {
+    void* ptr = &::Acoustid::Server::PB::_GetIndexResponse_default_instance_;
+    new (ptr) ::Acoustid::Server::PB::GetIndexResponse();
+    ::PROTOBUF_NAMESPACE_ID::internal::OnShutdownDestroyMessage(ptr);
+  }
+  ::Acoustid::Server::PB::GetIndexResponse::InitAsDefaultInstance();
+}
+
+::PROTOBUF_NAMESPACE_ID::internal::SCCInfo<0> scc_info_GetIndexResponse_index_2eproto =
+    {{ATOMIC_VAR_INIT(::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase::kUninitialized), 0, 0, InitDefaultsscc_info_GetIndexResponse_index_2eproto}, {}};
 
 static void InitDefaultsscc_info_InsertOrUpdateDocumentOp_index_2eproto() {
   GOOGLE_PROTOBUF_VERIFY_VERSION;
@@ -231,7 +339,7 @@ static void InitDefaultsscc_info_UpdateResponse_index_2eproto() {
 ::PROTOBUF_NAMESPACE_ID::internal::SCCInfo<0> scc_info_UpdateResponse_index_2eproto =
     {{ATOMIC_VAR_INIT(::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase::kUninitialized), 0, 0, InitDefaultsscc_info_UpdateResponse_index_2eproto}, {}};
 
-static ::PROTOBUF_NAMESPACE_ID::Metadata file_level_metadata_index_2eproto[11];
+static ::PROTOBUF_NAMESPACE_ID::Metadata file_level_metadata_index_2eproto[17];
 static constexpr ::PROTOBUF_NAMESPACE_ID::EnumDescriptor const** file_level_enum_descriptors_index_2eproto = nullptr;
 static constexpr ::PROTOBUF_NAMESPACE_ID::ServiceDescriptor const** file_level_service_descriptors_index_2eproto = nullptr;
 
@@ -311,6 +419,39 @@ const ::PROTOBUF_NAMESPACE_ID::uint32 TableStruct_index_2eproto::offsets[] PROTO
   ~0u,  // no _oneof_case_
   ~0u,  // no _weak_field_map_
   PROTOBUF_FIELD_OFFSET(::Acoustid::Server::PB::SearchResponse, results_),
+  ~0u,  // no _has_bits_
+  PROTOBUF_FIELD_OFFSET(::Acoustid::Server::PB::GetIndexRequest, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  PROTOBUF_FIELD_OFFSET(::Acoustid::Server::PB::GetIndexRequest, index_name_),
+  ~0u,  // no _has_bits_
+  PROTOBUF_FIELD_OFFSET(::Acoustid::Server::PB::GetIndexResponse, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  ~0u,  // no _has_bits_
+  PROTOBUF_FIELD_OFFSET(::Acoustid::Server::PB::CreateIndexRequest, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  PROTOBUF_FIELD_OFFSET(::Acoustid::Server::PB::CreateIndexRequest, index_name_),
+  ~0u,  // no _has_bits_
+  PROTOBUF_FIELD_OFFSET(::Acoustid::Server::PB::CreateIndexResponse, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  ~0u,  // no _has_bits_
+  PROTOBUF_FIELD_OFFSET(::Acoustid::Server::PB::DeleteIndexRequest, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
+  PROTOBUF_FIELD_OFFSET(::Acoustid::Server::PB::DeleteIndexRequest, index_name_),
+  ~0u,  // no _has_bits_
+  PROTOBUF_FIELD_OFFSET(::Acoustid::Server::PB::DeleteIndexResponse, _internal_metadata_),
+  ~0u,  // no _extensions_
+  ~0u,  // no _oneof_case_
+  ~0u,  // no _weak_field_map_
 };
 static const ::PROTOBUF_NAMESPACE_ID::internal::MigrationSchema schemas[] PROTOBUF_SECTION_VARIABLE(protodesc_cold) = {
   { 0, -1, sizeof(::Acoustid::Server::PB::GetAttributeRequest)},
@@ -324,6 +465,12 @@ static const ::PROTOBUF_NAMESPACE_ID::internal::MigrationSchema schemas[] PROTOB
   { 54, -1, sizeof(::Acoustid::Server::PB::SearchResult)},
   { 61, -1, sizeof(::Acoustid::Server::PB::SearchRequest)},
   { 69, -1, sizeof(::Acoustid::Server::PB::SearchResponse)},
+  { 75, -1, sizeof(::Acoustid::Server::PB::GetIndexRequest)},
+  { 81, -1, sizeof(::Acoustid::Server::PB::GetIndexResponse)},
+  { 86, -1, sizeof(::Acoustid::Server::PB::CreateIndexRequest)},
+  { 92, -1, sizeof(::Acoustid::Server::PB::CreateIndexResponse)},
+  { 97, -1, sizeof(::Acoustid::Server::PB::DeleteIndexRequest)},
+  { 103, -1, sizeof(::Acoustid::Server::PB::DeleteIndexResponse)},
 };
 
 static ::PROTOBUF_NAMESPACE_ID::Message const * const file_default_instances[] = {
@@ -338,6 +485,12 @@ static ::PROTOBUF_NAMESPACE_ID::Message const * const file_default_instances[] =
   reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::Acoustid::Server::PB::_SearchResult_default_instance_),
   reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::Acoustid::Server::PB::_SearchRequest_default_instance_),
   reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::Acoustid::Server::PB::_SearchResponse_default_instance_),
+  reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::Acoustid::Server::PB::_GetIndexRequest_default_instance_),
+  reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::Acoustid::Server::PB::_GetIndexResponse_default_instance_),
+  reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::Acoustid::Server::PB::_CreateIndexRequest_default_instance_),
+  reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::Acoustid::Server::PB::_CreateIndexResponse_default_instance_),
+  reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::Acoustid::Server::PB::_DeleteIndexRequest_default_instance_),
+  reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::Acoustid::Server::PB::_DeleteIndexResponse_default_instance_),
 };
 
 const char descriptor_table_protodef_index_2eproto[] PROTOBUF_SECTION_VARIABLE(protodesc_cold) =
@@ -360,21 +513,39 @@ const char descriptor_table_protodef_index_2eproto[] PROTOBUF_SECTION_VARIABLE(p
   "\030\002 \001(\002\"G\n\rSearchRequest\022\022\n\nindex_name\030\001 "
   "\001(\t\022\r\n\005terms\030\002 \003(\r\022\023\n\013max_results\030\003 \001(\005\""
   "C\n\016SearchResponse\0221\n\007results\030\001 \003(\0132 .Aco"
-  "ustid.Server.PB.SearchResult2\214\002\n\005Index\022a"
-  "\n\014GetAttribute\022\'.Acoustid.Server.PB.GetA"
-  "ttributeRequest\032(.Acoustid.Server.PB.Get"
-  "AttributeResponse\022O\n\006Update\022!.Acoustid.S"
-  "erver.PB.UpdateRequest\032\".Acoustid.Server"
-  ".PB.UpdateResponse\022O\n\006Search\022!.Acoustid."
-  "Server.PB.SearchRequest\032\".Acoustid.Serve"
-  "r.PB.SearchResponseb\006proto3"
+  "ustid.Server.PB.SearchResult\"%\n\017GetIndex"
+  "Request\022\022\n\nindex_name\030\001 \001(\t\"\022\n\020GetIndexR"
+  "esponse\"(\n\022CreateIndexRequest\022\022\n\nindex_n"
+  "ame\030\001 \001(\t\"\025\n\023CreateIndexResponse\"(\n\022Dele"
+  "teIndexRequest\022\022\n\nindex_name\030\001 \001(\t\"\025\n\023De"
+  "leteIndexResponse2\243\004\n\005Index\022U\n\010GetIndex\022"
+  "#.Acoustid.Server.PB.GetIndexRequest\032$.A"
+  "coustid.Server.PB.GetIndexResponse\022^\n\013Cr"
+  "eateIndex\022&.Acoustid.Server.PB.CreateInd"
+  "exRequest\032\'.Acoustid.Server.PB.CreateInd"
+  "exResponse\022^\n\013DeleteIndex\022&.Acoustid.Ser"
+  "ver.PB.DeleteIndexRequest\032\'.Acoustid.Ser"
+  "ver.PB.DeleteIndexResponse\022a\n\014GetAttribu"
+  "te\022\'.Acoustid.Server.PB.GetAttributeRequ"
+  "est\032(.Acoustid.Server.PB.GetAttributeRes"
+  "ponse\022O\n\006Update\022!.Acoustid.Server.PB.Upd"
+  "ateRequest\032\".Acoustid.Server.PB.UpdateRe"
+  "sponse\022O\n\006Search\022!.Acoustid.Server.PB.Se"
+  "archRequest\032\".Acoustid.Server.PB.SearchR"
+  "esponseb\006proto3"
   ;
 static const ::PROTOBUF_NAMESPACE_ID::internal::DescriptorTable*const descriptor_table_index_2eproto_deps[1] = {
 };
-static ::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase*const descriptor_table_index_2eproto_sccs[11] = {
+static ::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase*const descriptor_table_index_2eproto_sccs[17] = {
+  &scc_info_CreateIndexRequest_index_2eproto.base,
+  &scc_info_CreateIndexResponse_index_2eproto.base,
   &scc_info_DeleteDocumentOp_index_2eproto.base,
+  &scc_info_DeleteIndexRequest_index_2eproto.base,
+  &scc_info_DeleteIndexResponse_index_2eproto.base,
   &scc_info_GetAttributeRequest_index_2eproto.base,
   &scc_info_GetAttributeResponse_index_2eproto.base,
+  &scc_info_GetIndexRequest_index_2eproto.base,
+  &scc_info_GetIndexResponse_index_2eproto.base,
   &scc_info_InsertOrUpdateDocumentOp_index_2eproto.base,
   &scc_info_Operation_index_2eproto.base,
   &scc_info_SearchRequest_index_2eproto.base,
@@ -386,10 +557,10 @@ static ::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase*const descriptor_table_ind
 };
 static ::PROTOBUF_NAMESPACE_ID::internal::once_flag descriptor_table_index_2eproto_once;
 const ::PROTOBUF_NAMESPACE_ID::internal::DescriptorTable descriptor_table_index_2eproto = {
-  false, false, descriptor_table_protodef_index_2eproto, "index.proto", 1067,
-  &descriptor_table_index_2eproto_once, descriptor_table_index_2eproto_sccs, descriptor_table_index_2eproto_deps, 11, 0,
+  false, false, descriptor_table_protodef_index_2eproto, "index.proto", 1535,
+  &descriptor_table_index_2eproto_once, descriptor_table_index_2eproto_sccs, descriptor_table_index_2eproto_deps, 17, 0,
   schemas, file_default_instances, TableStruct_index_2eproto::offsets,
-  file_level_metadata_index_2eproto, 11, file_level_enum_descriptors_index_2eproto, file_level_service_descriptors_index_2eproto,
+  file_level_metadata_index_2eproto, 17, file_level_enum_descriptors_index_2eproto, file_level_service_descriptors_index_2eproto,
 };
 
 // Force running AddDescriptors() at dynamic initialization time.
@@ -3026,6 +3197,1128 @@ void SearchResponse::InternalSwap(SearchResponse* other) {
 }
 
 
+// ===================================================================
+
+void GetIndexRequest::InitAsDefaultInstance() {
+}
+class GetIndexRequest::_Internal {
+ public:
+};
+
+GetIndexRequest::GetIndexRequest(::PROTOBUF_NAMESPACE_ID::Arena* arena)
+  : ::PROTOBUF_NAMESPACE_ID::Message(arena) {
+  SharedCtor();
+  RegisterArenaDtor(arena);
+  // @@protoc_insertion_point(arena_constructor:Acoustid.Server.PB.GetIndexRequest)
+}
+GetIndexRequest::GetIndexRequest(const GetIndexRequest& from)
+  : ::PROTOBUF_NAMESPACE_ID::Message() {
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  index_name_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  if (!from._internal_index_name().empty()) {
+    index_name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), from._internal_index_name(),
+      GetArena());
+  }
+  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.GetIndexRequest)
+}
+
+void GetIndexRequest::SharedCtor() {
+  ::PROTOBUF_NAMESPACE_ID::internal::InitSCC(&scc_info_GetIndexRequest_index_2eproto.base);
+  index_name_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+}
+
+GetIndexRequest::~GetIndexRequest() {
+  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.GetIndexRequest)
+  SharedDtor();
+  _internal_metadata_.Delete<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+void GetIndexRequest::SharedDtor() {
+  GOOGLE_DCHECK(GetArena() == nullptr);
+  index_name_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+}
+
+void GetIndexRequest::ArenaDtor(void* object) {
+  GetIndexRequest* _this = reinterpret_cast< GetIndexRequest* >(object);
+  (void)_this;
+}
+void GetIndexRequest::RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena*) {
+}
+void GetIndexRequest::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+const GetIndexRequest& GetIndexRequest::default_instance() {
+  ::PROTOBUF_NAMESPACE_ID::internal::InitSCC(&::scc_info_GetIndexRequest_index_2eproto.base);
+  return *internal_default_instance();
+}
+
+
+void GetIndexRequest::Clear() {
+// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.GetIndexRequest)
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  index_name_.ClearToEmpty(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
+  _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+const char* GetIndexRequest::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
+#define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
+  ::PROTOBUF_NAMESPACE_ID::Arena* arena = GetArena(); (void)arena;
+  while (!ctx->Done(&ptr)) {
+    ::PROTOBUF_NAMESPACE_ID::uint32 tag;
+    ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
+    CHK_(ptr);
+    switch (tag >> 3) {
+      // string index_name = 1;
+      case 1:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<::PROTOBUF_NAMESPACE_ID::uint8>(tag) == 10)) {
+          auto str = _internal_mutable_index_name();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "Acoustid.Server.PB.GetIndexRequest.index_name"));
+          CHK_(ptr);
+        } else goto handle_unusual;
+        continue;
+      default: {
+      handle_unusual:
+        if ((tag & 7) == 4 || tag == 0) {
+          ctx->SetLastTag(tag);
+          goto success;
+        }
+        ptr = UnknownFieldParse(tag,
+            _internal_metadata_.mutable_unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(),
+            ptr, ctx);
+        CHK_(ptr != nullptr);
+        continue;
+      }
+    }  // switch
+  }  // while
+success:
+  return ptr;
+failure:
+  ptr = nullptr;
+  goto success;
+#undef CHK_
+}
+
+::PROTOBUF_NAMESPACE_ID::uint8* GetIndexRequest::_InternalSerialize(
+    ::PROTOBUF_NAMESPACE_ID::uint8* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const {
+  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.GetIndexRequest)
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // string index_name = 1;
+  if (this->index_name().size() > 0) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_index_name().data(), static_cast<int>(this->_internal_index_name().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "Acoustid.Server.PB.GetIndexRequest.index_name");
+    target = stream->WriteStringMaybeAliased(
+        1, this->_internal_index_name(), target);
+  }
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
+        _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.GetIndexRequest)
+  return target;
+}
+
+size_t GetIndexRequest::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.GetIndexRequest)
+  size_t total_size = 0;
+
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  // string index_name = 1;
+  if (this->index_name().size() > 0) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_index_name());
+  }
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    return ::PROTOBUF_NAMESPACE_ID::internal::ComputeUnknownFieldsSize(
+        _internal_metadata_, total_size, &_cached_size_);
+  }
+  int cached_size = ::PROTOBUF_NAMESPACE_ID::internal::ToCachedSize(total_size);
+  SetCachedSize(cached_size);
+  return total_size;
+}
+
+void GetIndexRequest::MergeFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.GetIndexRequest)
+  GOOGLE_DCHECK_NE(&from, this);
+  const GetIndexRequest* source =
+      ::PROTOBUF_NAMESPACE_ID::DynamicCastToGenerated<GetIndexRequest>(
+          &from);
+  if (source == nullptr) {
+  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.GetIndexRequest)
+    ::PROTOBUF_NAMESPACE_ID::internal::ReflectionOps::Merge(from, this);
+  } else {
+  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.GetIndexRequest)
+    MergeFrom(*source);
+  }
+}
+
+void GetIndexRequest::MergeFrom(const GetIndexRequest& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.GetIndexRequest)
+  GOOGLE_DCHECK_NE(&from, this);
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if (from.index_name().size() > 0) {
+    _internal_set_index_name(from._internal_index_name());
+  }
+}
+
+void GetIndexRequest::CopyFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.GetIndexRequest)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void GetIndexRequest::CopyFrom(const GetIndexRequest& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.GetIndexRequest)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool GetIndexRequest::IsInitialized() const {
+  return true;
+}
+
+void GetIndexRequest::InternalSwap(GetIndexRequest* other) {
+  using std::swap;
+  _internal_metadata_.Swap<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(&other->_internal_metadata_);
+  index_name_.Swap(&other->index_name_, &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
+}
+
+::PROTOBUF_NAMESPACE_ID::Metadata GetIndexRequest::GetMetadata() const {
+  return GetMetadataStatic();
+}
+
+
+// ===================================================================
+
+void GetIndexResponse::InitAsDefaultInstance() {
+}
+class GetIndexResponse::_Internal {
+ public:
+};
+
+GetIndexResponse::GetIndexResponse(::PROTOBUF_NAMESPACE_ID::Arena* arena)
+  : ::PROTOBUF_NAMESPACE_ID::Message(arena) {
+  SharedCtor();
+  RegisterArenaDtor(arena);
+  // @@protoc_insertion_point(arena_constructor:Acoustid.Server.PB.GetIndexResponse)
+}
+GetIndexResponse::GetIndexResponse(const GetIndexResponse& from)
+  : ::PROTOBUF_NAMESPACE_ID::Message() {
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.GetIndexResponse)
+}
+
+void GetIndexResponse::SharedCtor() {
+}
+
+GetIndexResponse::~GetIndexResponse() {
+  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.GetIndexResponse)
+  SharedDtor();
+  _internal_metadata_.Delete<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+void GetIndexResponse::SharedDtor() {
+  GOOGLE_DCHECK(GetArena() == nullptr);
+}
+
+void GetIndexResponse::ArenaDtor(void* object) {
+  GetIndexResponse* _this = reinterpret_cast< GetIndexResponse* >(object);
+  (void)_this;
+}
+void GetIndexResponse::RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena*) {
+}
+void GetIndexResponse::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+const GetIndexResponse& GetIndexResponse::default_instance() {
+  ::PROTOBUF_NAMESPACE_ID::internal::InitSCC(&::scc_info_GetIndexResponse_index_2eproto.base);
+  return *internal_default_instance();
+}
+
+
+void GetIndexResponse::Clear() {
+// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.GetIndexResponse)
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+const char* GetIndexResponse::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
+#define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
+  ::PROTOBUF_NAMESPACE_ID::Arena* arena = GetArena(); (void)arena;
+  while (!ctx->Done(&ptr)) {
+    ::PROTOBUF_NAMESPACE_ID::uint32 tag;
+    ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
+    CHK_(ptr);
+        if ((tag & 7) == 4 || tag == 0) {
+          ctx->SetLastTag(tag);
+          goto success;
+        }
+        ptr = UnknownFieldParse(tag,
+            _internal_metadata_.mutable_unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(),
+            ptr, ctx);
+        CHK_(ptr != nullptr);
+        continue;
+  }  // while
+success:
+  return ptr;
+failure:
+  ptr = nullptr;
+  goto success;
+#undef CHK_
+}
+
+::PROTOBUF_NAMESPACE_ID::uint8* GetIndexResponse::_InternalSerialize(
+    ::PROTOBUF_NAMESPACE_ID::uint8* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const {
+  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.GetIndexResponse)
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
+        _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.GetIndexResponse)
+  return target;
+}
+
+size_t GetIndexResponse::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.GetIndexResponse)
+  size_t total_size = 0;
+
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    return ::PROTOBUF_NAMESPACE_ID::internal::ComputeUnknownFieldsSize(
+        _internal_metadata_, total_size, &_cached_size_);
+  }
+  int cached_size = ::PROTOBUF_NAMESPACE_ID::internal::ToCachedSize(total_size);
+  SetCachedSize(cached_size);
+  return total_size;
+}
+
+void GetIndexResponse::MergeFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.GetIndexResponse)
+  GOOGLE_DCHECK_NE(&from, this);
+  const GetIndexResponse* source =
+      ::PROTOBUF_NAMESPACE_ID::DynamicCastToGenerated<GetIndexResponse>(
+          &from);
+  if (source == nullptr) {
+  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.GetIndexResponse)
+    ::PROTOBUF_NAMESPACE_ID::internal::ReflectionOps::Merge(from, this);
+  } else {
+  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.GetIndexResponse)
+    MergeFrom(*source);
+  }
+}
+
+void GetIndexResponse::MergeFrom(const GetIndexResponse& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.GetIndexResponse)
+  GOOGLE_DCHECK_NE(&from, this);
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+}
+
+void GetIndexResponse::CopyFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.GetIndexResponse)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void GetIndexResponse::CopyFrom(const GetIndexResponse& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.GetIndexResponse)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool GetIndexResponse::IsInitialized() const {
+  return true;
+}
+
+void GetIndexResponse::InternalSwap(GetIndexResponse* other) {
+  using std::swap;
+  _internal_metadata_.Swap<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(&other->_internal_metadata_);
+}
+
+::PROTOBUF_NAMESPACE_ID::Metadata GetIndexResponse::GetMetadata() const {
+  return GetMetadataStatic();
+}
+
+
+// ===================================================================
+
+void CreateIndexRequest::InitAsDefaultInstance() {
+}
+class CreateIndexRequest::_Internal {
+ public:
+};
+
+CreateIndexRequest::CreateIndexRequest(::PROTOBUF_NAMESPACE_ID::Arena* arena)
+  : ::PROTOBUF_NAMESPACE_ID::Message(arena) {
+  SharedCtor();
+  RegisterArenaDtor(arena);
+  // @@protoc_insertion_point(arena_constructor:Acoustid.Server.PB.CreateIndexRequest)
+}
+CreateIndexRequest::CreateIndexRequest(const CreateIndexRequest& from)
+  : ::PROTOBUF_NAMESPACE_ID::Message() {
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  index_name_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  if (!from._internal_index_name().empty()) {
+    index_name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), from._internal_index_name(),
+      GetArena());
+  }
+  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.CreateIndexRequest)
+}
+
+void CreateIndexRequest::SharedCtor() {
+  ::PROTOBUF_NAMESPACE_ID::internal::InitSCC(&scc_info_CreateIndexRequest_index_2eproto.base);
+  index_name_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+}
+
+CreateIndexRequest::~CreateIndexRequest() {
+  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.CreateIndexRequest)
+  SharedDtor();
+  _internal_metadata_.Delete<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+void CreateIndexRequest::SharedDtor() {
+  GOOGLE_DCHECK(GetArena() == nullptr);
+  index_name_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+}
+
+void CreateIndexRequest::ArenaDtor(void* object) {
+  CreateIndexRequest* _this = reinterpret_cast< CreateIndexRequest* >(object);
+  (void)_this;
+}
+void CreateIndexRequest::RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena*) {
+}
+void CreateIndexRequest::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+const CreateIndexRequest& CreateIndexRequest::default_instance() {
+  ::PROTOBUF_NAMESPACE_ID::internal::InitSCC(&::scc_info_CreateIndexRequest_index_2eproto.base);
+  return *internal_default_instance();
+}
+
+
+void CreateIndexRequest::Clear() {
+// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.CreateIndexRequest)
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  index_name_.ClearToEmpty(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
+  _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+const char* CreateIndexRequest::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
+#define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
+  ::PROTOBUF_NAMESPACE_ID::Arena* arena = GetArena(); (void)arena;
+  while (!ctx->Done(&ptr)) {
+    ::PROTOBUF_NAMESPACE_ID::uint32 tag;
+    ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
+    CHK_(ptr);
+    switch (tag >> 3) {
+      // string index_name = 1;
+      case 1:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<::PROTOBUF_NAMESPACE_ID::uint8>(tag) == 10)) {
+          auto str = _internal_mutable_index_name();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "Acoustid.Server.PB.CreateIndexRequest.index_name"));
+          CHK_(ptr);
+        } else goto handle_unusual;
+        continue;
+      default: {
+      handle_unusual:
+        if ((tag & 7) == 4 || tag == 0) {
+          ctx->SetLastTag(tag);
+          goto success;
+        }
+        ptr = UnknownFieldParse(tag,
+            _internal_metadata_.mutable_unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(),
+            ptr, ctx);
+        CHK_(ptr != nullptr);
+        continue;
+      }
+    }  // switch
+  }  // while
+success:
+  return ptr;
+failure:
+  ptr = nullptr;
+  goto success;
+#undef CHK_
+}
+
+::PROTOBUF_NAMESPACE_ID::uint8* CreateIndexRequest::_InternalSerialize(
+    ::PROTOBUF_NAMESPACE_ID::uint8* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const {
+  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.CreateIndexRequest)
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // string index_name = 1;
+  if (this->index_name().size() > 0) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_index_name().data(), static_cast<int>(this->_internal_index_name().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "Acoustid.Server.PB.CreateIndexRequest.index_name");
+    target = stream->WriteStringMaybeAliased(
+        1, this->_internal_index_name(), target);
+  }
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
+        _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.CreateIndexRequest)
+  return target;
+}
+
+size_t CreateIndexRequest::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.CreateIndexRequest)
+  size_t total_size = 0;
+
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  // string index_name = 1;
+  if (this->index_name().size() > 0) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_index_name());
+  }
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    return ::PROTOBUF_NAMESPACE_ID::internal::ComputeUnknownFieldsSize(
+        _internal_metadata_, total_size, &_cached_size_);
+  }
+  int cached_size = ::PROTOBUF_NAMESPACE_ID::internal::ToCachedSize(total_size);
+  SetCachedSize(cached_size);
+  return total_size;
+}
+
+void CreateIndexRequest::MergeFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.CreateIndexRequest)
+  GOOGLE_DCHECK_NE(&from, this);
+  const CreateIndexRequest* source =
+      ::PROTOBUF_NAMESPACE_ID::DynamicCastToGenerated<CreateIndexRequest>(
+          &from);
+  if (source == nullptr) {
+  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.CreateIndexRequest)
+    ::PROTOBUF_NAMESPACE_ID::internal::ReflectionOps::Merge(from, this);
+  } else {
+  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.CreateIndexRequest)
+    MergeFrom(*source);
+  }
+}
+
+void CreateIndexRequest::MergeFrom(const CreateIndexRequest& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.CreateIndexRequest)
+  GOOGLE_DCHECK_NE(&from, this);
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if (from.index_name().size() > 0) {
+    _internal_set_index_name(from._internal_index_name());
+  }
+}
+
+void CreateIndexRequest::CopyFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.CreateIndexRequest)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void CreateIndexRequest::CopyFrom(const CreateIndexRequest& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.CreateIndexRequest)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool CreateIndexRequest::IsInitialized() const {
+  return true;
+}
+
+void CreateIndexRequest::InternalSwap(CreateIndexRequest* other) {
+  using std::swap;
+  _internal_metadata_.Swap<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(&other->_internal_metadata_);
+  index_name_.Swap(&other->index_name_, &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
+}
+
+::PROTOBUF_NAMESPACE_ID::Metadata CreateIndexRequest::GetMetadata() const {
+  return GetMetadataStatic();
+}
+
+
+// ===================================================================
+
+void CreateIndexResponse::InitAsDefaultInstance() {
+}
+class CreateIndexResponse::_Internal {
+ public:
+};
+
+CreateIndexResponse::CreateIndexResponse(::PROTOBUF_NAMESPACE_ID::Arena* arena)
+  : ::PROTOBUF_NAMESPACE_ID::Message(arena) {
+  SharedCtor();
+  RegisterArenaDtor(arena);
+  // @@protoc_insertion_point(arena_constructor:Acoustid.Server.PB.CreateIndexResponse)
+}
+CreateIndexResponse::CreateIndexResponse(const CreateIndexResponse& from)
+  : ::PROTOBUF_NAMESPACE_ID::Message() {
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.CreateIndexResponse)
+}
+
+void CreateIndexResponse::SharedCtor() {
+}
+
+CreateIndexResponse::~CreateIndexResponse() {
+  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.CreateIndexResponse)
+  SharedDtor();
+  _internal_metadata_.Delete<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+void CreateIndexResponse::SharedDtor() {
+  GOOGLE_DCHECK(GetArena() == nullptr);
+}
+
+void CreateIndexResponse::ArenaDtor(void* object) {
+  CreateIndexResponse* _this = reinterpret_cast< CreateIndexResponse* >(object);
+  (void)_this;
+}
+void CreateIndexResponse::RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena*) {
+}
+void CreateIndexResponse::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+const CreateIndexResponse& CreateIndexResponse::default_instance() {
+  ::PROTOBUF_NAMESPACE_ID::internal::InitSCC(&::scc_info_CreateIndexResponse_index_2eproto.base);
+  return *internal_default_instance();
+}
+
+
+void CreateIndexResponse::Clear() {
+// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.CreateIndexResponse)
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+const char* CreateIndexResponse::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
+#define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
+  ::PROTOBUF_NAMESPACE_ID::Arena* arena = GetArena(); (void)arena;
+  while (!ctx->Done(&ptr)) {
+    ::PROTOBUF_NAMESPACE_ID::uint32 tag;
+    ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
+    CHK_(ptr);
+        if ((tag & 7) == 4 || tag == 0) {
+          ctx->SetLastTag(tag);
+          goto success;
+        }
+        ptr = UnknownFieldParse(tag,
+            _internal_metadata_.mutable_unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(),
+            ptr, ctx);
+        CHK_(ptr != nullptr);
+        continue;
+  }  // while
+success:
+  return ptr;
+failure:
+  ptr = nullptr;
+  goto success;
+#undef CHK_
+}
+
+::PROTOBUF_NAMESPACE_ID::uint8* CreateIndexResponse::_InternalSerialize(
+    ::PROTOBUF_NAMESPACE_ID::uint8* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const {
+  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.CreateIndexResponse)
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
+        _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.CreateIndexResponse)
+  return target;
+}
+
+size_t CreateIndexResponse::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.CreateIndexResponse)
+  size_t total_size = 0;
+
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    return ::PROTOBUF_NAMESPACE_ID::internal::ComputeUnknownFieldsSize(
+        _internal_metadata_, total_size, &_cached_size_);
+  }
+  int cached_size = ::PROTOBUF_NAMESPACE_ID::internal::ToCachedSize(total_size);
+  SetCachedSize(cached_size);
+  return total_size;
+}
+
+void CreateIndexResponse::MergeFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.CreateIndexResponse)
+  GOOGLE_DCHECK_NE(&from, this);
+  const CreateIndexResponse* source =
+      ::PROTOBUF_NAMESPACE_ID::DynamicCastToGenerated<CreateIndexResponse>(
+          &from);
+  if (source == nullptr) {
+  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.CreateIndexResponse)
+    ::PROTOBUF_NAMESPACE_ID::internal::ReflectionOps::Merge(from, this);
+  } else {
+  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.CreateIndexResponse)
+    MergeFrom(*source);
+  }
+}
+
+void CreateIndexResponse::MergeFrom(const CreateIndexResponse& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.CreateIndexResponse)
+  GOOGLE_DCHECK_NE(&from, this);
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+}
+
+void CreateIndexResponse::CopyFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.CreateIndexResponse)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void CreateIndexResponse::CopyFrom(const CreateIndexResponse& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.CreateIndexResponse)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool CreateIndexResponse::IsInitialized() const {
+  return true;
+}
+
+void CreateIndexResponse::InternalSwap(CreateIndexResponse* other) {
+  using std::swap;
+  _internal_metadata_.Swap<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(&other->_internal_metadata_);
+}
+
+::PROTOBUF_NAMESPACE_ID::Metadata CreateIndexResponse::GetMetadata() const {
+  return GetMetadataStatic();
+}
+
+
+// ===================================================================
+
+void DeleteIndexRequest::InitAsDefaultInstance() {
+}
+class DeleteIndexRequest::_Internal {
+ public:
+};
+
+DeleteIndexRequest::DeleteIndexRequest(::PROTOBUF_NAMESPACE_ID::Arena* arena)
+  : ::PROTOBUF_NAMESPACE_ID::Message(arena) {
+  SharedCtor();
+  RegisterArenaDtor(arena);
+  // @@protoc_insertion_point(arena_constructor:Acoustid.Server.PB.DeleteIndexRequest)
+}
+DeleteIndexRequest::DeleteIndexRequest(const DeleteIndexRequest& from)
+  : ::PROTOBUF_NAMESPACE_ID::Message() {
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  index_name_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+  if (!from._internal_index_name().empty()) {
+    index_name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), from._internal_index_name(),
+      GetArena());
+  }
+  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.DeleteIndexRequest)
+}
+
+void DeleteIndexRequest::SharedCtor() {
+  ::PROTOBUF_NAMESPACE_ID::internal::InitSCC(&scc_info_DeleteIndexRequest_index_2eproto.base);
+  index_name_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+}
+
+DeleteIndexRequest::~DeleteIndexRequest() {
+  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.DeleteIndexRequest)
+  SharedDtor();
+  _internal_metadata_.Delete<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+void DeleteIndexRequest::SharedDtor() {
+  GOOGLE_DCHECK(GetArena() == nullptr);
+  index_name_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
+}
+
+void DeleteIndexRequest::ArenaDtor(void* object) {
+  DeleteIndexRequest* _this = reinterpret_cast< DeleteIndexRequest* >(object);
+  (void)_this;
+}
+void DeleteIndexRequest::RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena*) {
+}
+void DeleteIndexRequest::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+const DeleteIndexRequest& DeleteIndexRequest::default_instance() {
+  ::PROTOBUF_NAMESPACE_ID::internal::InitSCC(&::scc_info_DeleteIndexRequest_index_2eproto.base);
+  return *internal_default_instance();
+}
+
+
+void DeleteIndexRequest::Clear() {
+// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.DeleteIndexRequest)
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  index_name_.ClearToEmpty(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
+  _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+const char* DeleteIndexRequest::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
+#define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
+  ::PROTOBUF_NAMESPACE_ID::Arena* arena = GetArena(); (void)arena;
+  while (!ctx->Done(&ptr)) {
+    ::PROTOBUF_NAMESPACE_ID::uint32 tag;
+    ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
+    CHK_(ptr);
+    switch (tag >> 3) {
+      // string index_name = 1;
+      case 1:
+        if (PROTOBUF_PREDICT_TRUE(static_cast<::PROTOBUF_NAMESPACE_ID::uint8>(tag) == 10)) {
+          auto str = _internal_mutable_index_name();
+          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
+          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "Acoustid.Server.PB.DeleteIndexRequest.index_name"));
+          CHK_(ptr);
+        } else goto handle_unusual;
+        continue;
+      default: {
+      handle_unusual:
+        if ((tag & 7) == 4 || tag == 0) {
+          ctx->SetLastTag(tag);
+          goto success;
+        }
+        ptr = UnknownFieldParse(tag,
+            _internal_metadata_.mutable_unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(),
+            ptr, ctx);
+        CHK_(ptr != nullptr);
+        continue;
+      }
+    }  // switch
+  }  // while
+success:
+  return ptr;
+failure:
+  ptr = nullptr;
+  goto success;
+#undef CHK_
+}
+
+::PROTOBUF_NAMESPACE_ID::uint8* DeleteIndexRequest::_InternalSerialize(
+    ::PROTOBUF_NAMESPACE_ID::uint8* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const {
+  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.DeleteIndexRequest)
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  // string index_name = 1;
+  if (this->index_name().size() > 0) {
+    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
+      this->_internal_index_name().data(), static_cast<int>(this->_internal_index_name().length()),
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
+      "Acoustid.Server.PB.DeleteIndexRequest.index_name");
+    target = stream->WriteStringMaybeAliased(
+        1, this->_internal_index_name(), target);
+  }
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
+        _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.DeleteIndexRequest)
+  return target;
+}
+
+size_t DeleteIndexRequest::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.DeleteIndexRequest)
+  size_t total_size = 0;
+
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  // string index_name = 1;
+  if (this->index_name().size() > 0) {
+    total_size += 1 +
+      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
+        this->_internal_index_name());
+  }
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    return ::PROTOBUF_NAMESPACE_ID::internal::ComputeUnknownFieldsSize(
+        _internal_metadata_, total_size, &_cached_size_);
+  }
+  int cached_size = ::PROTOBUF_NAMESPACE_ID::internal::ToCachedSize(total_size);
+  SetCachedSize(cached_size);
+  return total_size;
+}
+
+void DeleteIndexRequest::MergeFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.DeleteIndexRequest)
+  GOOGLE_DCHECK_NE(&from, this);
+  const DeleteIndexRequest* source =
+      ::PROTOBUF_NAMESPACE_ID::DynamicCastToGenerated<DeleteIndexRequest>(
+          &from);
+  if (source == nullptr) {
+  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.DeleteIndexRequest)
+    ::PROTOBUF_NAMESPACE_ID::internal::ReflectionOps::Merge(from, this);
+  } else {
+  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.DeleteIndexRequest)
+    MergeFrom(*source);
+  }
+}
+
+void DeleteIndexRequest::MergeFrom(const DeleteIndexRequest& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.DeleteIndexRequest)
+  GOOGLE_DCHECK_NE(&from, this);
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if (from.index_name().size() > 0) {
+    _internal_set_index_name(from._internal_index_name());
+  }
+}
+
+void DeleteIndexRequest::CopyFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.DeleteIndexRequest)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void DeleteIndexRequest::CopyFrom(const DeleteIndexRequest& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.DeleteIndexRequest)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool DeleteIndexRequest::IsInitialized() const {
+  return true;
+}
+
+void DeleteIndexRequest::InternalSwap(DeleteIndexRequest* other) {
+  using std::swap;
+  _internal_metadata_.Swap<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(&other->_internal_metadata_);
+  index_name_.Swap(&other->index_name_, &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
+}
+
+::PROTOBUF_NAMESPACE_ID::Metadata DeleteIndexRequest::GetMetadata() const {
+  return GetMetadataStatic();
+}
+
+
+// ===================================================================
+
+void DeleteIndexResponse::InitAsDefaultInstance() {
+}
+class DeleteIndexResponse::_Internal {
+ public:
+};
+
+DeleteIndexResponse::DeleteIndexResponse(::PROTOBUF_NAMESPACE_ID::Arena* arena)
+  : ::PROTOBUF_NAMESPACE_ID::Message(arena) {
+  SharedCtor();
+  RegisterArenaDtor(arena);
+  // @@protoc_insertion_point(arena_constructor:Acoustid.Server.PB.DeleteIndexResponse)
+}
+DeleteIndexResponse::DeleteIndexResponse(const DeleteIndexResponse& from)
+  : ::PROTOBUF_NAMESPACE_ID::Message() {
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.DeleteIndexResponse)
+}
+
+void DeleteIndexResponse::SharedCtor() {
+}
+
+DeleteIndexResponse::~DeleteIndexResponse() {
+  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.DeleteIndexResponse)
+  SharedDtor();
+  _internal_metadata_.Delete<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+void DeleteIndexResponse::SharedDtor() {
+  GOOGLE_DCHECK(GetArena() == nullptr);
+}
+
+void DeleteIndexResponse::ArenaDtor(void* object) {
+  DeleteIndexResponse* _this = reinterpret_cast< DeleteIndexResponse* >(object);
+  (void)_this;
+}
+void DeleteIndexResponse::RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena*) {
+}
+void DeleteIndexResponse::SetCachedSize(int size) const {
+  _cached_size_.Set(size);
+}
+const DeleteIndexResponse& DeleteIndexResponse::default_instance() {
+  ::PROTOBUF_NAMESPACE_ID::internal::InitSCC(&::scc_info_DeleteIndexResponse_index_2eproto.base);
+  return *internal_default_instance();
+}
+
+
+void DeleteIndexResponse::Clear() {
+// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.DeleteIndexResponse)
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
+}
+
+const char* DeleteIndexResponse::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
+#define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
+  ::PROTOBUF_NAMESPACE_ID::Arena* arena = GetArena(); (void)arena;
+  while (!ctx->Done(&ptr)) {
+    ::PROTOBUF_NAMESPACE_ID::uint32 tag;
+    ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
+    CHK_(ptr);
+        if ((tag & 7) == 4 || tag == 0) {
+          ctx->SetLastTag(tag);
+          goto success;
+        }
+        ptr = UnknownFieldParse(tag,
+            _internal_metadata_.mutable_unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(),
+            ptr, ctx);
+        CHK_(ptr != nullptr);
+        continue;
+  }  // while
+success:
+  return ptr;
+failure:
+  ptr = nullptr;
+  goto success;
+#undef CHK_
+}
+
+::PROTOBUF_NAMESPACE_ID::uint8* DeleteIndexResponse::_InternalSerialize(
+    ::PROTOBUF_NAMESPACE_ID::uint8* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const {
+  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.DeleteIndexResponse)
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
+        _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
+  }
+  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.DeleteIndexResponse)
+  return target;
+}
+
+size_t DeleteIndexResponse::ByteSizeLong() const {
+// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.DeleteIndexResponse)
+  size_t total_size = 0;
+
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
+    return ::PROTOBUF_NAMESPACE_ID::internal::ComputeUnknownFieldsSize(
+        _internal_metadata_, total_size, &_cached_size_);
+  }
+  int cached_size = ::PROTOBUF_NAMESPACE_ID::internal::ToCachedSize(total_size);
+  SetCachedSize(cached_size);
+  return total_size;
+}
+
+void DeleteIndexResponse::MergeFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.DeleteIndexResponse)
+  GOOGLE_DCHECK_NE(&from, this);
+  const DeleteIndexResponse* source =
+      ::PROTOBUF_NAMESPACE_ID::DynamicCastToGenerated<DeleteIndexResponse>(
+          &from);
+  if (source == nullptr) {
+  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.DeleteIndexResponse)
+    ::PROTOBUF_NAMESPACE_ID::internal::ReflectionOps::Merge(from, this);
+  } else {
+  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.DeleteIndexResponse)
+    MergeFrom(*source);
+  }
+}
+
+void DeleteIndexResponse::MergeFrom(const DeleteIndexResponse& from) {
+// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.DeleteIndexResponse)
+  GOOGLE_DCHECK_NE(&from, this);
+  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
+  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
+  (void) cached_has_bits;
+
+}
+
+void DeleteIndexResponse::CopyFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) {
+// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.DeleteIndexResponse)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+void DeleteIndexResponse::CopyFrom(const DeleteIndexResponse& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.DeleteIndexResponse)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+bool DeleteIndexResponse::IsInitialized() const {
+  return true;
+}
+
+void DeleteIndexResponse::InternalSwap(DeleteIndexResponse* other) {
+  using std::swap;
+  _internal_metadata_.Swap<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(&other->_internal_metadata_);
+}
+
+::PROTOBUF_NAMESPACE_ID::Metadata DeleteIndexResponse::GetMetadata() const {
+  return GetMetadataStatic();
+}
+
+
 // @@protoc_insertion_point(namespace_scope)
 }  // namespace PB
 }  // namespace Server
@@ -3063,6 +4356,24 @@ template<> PROTOBUF_NOINLINE ::Acoustid::Server::PB::SearchRequest* Arena::Creat
 }
 template<> PROTOBUF_NOINLINE ::Acoustid::Server::PB::SearchResponse* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::SearchResponse >(Arena* arena) {
   return Arena::CreateMessageInternal< ::Acoustid::Server::PB::SearchResponse >(arena);
+}
+template<> PROTOBUF_NOINLINE ::Acoustid::Server::PB::GetIndexRequest* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::GetIndexRequest >(Arena* arena) {
+  return Arena::CreateMessageInternal< ::Acoustid::Server::PB::GetIndexRequest >(arena);
+}
+template<> PROTOBUF_NOINLINE ::Acoustid::Server::PB::GetIndexResponse* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::GetIndexResponse >(Arena* arena) {
+  return Arena::CreateMessageInternal< ::Acoustid::Server::PB::GetIndexResponse >(arena);
+}
+template<> PROTOBUF_NOINLINE ::Acoustid::Server::PB::CreateIndexRequest* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::CreateIndexRequest >(Arena* arena) {
+  return Arena::CreateMessageInternal< ::Acoustid::Server::PB::CreateIndexRequest >(arena);
+}
+template<> PROTOBUF_NOINLINE ::Acoustid::Server::PB::CreateIndexResponse* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::CreateIndexResponse >(Arena* arena) {
+  return Arena::CreateMessageInternal< ::Acoustid::Server::PB::CreateIndexResponse >(arena);
+}
+template<> PROTOBUF_NOINLINE ::Acoustid::Server::PB::DeleteIndexRequest* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::DeleteIndexRequest >(Arena* arena) {
+  return Arena::CreateMessageInternal< ::Acoustid::Server::PB::DeleteIndexRequest >(arena);
+}
+template<> PROTOBUF_NOINLINE ::Acoustid::Server::PB::DeleteIndexResponse* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::DeleteIndexResponse >(Arena* arena) {
+  return Arena::CreateMessageInternal< ::Acoustid::Server::PB::DeleteIndexResponse >(arena);
 }
 PROTOBUF_NAMESPACE_CLOSE
 

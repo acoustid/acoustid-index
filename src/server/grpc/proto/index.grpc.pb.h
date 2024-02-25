@@ -38,6 +38,27 @@ class Index final {
   class StubInterface {
    public:
     virtual ~StubInterface() {}
+    virtual ::grpc::Status GetIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest& request, ::Acoustid::Server::PB::GetIndexResponse* response) = 0;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetIndexResponse>> AsyncGetIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetIndexResponse>>(AsyncGetIndexRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetIndexResponse>> PrepareAsyncGetIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetIndexResponse>>(PrepareAsyncGetIndexRaw(context, request, cq));
+    }
+    virtual ::grpc::Status CreateIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest& request, ::Acoustid::Server::PB::CreateIndexResponse* response) = 0;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::CreateIndexResponse>> AsyncCreateIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::CreateIndexResponse>>(AsyncCreateIndexRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::CreateIndexResponse>> PrepareAsyncCreateIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::CreateIndexResponse>>(PrepareAsyncCreateIndexRaw(context, request, cq));
+    }
+    virtual ::grpc::Status DeleteIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest& request, ::Acoustid::Server::PB::DeleteIndexResponse* response) = 0;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::DeleteIndexResponse>> AsyncDeleteIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::DeleteIndexResponse>>(AsyncDeleteIndexRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::DeleteIndexResponse>> PrepareAsyncDeleteIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::DeleteIndexResponse>>(PrepareAsyncDeleteIndexRaw(context, request, cq));
+    }
     virtual ::grpc::Status GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::Acoustid::Server::PB::GetAttributeResponse* response) = 0;
     std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetAttributeResponse>> AsyncGetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::grpc::CompletionQueue* cq) {
       return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetAttributeResponse>>(AsyncGetAttributeRaw(context, request, cq));
@@ -62,6 +83,42 @@ class Index final {
     class experimental_async_interface {
      public:
       virtual ~experimental_async_interface() {}
+      virtual void GetIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest* request, ::Acoustid::Server::PB::GetIndexResponse* response, std::function<void(::grpc::Status)>) = 0;
+      virtual void GetIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetIndexResponse* response, std::function<void(::grpc::Status)>) = 0;
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      virtual void GetIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest* request, ::Acoustid::Server::PB::GetIndexResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      #else
+      virtual void GetIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest* request, ::Acoustid::Server::PB::GetIndexResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) = 0;
+      #endif
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      virtual void GetIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetIndexResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      #else
+      virtual void GetIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetIndexResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) = 0;
+      #endif
+      virtual void CreateIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest* request, ::Acoustid::Server::PB::CreateIndexResponse* response, std::function<void(::grpc::Status)>) = 0;
+      virtual void CreateIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::CreateIndexResponse* response, std::function<void(::grpc::Status)>) = 0;
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      virtual void CreateIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest* request, ::Acoustid::Server::PB::CreateIndexResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      #else
+      virtual void CreateIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest* request, ::Acoustid::Server::PB::CreateIndexResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) = 0;
+      #endif
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      virtual void CreateIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::CreateIndexResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      #else
+      virtual void CreateIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::CreateIndexResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) = 0;
+      #endif
+      virtual void DeleteIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest* request, ::Acoustid::Server::PB::DeleteIndexResponse* response, std::function<void(::grpc::Status)>) = 0;
+      virtual void DeleteIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::DeleteIndexResponse* response, std::function<void(::grpc::Status)>) = 0;
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      virtual void DeleteIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest* request, ::Acoustid::Server::PB::DeleteIndexResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      #else
+      virtual void DeleteIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest* request, ::Acoustid::Server::PB::DeleteIndexResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) = 0;
+      #endif
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      virtual void DeleteIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::DeleteIndexResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      #else
+      virtual void DeleteIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::DeleteIndexResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) = 0;
+      #endif
       virtual void GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response, std::function<void(::grpc::Status)>) = 0;
       virtual void GetAttribute(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetAttributeResponse* response, std::function<void(::grpc::Status)>) = 0;
       #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
@@ -107,6 +164,12 @@ class Index final {
     #endif
     virtual class experimental_async_interface* experimental_async() { return nullptr; }
   private:
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetIndexResponse>* AsyncGetIndexRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetIndexResponse>* PrepareAsyncGetIndexRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::CreateIndexResponse>* AsyncCreateIndexRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::CreateIndexResponse>* PrepareAsyncCreateIndexRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::DeleteIndexResponse>* AsyncDeleteIndexRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::DeleteIndexResponse>* PrepareAsyncDeleteIndexRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetAttributeResponse>* AsyncGetAttributeRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetAttributeResponse>* PrepareAsyncGetAttributeRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::UpdateResponse>* AsyncUpdateRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::UpdateRequest& request, ::grpc::CompletionQueue* cq) = 0;
@@ -117,6 +180,27 @@ class Index final {
   class Stub final : public StubInterface {
    public:
     Stub(const std::shared_ptr< ::grpc::ChannelInterface>& channel);
+    ::grpc::Status GetIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest& request, ::Acoustid::Server::PB::GetIndexResponse* response) override;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetIndexResponse>> AsyncGetIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetIndexResponse>>(AsyncGetIndexRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetIndexResponse>> PrepareAsyncGetIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetIndexResponse>>(PrepareAsyncGetIndexRaw(context, request, cq));
+    }
+    ::grpc::Status CreateIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest& request, ::Acoustid::Server::PB::CreateIndexResponse* response) override;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::CreateIndexResponse>> AsyncCreateIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::CreateIndexResponse>>(AsyncCreateIndexRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::CreateIndexResponse>> PrepareAsyncCreateIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::CreateIndexResponse>>(PrepareAsyncCreateIndexRaw(context, request, cq));
+    }
+    ::grpc::Status DeleteIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest& request, ::Acoustid::Server::PB::DeleteIndexResponse* response) override;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::DeleteIndexResponse>> AsyncDeleteIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::DeleteIndexResponse>>(AsyncDeleteIndexRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::DeleteIndexResponse>> PrepareAsyncDeleteIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::DeleteIndexResponse>>(PrepareAsyncDeleteIndexRaw(context, request, cq));
+    }
     ::grpc::Status GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::Acoustid::Server::PB::GetAttributeResponse* response) override;
     std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetAttributeResponse>> AsyncGetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::grpc::CompletionQueue* cq) {
       return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetAttributeResponse>>(AsyncGetAttributeRaw(context, request, cq));
@@ -141,6 +225,42 @@ class Index final {
     class experimental_async final :
       public StubInterface::experimental_async_interface {
      public:
+      void GetIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest* request, ::Acoustid::Server::PB::GetIndexResponse* response, std::function<void(::grpc::Status)>) override;
+      void GetIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetIndexResponse* response, std::function<void(::grpc::Status)>) override;
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      void GetIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest* request, ::Acoustid::Server::PB::GetIndexResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      #else
+      void GetIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest* request, ::Acoustid::Server::PB::GetIndexResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) override;
+      #endif
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      void GetIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetIndexResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      #else
+      void GetIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetIndexResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) override;
+      #endif
+      void CreateIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest* request, ::Acoustid::Server::PB::CreateIndexResponse* response, std::function<void(::grpc::Status)>) override;
+      void CreateIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::CreateIndexResponse* response, std::function<void(::grpc::Status)>) override;
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      void CreateIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest* request, ::Acoustid::Server::PB::CreateIndexResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      #else
+      void CreateIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest* request, ::Acoustid::Server::PB::CreateIndexResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) override;
+      #endif
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      void CreateIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::CreateIndexResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      #else
+      void CreateIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::CreateIndexResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) override;
+      #endif
+      void DeleteIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest* request, ::Acoustid::Server::PB::DeleteIndexResponse* response, std::function<void(::grpc::Status)>) override;
+      void DeleteIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::DeleteIndexResponse* response, std::function<void(::grpc::Status)>) override;
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      void DeleteIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest* request, ::Acoustid::Server::PB::DeleteIndexResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      #else
+      void DeleteIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest* request, ::Acoustid::Server::PB::DeleteIndexResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) override;
+      #endif
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      void DeleteIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::DeleteIndexResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      #else
+      void DeleteIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::DeleteIndexResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) override;
+      #endif
       void GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response, std::function<void(::grpc::Status)>) override;
       void GetAttribute(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetAttributeResponse* response, std::function<void(::grpc::Status)>) override;
       #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
@@ -188,12 +308,21 @@ class Index final {
    private:
     std::shared_ptr< ::grpc::ChannelInterface> channel_;
     class experimental_async async_stub_{this};
+    ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetIndexResponse>* AsyncGetIndexRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetIndexResponse>* PrepareAsyncGetIndexRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::CreateIndexResponse>* AsyncCreateIndexRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::CreateIndexResponse>* PrepareAsyncCreateIndexRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::DeleteIndexResponse>* AsyncDeleteIndexRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::DeleteIndexResponse>* PrepareAsyncDeleteIndexRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetAttributeResponse>* AsyncGetAttributeRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetAttributeResponse>* PrepareAsyncGetAttributeRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::UpdateResponse>* AsyncUpdateRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::UpdateRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::UpdateResponse>* PrepareAsyncUpdateRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::UpdateRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::SearchResponse>* AsyncSearchRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::SearchResponse>* PrepareAsyncSearchRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest& request, ::grpc::CompletionQueue* cq) override;
+    const ::grpc::internal::RpcMethod rpcmethod_GetIndex_;
+    const ::grpc::internal::RpcMethod rpcmethod_CreateIndex_;
+    const ::grpc::internal::RpcMethod rpcmethod_DeleteIndex_;
     const ::grpc::internal::RpcMethod rpcmethod_GetAttribute_;
     const ::grpc::internal::RpcMethod rpcmethod_Update_;
     const ::grpc::internal::RpcMethod rpcmethod_Search_;
@@ -204,9 +333,72 @@ class Index final {
    public:
     Service();
     virtual ~Service();
+    virtual ::grpc::Status GetIndex(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetIndexRequest* request, ::Acoustid::Server::PB::GetIndexResponse* response);
+    virtual ::grpc::Status CreateIndex(::grpc::ServerContext* context, const ::Acoustid::Server::PB::CreateIndexRequest* request, ::Acoustid::Server::PB::CreateIndexResponse* response);
+    virtual ::grpc::Status DeleteIndex(::grpc::ServerContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest* request, ::Acoustid::Server::PB::DeleteIndexResponse* response);
     virtual ::grpc::Status GetAttribute(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response);
     virtual ::grpc::Status Update(::grpc::ServerContext* context, const ::Acoustid::Server::PB::UpdateRequest* request, ::Acoustid::Server::PB::UpdateResponse* response);
     virtual ::grpc::Status Search(::grpc::ServerContext* context, const ::Acoustid::Server::PB::SearchRequest* request, ::Acoustid::Server::PB::SearchResponse* response);
+  };
+  template <class BaseClass>
+  class WithAsyncMethod_GetIndex : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithAsyncMethod_GetIndex() {
+      ::grpc::Service::MarkMethodAsync(0);
+    }
+    ~WithAsyncMethod_GetIndex() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status GetIndex(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::GetIndexRequest* /*request*/, ::Acoustid::Server::PB::GetIndexResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestGetIndex(::grpc::ServerContext* context, ::Acoustid::Server::PB::GetIndexRequest* request, ::grpc::ServerAsyncResponseWriter< ::Acoustid::Server::PB::GetIndexResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(0, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
+  class WithAsyncMethod_CreateIndex : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithAsyncMethod_CreateIndex() {
+      ::grpc::Service::MarkMethodAsync(1);
+    }
+    ~WithAsyncMethod_CreateIndex() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status CreateIndex(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::CreateIndexRequest* /*request*/, ::Acoustid::Server::PB::CreateIndexResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestCreateIndex(::grpc::ServerContext* context, ::Acoustid::Server::PB::CreateIndexRequest* request, ::grpc::ServerAsyncResponseWriter< ::Acoustid::Server::PB::CreateIndexResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(1, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
+  class WithAsyncMethod_DeleteIndex : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithAsyncMethod_DeleteIndex() {
+      ::grpc::Service::MarkMethodAsync(2);
+    }
+    ~WithAsyncMethod_DeleteIndex() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status DeleteIndex(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::DeleteIndexRequest* /*request*/, ::Acoustid::Server::PB::DeleteIndexResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestDeleteIndex(::grpc::ServerContext* context, ::Acoustid::Server::PB::DeleteIndexRequest* request, ::grpc::ServerAsyncResponseWriter< ::Acoustid::Server::PB::DeleteIndexResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(2, context, request, response, new_call_cq, notification_cq, tag);
+    }
   };
   template <class BaseClass>
   class WithAsyncMethod_GetAttribute : public BaseClass {
@@ -214,7 +406,7 @@ class Index final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_GetAttribute() {
-      ::grpc::Service::MarkMethodAsync(0);
+      ::grpc::Service::MarkMethodAsync(3);
     }
     ~WithAsyncMethod_GetAttribute() override {
       BaseClassMustBeDerivedFromService(this);
@@ -225,7 +417,7 @@ class Index final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestGetAttribute(::grpc::ServerContext* context, ::Acoustid::Server::PB::GetAttributeRequest* request, ::grpc::ServerAsyncResponseWriter< ::Acoustid::Server::PB::GetAttributeResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(0, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(3, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -234,7 +426,7 @@ class Index final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_Update() {
-      ::grpc::Service::MarkMethodAsync(1);
+      ::grpc::Service::MarkMethodAsync(4);
     }
     ~WithAsyncMethod_Update() override {
       BaseClassMustBeDerivedFromService(this);
@@ -245,7 +437,7 @@ class Index final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestUpdate(::grpc::ServerContext* context, ::Acoustid::Server::PB::UpdateRequest* request, ::grpc::ServerAsyncResponseWriter< ::Acoustid::Server::PB::UpdateResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(1, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(4, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -254,7 +446,7 @@ class Index final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_Search() {
-      ::grpc::Service::MarkMethodAsync(2);
+      ::grpc::Service::MarkMethodAsync(5);
     }
     ~WithAsyncMethod_Search() override {
       BaseClassMustBeDerivedFromService(this);
@@ -265,10 +457,151 @@ class Index final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestSearch(::grpc::ServerContext* context, ::Acoustid::Server::PB::SearchRequest* request, ::grpc::ServerAsyncResponseWriter< ::Acoustid::Server::PB::SearchResponse>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(2, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(5, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
-  typedef WithAsyncMethod_GetAttribute<WithAsyncMethod_Update<WithAsyncMethod_Search<Service > > > AsyncService;
+  typedef WithAsyncMethod_GetIndex<WithAsyncMethod_CreateIndex<WithAsyncMethod_DeleteIndex<WithAsyncMethod_GetAttribute<WithAsyncMethod_Update<WithAsyncMethod_Search<Service > > > > > > AsyncService;
+  template <class BaseClass>
+  class ExperimentalWithCallbackMethod_GetIndex : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    ExperimentalWithCallbackMethod_GetIndex() {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::Service::
+    #else
+      ::grpc::Service::experimental().
+    #endif
+        MarkMethodCallback(0,
+          new ::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::GetIndexRequest, ::Acoustid::Server::PB::GetIndexResponse>(
+            [this](
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+                   ::grpc::CallbackServerContext*
+    #else
+                   ::grpc::experimental::CallbackServerContext*
+    #endif
+                     context, const ::Acoustid::Server::PB::GetIndexRequest* request, ::Acoustid::Server::PB::GetIndexResponse* response) { return this->GetIndex(context, request, response); }));}
+    void SetMessageAllocatorFor_GetIndex(
+        ::grpc::experimental::MessageAllocator< ::Acoustid::Server::PB::GetIndexRequest, ::Acoustid::Server::PB::GetIndexResponse>* allocator) {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(0);
+    #else
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::experimental().GetHandler(0);
+    #endif
+      static_cast<::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::GetIndexRequest, ::Acoustid::Server::PB::GetIndexResponse>*>(handler)
+              ->SetMessageAllocator(allocator);
+    }
+    ~ExperimentalWithCallbackMethod_GetIndex() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status GetIndex(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::GetIndexRequest* /*request*/, ::Acoustid::Server::PB::GetIndexResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+    virtual ::grpc::ServerUnaryReactor* GetIndex(
+      ::grpc::CallbackServerContext* /*context*/, const ::Acoustid::Server::PB::GetIndexRequest* /*request*/, ::Acoustid::Server::PB::GetIndexResponse* /*response*/)
+    #else
+    virtual ::grpc::experimental::ServerUnaryReactor* GetIndex(
+      ::grpc::experimental::CallbackServerContext* /*context*/, const ::Acoustid::Server::PB::GetIndexRequest* /*request*/, ::Acoustid::Server::PB::GetIndexResponse* /*response*/)
+    #endif
+      { return nullptr; }
+  };
+  template <class BaseClass>
+  class ExperimentalWithCallbackMethod_CreateIndex : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    ExperimentalWithCallbackMethod_CreateIndex() {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::Service::
+    #else
+      ::grpc::Service::experimental().
+    #endif
+        MarkMethodCallback(1,
+          new ::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::CreateIndexRequest, ::Acoustid::Server::PB::CreateIndexResponse>(
+            [this](
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+                   ::grpc::CallbackServerContext*
+    #else
+                   ::grpc::experimental::CallbackServerContext*
+    #endif
+                     context, const ::Acoustid::Server::PB::CreateIndexRequest* request, ::Acoustid::Server::PB::CreateIndexResponse* response) { return this->CreateIndex(context, request, response); }));}
+    void SetMessageAllocatorFor_CreateIndex(
+        ::grpc::experimental::MessageAllocator< ::Acoustid::Server::PB::CreateIndexRequest, ::Acoustid::Server::PB::CreateIndexResponse>* allocator) {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(1);
+    #else
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::experimental().GetHandler(1);
+    #endif
+      static_cast<::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::CreateIndexRequest, ::Acoustid::Server::PB::CreateIndexResponse>*>(handler)
+              ->SetMessageAllocator(allocator);
+    }
+    ~ExperimentalWithCallbackMethod_CreateIndex() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status CreateIndex(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::CreateIndexRequest* /*request*/, ::Acoustid::Server::PB::CreateIndexResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+    virtual ::grpc::ServerUnaryReactor* CreateIndex(
+      ::grpc::CallbackServerContext* /*context*/, const ::Acoustid::Server::PB::CreateIndexRequest* /*request*/, ::Acoustid::Server::PB::CreateIndexResponse* /*response*/)
+    #else
+    virtual ::grpc::experimental::ServerUnaryReactor* CreateIndex(
+      ::grpc::experimental::CallbackServerContext* /*context*/, const ::Acoustid::Server::PB::CreateIndexRequest* /*request*/, ::Acoustid::Server::PB::CreateIndexResponse* /*response*/)
+    #endif
+      { return nullptr; }
+  };
+  template <class BaseClass>
+  class ExperimentalWithCallbackMethod_DeleteIndex : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    ExperimentalWithCallbackMethod_DeleteIndex() {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::Service::
+    #else
+      ::grpc::Service::experimental().
+    #endif
+        MarkMethodCallback(2,
+          new ::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::DeleteIndexRequest, ::Acoustid::Server::PB::DeleteIndexResponse>(
+            [this](
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+                   ::grpc::CallbackServerContext*
+    #else
+                   ::grpc::experimental::CallbackServerContext*
+    #endif
+                     context, const ::Acoustid::Server::PB::DeleteIndexRequest* request, ::Acoustid::Server::PB::DeleteIndexResponse* response) { return this->DeleteIndex(context, request, response); }));}
+    void SetMessageAllocatorFor_DeleteIndex(
+        ::grpc::experimental::MessageAllocator< ::Acoustid::Server::PB::DeleteIndexRequest, ::Acoustid::Server::PB::DeleteIndexResponse>* allocator) {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(2);
+    #else
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::experimental().GetHandler(2);
+    #endif
+      static_cast<::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::DeleteIndexRequest, ::Acoustid::Server::PB::DeleteIndexResponse>*>(handler)
+              ->SetMessageAllocator(allocator);
+    }
+    ~ExperimentalWithCallbackMethod_DeleteIndex() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status DeleteIndex(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::DeleteIndexRequest* /*request*/, ::Acoustid::Server::PB::DeleteIndexResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+    virtual ::grpc::ServerUnaryReactor* DeleteIndex(
+      ::grpc::CallbackServerContext* /*context*/, const ::Acoustid::Server::PB::DeleteIndexRequest* /*request*/, ::Acoustid::Server::PB::DeleteIndexResponse* /*response*/)
+    #else
+    virtual ::grpc::experimental::ServerUnaryReactor* DeleteIndex(
+      ::grpc::experimental::CallbackServerContext* /*context*/, const ::Acoustid::Server::PB::DeleteIndexRequest* /*request*/, ::Acoustid::Server::PB::DeleteIndexResponse* /*response*/)
+    #endif
+      { return nullptr; }
+  };
   template <class BaseClass>
   class ExperimentalWithCallbackMethod_GetAttribute : public BaseClass {
    private:
@@ -280,7 +613,7 @@ class Index final {
     #else
       ::grpc::Service::experimental().
     #endif
-        MarkMethodCallback(0,
+        MarkMethodCallback(3,
           new ::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::GetAttributeRequest, ::Acoustid::Server::PB::GetAttributeResponse>(
             [this](
     #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
@@ -292,9 +625,9 @@ class Index final {
     void SetMessageAllocatorFor_GetAttribute(
         ::grpc::experimental::MessageAllocator< ::Acoustid::Server::PB::GetAttributeRequest, ::Acoustid::Server::PB::GetAttributeResponse>* allocator) {
     #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(0);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(3);
     #else
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::experimental().GetHandler(0);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::experimental().GetHandler(3);
     #endif
       static_cast<::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::GetAttributeRequest, ::Acoustid::Server::PB::GetAttributeResponse>*>(handler)
               ->SetMessageAllocator(allocator);
@@ -327,7 +660,7 @@ class Index final {
     #else
       ::grpc::Service::experimental().
     #endif
-        MarkMethodCallback(1,
+        MarkMethodCallback(4,
           new ::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::UpdateRequest, ::Acoustid::Server::PB::UpdateResponse>(
             [this](
     #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
@@ -339,9 +672,9 @@ class Index final {
     void SetMessageAllocatorFor_Update(
         ::grpc::experimental::MessageAllocator< ::Acoustid::Server::PB::UpdateRequest, ::Acoustid::Server::PB::UpdateResponse>* allocator) {
     #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(1);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(4);
     #else
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::experimental().GetHandler(1);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::experimental().GetHandler(4);
     #endif
       static_cast<::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::UpdateRequest, ::Acoustid::Server::PB::UpdateResponse>*>(handler)
               ->SetMessageAllocator(allocator);
@@ -374,7 +707,7 @@ class Index final {
     #else
       ::grpc::Service::experimental().
     #endif
-        MarkMethodCallback(2,
+        MarkMethodCallback(5,
           new ::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::SearchRequest, ::Acoustid::Server::PB::SearchResponse>(
             [this](
     #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
@@ -386,9 +719,9 @@ class Index final {
     void SetMessageAllocatorFor_Search(
         ::grpc::experimental::MessageAllocator< ::Acoustid::Server::PB::SearchRequest, ::Acoustid::Server::PB::SearchResponse>* allocator) {
     #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(2);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(5);
     #else
-      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::experimental().GetHandler(2);
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::experimental().GetHandler(5);
     #endif
       static_cast<::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::SearchRequest, ::Acoustid::Server::PB::SearchResponse>*>(handler)
               ->SetMessageAllocator(allocator);
@@ -411,17 +744,68 @@ class Index final {
       { return nullptr; }
   };
   #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
-  typedef ExperimentalWithCallbackMethod_GetAttribute<ExperimentalWithCallbackMethod_Update<ExperimentalWithCallbackMethod_Search<Service > > > CallbackService;
+  typedef ExperimentalWithCallbackMethod_GetIndex<ExperimentalWithCallbackMethod_CreateIndex<ExperimentalWithCallbackMethod_DeleteIndex<ExperimentalWithCallbackMethod_GetAttribute<ExperimentalWithCallbackMethod_Update<ExperimentalWithCallbackMethod_Search<Service > > > > > > CallbackService;
   #endif
 
-  typedef ExperimentalWithCallbackMethod_GetAttribute<ExperimentalWithCallbackMethod_Update<ExperimentalWithCallbackMethod_Search<Service > > > ExperimentalCallbackService;
+  typedef ExperimentalWithCallbackMethod_GetIndex<ExperimentalWithCallbackMethod_CreateIndex<ExperimentalWithCallbackMethod_DeleteIndex<ExperimentalWithCallbackMethod_GetAttribute<ExperimentalWithCallbackMethod_Update<ExperimentalWithCallbackMethod_Search<Service > > > > > > ExperimentalCallbackService;
+  template <class BaseClass>
+  class WithGenericMethod_GetIndex : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithGenericMethod_GetIndex() {
+      ::grpc::Service::MarkMethodGeneric(0);
+    }
+    ~WithGenericMethod_GetIndex() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status GetIndex(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::GetIndexRequest* /*request*/, ::Acoustid::Server::PB::GetIndexResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+  };
+  template <class BaseClass>
+  class WithGenericMethod_CreateIndex : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithGenericMethod_CreateIndex() {
+      ::grpc::Service::MarkMethodGeneric(1);
+    }
+    ~WithGenericMethod_CreateIndex() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status CreateIndex(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::CreateIndexRequest* /*request*/, ::Acoustid::Server::PB::CreateIndexResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+  };
+  template <class BaseClass>
+  class WithGenericMethod_DeleteIndex : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithGenericMethod_DeleteIndex() {
+      ::grpc::Service::MarkMethodGeneric(2);
+    }
+    ~WithGenericMethod_DeleteIndex() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status DeleteIndex(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::DeleteIndexRequest* /*request*/, ::Acoustid::Server::PB::DeleteIndexResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+  };
   template <class BaseClass>
   class WithGenericMethod_GetAttribute : public BaseClass {
    private:
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_GetAttribute() {
-      ::grpc::Service::MarkMethodGeneric(0);
+      ::grpc::Service::MarkMethodGeneric(3);
     }
     ~WithGenericMethod_GetAttribute() override {
       BaseClassMustBeDerivedFromService(this);
@@ -438,7 +822,7 @@ class Index final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_Update() {
-      ::grpc::Service::MarkMethodGeneric(1);
+      ::grpc::Service::MarkMethodGeneric(4);
     }
     ~WithGenericMethod_Update() override {
       BaseClassMustBeDerivedFromService(this);
@@ -455,7 +839,7 @@ class Index final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_Search() {
-      ::grpc::Service::MarkMethodGeneric(2);
+      ::grpc::Service::MarkMethodGeneric(5);
     }
     ~WithGenericMethod_Search() override {
       BaseClassMustBeDerivedFromService(this);
@@ -467,12 +851,72 @@ class Index final {
     }
   };
   template <class BaseClass>
+  class WithRawMethod_GetIndex : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawMethod_GetIndex() {
+      ::grpc::Service::MarkMethodRaw(0);
+    }
+    ~WithRawMethod_GetIndex() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status GetIndex(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::GetIndexRequest* /*request*/, ::Acoustid::Server::PB::GetIndexResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestGetIndex(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(0, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
+  class WithRawMethod_CreateIndex : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawMethod_CreateIndex() {
+      ::grpc::Service::MarkMethodRaw(1);
+    }
+    ~WithRawMethod_CreateIndex() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status CreateIndex(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::CreateIndexRequest* /*request*/, ::Acoustid::Server::PB::CreateIndexResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestCreateIndex(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(1, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
+  class WithRawMethod_DeleteIndex : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawMethod_DeleteIndex() {
+      ::grpc::Service::MarkMethodRaw(2);
+    }
+    ~WithRawMethod_DeleteIndex() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status DeleteIndex(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::DeleteIndexRequest* /*request*/, ::Acoustid::Server::PB::DeleteIndexResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestDeleteIndex(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(2, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
   class WithRawMethod_GetAttribute : public BaseClass {
    private:
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_GetAttribute() {
-      ::grpc::Service::MarkMethodRaw(0);
+      ::grpc::Service::MarkMethodRaw(3);
     }
     ~WithRawMethod_GetAttribute() override {
       BaseClassMustBeDerivedFromService(this);
@@ -483,7 +927,7 @@ class Index final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestGetAttribute(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(0, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(3, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -492,7 +936,7 @@ class Index final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_Update() {
-      ::grpc::Service::MarkMethodRaw(1);
+      ::grpc::Service::MarkMethodRaw(4);
     }
     ~WithRawMethod_Update() override {
       BaseClassMustBeDerivedFromService(this);
@@ -503,7 +947,7 @@ class Index final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestUpdate(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(1, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(4, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -512,7 +956,7 @@ class Index final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_Search() {
-      ::grpc::Service::MarkMethodRaw(2);
+      ::grpc::Service::MarkMethodRaw(5);
     }
     ~WithRawMethod_Search() override {
       BaseClassMustBeDerivedFromService(this);
@@ -523,8 +967,122 @@ class Index final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     void RequestSearch(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
-      ::grpc::Service::RequestAsyncUnary(2, context, request, response, new_call_cq, notification_cq, tag);
+      ::grpc::Service::RequestAsyncUnary(5, context, request, response, new_call_cq, notification_cq, tag);
     }
+  };
+  template <class BaseClass>
+  class ExperimentalWithRawCallbackMethod_GetIndex : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    ExperimentalWithRawCallbackMethod_GetIndex() {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::Service::
+    #else
+      ::grpc::Service::experimental().
+    #endif
+        MarkMethodRawCallback(0,
+          new ::grpc_impl::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
+            [this](
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+                   ::grpc::CallbackServerContext*
+    #else
+                   ::grpc::experimental::CallbackServerContext*
+    #endif
+                     context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->GetIndex(context, request, response); }));
+    }
+    ~ExperimentalWithRawCallbackMethod_GetIndex() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status GetIndex(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::GetIndexRequest* /*request*/, ::Acoustid::Server::PB::GetIndexResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+    virtual ::grpc::ServerUnaryReactor* GetIndex(
+      ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)
+    #else
+    virtual ::grpc::experimental::ServerUnaryReactor* GetIndex(
+      ::grpc::experimental::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)
+    #endif
+      { return nullptr; }
+  };
+  template <class BaseClass>
+  class ExperimentalWithRawCallbackMethod_CreateIndex : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    ExperimentalWithRawCallbackMethod_CreateIndex() {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::Service::
+    #else
+      ::grpc::Service::experimental().
+    #endif
+        MarkMethodRawCallback(1,
+          new ::grpc_impl::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
+            [this](
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+                   ::grpc::CallbackServerContext*
+    #else
+                   ::grpc::experimental::CallbackServerContext*
+    #endif
+                     context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->CreateIndex(context, request, response); }));
+    }
+    ~ExperimentalWithRawCallbackMethod_CreateIndex() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status CreateIndex(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::CreateIndexRequest* /*request*/, ::Acoustid::Server::PB::CreateIndexResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+    virtual ::grpc::ServerUnaryReactor* CreateIndex(
+      ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)
+    #else
+    virtual ::grpc::experimental::ServerUnaryReactor* CreateIndex(
+      ::grpc::experimental::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)
+    #endif
+      { return nullptr; }
+  };
+  template <class BaseClass>
+  class ExperimentalWithRawCallbackMethod_DeleteIndex : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    ExperimentalWithRawCallbackMethod_DeleteIndex() {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::Service::
+    #else
+      ::grpc::Service::experimental().
+    #endif
+        MarkMethodRawCallback(2,
+          new ::grpc_impl::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
+            [this](
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+                   ::grpc::CallbackServerContext*
+    #else
+                   ::grpc::experimental::CallbackServerContext*
+    #endif
+                     context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->DeleteIndex(context, request, response); }));
+    }
+    ~ExperimentalWithRawCallbackMethod_DeleteIndex() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status DeleteIndex(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::DeleteIndexRequest* /*request*/, ::Acoustid::Server::PB::DeleteIndexResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+    virtual ::grpc::ServerUnaryReactor* DeleteIndex(
+      ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)
+    #else
+    virtual ::grpc::experimental::ServerUnaryReactor* DeleteIndex(
+      ::grpc::experimental::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)
+    #endif
+      { return nullptr; }
   };
   template <class BaseClass>
   class ExperimentalWithRawCallbackMethod_GetAttribute : public BaseClass {
@@ -537,7 +1095,7 @@ class Index final {
     #else
       ::grpc::Service::experimental().
     #endif
-        MarkMethodRawCallback(0,
+        MarkMethodRawCallback(3,
           new ::grpc_impl::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
     #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
@@ -575,7 +1133,7 @@ class Index final {
     #else
       ::grpc::Service::experimental().
     #endif
-        MarkMethodRawCallback(1,
+        MarkMethodRawCallback(4,
           new ::grpc_impl::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
     #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
@@ -613,7 +1171,7 @@ class Index final {
     #else
       ::grpc::Service::experimental().
     #endif
-        MarkMethodRawCallback(2,
+        MarkMethodRawCallback(5,
           new ::grpc_impl::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
             [this](
     #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
@@ -641,12 +1199,93 @@ class Index final {
       { return nullptr; }
   };
   template <class BaseClass>
+  class WithStreamedUnaryMethod_GetIndex : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithStreamedUnaryMethod_GetIndex() {
+      ::grpc::Service::MarkMethodStreamed(0,
+        new ::grpc::internal::StreamedUnaryHandler<
+          ::Acoustid::Server::PB::GetIndexRequest, ::Acoustid::Server::PB::GetIndexResponse>(
+            [this](::grpc_impl::ServerContext* context,
+                   ::grpc_impl::ServerUnaryStreamer<
+                     ::Acoustid::Server::PB::GetIndexRequest, ::Acoustid::Server::PB::GetIndexResponse>* streamer) {
+                       return this->StreamedGetIndex(context,
+                         streamer);
+                  }));
+    }
+    ~WithStreamedUnaryMethod_GetIndex() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable regular version of this method
+    ::grpc::Status GetIndex(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::GetIndexRequest* /*request*/, ::Acoustid::Server::PB::GetIndexResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    // replace default version of method with streamed unary
+    virtual ::grpc::Status StreamedGetIndex(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::Acoustid::Server::PB::GetIndexRequest,::Acoustid::Server::PB::GetIndexResponse>* server_unary_streamer) = 0;
+  };
+  template <class BaseClass>
+  class WithStreamedUnaryMethod_CreateIndex : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithStreamedUnaryMethod_CreateIndex() {
+      ::grpc::Service::MarkMethodStreamed(1,
+        new ::grpc::internal::StreamedUnaryHandler<
+          ::Acoustid::Server::PB::CreateIndexRequest, ::Acoustid::Server::PB::CreateIndexResponse>(
+            [this](::grpc_impl::ServerContext* context,
+                   ::grpc_impl::ServerUnaryStreamer<
+                     ::Acoustid::Server::PB::CreateIndexRequest, ::Acoustid::Server::PB::CreateIndexResponse>* streamer) {
+                       return this->StreamedCreateIndex(context,
+                         streamer);
+                  }));
+    }
+    ~WithStreamedUnaryMethod_CreateIndex() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable regular version of this method
+    ::grpc::Status CreateIndex(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::CreateIndexRequest* /*request*/, ::Acoustid::Server::PB::CreateIndexResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    // replace default version of method with streamed unary
+    virtual ::grpc::Status StreamedCreateIndex(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::Acoustid::Server::PB::CreateIndexRequest,::Acoustid::Server::PB::CreateIndexResponse>* server_unary_streamer) = 0;
+  };
+  template <class BaseClass>
+  class WithStreamedUnaryMethod_DeleteIndex : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithStreamedUnaryMethod_DeleteIndex() {
+      ::grpc::Service::MarkMethodStreamed(2,
+        new ::grpc::internal::StreamedUnaryHandler<
+          ::Acoustid::Server::PB::DeleteIndexRequest, ::Acoustid::Server::PB::DeleteIndexResponse>(
+            [this](::grpc_impl::ServerContext* context,
+                   ::grpc_impl::ServerUnaryStreamer<
+                     ::Acoustid::Server::PB::DeleteIndexRequest, ::Acoustid::Server::PB::DeleteIndexResponse>* streamer) {
+                       return this->StreamedDeleteIndex(context,
+                         streamer);
+                  }));
+    }
+    ~WithStreamedUnaryMethod_DeleteIndex() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable regular version of this method
+    ::grpc::Status DeleteIndex(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::DeleteIndexRequest* /*request*/, ::Acoustid::Server::PB::DeleteIndexResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    // replace default version of method with streamed unary
+    virtual ::grpc::Status StreamedDeleteIndex(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::Acoustid::Server::PB::DeleteIndexRequest,::Acoustid::Server::PB::DeleteIndexResponse>* server_unary_streamer) = 0;
+  };
+  template <class BaseClass>
   class WithStreamedUnaryMethod_GetAttribute : public BaseClass {
    private:
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_GetAttribute() {
-      ::grpc::Service::MarkMethodStreamed(0,
+      ::grpc::Service::MarkMethodStreamed(3,
         new ::grpc::internal::StreamedUnaryHandler<
           ::Acoustid::Server::PB::GetAttributeRequest, ::Acoustid::Server::PB::GetAttributeResponse>(
             [this](::grpc_impl::ServerContext* context,
@@ -673,7 +1312,7 @@ class Index final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_Update() {
-      ::grpc::Service::MarkMethodStreamed(1,
+      ::grpc::Service::MarkMethodStreamed(4,
         new ::grpc::internal::StreamedUnaryHandler<
           ::Acoustid::Server::PB::UpdateRequest, ::Acoustid::Server::PB::UpdateResponse>(
             [this](::grpc_impl::ServerContext* context,
@@ -700,7 +1339,7 @@ class Index final {
     void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_Search() {
-      ::grpc::Service::MarkMethodStreamed(2,
+      ::grpc::Service::MarkMethodStreamed(5,
         new ::grpc::internal::StreamedUnaryHandler<
           ::Acoustid::Server::PB::SearchRequest, ::Acoustid::Server::PB::SearchResponse>(
             [this](::grpc_impl::ServerContext* context,
@@ -721,9 +1360,9 @@ class Index final {
     // replace default version of method with streamed unary
     virtual ::grpc::Status StreamedSearch(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::Acoustid::Server::PB::SearchRequest,::Acoustid::Server::PB::SearchResponse>* server_unary_streamer) = 0;
   };
-  typedef WithStreamedUnaryMethod_GetAttribute<WithStreamedUnaryMethod_Update<WithStreamedUnaryMethod_Search<Service > > > StreamedUnaryService;
+  typedef WithStreamedUnaryMethod_GetIndex<WithStreamedUnaryMethod_CreateIndex<WithStreamedUnaryMethod_DeleteIndex<WithStreamedUnaryMethod_GetAttribute<WithStreamedUnaryMethod_Update<WithStreamedUnaryMethod_Search<Service > > > > > > StreamedUnaryService;
   typedef Service SplitStreamedService;
-  typedef WithStreamedUnaryMethod_GetAttribute<WithStreamedUnaryMethod_Update<WithStreamedUnaryMethod_Search<Service > > > StreamedService;
+  typedef WithStreamedUnaryMethod_GetIndex<WithStreamedUnaryMethod_CreateIndex<WithStreamedUnaryMethod_DeleteIndex<WithStreamedUnaryMethod_GetAttribute<WithStreamedUnaryMethod_Update<WithStreamedUnaryMethod_Search<Service > > > > > > StreamedService;
 };
 
 }  // namespace PB

@@ -24,6 +24,9 @@ namespace Server {
 namespace PB {
 
 static const char* Index_method_names[] = {
+  "/Acoustid.Server.PB.Index/GetIndex",
+  "/Acoustid.Server.PB.Index/CreateIndex",
+  "/Acoustid.Server.PB.Index/DeleteIndex",
   "/Acoustid.Server.PB.Index/GetAttribute",
   "/Acoustid.Server.PB.Index/Update",
   "/Acoustid.Server.PB.Index/Search",
@@ -36,10 +39,97 @@ std::unique_ptr< Index::Stub> Index::NewStub(const std::shared_ptr< ::grpc::Chan
 }
 
 Index::Stub::Stub(const std::shared_ptr< ::grpc::ChannelInterface>& channel)
-  : channel_(channel), rpcmethod_GetAttribute_(Index_method_names[0], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
-  , rpcmethod_Update_(Index_method_names[1], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
-  , rpcmethod_Search_(Index_method_names[2], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  : channel_(channel), rpcmethod_GetIndex_(Index_method_names[0], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_CreateIndex_(Index_method_names[1], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_DeleteIndex_(Index_method_names[2], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_GetAttribute_(Index_method_names[3], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_Update_(Index_method_names[4], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_Search_(Index_method_names[5], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
   {}
+
+::grpc::Status Index::Stub::GetIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest& request, ::Acoustid::Server::PB::GetIndexResponse* response) {
+  return ::grpc::internal::BlockingUnaryCall(channel_.get(), rpcmethod_GetIndex_, context, request, response);
+}
+
+void Index::Stub::experimental_async::GetIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest* request, ::Acoustid::Server::PB::GetIndexResponse* response, std::function<void(::grpc::Status)> f) {
+  ::grpc_impl::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_GetIndex_, context, request, response, std::move(f));
+}
+
+void Index::Stub::experimental_async::GetIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetIndexResponse* response, std::function<void(::grpc::Status)> f) {
+  ::grpc_impl::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_GetIndex_, context, request, response, std::move(f));
+}
+
+void Index::Stub::experimental_async::GetIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest* request, ::Acoustid::Server::PB::GetIndexResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) {
+  ::grpc_impl::internal::ClientCallbackUnaryFactory::Create(stub_->channel_.get(), stub_->rpcmethod_GetIndex_, context, request, response, reactor);
+}
+
+void Index::Stub::experimental_async::GetIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetIndexResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) {
+  ::grpc_impl::internal::ClientCallbackUnaryFactory::Create(stub_->channel_.get(), stub_->rpcmethod_GetIndex_, context, request, response, reactor);
+}
+
+::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetIndexResponse>* Index::Stub::AsyncGetIndexRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest& request, ::grpc::CompletionQueue* cq) {
+  return ::grpc_impl::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::GetIndexResponse>::Create(channel_.get(), cq, rpcmethod_GetIndex_, context, request, true);
+}
+
+::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetIndexResponse>* Index::Stub::PrepareAsyncGetIndexRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetIndexRequest& request, ::grpc::CompletionQueue* cq) {
+  return ::grpc_impl::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::GetIndexResponse>::Create(channel_.get(), cq, rpcmethod_GetIndex_, context, request, false);
+}
+
+::grpc::Status Index::Stub::CreateIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest& request, ::Acoustid::Server::PB::CreateIndexResponse* response) {
+  return ::grpc::internal::BlockingUnaryCall(channel_.get(), rpcmethod_CreateIndex_, context, request, response);
+}
+
+void Index::Stub::experimental_async::CreateIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest* request, ::Acoustid::Server::PB::CreateIndexResponse* response, std::function<void(::grpc::Status)> f) {
+  ::grpc_impl::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_CreateIndex_, context, request, response, std::move(f));
+}
+
+void Index::Stub::experimental_async::CreateIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::CreateIndexResponse* response, std::function<void(::grpc::Status)> f) {
+  ::grpc_impl::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_CreateIndex_, context, request, response, std::move(f));
+}
+
+void Index::Stub::experimental_async::CreateIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest* request, ::Acoustid::Server::PB::CreateIndexResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) {
+  ::grpc_impl::internal::ClientCallbackUnaryFactory::Create(stub_->channel_.get(), stub_->rpcmethod_CreateIndex_, context, request, response, reactor);
+}
+
+void Index::Stub::experimental_async::CreateIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::CreateIndexResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) {
+  ::grpc_impl::internal::ClientCallbackUnaryFactory::Create(stub_->channel_.get(), stub_->rpcmethod_CreateIndex_, context, request, response, reactor);
+}
+
+::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::CreateIndexResponse>* Index::Stub::AsyncCreateIndexRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest& request, ::grpc::CompletionQueue* cq) {
+  return ::grpc_impl::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::CreateIndexResponse>::Create(channel_.get(), cq, rpcmethod_CreateIndex_, context, request, true);
+}
+
+::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::CreateIndexResponse>* Index::Stub::PrepareAsyncCreateIndexRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::CreateIndexRequest& request, ::grpc::CompletionQueue* cq) {
+  return ::grpc_impl::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::CreateIndexResponse>::Create(channel_.get(), cq, rpcmethod_CreateIndex_, context, request, false);
+}
+
+::grpc::Status Index::Stub::DeleteIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest& request, ::Acoustid::Server::PB::DeleteIndexResponse* response) {
+  return ::grpc::internal::BlockingUnaryCall(channel_.get(), rpcmethod_DeleteIndex_, context, request, response);
+}
+
+void Index::Stub::experimental_async::DeleteIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest* request, ::Acoustid::Server::PB::DeleteIndexResponse* response, std::function<void(::grpc::Status)> f) {
+  ::grpc_impl::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_DeleteIndex_, context, request, response, std::move(f));
+}
+
+void Index::Stub::experimental_async::DeleteIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::DeleteIndexResponse* response, std::function<void(::grpc::Status)> f) {
+  ::grpc_impl::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_DeleteIndex_, context, request, response, std::move(f));
+}
+
+void Index::Stub::experimental_async::DeleteIndex(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest* request, ::Acoustid::Server::PB::DeleteIndexResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) {
+  ::grpc_impl::internal::ClientCallbackUnaryFactory::Create(stub_->channel_.get(), stub_->rpcmethod_DeleteIndex_, context, request, response, reactor);
+}
+
+void Index::Stub::experimental_async::DeleteIndex(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::DeleteIndexResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) {
+  ::grpc_impl::internal::ClientCallbackUnaryFactory::Create(stub_->channel_.get(), stub_->rpcmethod_DeleteIndex_, context, request, response, reactor);
+}
+
+::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::DeleteIndexResponse>* Index::Stub::AsyncDeleteIndexRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest& request, ::grpc::CompletionQueue* cq) {
+  return ::grpc_impl::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::DeleteIndexResponse>::Create(channel_.get(), cq, rpcmethod_DeleteIndex_, context, request, true);
+}
+
+::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::DeleteIndexResponse>* Index::Stub::PrepareAsyncDeleteIndexRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest& request, ::grpc::CompletionQueue* cq) {
+  return ::grpc_impl::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::DeleteIndexResponse>::Create(channel_.get(), cq, rpcmethod_DeleteIndex_, context, request, false);
+}
 
 ::grpc::Status Index::Stub::GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::Acoustid::Server::PB::GetAttributeResponse* response) {
   return ::grpc::internal::BlockingUnaryCall(channel_.get(), rpcmethod_GetAttribute_, context, request, response);
@@ -129,6 +219,36 @@ Index::Service::Service() {
   AddMethod(new ::grpc::internal::RpcServiceMethod(
       Index_method_names[0],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
+      new ::grpc::internal::RpcMethodHandler< Index::Service, ::Acoustid::Server::PB::GetIndexRequest, ::Acoustid::Server::PB::GetIndexResponse>(
+          [](Index::Service* service,
+             ::grpc_impl::ServerContext* ctx,
+             const ::Acoustid::Server::PB::GetIndexRequest* req,
+             ::Acoustid::Server::PB::GetIndexResponse* resp) {
+               return service->GetIndex(ctx, req, resp);
+             }, this)));
+  AddMethod(new ::grpc::internal::RpcServiceMethod(
+      Index_method_names[1],
+      ::grpc::internal::RpcMethod::NORMAL_RPC,
+      new ::grpc::internal::RpcMethodHandler< Index::Service, ::Acoustid::Server::PB::CreateIndexRequest, ::Acoustid::Server::PB::CreateIndexResponse>(
+          [](Index::Service* service,
+             ::grpc_impl::ServerContext* ctx,
+             const ::Acoustid::Server::PB::CreateIndexRequest* req,
+             ::Acoustid::Server::PB::CreateIndexResponse* resp) {
+               return service->CreateIndex(ctx, req, resp);
+             }, this)));
+  AddMethod(new ::grpc::internal::RpcServiceMethod(
+      Index_method_names[2],
+      ::grpc::internal::RpcMethod::NORMAL_RPC,
+      new ::grpc::internal::RpcMethodHandler< Index::Service, ::Acoustid::Server::PB::DeleteIndexRequest, ::Acoustid::Server::PB::DeleteIndexResponse>(
+          [](Index::Service* service,
+             ::grpc_impl::ServerContext* ctx,
+             const ::Acoustid::Server::PB::DeleteIndexRequest* req,
+             ::Acoustid::Server::PB::DeleteIndexResponse* resp) {
+               return service->DeleteIndex(ctx, req, resp);
+             }, this)));
+  AddMethod(new ::grpc::internal::RpcServiceMethod(
+      Index_method_names[3],
+      ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Index::Service, ::Acoustid::Server::PB::GetAttributeRequest, ::Acoustid::Server::PB::GetAttributeResponse>(
           [](Index::Service* service,
              ::grpc_impl::ServerContext* ctx,
@@ -137,7 +257,7 @@ Index::Service::Service() {
                return service->GetAttribute(ctx, req, resp);
              }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
-      Index_method_names[1],
+      Index_method_names[4],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Index::Service, ::Acoustid::Server::PB::UpdateRequest, ::Acoustid::Server::PB::UpdateResponse>(
           [](Index::Service* service,
@@ -147,7 +267,7 @@ Index::Service::Service() {
                return service->Update(ctx, req, resp);
              }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
-      Index_method_names[2],
+      Index_method_names[5],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Index::Service, ::Acoustid::Server::PB::SearchRequest, ::Acoustid::Server::PB::SearchResponse>(
           [](Index::Service* service,
@@ -159,6 +279,27 @@ Index::Service::Service() {
 }
 
 Index::Service::~Service() {
+}
+
+::grpc::Status Index::Service::GetIndex(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetIndexRequest* request, ::Acoustid::Server::PB::GetIndexResponse* response) {
+  (void) context;
+  (void) request;
+  (void) response;
+  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+}
+
+::grpc::Status Index::Service::CreateIndex(::grpc::ServerContext* context, const ::Acoustid::Server::PB::CreateIndexRequest* request, ::Acoustid::Server::PB::CreateIndexResponse* response) {
+  (void) context;
+  (void) request;
+  (void) response;
+  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+}
+
+::grpc::Status Index::Service::DeleteIndex(::grpc::ServerContext* context, const ::Acoustid::Server::PB::DeleteIndexRequest* request, ::Acoustid::Server::PB::DeleteIndexResponse* response) {
+  (void) context;
+  (void) request;
+  (void) response;
+  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
 }
 
 ::grpc::Status Index::Service::GetAttribute(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response) {

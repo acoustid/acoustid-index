@@ -56,7 +56,32 @@ message SearchResponse {
     repeated SearchResult results = 1;
 };
 
+message GetIndexRequest {
+    string index_name = 1;
+};
+
+message GetIndexResponse {
+};
+
+message CreateIndexRequest {
+    string index_name = 1;
+};
+
+message CreateIndexResponse {
+};
+
+message DeleteIndexRequest {
+    string index_name = 1;
+};
+
+message DeleteIndexResponse {
+};
+
 service Index {
+    rpc GetIndex(GetIndexRequest) returns (GetIndexResponse);
+    rpc CreateIndex(CreateIndexRequest) returns (CreateIndexResponse);
+    rpc DeleteIndex(DeleteIndexRequest) returns (DeleteIndexResponse);
+
     rpc GetAttribute(GetAttributeRequest) returns (GetAttributeResponse);
 
     rpc Update(UpdateRequest) returns (UpdateResponse);
