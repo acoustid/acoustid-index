@@ -16,8 +16,43 @@ using namespace Acoustid::Server;
 
 using namespace qhttp::server;
 
+void handleLogMessage(QtMsgType type, const QMessageLogContext &context, const QString &msg)
+{
+    QString level;
+    switch (type) {
+	case QtDebugMsg:
+	    level = "debug";
+	    break;
+	case QtInfoMsg:
+	    level = "info";
+	    break;
+	case QtWarningMsg:
+	    level = "warning";
+	    break;
+	case QtCriticalMsg:
+	    level = "error";
+	    break;
+	case QtFatalMsg:
+	    level = "error";
+	    break;
+    }
+
+    QJsonObject obj;
+    obj.insert("level", level);
+    obj.insert("message", msg);
+    obj.insert("source", QString("%1:%2").arg(context.file).arg(context.line));
+
+    qStdErr() << QJsonDocument(obj).toJson(QJsonDocument::Compact) << endl;
+
+    if (type == QtFatalMsg) {
+	abort();
+    }
+}
+
 int main(int argc, char **argv)
 {
+	qInstallMessageHandler(handleLogMessage);
+
 	OptionParser parser("%prog [options]");
 	parser.addOption("directory", 'd')
 		.setArgument()
