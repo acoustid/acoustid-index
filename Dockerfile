@@ -1,9 +1,9 @@
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 RUN useradd -m -s /bin/bash -u 1000 acoustid
 
 RUN apt-get update && \
-    apt-get install -y libqt5network5 libqt5core5a libstdc++6 libgcc1 libgcc-s1
+    apt-get install -y libqt6network6 libqt6core6 libstdc++6 libgcc1 libgcc-s1
 
 ADD acoustid-index.deb /tmp/
 RUN dpkg -i /tmp/acoustid-index.deb && rm /tmp/acoustid-index.deb
