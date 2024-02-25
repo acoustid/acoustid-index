@@ -37,6 +37,8 @@ class HttpRequest {
 
     QByteArray body() const { return m_body; }
 
+    QString header(const QString &name, const QString &defaultValue = QString()) const;
+
     void setMethod(HttpMethod method) { m_method = method; }
 
     void setUrl(const QUrl &url) {
