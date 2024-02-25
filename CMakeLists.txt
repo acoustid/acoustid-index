@@ -138,6 +138,40 @@ set(fpserver_SOURCES
 add_library(fpserverlib ${fpserver_SOURCES})
 target_link_libraries(fpserverlib fpindexlib qhttp PkgConfig::GRPCPP PkgConfig::PROTOBUF)
 
+add_custom_command(
+    COMMAND
+        protoc
+          -Isrc/server/grpc/proto
+	  --cpp_out=src/server/grpc/proto
+	  --grpc_out=src/server/grpc/proto
+          --plugin=protoc-gen-grpc=/usr/bin/grpc_cpp_plugin
+	  src/server/grpc/proto/index.proto
+    OUTPUT
+      src/server/grpc/proto/index.pb.h
+      src/server/grpc/proto/index.pb.cc
+      src/server/grpc/proto/index.grpc.pb.h
+      src/server/grpc/proto/index.grpc.pb.cc
+    DEPENDS
+      src/server/grpc/proto/index.proto
+)
+
+add_custom_command(
+    COMMAND
+	protoc
+	  -Isrc/server/grpc/proto
+	  --cpp_out=${CMAKE_CURRENT_SOURCE_DIR}/src/server/grpc/proto
+	  src/server/grpc/proto/google/api/annotations.proto
+	  src/server/grpc/proto/google/api/http.proto
+    OUTPUT
+      src/server/grpc/proto/google/api/annotations.pb.h
+      src/server/grpc/proto/google/api/annotations.pb.cc
+      src/server/grpc/proto/google/api/http.pb.h
+      src/server/grpc/proto/google/api/http.pb.cc
+    DEPENDS
+      src/server/grpc/proto/google/api/annotations.proto
+      src/server/grpc/proto/google/api/http.proto
+)
+
 include_directories(
 	${CMAKE_CURRENT_SOURCE_DIR}/src
 	${CMAKE_CURRENT_SOURCE_DIR}/src/server/grpc/proto
