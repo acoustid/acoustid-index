@@ -4,6 +4,8 @@
 #ifndef ACOUSTID_INDEX_SEARCH_RESULT_H_
 #define ACOUSTID_INDEX_SEARCH_RESULT_H_
 
+#include <iostream>
+
 namespace Acoustid {
 
 class SearchResult {

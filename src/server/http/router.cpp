@@ -1,7 +1,8 @@
 #include "router.h"
+#include "util/tracing.h"
 
 #include <QRegularExpression>
-#include <QtConcurrent>
+#include <QThreadPool>
 
 namespace Acoustid {
 namespace Server {
@@ -10,7 +11,7 @@ void HttpRouter::route(HttpMethod method, const QString &path, HttpHandlerFunc h
     auto pathParts = path.split('/');
     for (auto &pathPart : pathParts) {
         if (pathPart.startsWith(':')) {
-            auto paramName = pathPart.midRef(1);
+            auto paramName = pathPart.mid(1);
             pathPart = "(?<" + paramName + ">[^/]+)";
         }
     }
@@ -51,7 +52,11 @@ void HttpRouter::handle(qhttp::server::QHttpRequest *req, qhttp::server::QHttpRe
         HttpRequest request(req->method(), req->url());
         request.setHeaders(req->headers());
         request.setBody(req->collectedData());
-        QtConcurrent::run([=]() {
+	QThreadPool::globalInstance()->start([=]() {
+            auto traceId = request.header("X-Trace-Id");
+	    if (!traceId.isEmpty()) {
+                setTraceId(traceId);
+	    }
             HttpResponse response;
             try {
                 response = handle(request);

@@ -30,7 +30,7 @@ void setLastOpId(Idx &idx, int64_t id) {
 }
 
 Index::Index(DirectorySharedPtr dir, bool create)
-    : m_lock(QReadWriteLock::Recursive), m_dir(dir), m_deleter(new IndexFileDeleter(dir)) {
+    : m_lock(), m_dir(dir), m_deleter(new IndexFileDeleter(dir)) {
     open(create);
 }
 
@@ -182,7 +182,15 @@ QSharedPointer<IndexReader> Index::openReader() {
     if (!m_open) {
         throw IndexIsNotOpen("index is not open");
     }
-    return openReaderPrivate();
+    locker.unlock();
+    return QSharedPointer<IndexReader>::create(sharedFromThis());
+}
+
+QSharedPointer<IndexReader> Index::openReaderPrivate() {
+    if (!m_open) {
+        throw IndexIsNotOpen("index is not open");
+    }
+    return QSharedPointer<IndexReader>::create(sharedFromThis());
 }
 
 QSharedPointer<IndexWriter> Index::openWriter(bool wait, int64_t timeoutInMSecs) {
@@ -190,13 +198,8 @@ QSharedPointer<IndexWriter> Index::openWriter(bool wait, int64_t timeoutInMSecs)
     if (!m_open) {
         throw IndexIsNotOpen("index is not open");
     }
-    return openWriterPrivate(wait, QDeadlineTimer(timeoutInMSecs));
-}
-
-QSharedPointer<IndexReader> Index::openReaderPrivate() { return QSharedPointer<IndexReader>::create(sharedFromThis()); }
-
-QSharedPointer<IndexWriter> Index::openWriterPrivate(bool wait, QDeadlineTimer deadline) {
-    acquireWriterLockPrivate(wait, deadline);
+    acquireWriterLockPrivate(wait, QDeadlineTimer(timeoutInMSecs));
+    locker.unlock();
     return QSharedPointer<IndexWriter>::create(sharedFromThis(), true);
 }
 
@@ -362,7 +365,7 @@ void Index::flush() {
     if (m_threadPool) {
         if (!m_writerFuture.isRunning()) {
             auto self = sharedFromThis();
-            m_writerFuture = QtConcurrent::run(m_threadPool, [=]() {
+            m_writerFuture = QtConcurrent::run(m_threadPool.get(), [=]() {
                 self->persistUpdates();
             });
         }

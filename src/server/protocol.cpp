@@ -66,21 +66,22 @@ ScopedHandlerFunc buildHandler(const QString &command, const QStringList &args) 
     } else if (command == "begin") {
         return [=](QSharedPointer<Session> session) { session->begin(); return QString(); };
     } else if (command == "commit") {
-        return [=](QSharedPointer<Session> session) { session->commit(); return QString(); };
+        return [=](QSharedPointer<Session> session) { session->commit(); session->clearTraceId(); return QString(); };
     } else if (command == "rollback") {
-        return [=](QSharedPointer<Session> session) { session->rollback(); return QString(); };
+        return [=](QSharedPointer<Session> session) { session->rollback(); session->clearTraceId(); return QString(); };
     } else if (command == "optimize") {
-        return [=](QSharedPointer<Session> session) { session->optimize(); return QString(); };
+        return [=](QSharedPointer<Session> session) { session->optimize(); session->clearTraceId(); return QString(); };
     } else if (command == "cleanup") {
-        return [=](QSharedPointer<Session> session) { session->cleanup(); return QString(); };
+        return [=](QSharedPointer<Session> session) { session->cleanup(); session->clearTraceId(); return QString(); };
     } else if (command == "insert") {
         if (args.size() != 2) {
             throw BadRequest("expected two arguments");
         }
         return [=](QSharedPointer<Session> session) {
             auto id = args.at(0).toInt();
-            auto terms = parseFingerprint(args.at(1));
-            session->insertOrUpdateDocument(id, terms);
+            auto hashes = parseFingerprint(args.at(1));
+            session->insertOrUpdateDocument(id, hashes);
+	    session->clearTraceId();
             return QString();
         };
     } else if (command == "delete") {
@@ -90,6 +91,7 @@ ScopedHandlerFunc buildHandler(const QString &command, const QStringList &args) 
         return [=](QSharedPointer<Session> session) {
             auto id = args.at(0).toInt();
             session->deleteDocument(id);
+	    session->clearTraceId();
             return QString();
         };
     } else if (command == "search") {
@@ -104,7 +106,9 @@ ScopedHandlerFunc buildHandler(const QString &command, const QStringList &args) 
             for (auto result : results) {
                 output.append(QString("%1:%2").arg(result.docId()).arg(result.score()));
             }
-            return output.join(" ");
+	    QString outputString = output.join(" ");
+	    session->clearTraceId();
+            return outputString;
         };
     } else {
         throw BadRequest(QString("unknown command %1").arg(command));

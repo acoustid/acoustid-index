@@ -75,6 +75,7 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     friend class IndexWriter;
 
     QSharedPointer<IndexReader> openReader();
+    QSharedPointer<IndexReader> openReaderPrivate();
     QSharedPointer<IndexWriter> openWriter(bool wait = false, int64_t timeoutInMSecs = -1);
 
     void acquireWriterLock(bool wait = false, int64_t timeoutInMSecs = -1);
@@ -84,9 +85,6 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     void releaseInfo(const IndexInfo &info);
     void updateInfo(const IndexInfo &oldInfo, const IndexInfo &newInfo, bool updateIndex = false);
 
-    QSharedPointer<IndexReader> openReaderPrivate();
-    QSharedPointer<IndexWriter> openWriterPrivate(bool wait = true,
-                                                  QDeadlineTimer deadline = QDeadlineTimer(QDeadlineTimer::Forever));
     void acquireWriterLockPrivate(bool wait, QDeadlineTimer deadline);
 
     void persistUpdates(const std::shared_ptr<InMemoryIndex> &index);

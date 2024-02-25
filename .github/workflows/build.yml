@@ -10,15 +10,15 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: |
           sudo apt-get update
-          sudo apt-get install -y qtbase5-dev libgtest-dev libgrpc++-dev protobuf-compiler-grpc protobuf-compiler libsqlite3-dev
+          sudo apt-get install -y qt6-base-dev libgtest-dev libgrpc++-dev protobuf-compiler-grpc protobuf-compiler libsqlite3-dev
       - run: cmake -DCMAKE_BUILD_TYPE=Release .
       - run: make
       - run: make check
@@ -26,7 +26,7 @@ jobs:
 
       - name: Log in to the Container registry
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v1
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -34,12 +34,12 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@v3
+        uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v2
+        uses: docker/build-push-action@v5
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}

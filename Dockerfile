@@ -1,4 +1,4 @@
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 RUN useradd -m -s /bin/bash -u 1000 acoustid
 

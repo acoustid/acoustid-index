@@ -102,7 +102,7 @@ void IndexWriter::merge(const QList<int>& merge) {
 
     qDebug() << "New segment" << segment.id() << "with checksum" << segment.checksum() << "(merge)";
 
-    QSet<int> merged = merge.toSet();
+    QSet<int> merged(merge.begin(), merge.end());
     info.clearSegments();
     for (int i = 0; i < segments.size(); i++) {
         const SegmentInfo& s = segments.at(i);

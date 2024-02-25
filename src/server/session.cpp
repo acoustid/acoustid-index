@@ -78,6 +78,10 @@ void Session::setAttribute(const QString &name, const QString &value) {
         m_idle_timeout = value.toInt();
         return;
     }
+    if (name == "trace_id") {
+	m_traceId = value;
+	return;
+    }
     if (!m_transaction) {
         throw NotInTransactionException();
     }
@@ -110,4 +114,14 @@ std::vector<SearchResult> Session::search(const std::vector<uint32_t> &terms) {
     }
     filterSearchResults(results, m_maxResults, m_topScorePercent);
     return results;
+}
+
+QString Session::getTraceId() {
+    QMutexLocker locker(&m_mutex);
+    return m_traceId;
+}
+
+void Session::clearTraceId() {
+    QMutexLocker locker(&m_mutex);
+    m_traceId.clear();
 }
