@@ -12,6 +12,17 @@ static inline int remainingTime(std::chrono::system_clock::time_point deadline) 
     return std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::system_clock::now()).count();
 }
 
+grpc::Status IndexServiceImpl::ListIndexes(grpc::ServerContext* context, const fpindex::ListIndexesRequest* request,
+                                        fpindex::ListIndexesResponse* response) {
+    qDebug() << "[gRPC] ListIndexes";
+    auto indexNames = m_indexes->listIndexes();
+    for (const auto& indexName : indexNames) {
+	auto status = response->add_indexes();
+	status->set_name(indexName.toStdString());
+    }
+    return grpc::Status::OK;
+}
+
 grpc::Status IndexServiceImpl::GetIndex(grpc::ServerContext* context, const fpindex::GetIndexRequest* request,
                                         fpindex::GetIndexResponse* response) {
     auto indexName = QString::fromStdString(request->index_name());

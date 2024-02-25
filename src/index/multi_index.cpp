@@ -26,8 +26,21 @@ void MultiIndex::setThreadPool(QThreadPool *threadPool) {
     m_threadPool = threadPool;
 }
 
-bool MultiIndex::indexExists(const QString &name) {
+QStringList MultiIndex::listIndexes() {
     QMutexLocker locker(&m_mutex);
+    QStringList indexes;
+    if (checkIndex(ROOT_INDEX_NAME)) {
+	indexes.push_back(ROOT_INDEX_NAME);
+    }
+    for (auto subDir: m_dir->listDirectories()) {
+	if (checkIndex(subDir)) {
+	    indexes.push_back(subDir);
+	}
+    }
+    return indexes;
+}
+
+bool MultiIndex::checkIndex(const QString &name) {
     if (m_indexes.contains(name)) {
         return true;
     }
@@ -36,6 +49,11 @@ bool MultiIndex::indexExists(const QString &name) {
     }
     auto subDir = QSharedPointer<Directory>(m_dir->openDirectory(name));
     return Index::exists(subDir);
+}
+
+bool MultiIndex::indexExists(const QString &name) {
+    QMutexLocker locker(&m_mutex);
+    return checkIndex(name);
 }
 
 QSharedPointer<Index> MultiIndex::getRootIndex(bool create) {
@@ -57,6 +75,10 @@ QSharedPointer<Index> MultiIndex::getIndex(const QString &name, bool create) {
     index = QSharedPointer<Index>::create(subDir, create);
     m_indexes[name] = index;
     return index;
+}
+
+void MultiIndex::createRootIndex() {
+    getRootIndex(true);
 }
 
 void MultiIndex::createIndex(const QString &name) {

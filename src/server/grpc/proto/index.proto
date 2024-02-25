@@ -4,8 +4,9 @@ package fpindex;
 
 import "google/api/annotations.proto";
 
-message IndexInfo {
+message IndexStatus {
   string name = 1;
+  bool ready = 2;
 }
 
 message GetAttributeRequest {
@@ -67,7 +68,7 @@ message GetIndexRequest {
 };
 
 message GetIndexResponse {
-    IndexInfo index = 1;
+    IndexStatus index = 1;
 };
 
 message CreateIndexRequest {
@@ -75,7 +76,7 @@ message CreateIndexRequest {
 };
 
 message CreateIndexResponse {
-    IndexInfo index = 1;
+    IndexStatus index = 1;
 };
 
 message DeleteIndexRequest {
@@ -89,7 +90,7 @@ message ListIndexesRequest {
 };
 
 message ListIndexesResponse {
-    repeated IndexInfo indexes = 1;
+    repeated IndexStatus indexes = 1;
 };
 
 service Index {

@@ -76,3 +76,7 @@ SQLiteDatabase RAMDirectory::openDatabase(const QString &name) {
     auto fileName = QString("file:%1?mode=memory&cache=shared").arg(m_dbPrefix + name);
     return SQLiteDatabase(fileName);
 }
+
+QStringList RAMDirectory::listDirectories() {
+    return m_data->directories.keys();
+}
