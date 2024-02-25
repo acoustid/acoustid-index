@@ -7,8 +7,8 @@
 
 using namespace Acoustid;
 
-SegmentSearcher::SegmentSearcher(SegmentIndexSharedPtr index, SegmentDataReader *dataReader, uint32_t lastKey)
-	: m_index(index), m_dataReader(dataReader), m_lastKey(lastKey)
+SegmentSearcher::SegmentSearcher(SegmentIndexSharedPtr index, std::unique_ptr<SegmentDataReader> &&dataReader, uint32_t lastKey)
+	: m_index(index), m_dataReader(std::move(dataReader)), m_lastKey(lastKey)
 {
 }
 

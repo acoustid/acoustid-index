@@ -61,14 +61,12 @@ TEST(SegmentMergerTest, Iterate)
 		InputStream *indexInput1 = dir.openFile("segment_0.fii");
 		InputStream *dataInput1 = dir.openFile("segment_0.fid");
 		SegmentIndexSharedPtr index1 = SegmentIndexReader(indexInput1, blockCount0).read();
-		SegmentDataReader *dataReader1 = new SegmentDataReader(dataInput1, 8);
-		SegmentEnum *reader1 = new SegmentEnum(index1, dataReader1);
+		SegmentEnum *reader1 = new SegmentEnum(index1, std::make_unique<SegmentDataReader>(dataInput1, 8));
 
 		InputStream *indexInput2 = dir.openFile("segment_1.fii");
 		InputStream *dataInput2 = dir.openFile("segment_1.fid");
 		SegmentIndexSharedPtr index2 = SegmentIndexReader(indexInput2, blockCount1).read();
-		SegmentDataReader *dataReader2 = new SegmentDataReader(dataInput2, 8);
-		SegmentEnum *reader2 = new SegmentEnum(index2, dataReader2);
+		SegmentEnum *reader2 = new SegmentEnum(index2, std::make_unique<SegmentDataReader>(dataInput2, 8));
 
 		SegmentMerger merger(writer);
 		merger.addSource(reader1);
@@ -79,8 +77,7 @@ TEST(SegmentMergerTest, Iterate)
 	InputStream *indexInput = dir.openFile("segment_2.fii");
 	InputStream *dataInput = dir.openFile("segment_2.fid");
 	SegmentIndexSharedPtr index = SegmentIndexReader(indexInput, blockCount).read();
-	SegmentDataReader *dataReader = new SegmentDataReader(dataInput, 8);
-	SegmentEnum reader(index, dataReader);
+	SegmentEnum reader(index, std::make_unique<SegmentDataReader>(dataInput, 8));
 
 	ASSERT_TRUE(reader.next());
 	ASSERT_EQ(199, reader.key());

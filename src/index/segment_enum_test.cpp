@@ -38,9 +38,8 @@ TEST(SegmentEnumTest, Iterate)
 	InputStream *indexInput = dir.openFile("segment_0.fii");
 	InputStream *dataInput = dir.openFile("segment_0.fid");
 	SegmentIndexSharedPtr index = SegmentIndexReader(indexInput, blockCount).read();
-	SegmentDataReader *dataReader = new SegmentDataReader(dataInput, 8);
 
-	SegmentEnum reader(index, dataReader);
+	SegmentEnum reader(index, std::make_unique<SegmentDataReader>(dataInput, 8));
 	ASSERT_TRUE(reader.next());
 	ASSERT_EQ(200, reader.key());
 	ASSERT_EQ(300, reader.value());

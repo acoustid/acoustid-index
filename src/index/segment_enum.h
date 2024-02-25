@@ -13,8 +13,8 @@ namespace Acoustid {
 class SegmentEnum
 {
 public:
-	SegmentEnum(SegmentIndexSharedPtr index, SegmentDataReader *dataReader)
-		: m_index(index), m_dataReader(dataReader), m_block(0),
+	SegmentEnum(SegmentIndexSharedPtr index, std::unique_ptr<SegmentDataReader> &&dataReader)
+		: m_index(index), m_dataReader(std::move(dataReader)), m_block(0),
 		  m_currentBlock(nullptr)
 	{}
 
