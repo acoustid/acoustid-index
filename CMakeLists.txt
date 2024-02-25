@@ -130,12 +130,17 @@ set(fpserver_SOURCES
     src/server/grpc/proto/index.pb.cc
     src/server/grpc/proto/index.grpc.pb.h
     src/server/grpc/proto/index.grpc.pb.cc
+    src/server/grpc/proto/google/api/annotations.pb.h
+    src/server/grpc/proto/google/api/annotations.pb.cc
+    src/server/grpc/proto/google/api/http.pb.h
+    src/server/grpc/proto/google/api/http.pb.cc
 )
 add_library(fpserverlib ${fpserver_SOURCES})
 target_link_libraries(fpserverlib fpindexlib qhttp PkgConfig::GRPCPP PkgConfig::PROTOBUF)
 
 include_directories(
 	${CMAKE_CURRENT_SOURCE_DIR}/src
+	${CMAKE_CURRENT_SOURCE_DIR}/src/server/grpc/proto
 	${CMAKE_CURRENT_SOURCE_DIR}/src/3rdparty/qhttp/3rdparty
 	${CMAKE_CURRENT_SOURCE_DIR}/src/3rdparty/qhttp/src
     ${GTEST_INCLUDE_DIRS}

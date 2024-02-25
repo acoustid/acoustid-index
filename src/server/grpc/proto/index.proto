@@ -1,6 +1,12 @@
 syntax = "proto3";
 
-package Acoustid.Server.PB;
+package fpindex;
+
+import "google/api/annotations.proto";
+
+message IndexInfo {
+  string name = 1;
+}
 
 message GetAttributeRequest {
   string index_name = 1;
@@ -61,6 +67,7 @@ message GetIndexRequest {
 };
 
 message GetIndexResponse {
+    IndexInfo index = 1;
 };
 
 message CreateIndexRequest {
@@ -68,6 +75,7 @@ message CreateIndexRequest {
 };
 
 message CreateIndexResponse {
+    IndexInfo index = 1;
 };
 
 message DeleteIndexRequest {
@@ -77,13 +85,52 @@ message DeleteIndexRequest {
 message DeleteIndexResponse {
 };
 
+message ListIndexesRequest {
+};
+
+message ListIndexesResponse {
+    repeated IndexInfo indexes = 1;
+};
+
 service Index {
-    rpc GetIndex(GetIndexRequest) returns (GetIndexResponse);
-    rpc CreateIndex(CreateIndexRequest) returns (CreateIndexResponse);
-    rpc DeleteIndex(DeleteIndexRequest) returns (DeleteIndexResponse);
+    rpc ListIndexes(ListIndexesRequest) returns (ListIndexesResponse) {
+	option (google.api.http) = {    
+		get: "/v1/index"
+	};
+    }
+
+    rpc GetIndex(GetIndexRequest) returns (GetIndexResponse) {
+	option (google.api.http) = {    
+		get: "/v1/index/{index_name}"
+	};
+    }
+
+    rpc CreateIndex(CreateIndexRequest) returns (CreateIndexResponse) {
+    	option (google.api.http) = {
+    		put: "/v1/index/{index_name}"
+    		body: "*"
+    	};
+    }
+
+    rpc DeleteIndex(DeleteIndexRequest) returns (DeleteIndexResponse) {
+	option (google.api.http) = {    
+		delete: "/v1/index/{index_name}"
+	};
+    }
 
     rpc GetAttribute(GetAttributeRequest) returns (GetAttributeResponse);
 
-    rpc Update(UpdateRequest) returns (UpdateResponse);
-    rpc Search(SearchRequest) returns (SearchResponse);
+    rpc Update(UpdateRequest) returns (UpdateResponse) {
+    	option (google.api.http) = {
+    		post: "/v1/index/{index_name}/_update"
+    		body: "*"
+    	};
+    }
+
+    rpc Search(SearchRequest) returns (SearchResponse) {
+    	option (google.api.http) = {
+    		post: "/v1/index/{index_name}/_search"
+    		body: "*"
+    	};
+    }
 };

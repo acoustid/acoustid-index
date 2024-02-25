@@ -9,15 +9,15 @@
 namespace Acoustid {
 namespace Server {
 
-class IndexServiceImpl final : public PB::Index::Service {
+class IndexServiceImpl final : public fpindex::Index::Service {
  public:
     IndexServiceImpl(QSharedPointer<MultiIndex> indexes, QSharedPointer<Metrics> metrics);
 
-    virtual ::grpc::Status Update(::grpc::ServerContext* context, const PB::UpdateRequest* request,
-                                  PB::UpdateResponse* response) override;
+    virtual ::grpc::Status Update(::grpc::ServerContext* context, const fpindex::UpdateRequest* request,
+                                  fpindex::UpdateResponse* response) override;
 
-    virtual ::grpc::Status Search(::grpc::ServerContext* context, const PB::SearchRequest* request,
-                                  PB::SearchResponse* response) override;
+    virtual ::grpc::Status Search(::grpc::ServerContext* context, const fpindex::SearchRequest* request,
+                                  fpindex::SearchResponse* response) override;
 
  private:
     QSharedPointer<MultiIndex> m_indexes;
