@@ -18,19 +18,14 @@ class HttpTest : public ::testing::Test {
     void SetUp() override {
         dir = QSharedPointer<RAMDirectory>::create();
         indexes = QSharedPointer<MultiIndex>::create(dir);
-        indexes->getRootIndex(true);
         metrics = QSharedPointer<Metrics>::create();
         handler = QSharedPointer<HttpRequestHandler>::create(indexes, metrics);
     }
 
     void TearDown() override {
-        handler.clear();
-        metrics.clear();
-        indexes.clear();
-        dir.clear();
+        indexes->close();
     }
 
- protected:
     QSharedPointer<RAMDirectory> dir;
     QSharedPointer<MultiIndex> indexes;
     QSharedPointer<Metrics> metrics;
@@ -59,14 +54,15 @@ TEST_F(HttpTest, TestMetrics) {
 }
 
 TEST_F(HttpTest, TestHeadIndex) {
-    auto request = HttpRequest(HTTP_HEAD, QUrl("/_root"));
+    indexes->createIndex("testidx");
+    auto request = HttpRequest(HTTP_HEAD, QUrl("/testidx"));
     auto response = handler->router().handle(request);
     ASSERT_EQ(response.status(), HTTP_OK);
     ASSERT_EQ(response.body().toStdString(), "{}");
 }
 
 TEST_F(HttpTest, TestHeadIndexNotFound) {
-    auto request = HttpRequest(HTTP_HEAD, QUrl("/foo"));
+    auto request = HttpRequest(HTTP_HEAD, QUrl("/testidx"));
     auto response = handler->router().handle(request);
     ASSERT_EQ(response.status(), HTTP_NOT_FOUND);
     ASSERT_EQ(response.body().toStdString(),
@@ -74,22 +70,39 @@ TEST_F(HttpTest, TestHeadIndexNotFound) {
 }
 
 TEST_F(HttpTest, TestGetIndex) {
-    auto request = HttpRequest(HTTP_GET, QUrl("/_root"));
+    indexes->createIndex("testidx");
+    auto request = HttpRequest(HTTP_GET, QUrl("/testidx"));
     auto response = handler->router().handle(request);
     ASSERT_EQ(response.status(), HTTP_OK);
     ASSERT_EQ(response.body().toStdString(), "{\"revision\":0}");
 }
 
 TEST_F(HttpTest, TestGetIndexNotFound) {
-    auto request = HttpRequest(HTTP_GET, QUrl("/foo"));
+    auto request = HttpRequest(HTTP_GET, QUrl("/testidx"));
     auto response = handler->router().handle(request);
     ASSERT_EQ(response.status(), HTTP_NOT_FOUND);
     ASSERT_EQ(response.body().toStdString(),
               "{\"error\":{\"description\":\"index does not exist\",\"type\":\"not_found\"},\"status\":404}");
 }
 
+TEST_F(HttpTest, TestPutIndex) {
+    auto request = HttpRequest(HTTP_PUT, QUrl("/testidx"));
+    auto response = handler->router().handle(request);
+    ASSERT_EQ(response.status(), HTTP_OK);
+    ASSERT_EQ(response.body().toStdString(), "{\"revision\":0}");
+}
+
+TEST_F(HttpTest, TestPutIndexAlreadyExists) {
+    indexes->createIndex("testidx");
+    auto request = HttpRequest(HTTP_PUT, QUrl("/testidx"));
+    auto response = handler->router().handle(request);
+    ASSERT_EQ(response.status(), HTTP_OK);
+    ASSERT_EQ(response.body().toStdString(), "{\"revision\":0}");
+}
+
 TEST_F(HttpTest, TestPutDocumentStringTerms) {
-    auto request = HttpRequest(HTTP_PUT, QUrl("/_root/_doc/111"));
+    indexes->createIndex("testidx");
+    auto request = HttpRequest(HTTP_PUT, QUrl("/testidx/_doc/111"));
     request.setBody(QJsonDocument(QJsonObject{{"terms", "1,2,3"}}));
     auto response = handler->router().handle(request);
     ASSERT_EQ(response.status(), HTTP_OK);
@@ -97,7 +110,8 @@ TEST_F(HttpTest, TestPutDocumentStringTerms) {
 }
 
 TEST_F(HttpTest, TestPutDocumentArrayTerms) {
-    auto request = HttpRequest(HTTP_PUT, QUrl("/_root/_doc/111"));
+    indexes->createIndex("testidx");
+    auto request = HttpRequest(HTTP_PUT, QUrl("/testidx/_doc/111"));
     request.setBody(QJsonDocument(QJsonObject{{"terms", QJsonArray{1, 2, 3}}}));
     auto response = handler->router().handle(request);
     ASSERT_EQ(response.status(), HTTP_OK);
@@ -161,7 +175,11 @@ TEST_F(HttpTest, TestBulkArray) {
 }*/
 
 TEST_F(HttpTest, TestBulkObject) {
-    auto request = HttpRequest(HTTP_POST, QUrl("/_root/_bulk"));
+    indexes->createIndex("testidx");
+    indexes->getIndex("testidx")->insertOrUpdateDocument(112, {31, 41, 51});
+    indexes->getIndex("testidx")->insertOrUpdateDocument(113, {31, 41, 51});
+
+    auto request = HttpRequest(HTTP_POST, QUrl("/testidx/_bulk"));
     request.setBody(QJsonDocument(QJsonObject{
         {"operations", QJsonArray{
             QJsonObject{{"upsert", QJsonObject{{"id", 111}, {"terms", QJsonArray{1, 2, 3}}}}},
@@ -174,7 +192,7 @@ TEST_F(HttpTest, TestBulkObject) {
     ASSERT_EQ(response.body().toStdString(), "{}");
     ASSERT_EQ(response.status(), HTTP_OK);
 
-    // ASSERT_TRUE(index->containsDocument(111));
-    // ASSERT_TRUE(index->containsDocument(112));
-    ASSERT_EQ(indexes->getRootIndex()->info().getAttribute("foo").toStdString(), "bar");
+    // ASSERT_TRUE(indexes->getIndex("testidx")->containsDocument(111));
+    // ASSERT_TRUE(indexes->getIndex("testidx")->containsDocument(112));
+    ASSERT_EQ(indexes->getIndex("testidx")->getAttribute("foo").toStdString(), "bar");
 }
