@@ -114,7 +114,7 @@ void IndexWriter::merge(const QList<int>& merge)
 		throw CorruptIndexException("checksum mismatch after merge");
 	}
 
-	QSet<int> merged = merge.toSet();
+	QSet<int> merged = QSet<int>(merge.begin(), merge.end());
 	info.clearSegments();
 	for (size_t i = 0; i < segments.size(); i++) {
 		const SegmentInfo& s = segments.at(i);

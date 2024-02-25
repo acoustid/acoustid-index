@@ -3,6 +3,8 @@
 
 #include <QCoreApplication>
 #include <QThreadPool>
+#include <QJsonObject>
+#include <QJsonDocument>
 #include "qhttpserver.hpp"
 #include "qhttpserverrequest.hpp"
 #include "qhttpserverresponse.hpp"
@@ -15,6 +17,8 @@ using namespace Acoustid;
 using namespace Acoustid::Server;
 
 using namespace qhttp::server;
+
+static QTextStream stderrStream(stderr);
 
 void handleLogMessage(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
@@ -42,7 +46,7 @@ void handleLogMessage(QtMsgType type, const QMessageLogContext &context, const Q
     obj.insert("message", msg);
     obj.insert("source", QString("%1:%2").arg(context.file).arg(context.line));
 
-    qStdErr() << QJsonDocument(obj).toJson(QJsonDocument::Compact) << endl;
+    stderrStream << QJsonDocument(obj).toJson(QJsonDocument::Compact) << Qt::endl;
 
     if (type == QtFatalMsg) {
 	abort();

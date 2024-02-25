@@ -16,7 +16,7 @@ set(CMAKE_AUTORCC ON)
 
 find_package(Threads REQUIRED)
 find_package(GTest)
-find_package(Qt5 COMPONENTS Core Network Concurrent REQUIRED)
+find_package(Qt6 COMPONENTS Core Network Concurrent REQUIRED)
 
 set(CPACK_GENERATOR "DEB")
 set(CPACK_PACKAGE_NAME acoustid-index)
@@ -70,7 +70,7 @@ set(fpindexlib_SOURCES
 	src/util/options.cpp
 )
 add_library(fpindexlib ${fpindexlib_SOURCES})
-target_link_libraries(fpindexlib Qt5::Core Qt5::Network Qt5::Concurrent)
+target_link_libraries(fpindexlib Qt6::Core Qt6::Network Qt6::Concurrent)
 
 set(qhttp_SOURCES
     ./src/3rdparty/qhttp/src/qhttpserverconnection.cpp
@@ -85,7 +85,7 @@ set(qhttp_SOURCES
 )
 add_library(qhttp ${qhttp_SOURCES})
 target_include_directories(qhttp PRIVATE ./src/3rdparty/)
-target_link_libraries(qhttp Qt5::Core Qt5::Network Qt5::Concurrent)
+target_link_libraries(qhttp Qt6::Core Qt6::Network Qt6::Concurrent)
 
 set(fpserver_SOURCES
 	src/server/listener.cpp

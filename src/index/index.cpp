@@ -15,7 +15,7 @@
 using namespace Acoustid;
 
 Index::Index(DirectorySharedPtr dir, bool create)
-	: m_mutex(QMutex::Recursive), m_dir(dir), m_open(false),
+	: m_mutex(), m_dir(dir), m_open(false),
 	  m_hasWriter(false),
 	  m_deleter(new IndexFileDeleter(dir))
 {
