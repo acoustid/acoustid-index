@@ -30,18 +30,16 @@ Starting server locally:
  - C/C++ compiler supporting at least C++17
  - CMake
  - Qt6, at least the QtCore, QtNetwork and QtConcurrent components
+ - SQLite3
  - GoogleTest (optional)
 
-### For Debian  
-```
-# apt install git gcc g++ cmake pkg-config qtbase5-dev libsqlite3-dev libprotobuf-dev libgrpc++-dev libgtest-dev protobuf-compiler protobuf-compiler-grpc
-# ./update_proto.sh 
-# cmake .
-# cmake --build .
-```
+#### For Ubuntu/Debian
+
+    apt install gcc g++ cmake qt6-base-dev libgtest-dev libsqlite3-dev libprotobuf-dev libgrpc++-dev protobuf-compiler protobuf-compiler-grpc
 
 ### Building the code
 
+    cmake .
     cmake --build .
 
 ## Usage
