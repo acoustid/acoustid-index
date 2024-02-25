@@ -60,12 +60,15 @@ QSharedPointer<Index> MultiIndex::getIndex(const QString &name, bool create) {
 }
 
 void MultiIndex::createIndex(const QString &name) {
+    if (name == ROOT_INDEX_NAME) {
+        throw NotImplemented("Changing the legacy root index is not supported");
+    }
     getIndex(name, true);
 }
 
 void MultiIndex::deleteIndex(const QString &name) {
     if (name == ROOT_INDEX_NAME) {
-        throw NotImplemented("Index deletion is not supported");
+        throw NotImplemented("Changing the legacy root index is not supported");
     }
     QMutexLocker locker(&m_mutex);
     m_indexes.remove(name);
