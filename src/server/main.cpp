@@ -112,6 +112,11 @@ int main(int argc, char **argv)
         .setMetaVar("PORT")
         .setDefaultValue("6082");
 
+    parser.addOption("threads", 't')
+        .setArgument()
+        .setHelp("use specific number of threads")
+        .setDefaultValue("0");
+
     // clang-format on
 
     std::unique_ptr<Options> opts(parser.parse(argc, argv));
