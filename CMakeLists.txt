@@ -55,6 +55,12 @@ set(fpindexlib_SOURCES
 	src/index/multi_index.cpp
 	src/index/index_reader.cpp
 	src/index/index_writer.cpp
+	src/index/segment_docs.h
+	src/index/segment_docs.cpp
+	src/index/segment_docs_reader.h
+	src/index/segment_docs_reader.cpp
+	src/index/segment_docs_writer.h
+	src/index/segment_docs_writer.cpp
 	src/index/segment_data_reader.cpp
 	src/index/segment_data_writer.cpp
 	src/index/segment_index.cpp
@@ -64,8 +70,12 @@ set(fpindexlib_SOURCES
 	src/index/segment_merge_policy.cpp
 	src/index/segment_merger.cpp
 	src/index/segment_searcher.cpp
+	src/index/in_memory_index.h
+	src/index/in_memory_index.cpp
 	src/index/op.h
 	src/index/op.cpp
+	src/index/oplog.h
+	src/index/oplog.cpp
 	src/store/buffered_input_stream.cpp
 	src/store/buffered_output_stream.cpp
 	src/store/checksum_output_stream.cpp
@@ -203,17 +213,18 @@ set(tests_SOURCES
 	src/index/multi_index_test.cpp
 	src/index/index_test.cpp
 	src/index/index_info_test.cpp
-	src/index/index_reader_test.cpp
 	src/index/index_writer_test.cpp
 	src/index/index_file_deleter_test.cpp
 	src/index/segment_enum_test.cpp
 	src/index/segment_merger_test.cpp
 	src/index/segment_merge_policy_test.cpp
 	src/index/op_test.cpp
+	src/index/oplog_test.cpp
 	src/store/buffered_input_stream_test.cpp
 	src/store/input_stream_test.cpp
 	src/store/output_stream_test.cpp
 	src/store/fs_output_stream_test.cpp
+	src/store/fs_directory_test.cpp
 	src/store/ram_directory_test.cpp
 	src/util/search_utils_test.cpp
 	src/util/options_test.cpp

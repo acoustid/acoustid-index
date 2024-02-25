@@ -30,7 +30,7 @@ size_t SegmentMerger::merge()
 	while (!readers.isEmpty()) {
 		size_t minItemIndex = 0;
 		uint64_t minItem = UINT64_MAX;
-		for (size_t i = 0; i < readers.size(); i++) {
+		for (int i = 0; i < readers.size(); i++) {
 			SegmentEnum *reader = readers[i];
 			uint64_t item = packItem(reader->key(), reader->value());
 			if (item < minItem) {

@@ -6,30 +6,31 @@
 
 #include <QMutex>
 #include <QSharedPointer>
+#include <memory>
 #include "index/search_result.h"
 
 namespace Acoustid {
 
 class Index;
 class IndexWriter;
+class OpBatch;
 
 namespace Server {
 
 class Metrics;
 
-class Session
-{
-public:
-	Session(QSharedPointer<Index> index, QSharedPointer<Metrics> metrics)
-        : m_index(index), m_metrics(metrics) {}
+class Session {
+ public:
+    Session(QSharedPointer<Index> index, QSharedPointer<Metrics> metrics) : m_index(index), m_metrics(metrics) {}
 
     void begin();
     void commit();
     void rollback();
     void optimize();
     void cleanup();
-    void insert(uint32_t id, const std::vector<uint32_t> &hashes);
-    std::vector<SearchResult> search(const std::vector<uint32_t> &hashes);
+    void insertOrUpdateDocument(uint32_t id, const std::vector<uint32_t> &terms);
+    void deleteDocument(uint32_t id);
+    std::vector<SearchResult> search(const std::vector<uint32_t> &terms);
 
     QString getAttribute(const QString &name);
     void setAttribute(const QString &name, const QString &value);
@@ -42,19 +43,19 @@ public:
     QString getTraceId();
     void clearTraceId();
 
-private:
-	QMutex m_mutex;
+ private:
+    QMutex m_mutex;
     QSharedPointer<Index> m_index;
-    QSharedPointer<IndexWriter> m_indexWriter;
+    std::unique_ptr<OpBatch> m_transaction;
     QSharedPointer<Metrics> m_metrics;
-	int m_topScorePercent { 10 };
-	int m_maxResults { 500 };
-    int64_t m_timeout { 0 };
-    int64_t m_idle_timeout { 60 * 1000 };
+    int m_topScorePercent{10};
+    int m_maxResults{500};
+    int64_t m_timeout{0};
+    int64_t m_idle_timeout{60 * 1000};
     QString m_traceId;
 };
 
-}
-}
+}  // namespace Server
+}  // namespace Acoustid
 
 #endif

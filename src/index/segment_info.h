@@ -11,6 +11,8 @@
 
 namespace Acoustid {
 
+class SegmentDocs;
+
 // Internal, do not use.
 class SegmentInfoData : public QSharedData
 {
@@ -35,6 +37,7 @@ public:
 	uint32_t lastKey;
 	uint32_t checksum;
 	SegmentIndexSharedPtr index;
+    std::shared_ptr<SegmentDocs> docs;
 };
 
 class SegmentInfo
@@ -56,6 +59,11 @@ public:
 	QString dataFileName() const
 	{
 		return name() + ".fid";
+	}
+
+	QString docsFileName() const
+	{
+		return name() + ".docs";
 	}
 
 	void setId(int id)
@@ -107,6 +115,16 @@ public:
 	{
 		d->index = index;
 	}
+
+    std::shared_ptr<SegmentDocs> docs() const
+    {
+        return d->docs;
+    }
+
+    void setDocs(const std::shared_ptr<SegmentDocs> &docs)
+    {
+        d->docs = docs;
+    }
 
 	QList<QString> files() const;
 

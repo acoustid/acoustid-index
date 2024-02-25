@@ -74,7 +74,7 @@ TEST_F(HttpTest, TestGetIndex) {
     auto request = HttpRequest(HTTP_GET, QUrl("/testidx"));
     auto response = handler->router().handle(request);
     ASSERT_EQ(response.status(), HTTP_OK);
-    ASSERT_EQ(response.body().toStdString(), "{\"revision\":0}");
+    ASSERT_EQ(response.body().toStdString(), "{\"revision\":1}");
 }
 
 TEST_F(HttpTest, TestGetIndexNotFound) {
@@ -89,7 +89,7 @@ TEST_F(HttpTest, TestPutIndex) {
     auto request = HttpRequest(HTTP_PUT, QUrl("/testidx"));
     auto response = handler->router().handle(request);
     ASSERT_EQ(response.status(), HTTP_OK);
-    ASSERT_EQ(response.body().toStdString(), "{\"revision\":0}");
+    ASSERT_EQ(response.body().toStdString(), "{\"revision\":1}");
 }
 
 TEST_F(HttpTest, TestPutIndexAlreadyExists) {
@@ -97,28 +97,86 @@ TEST_F(HttpTest, TestPutIndexAlreadyExists) {
     auto request = HttpRequest(HTTP_PUT, QUrl("/testidx"));
     auto response = handler->router().handle(request);
     ASSERT_EQ(response.status(), HTTP_OK);
-    ASSERT_EQ(response.body().toStdString(), "{\"revision\":0}");
+    ASSERT_EQ(response.body().toStdString(), "{\"revision\":1}");
+}
+
+TEST_F(HttpTest, TestHeadDocument) {
+    indexes->createIndex("testidx");
+    indexes->getIndex("testidx")->insertOrUpdateDocument(111, {1, 2, 3});
+
+    auto request = HttpRequest(HTTP_HEAD, QUrl("/testidx/_doc/111"));
+    auto response = handler->router().handle(request);
+    ASSERT_EQ(response.status(), HTTP_OK);
+    ASSERT_EQ(response.body().toStdString(), "{\"id\":111}");
+}
+
+TEST_F(HttpTest, TestHeadDocumentNotFound) {
+    indexes->createIndex("testidx");
+
+    auto request = HttpRequest(HTTP_HEAD, QUrl("/testidx/_doc/111"));
+    auto response = handler->router().handle(request);
+    ASSERT_EQ(response.status(), HTTP_NOT_FOUND);
+    ASSERT_EQ(response.body().toStdString(),
+              "{\"error\":{\"description\":\"document does not exist\",\"type\":\"not_found\"},\"status\":404}");
+}
+
+TEST_F(HttpTest, TestGetDocument) {
+    indexes->createIndex("testidx");
+    indexes->getIndex("testidx")->insertOrUpdateDocument(111, {1, 2, 3});
+
+    auto request = HttpRequest(HTTP_GET, QUrl("/testidx/_doc/111"));
+    auto response = handler->router().handle(request);
+    ASSERT_EQ(response.status(), HTTP_OK);
+    ASSERT_EQ(response.body().toStdString(), "{\"id\":111}");
+}
+
+TEST_F(HttpTest, TestGetDocumentNotFound) {
+    indexes->createIndex("testidx");
+
+    auto request = HttpRequest(HTTP_GET, QUrl("/testidx/_doc/111"));
+    auto response = handler->router().handle(request);
+    ASSERT_EQ(response.status(), HTTP_NOT_FOUND);
+    ASSERT_EQ(response.body().toStdString(),
+              "{\"error\":{\"description\":\"document does not exist\",\"type\":\"not_found\"},\"status\":404}");
 }
 
 TEST_F(HttpTest, TestPutDocumentStringTerms) {
     indexes->createIndex("testidx");
+
     auto request = HttpRequest(HTTP_PUT, QUrl("/testidx/_doc/111"));
     request.setBody(QJsonDocument(QJsonObject{{"terms", "1,2,3"}}));
     auto response = handler->router().handle(request);
     ASSERT_EQ(response.status(), HTTP_OK);
     ASSERT_EQ(response.body().toStdString(), "{}");
+
+    ASSERT_TRUE(indexes->getIndex("testidx")->containsDocument(111));
 }
 
 TEST_F(HttpTest, TestPutDocumentArrayTerms) {
     indexes->createIndex("testidx");
+
     auto request = HttpRequest(HTTP_PUT, QUrl("/testidx/_doc/111"));
     request.setBody(QJsonDocument(QJsonObject{{"terms", QJsonArray{1, 2, 3}}}));
     auto response = handler->router().handle(request);
     ASSERT_EQ(response.status(), HTTP_OK);
     ASSERT_EQ(response.body().toStdString(), "{}");
+
+    ASSERT_TRUE(indexes->getIndex("testidx")->containsDocument(111));
 }
 
-/*TEST_F(HttpTest, TestSearch) {
+TEST_F(HttpTest, TestDeleteDocument) {
+    indexes->createIndex("testidx");
+    indexes->getIndex("testidx")->insertOrUpdateDocument(111, {1, 2, 3});
+
+    auto request = HttpRequest(HTTP_DELETE, QUrl("/testidx/_doc/111"));
+    auto response = handler->router().handle(request);
+    ASSERT_EQ(response.status(), HTTP_OK);
+    ASSERT_EQ(response.body().toStdString(), "{}");
+
+    ASSERT_FALSE(indexes->getIndex("testidx")->containsDocument(111));
+}
+
+TEST_F(HttpTest, TestSearch) {
     indexes->createIndex("testidx");
     indexes->getIndex("testidx")->insertOrUpdateDocument(111, {1, 2, 3});
     indexes->getIndex("testidx")->insertOrUpdateDocument(112, {3, 4, 5});
@@ -172,7 +230,7 @@ TEST_F(HttpTest, TestBulkArray) {
     ASSERT_TRUE(indexes->getIndex("testidx")->containsDocument(112));
     ASSERT_FALSE(indexes->getIndex("testidx")->containsDocument(113));
     ASSERT_EQ(indexes->getIndex("testidx")->getAttribute("foo").toStdString(), "bar");
-}*/
+}
 
 TEST_F(HttpTest, TestBulkObject) {
     indexes->createIndex("testidx");
@@ -184,6 +242,7 @@ TEST_F(HttpTest, TestBulkObject) {
         {"operations", QJsonArray{
             QJsonObject{{"upsert", QJsonObject{{"id", 111}, {"terms", QJsonArray{1, 2, 3}}}}},
             QJsonObject{{"upsert", QJsonObject{{"id", 112}, {"terms", QJsonArray{3, 4, 5}}}}},
+            QJsonObject{{"delete", QJsonObject{{"id", 113}}}},
             QJsonObject{{"set", QJsonObject{{"name", "foo"}, {"value", "bar"}}}},
         }},
     }));
@@ -192,7 +251,19 @@ TEST_F(HttpTest, TestBulkObject) {
     ASSERT_EQ(response.body().toStdString(), "{}");
     ASSERT_EQ(response.status(), HTTP_OK);
 
-    // ASSERT_TRUE(indexes->getIndex("testidx")->containsDocument(111));
-    // ASSERT_TRUE(indexes->getIndex("testidx")->containsDocument(112));
+    ASSERT_TRUE(indexes->getIndex("testidx")->containsDocument(111));
+    ASSERT_TRUE(indexes->getIndex("testidx")->containsDocument(112));
+    ASSERT_FALSE(indexes->getIndex("testidx")->containsDocument(113));
     ASSERT_EQ(indexes->getIndex("testidx")->getAttribute("foo").toStdString(), "bar");
+}
+
+TEST_F(HttpTest, TestFlush) {
+    indexes->createIndex("testidx");
+    indexes->getIndex("testidx")->insertOrUpdateDocument(111, {1, 2, 3});
+    indexes->getIndex("testidx")->insertOrUpdateDocument(112, {3, 4, 5});
+
+    auto request = HttpRequest(HTTP_POST, QUrl("/testidx/_flush"));
+    auto response = handler->router().handle(request);
+    ASSERT_EQ(response.status(), HTTP_OK);
+    ASSERT_EQ(response.body().toStdString(), "{}");
 }

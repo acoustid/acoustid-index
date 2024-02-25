@@ -9,9 +9,7 @@
 using namespace Acoustid;
 
 SegmentDataWriter::SegmentDataWriter(OutputStream *output, SegmentIndexWriter *indexWriter, size_t blockSize)
-	: m_output(output), m_indexWriter(indexWriter), m_blockSize(blockSize),
-	  m_buffer(0), m_ptr(0), m_itemCount(0), m_lastKey(0), m_lastValue(0),
-	  m_blockCount(0), m_checksum(0)
+	: m_output(output), m_indexWriter(indexWriter), m_blockSize(blockSize)
 {
 }
 

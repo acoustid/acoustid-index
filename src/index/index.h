@@ -5,13 +5,14 @@
 #define ACOUSTID_INDEX_H_
 
 #include <QDeadlineTimer>
-#include <QMutex>
+#include <QFuture>
+#include <QPointer>
+#include <QReadWriteLock>
 #include <QThreadPool>
 #include <QWaitCondition>
 
 #include "base_index.h"
 #include "common.h"
-#include "index.h"
 #include "index_info.h"
 #include "segment_index.h"
 #include "store/directory.h"
@@ -21,6 +22,8 @@ namespace Acoustid {
 class IndexFileDeleter;
 class IndexReader;
 class IndexWriter;
+class InMemoryIndex;
+class Oplog;
 
 // Class for working with an on-disk index.
 //
@@ -32,8 +35,15 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     Index(DirectorySharedPtr dir, bool create = false);
     virtual ~Index();
 
-    void close() {}
-    void setThreadPool(QThreadPool *pool) { }
+    bool isOpen();
+
+    void close();
+
+    QThreadPool *threadPool() const;
+    void setThreadPool(QThreadPool *pool);
+
+    size_t maxStageSize() const;
+    void setMaxStageSize(size_t size);
 
     // Return true if the index exists on disk.
     static bool exists(const QSharedPointer<Directory> &dir);
@@ -51,19 +61,9 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     void setAttribute(const QString &name, const QString &value);
 
     void insertOrUpdateDocument(uint32_t docId, const std::vector<uint32_t> &terms);
-    void deleteDocument(uint32_t docId);    
+    void deleteDocument(uint32_t docId);
 
     virtual void applyUpdates(const OpBatch &batch) override;
-
-    QSharedPointer<IndexReader> openReader();
-    QSharedPointer<IndexWriter> openWriter(bool wait = false, int64_t timeoutInMSecs = 0);
-
-    void acquireWriterLock(bool wait = false, int64_t timeoutInMSecs = 0);
-    void releaseWriterLock();
-
-    IndexInfo acquireInfo();
-    void releaseInfo(const IndexInfo& info);
-    void updateInfo(const IndexInfo& oldInfo, const IndexInfo& newInfo, bool updateIndex = false);
 
     // Make sure all operation are persisted to disk.
     void flush();
@@ -71,17 +71,40 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
  private:
     ACOUSTID_DISABLE_COPY(Index)
 
-    void acquireWriterLockInt(bool wait, int64_t timeoutInMSecs);
+    friend class IndexReader;
+    friend class IndexWriter;
+
+    QSharedPointer<IndexReader> openReader();
+    QSharedPointer<IndexReader> openReaderPrivate();
+    QSharedPointer<IndexWriter> openWriter(bool wait = false, int64_t timeoutInMSecs = -1);
+
+    void acquireWriterLock(bool wait = false, int64_t timeoutInMSecs = -1);
+    void releaseWriterLock();
+
+    IndexInfo acquireInfo();
+    void releaseInfo(const IndexInfo &info);
+    void updateInfo(const IndexInfo &oldInfo, const IndexInfo &newInfo, bool updateIndex = false);
+
+    void acquireWriterLockPrivate(bool wait, QDeadlineTimer deadline);
+
+    void persistUpdates(const std::shared_ptr<InMemoryIndex> &index);
+    void persistUpdates();
 
     void open(bool create);
 
-    QMutex m_mutex;
+    QReadWriteLock m_lock;
     DirectorySharedPtr m_dir;
-    bool m_hasWriter;
+    bool m_hasWriter{false};
     QWaitCondition m_writerReleased;
     std::unique_ptr<IndexFileDeleter> m_deleter;
     IndexInfo m_info;
-    bool m_open;
+    bool m_open{false};
+    QPointer<QThreadPool> m_threadPool;
+    size_t m_maxStageSize{1000 * 1000};
+    QFuture<void> m_writerFuture;
+    std::unique_ptr<Oplog> m_oplog;
+
+    std::vector<std::shared_ptr<InMemoryIndex>> m_stage;
 };
 
 typedef QWeakPointer<Index> IndexWeakPtr;

@@ -8,21 +8,12 @@
 
 namespace Acoustid {
 
-inline uint64_t packItem(uint32_t key, uint32_t value)
-{
-	return (uint64_t(key) << 32) | value;
-}
+inline uint64_t packItem(uint32_t key, uint32_t value) { return (uint64_t(key) << 32) | value; }
 
-inline uint32_t unpackItemKey(uint64_t item)
-{
-	return item >> 32;
-}
+inline uint32_t unpackItemKey(uint64_t item) { return item >> 32; }
 
-inline uint32_t unpackItemValue(uint64_t item)
-{
-	return item & 0xFFFFFFFF;
-}
+inline uint32_t unpackItemValue(uint64_t item) { return item & 0xFFFFFFFF; }
 
-}
+}  // namespace Acoustid
 
 #endif

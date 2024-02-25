@@ -6,6 +6,7 @@
 
 #include "common.h"
 #include "segment_index.h"
+#include "segment_searcher.h"
 #include "index.h"
 #include "index_info.h"
 
@@ -29,7 +30,9 @@ public:
 		return m_index;
 	}
 
-    std::vector<SearchResult> search(const std::vector<uint32_t> &hashes, int64_t timeoutInMSecs = 0);
+    bool containsDocument(uint32_t docId);
+
+    std::vector<SearchResult> search(const std::vector<uint32_t> &fingerprint, int64_t timeoutInMSecs = 0);
 
     std::unique_ptr<SegmentDataReader> segmentDataReader(const SegmentInfo& segment);
 

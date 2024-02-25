@@ -1,11 +1,12 @@
 #include "protocol.h"
 #include "session.h"
 #include "errors.h"
+#include "index/base_index.h"
 
 namespace Acoustid { namespace Server {
 
 std::vector<uint32_t> parseFingerprint(const QString &input) {
-    QStringList inputParts = input.split(',');
+	QStringList inputParts = input.split(',');
     std::vector<uint32_t> output;
     output.reserve(inputParts.size());
     for (int i = 0; i < inputParts.size(); i++) {
@@ -79,7 +80,17 @@ ScopedHandlerFunc buildHandler(const QString &command, const QStringList &args) 
         return [=](QSharedPointer<Session> session) {
             auto id = args.at(0).toInt();
             auto hashes = parseFingerprint(args.at(1));
-            session->insert(id, hashes);
+            session->insertOrUpdateDocument(id, hashes);
+	    session->clearTraceId();
+            return QString();
+        };
+    } else if (command == "delete") {
+        if (args.size() != 1) {
+            throw BadRequest("expected one argument");
+        }
+        return [=](QSharedPointer<Session> session) {
+            auto id = args.at(0).toInt();
+            session->deleteDocument(id);
 	    session->clearTraceId();
             return QString();
         };
@@ -92,9 +103,9 @@ ScopedHandlerFunc buildHandler(const QString &command, const QStringList &args) 
             auto results = session->search(hashes);
             QStringList output;
             output.reserve(results.size());
-	    for (auto result : results) {
-		output.append(QString("%1:%2").arg(result.docId()).arg(result.score()));
-	    }
+            for (auto result : results) {
+                output.append(QString("%1:%2").arg(result.docId()).arg(result.score()));
+            }
 	    QString outputString = output.join(" ");
 	    session->clearTraceId();
             return outputString;
