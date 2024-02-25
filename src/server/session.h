@@ -7,12 +7,12 @@
 #include <QMutex>
 #include <QSharedPointer>
 #include <memory>
+#include "index/search_result.h"
 
 namespace Acoustid {
 
 class Index;
 class IndexWriter;
-class SearchResult;
 class OpBatch;
 
 namespace Server {

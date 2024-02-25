@@ -16,17 +16,17 @@ SegmentSearcher::~SegmentSearcher()
 {
 }
 
-void SegmentSearcher::search(uint32_t *fingerprint, size_t length, std::unordered_map<uint32_t, int> &hits)
+void SegmentSearcher::search(const std::vector<uint32_t> &hashes, std::unordered_map<uint32_t, int> &hits)
 {
 	size_t i = 0, block = 0, lastBlock = SIZE_MAX;
-	while (i < length) {
+	while (i < hashes.size()) {
 		if (block > lastBlock || lastBlock == SIZE_MAX) {
 			size_t localFirstBlock, localLastBlock;
-			if (fingerprint[i] > m_lastKey) {
+			if (hashes[i] > m_lastKey) {
 				// All following items are larger than the last segment's key.
 				return;
 			}
-			if (m_index->search(fingerprint[i], &localFirstBlock, &localLastBlock)) {
+			if (m_index->search(hashes[i], &localFirstBlock, &localLastBlock)) {
 				if (block > localLastBlock) {
 					// We already searched this block and the fingerprint item was not found.
 					i++;
@@ -47,18 +47,18 @@ void SegmentSearcher::search(uint32_t *fingerprint, size_t length, std::unordere
 		std::unique_ptr<BlockDataIterator> blockData(m_dataReader->readBlock(block, firstKey));
 		while (blockData->next()) {
 			uint32_t key = blockData->key();
-			if (key >= fingerprint[i]) {
-				while (key > fingerprint[i]) {
+			if (key >= hashes[i]) {
+				while (key > hashes[i]) {
 					i++;
-					if (i >= length) {
+					if (i >= hashes.size()) {
 						return;
 					}
-					else if (lastKey < fingerprint[i]) {
+					else if (lastKey < hashes[i]) {
 						// There are no longer any items in this block that we could match.
 						goto nextBlock;
 					}
 				}
-				if (key == fingerprint[i]) {
+				if (key == hashes[i]) {
                     auto docId = blockData->value();
                     hits[docId]++;
 				}

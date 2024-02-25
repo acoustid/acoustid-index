@@ -29,13 +29,7 @@ class SearchResult {
 inline void sortSearchResults(std::vector<SearchResult> &results)
 {
     std::sort(results.begin(), results.end(), [](const SearchResult &a, const SearchResult &b) {
-        if (a.score() > b.score()) {
-            return true;
-        } else if (a.score() < b.score()) {
-            return false;
-        } else {
-            return a.docId() < b.docId();
-        }
+	return a.score() > b.score() || (a.score() == b.score() && a.docId() < b.docId());
     });
 }
 

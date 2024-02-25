@@ -71,7 +71,7 @@ std::vector<SearchResult> IndexReader::search(const std::vector<uint32_t> &terms
 		const SegmentInfo& s = segments.at(i);
 		SegmentSearcher searcher(s.index(), segmentDataReader(s), s.lastKey());
         segmentHits.clear();
-		searcher.search(sortedTerms.data(), sortedTerms.size(), segmentHits);
+		searcher.search(sortedTerms, segmentHits);
         auto segmentId = s.id();
         for (auto hit : segmentHits) {
             auto docId = hit.first;
