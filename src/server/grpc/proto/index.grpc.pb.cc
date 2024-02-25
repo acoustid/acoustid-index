@@ -24,7 +24,6 @@ namespace Server {
 namespace PB {
 
 static const char* Index_method_names[] = {
-  "/Acoustid.Server.PB.Index/GetDocument",
   "/Acoustid.Server.PB.Index/GetAttribute",
   "/Acoustid.Server.PB.Index/Update",
   "/Acoustid.Server.PB.Index/Search",
@@ -37,39 +36,10 @@ std::unique_ptr< Index::Stub> Index::NewStub(const std::shared_ptr< ::grpc::Chan
 }
 
 Index::Stub::Stub(const std::shared_ptr< ::grpc::ChannelInterface>& channel)
-  : channel_(channel), rpcmethod_GetDocument_(Index_method_names[0], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
-  , rpcmethod_GetAttribute_(Index_method_names[1], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
-  , rpcmethod_Update_(Index_method_names[2], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
-  , rpcmethod_Search_(Index_method_names[3], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  : channel_(channel), rpcmethod_GetAttribute_(Index_method_names[0], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_Update_(Index_method_names[1], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_Search_(Index_method_names[2], ::grpc::internal::RpcMethod::NORMAL_RPC, channel)
   {}
-
-::grpc::Status Index::Stub::GetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest& request, ::Acoustid::Server::PB::GetDocumentResponse* response) {
-  return ::grpc::internal::BlockingUnaryCall(channel_.get(), rpcmethod_GetDocument_, context, request, response);
-}
-
-void Index::Stub::experimental_async::GetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response, std::function<void(::grpc::Status)> f) {
-  ::grpc_impl::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_GetDocument_, context, request, response, std::move(f));
-}
-
-void Index::Stub::experimental_async::GetDocument(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetDocumentResponse* response, std::function<void(::grpc::Status)> f) {
-  ::grpc_impl::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_GetDocument_, context, request, response, std::move(f));
-}
-
-void Index::Stub::experimental_async::GetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) {
-  ::grpc_impl::internal::ClientCallbackUnaryFactory::Create(stub_->channel_.get(), stub_->rpcmethod_GetDocument_, context, request, response, reactor);
-}
-
-void Index::Stub::experimental_async::GetDocument(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetDocumentResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) {
-  ::grpc_impl::internal::ClientCallbackUnaryFactory::Create(stub_->channel_.get(), stub_->rpcmethod_GetDocument_, context, request, response, reactor);
-}
-
-::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetDocumentResponse>* Index::Stub::AsyncGetDocumentRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest& request, ::grpc::CompletionQueue* cq) {
-  return ::grpc_impl::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::GetDocumentResponse>::Create(channel_.get(), cq, rpcmethod_GetDocument_, context, request, true);
-}
-
-::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetDocumentResponse>* Index::Stub::PrepareAsyncGetDocumentRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest& request, ::grpc::CompletionQueue* cq) {
-  return ::grpc_impl::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::GetDocumentResponse>::Create(channel_.get(), cq, rpcmethod_GetDocument_, context, request, false);
-}
 
 ::grpc::Status Index::Stub::GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::Acoustid::Server::PB::GetAttributeResponse* response) {
   return ::grpc::internal::BlockingUnaryCall(channel_.get(), rpcmethod_GetAttribute_, context, request, response);
@@ -159,16 +129,6 @@ Index::Service::Service() {
   AddMethod(new ::grpc::internal::RpcServiceMethod(
       Index_method_names[0],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
-      new ::grpc::internal::RpcMethodHandler< Index::Service, ::Acoustid::Server::PB::GetDocumentRequest, ::Acoustid::Server::PB::GetDocumentResponse>(
-          [](Index::Service* service,
-             ::grpc_impl::ServerContext* ctx,
-             const ::Acoustid::Server::PB::GetDocumentRequest* req,
-             ::Acoustid::Server::PB::GetDocumentResponse* resp) {
-               return service->GetDocument(ctx, req, resp);
-             }, this)));
-  AddMethod(new ::grpc::internal::RpcServiceMethod(
-      Index_method_names[1],
-      ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Index::Service, ::Acoustid::Server::PB::GetAttributeRequest, ::Acoustid::Server::PB::GetAttributeResponse>(
           [](Index::Service* service,
              ::grpc_impl::ServerContext* ctx,
@@ -177,7 +137,7 @@ Index::Service::Service() {
                return service->GetAttribute(ctx, req, resp);
              }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
-      Index_method_names[2],
+      Index_method_names[1],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Index::Service, ::Acoustid::Server::PB::UpdateRequest, ::Acoustid::Server::PB::UpdateResponse>(
           [](Index::Service* service,
@@ -187,7 +147,7 @@ Index::Service::Service() {
                return service->Update(ctx, req, resp);
              }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
-      Index_method_names[3],
+      Index_method_names[2],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Index::Service, ::Acoustid::Server::PB::SearchRequest, ::Acoustid::Server::PB::SearchResponse>(
           [](Index::Service* service,
@@ -199,13 +159,6 @@ Index::Service::Service() {
 }
 
 Index::Service::~Service() {
-}
-
-::grpc::Status Index::Service::GetDocument(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response) {
-  (void) context;
-  (void) request;
-  (void) response;
-  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
 }
 
 ::grpc::Status Index::Service::GetAttribute(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response) {

@@ -22,14 +22,6 @@ extern PROTOBUF_INTERNAL_EXPORT_index_2eproto ::PROTOBUF_NAMESPACE_ID::internal:
 namespace Acoustid {
 namespace Server {
 namespace PB {
-class GetDocumentRequestDefaultTypeInternal {
- public:
-  ::PROTOBUF_NAMESPACE_ID::internal::ExplicitlyConstructed<GetDocumentRequest> _instance;
-} _GetDocumentRequest_default_instance_;
-class GetDocumentResponseDefaultTypeInternal {
- public:
-  ::PROTOBUF_NAMESPACE_ID::internal::ExplicitlyConstructed<GetDocumentResponse> _instance;
-} _GetDocumentResponse_default_instance_;
 class GetAttributeRequestDefaultTypeInternal {
  public:
   ::PROTOBUF_NAMESPACE_ID::internal::ExplicitlyConstructed<GetAttributeRequest> _instance;
@@ -121,34 +113,6 @@ static void InitDefaultsscc_info_GetAttributeResponse_index_2eproto() {
 
 ::PROTOBUF_NAMESPACE_ID::internal::SCCInfo<0> scc_info_GetAttributeResponse_index_2eproto =
     {{ATOMIC_VAR_INIT(::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase::kUninitialized), 0, 0, InitDefaultsscc_info_GetAttributeResponse_index_2eproto}, {}};
-
-static void InitDefaultsscc_info_GetDocumentRequest_index_2eproto() {
-  GOOGLE_PROTOBUF_VERIFY_VERSION;
-
-  {
-    void* ptr = &::Acoustid::Server::PB::_GetDocumentRequest_default_instance_;
-    new (ptr) ::Acoustid::Server::PB::GetDocumentRequest();
-    ::PROTOBUF_NAMESPACE_ID::internal::OnShutdownDestroyMessage(ptr);
-  }
-  ::Acoustid::Server::PB::GetDocumentRequest::InitAsDefaultInstance();
-}
-
-::PROTOBUF_NAMESPACE_ID::internal::SCCInfo<0> scc_info_GetDocumentRequest_index_2eproto =
-    {{ATOMIC_VAR_INIT(::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase::kUninitialized), 0, 0, InitDefaultsscc_info_GetDocumentRequest_index_2eproto}, {}};
-
-static void InitDefaultsscc_info_GetDocumentResponse_index_2eproto() {
-  GOOGLE_PROTOBUF_VERIFY_VERSION;
-
-  {
-    void* ptr = &::Acoustid::Server::PB::_GetDocumentResponse_default_instance_;
-    new (ptr) ::Acoustid::Server::PB::GetDocumentResponse();
-    ::PROTOBUF_NAMESPACE_ID::internal::OnShutdownDestroyMessage(ptr);
-  }
-  ::Acoustid::Server::PB::GetDocumentResponse::InitAsDefaultInstance();
-}
-
-::PROTOBUF_NAMESPACE_ID::internal::SCCInfo<0> scc_info_GetDocumentResponse_index_2eproto =
-    {{ATOMIC_VAR_INIT(::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase::kUninitialized), 0, 0, InitDefaultsscc_info_GetDocumentResponse_index_2eproto}, {}};
 
 static void InitDefaultsscc_info_InsertOrUpdateDocumentOp_index_2eproto() {
   GOOGLE_PROTOBUF_VERIFY_VERSION;
@@ -267,24 +231,11 @@ static void InitDefaultsscc_info_UpdateResponse_index_2eproto() {
 ::PROTOBUF_NAMESPACE_ID::internal::SCCInfo<0> scc_info_UpdateResponse_index_2eproto =
     {{ATOMIC_VAR_INIT(::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase::kUninitialized), 0, 0, InitDefaultsscc_info_UpdateResponse_index_2eproto}, {}};
 
-static ::PROTOBUF_NAMESPACE_ID::Metadata file_level_metadata_index_2eproto[13];
+static ::PROTOBUF_NAMESPACE_ID::Metadata file_level_metadata_index_2eproto[11];
 static constexpr ::PROTOBUF_NAMESPACE_ID::EnumDescriptor const** file_level_enum_descriptors_index_2eproto = nullptr;
 static constexpr ::PROTOBUF_NAMESPACE_ID::ServiceDescriptor const** file_level_service_descriptors_index_2eproto = nullptr;
 
 const ::PROTOBUF_NAMESPACE_ID::uint32 TableStruct_index_2eproto::offsets[] PROTOBUF_SECTION_VARIABLE(protodesc_cold) = {
-  ~0u,  // no _has_bits_
-  PROTOBUF_FIELD_OFFSET(::Acoustid::Server::PB::GetDocumentRequest, _internal_metadata_),
-  ~0u,  // no _extensions_
-  ~0u,  // no _oneof_case_
-  ~0u,  // no _weak_field_map_
-  PROTOBUF_FIELD_OFFSET(::Acoustid::Server::PB::GetDocumentRequest, index_name_),
-  PROTOBUF_FIELD_OFFSET(::Acoustid::Server::PB::GetDocumentRequest, doc_id_),
-  ~0u,  // no _has_bits_
-  PROTOBUF_FIELD_OFFSET(::Acoustid::Server::PB::GetDocumentResponse, _internal_metadata_),
-  ~0u,  // no _extensions_
-  ~0u,  // no _oneof_case_
-  ~0u,  // no _weak_field_map_
-  PROTOBUF_FIELD_OFFSET(::Acoustid::Server::PB::GetDocumentResponse, terms_),
   ~0u,  // no _has_bits_
   PROTOBUF_FIELD_OFFSET(::Acoustid::Server::PB::GetAttributeRequest, _internal_metadata_),
   ~0u,  // no _extensions_
@@ -362,24 +313,20 @@ const ::PROTOBUF_NAMESPACE_ID::uint32 TableStruct_index_2eproto::offsets[] PROTO
   PROTOBUF_FIELD_OFFSET(::Acoustid::Server::PB::SearchResponse, results_),
 };
 static const ::PROTOBUF_NAMESPACE_ID::internal::MigrationSchema schemas[] PROTOBUF_SECTION_VARIABLE(protodesc_cold) = {
-  { 0, -1, sizeof(::Acoustid::Server::PB::GetDocumentRequest)},
-  { 7, -1, sizeof(::Acoustid::Server::PB::GetDocumentResponse)},
-  { 13, -1, sizeof(::Acoustid::Server::PB::GetAttributeRequest)},
-  { 20, -1, sizeof(::Acoustid::Server::PB::GetAttributeResponse)},
-  { 26, -1, sizeof(::Acoustid::Server::PB::InsertOrUpdateDocumentOp)},
-  { 33, -1, sizeof(::Acoustid::Server::PB::DeleteDocumentOp)},
-  { 39, -1, sizeof(::Acoustid::Server::PB::SetAttributeOp)},
-  { 46, -1, sizeof(::Acoustid::Server::PB::Operation)},
-  { 55, -1, sizeof(::Acoustid::Server::PB::UpdateRequest)},
-  { 62, -1, sizeof(::Acoustid::Server::PB::UpdateResponse)},
-  { 67, -1, sizeof(::Acoustid::Server::PB::SearchResult)},
-  { 74, -1, sizeof(::Acoustid::Server::PB::SearchRequest)},
-  { 82, -1, sizeof(::Acoustid::Server::PB::SearchResponse)},
+  { 0, -1, sizeof(::Acoustid::Server::PB::GetAttributeRequest)},
+  { 7, -1, sizeof(::Acoustid::Server::PB::GetAttributeResponse)},
+  { 13, -1, sizeof(::Acoustid::Server::PB::InsertOrUpdateDocumentOp)},
+  { 20, -1, sizeof(::Acoustid::Server::PB::DeleteDocumentOp)},
+  { 26, -1, sizeof(::Acoustid::Server::PB::SetAttributeOp)},
+  { 33, -1, sizeof(::Acoustid::Server::PB::Operation)},
+  { 42, -1, sizeof(::Acoustid::Server::PB::UpdateRequest)},
+  { 49, -1, sizeof(::Acoustid::Server::PB::UpdateResponse)},
+  { 54, -1, sizeof(::Acoustid::Server::PB::SearchResult)},
+  { 61, -1, sizeof(::Acoustid::Server::PB::SearchRequest)},
+  { 69, -1, sizeof(::Acoustid::Server::PB::SearchResponse)},
 };
 
 static ::PROTOBUF_NAMESPACE_ID::Message const * const file_default_instances[] = {
-  reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::Acoustid::Server::PB::_GetDocumentRequest_default_instance_),
-  reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::Acoustid::Server::PB::_GetDocumentResponse_default_instance_),
   reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::Acoustid::Server::PB::_GetAttributeRequest_default_instance_),
   reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::Acoustid::Server::PB::_GetAttributeResponse_default_instance_),
   reinterpret_cast<const ::PROTOBUF_NAMESPACE_ID::Message*>(&::Acoustid::Server::PB::_InsertOrUpdateDocumentOp_default_instance_),
@@ -394,47 +341,40 @@ static ::PROTOBUF_NAMESPACE_ID::Message const * const file_default_instances[] =
 };
 
 const char descriptor_table_protodef_index_2eproto[] PROTOBUF_SECTION_VARIABLE(protodesc_cold) =
-  "\n\013index.proto\022\022Acoustid.Server.PB\"8\n\022Get"
-  "DocumentRequest\022\022\n\nindex_name\030\001 \001(\t\022\016\n\006d"
-  "oc_id\030\002 \001(\r\"$\n\023GetDocumentResponse\022\r\n\005te"
-  "rms\030\002 \003(\r\"7\n\023GetAttributeRequest\022\022\n\ninde"
-  "x_name\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\"%\n\024GetAttribu"
-  "teResponse\022\r\n\005value\030\002 \001(\t\"9\n\030InsertOrUpd"
-  "ateDocumentOp\022\016\n\006doc_id\030\001 \001(\r\022\r\n\005terms\030\002"
-  " \003(\r\"\"\n\020DeleteDocumentOp\022\016\n\006doc_id\030\001 \001(\r"
-  "\"-\n\016SetAttributeOp\022\014\n\004name\030\001 \001(\t\022\r\n\005valu"
-  "e\030\002 \001(\t\"\342\001\n\tOperation\022Q\n\031insert_or_updat"
-  "e_document\030\001 \001(\0132,.Acoustid.Server.PB.In"
-  "sertOrUpdateDocumentOpH\000\022\?\n\017delete_docum"
-  "ent\030\002 \001(\0132$.Acoustid.Server.PB.DeleteDoc"
-  "umentOpH\000\022;\n\rset_attribute\030\003 \001(\0132\".Acous"
-  "tid.Server.PB.SetAttributeOpH\000B\004\n\002op\"O\n\r"
-  "UpdateRequest\022\022\n\nindex_name\030\001 \001(\t\022*\n\003ops"
-  "\030\002 \003(\0132\035.Acoustid.Server.PB.Operation\"\020\n"
-  "\016UpdateResponse\"-\n\014SearchResult\022\016\n\006doc_i"
-  "d\030\001 \001(\r\022\r\n\005score\030\002 \001(\002\"G\n\rSearchRequest\022"
-  "\022\n\nindex_name\030\001 \001(\t\022\r\n\005terms\030\002 \003(\r\022\023\n\013ma"
-  "x_results\030\003 \001(\005\"C\n\016SearchResponse\0221\n\007res"
-  "ults\030\001 \003(\0132 .Acoustid.Server.PB.SearchRe"
-  "sult2\354\002\n\005Index\022^\n\013GetDocument\022&.Acoustid"
-  ".Server.PB.GetDocumentRequest\032\'.Acoustid"
-  ".Server.PB.GetDocumentResponse\022a\n\014GetAtt"
-  "ribute\022\'.Acoustid.Server.PB.GetAttribute"
-  "Request\032(.Acoustid.Server.PB.GetAttribut"
-  "eResponse\022O\n\006Update\022!.Acoustid.Server.PB"
-  ".UpdateRequest\032\".Acoustid.Server.PB.Upda"
-  "teResponse\022O\n\006Search\022!.Acoustid.Server.P"
-  "B.SearchRequest\032\".Acoustid.Server.PB.Sea"
-  "rchResponseb\006proto3"
+  "\n\013index.proto\022\022Acoustid.Server.PB\"7\n\023Get"
+  "AttributeRequest\022\022\n\nindex_name\030\001 \001(\t\022\014\n\004"
+  "name\030\002 \001(\t\"%\n\024GetAttributeResponse\022\r\n\005va"
+  "lue\030\002 \001(\t\"9\n\030InsertOrUpdateDocumentOp\022\016\n"
+  "\006doc_id\030\001 \001(\r\022\r\n\005terms\030\002 \003(\r\"\"\n\020DeleteDo"
+  "cumentOp\022\016\n\006doc_id\030\001 \001(\r\"-\n\016SetAttribute"
+  "Op\022\014\n\004name\030\001 \001(\t\022\r\n\005value\030\002 \001(\t\"\342\001\n\tOper"
+  "ation\022Q\n\031insert_or_update_document\030\001 \001(\013"
+  "2,.Acoustid.Server.PB.InsertOrUpdateDocu"
+  "mentOpH\000\022\?\n\017delete_document\030\002 \001(\0132$.Acou"
+  "stid.Server.PB.DeleteDocumentOpH\000\022;\n\rset"
+  "_attribute\030\003 \001(\0132\".Acoustid.Server.PB.Se"
+  "tAttributeOpH\000B\004\n\002op\"O\n\rUpdateRequest\022\022\n"
+  "\nindex_name\030\001 \001(\t\022*\n\003ops\030\002 \003(\0132\035.Acousti"
+  "d.Server.PB.Operation\"\020\n\016UpdateResponse\""
+  "-\n\014SearchResult\022\016\n\006doc_id\030\001 \001(\r\022\r\n\005score"
+  "\030\002 \001(\002\"G\n\rSearchRequest\022\022\n\nindex_name\030\001 "
+  "\001(\t\022\r\n\005terms\030\002 \003(\r\022\023\n\013max_results\030\003 \001(\005\""
+  "C\n\016SearchResponse\0221\n\007results\030\001 \003(\0132 .Aco"
+  "ustid.Server.PB.SearchResult2\214\002\n\005Index\022a"
+  "\n\014GetAttribute\022\'.Acoustid.Server.PB.GetA"
+  "ttributeRequest\032(.Acoustid.Server.PB.Get"
+  "AttributeResponse\022O\n\006Update\022!.Acoustid.S"
+  "erver.PB.UpdateRequest\032\".Acoustid.Server"
+  ".PB.UpdateResponse\022O\n\006Search\022!.Acoustid."
+  "Server.PB.SearchRequest\032\".Acoustid.Serve"
+  "r.PB.SearchResponseb\006proto3"
   ;
 static const ::PROTOBUF_NAMESPACE_ID::internal::DescriptorTable*const descriptor_table_index_2eproto_deps[1] = {
 };
-static ::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase*const descriptor_table_index_2eproto_sccs[13] = {
+static ::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase*const descriptor_table_index_2eproto_sccs[11] = {
   &scc_info_DeleteDocumentOp_index_2eproto.base,
   &scc_info_GetAttributeRequest_index_2eproto.base,
   &scc_info_GetAttributeResponse_index_2eproto.base,
-  &scc_info_GetDocumentRequest_index_2eproto.base,
-  &scc_info_GetDocumentResponse_index_2eproto.base,
   &scc_info_InsertOrUpdateDocumentOp_index_2eproto.base,
   &scc_info_Operation_index_2eproto.base,
   &scc_info_SearchRequest_index_2eproto.base,
@@ -446,10 +386,10 @@ static ::PROTOBUF_NAMESPACE_ID::internal::SCCInfoBase*const descriptor_table_ind
 };
 static ::PROTOBUF_NAMESPACE_ID::internal::once_flag descriptor_table_index_2eproto_once;
 const ::PROTOBUF_NAMESPACE_ID::internal::DescriptorTable descriptor_table_index_2eproto = {
-  false, false, descriptor_table_protodef_index_2eproto, "index.proto", 1259,
-  &descriptor_table_index_2eproto_once, descriptor_table_index_2eproto_sccs, descriptor_table_index_2eproto_deps, 13, 0,
+  false, false, descriptor_table_protodef_index_2eproto, "index.proto", 1067,
+  &descriptor_table_index_2eproto_once, descriptor_table_index_2eproto_sccs, descriptor_table_index_2eproto_deps, 11, 0,
   schemas, file_default_instances, TableStruct_index_2eproto::offsets,
-  file_level_metadata_index_2eproto, 13, file_level_enum_descriptors_index_2eproto, file_level_service_descriptors_index_2eproto,
+  file_level_metadata_index_2eproto, 11, file_level_enum_descriptors_index_2eproto, file_level_service_descriptors_index_2eproto,
 };
 
 // Force running AddDescriptors() at dynamic initialization time.
@@ -457,451 +397,6 @@ static bool dynamic_init_dummy_index_2eproto = (static_cast<void>(::PROTOBUF_NAM
 namespace Acoustid {
 namespace Server {
 namespace PB {
-
-// ===================================================================
-
-void GetDocumentRequest::InitAsDefaultInstance() {
-}
-class GetDocumentRequest::_Internal {
- public:
-};
-
-GetDocumentRequest::GetDocumentRequest(::PROTOBUF_NAMESPACE_ID::Arena* arena)
-  : ::PROTOBUF_NAMESPACE_ID::Message(arena) {
-  SharedCtor();
-  RegisterArenaDtor(arena);
-  // @@protoc_insertion_point(arena_constructor:Acoustid.Server.PB.GetDocumentRequest)
-}
-GetDocumentRequest::GetDocumentRequest(const GetDocumentRequest& from)
-  : ::PROTOBUF_NAMESPACE_ID::Message() {
-  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
-  index_name_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
-  if (!from._internal_index_name().empty()) {
-    index_name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), from._internal_index_name(),
-      GetArena());
-  }
-  doc_id_ = from.doc_id_;
-  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.GetDocumentRequest)
-}
-
-void GetDocumentRequest::SharedCtor() {
-  ::PROTOBUF_NAMESPACE_ID::internal::InitSCC(&scc_info_GetDocumentRequest_index_2eproto.base);
-  index_name_.UnsafeSetDefault(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
-  doc_id_ = 0u;
-}
-
-GetDocumentRequest::~GetDocumentRequest() {
-  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.GetDocumentRequest)
-  SharedDtor();
-  _internal_metadata_.Delete<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
-}
-
-void GetDocumentRequest::SharedDtor() {
-  GOOGLE_DCHECK(GetArena() == nullptr);
-  index_name_.DestroyNoArena(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited());
-}
-
-void GetDocumentRequest::ArenaDtor(void* object) {
-  GetDocumentRequest* _this = reinterpret_cast< GetDocumentRequest* >(object);
-  (void)_this;
-}
-void GetDocumentRequest::RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena*) {
-}
-void GetDocumentRequest::SetCachedSize(int size) const {
-  _cached_size_.Set(size);
-}
-const GetDocumentRequest& GetDocumentRequest::default_instance() {
-  ::PROTOBUF_NAMESPACE_ID::internal::InitSCC(&::scc_info_GetDocumentRequest_index_2eproto.base);
-  return *internal_default_instance();
-}
-
-
-void GetDocumentRequest::Clear() {
-// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.GetDocumentRequest)
-  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
-  // Prevent compiler warnings about cached_has_bits being unused
-  (void) cached_has_bits;
-
-  index_name_.ClearToEmpty(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
-  doc_id_ = 0u;
-  _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
-}
-
-const char* GetDocumentRequest::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
-#define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
-  ::PROTOBUF_NAMESPACE_ID::Arena* arena = GetArena(); (void)arena;
-  while (!ctx->Done(&ptr)) {
-    ::PROTOBUF_NAMESPACE_ID::uint32 tag;
-    ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
-    CHK_(ptr);
-    switch (tag >> 3) {
-      // string index_name = 1;
-      case 1:
-        if (PROTOBUF_PREDICT_TRUE(static_cast<::PROTOBUF_NAMESPACE_ID::uint8>(tag) == 10)) {
-          auto str = _internal_mutable_index_name();
-          ptr = ::PROTOBUF_NAMESPACE_ID::internal::InlineGreedyStringParser(str, ptr, ctx);
-          CHK_(::PROTOBUF_NAMESPACE_ID::internal::VerifyUTF8(str, "Acoustid.Server.PB.GetDocumentRequest.index_name"));
-          CHK_(ptr);
-        } else goto handle_unusual;
-        continue;
-      // uint32 doc_id = 2;
-      case 2:
-        if (PROTOBUF_PREDICT_TRUE(static_cast<::PROTOBUF_NAMESPACE_ID::uint8>(tag) == 16)) {
-          doc_id_ = ::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr);
-          CHK_(ptr);
-        } else goto handle_unusual;
-        continue;
-      default: {
-      handle_unusual:
-        if ((tag & 7) == 4 || tag == 0) {
-          ctx->SetLastTag(tag);
-          goto success;
-        }
-        ptr = UnknownFieldParse(tag,
-            _internal_metadata_.mutable_unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(),
-            ptr, ctx);
-        CHK_(ptr != nullptr);
-        continue;
-      }
-    }  // switch
-  }  // while
-success:
-  return ptr;
-failure:
-  ptr = nullptr;
-  goto success;
-#undef CHK_
-}
-
-::PROTOBUF_NAMESPACE_ID::uint8* GetDocumentRequest::_InternalSerialize(
-    ::PROTOBUF_NAMESPACE_ID::uint8* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const {
-  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.GetDocumentRequest)
-  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
-  (void) cached_has_bits;
-
-  // string index_name = 1;
-  if (this->index_name().size() > 0) {
-    ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::VerifyUtf8String(
-      this->_internal_index_name().data(), static_cast<int>(this->_internal_index_name().length()),
-      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::SERIALIZE,
-      "Acoustid.Server.PB.GetDocumentRequest.index_name");
-    target = stream->WriteStringMaybeAliased(
-        1, this->_internal_index_name(), target);
-  }
-
-  // uint32 doc_id = 2;
-  if (this->doc_id() != 0) {
-    target = stream->EnsureSpace(target);
-    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::WriteUInt32ToArray(2, this->_internal_doc_id(), target);
-  }
-
-  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
-    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
-        _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
-  }
-  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.GetDocumentRequest)
-  return target;
-}
-
-size_t GetDocumentRequest::ByteSizeLong() const {
-// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.GetDocumentRequest)
-  size_t total_size = 0;
-
-  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
-  // Prevent compiler warnings about cached_has_bits being unused
-  (void) cached_has_bits;
-
-  // string index_name = 1;
-  if (this->index_name().size() > 0) {
-    total_size += 1 +
-      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::StringSize(
-        this->_internal_index_name());
-  }
-
-  // uint32 doc_id = 2;
-  if (this->doc_id() != 0) {
-    total_size += 1 +
-      ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::UInt32Size(
-        this->_internal_doc_id());
-  }
-
-  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
-    return ::PROTOBUF_NAMESPACE_ID::internal::ComputeUnknownFieldsSize(
-        _internal_metadata_, total_size, &_cached_size_);
-  }
-  int cached_size = ::PROTOBUF_NAMESPACE_ID::internal::ToCachedSize(total_size);
-  SetCachedSize(cached_size);
-  return total_size;
-}
-
-void GetDocumentRequest::MergeFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) {
-// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.GetDocumentRequest)
-  GOOGLE_DCHECK_NE(&from, this);
-  const GetDocumentRequest* source =
-      ::PROTOBUF_NAMESPACE_ID::DynamicCastToGenerated<GetDocumentRequest>(
-          &from);
-  if (source == nullptr) {
-  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.GetDocumentRequest)
-    ::PROTOBUF_NAMESPACE_ID::internal::ReflectionOps::Merge(from, this);
-  } else {
-  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.GetDocumentRequest)
-    MergeFrom(*source);
-  }
-}
-
-void GetDocumentRequest::MergeFrom(const GetDocumentRequest& from) {
-// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.GetDocumentRequest)
-  GOOGLE_DCHECK_NE(&from, this);
-  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
-  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
-  (void) cached_has_bits;
-
-  if (from.index_name().size() > 0) {
-    _internal_set_index_name(from._internal_index_name());
-  }
-  if (from.doc_id() != 0) {
-    _internal_set_doc_id(from._internal_doc_id());
-  }
-}
-
-void GetDocumentRequest::CopyFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) {
-// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.GetDocumentRequest)
-  if (&from == this) return;
-  Clear();
-  MergeFrom(from);
-}
-
-void GetDocumentRequest::CopyFrom(const GetDocumentRequest& from) {
-// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.GetDocumentRequest)
-  if (&from == this) return;
-  Clear();
-  MergeFrom(from);
-}
-
-bool GetDocumentRequest::IsInitialized() const {
-  return true;
-}
-
-void GetDocumentRequest::InternalSwap(GetDocumentRequest* other) {
-  using std::swap;
-  _internal_metadata_.Swap<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(&other->_internal_metadata_);
-  index_name_.Swap(&other->index_name_, &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
-  swap(doc_id_, other->doc_id_);
-}
-
-::PROTOBUF_NAMESPACE_ID::Metadata GetDocumentRequest::GetMetadata() const {
-  return GetMetadataStatic();
-}
-
-
-// ===================================================================
-
-void GetDocumentResponse::InitAsDefaultInstance() {
-}
-class GetDocumentResponse::_Internal {
- public:
-};
-
-GetDocumentResponse::GetDocumentResponse(::PROTOBUF_NAMESPACE_ID::Arena* arena)
-  : ::PROTOBUF_NAMESPACE_ID::Message(arena),
-  terms_(arena) {
-  SharedCtor();
-  RegisterArenaDtor(arena);
-  // @@protoc_insertion_point(arena_constructor:Acoustid.Server.PB.GetDocumentResponse)
-}
-GetDocumentResponse::GetDocumentResponse(const GetDocumentResponse& from)
-  : ::PROTOBUF_NAMESPACE_ID::Message(),
-      terms_(from.terms_) {
-  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
-  // @@protoc_insertion_point(copy_constructor:Acoustid.Server.PB.GetDocumentResponse)
-}
-
-void GetDocumentResponse::SharedCtor() {
-}
-
-GetDocumentResponse::~GetDocumentResponse() {
-  // @@protoc_insertion_point(destructor:Acoustid.Server.PB.GetDocumentResponse)
-  SharedDtor();
-  _internal_metadata_.Delete<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
-}
-
-void GetDocumentResponse::SharedDtor() {
-  GOOGLE_DCHECK(GetArena() == nullptr);
-}
-
-void GetDocumentResponse::ArenaDtor(void* object) {
-  GetDocumentResponse* _this = reinterpret_cast< GetDocumentResponse* >(object);
-  (void)_this;
-}
-void GetDocumentResponse::RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena*) {
-}
-void GetDocumentResponse::SetCachedSize(int size) const {
-  _cached_size_.Set(size);
-}
-const GetDocumentResponse& GetDocumentResponse::default_instance() {
-  ::PROTOBUF_NAMESPACE_ID::internal::InitSCC(&::scc_info_GetDocumentResponse_index_2eproto.base);
-  return *internal_default_instance();
-}
-
-
-void GetDocumentResponse::Clear() {
-// @@protoc_insertion_point(message_clear_start:Acoustid.Server.PB.GetDocumentResponse)
-  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
-  // Prevent compiler warnings about cached_has_bits being unused
-  (void) cached_has_bits;
-
-  terms_.Clear();
-  _internal_metadata_.Clear<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>();
-}
-
-const char* GetDocumentResponse::_InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) {
-#define CHK_(x) if (PROTOBUF_PREDICT_FALSE(!(x))) goto failure
-  ::PROTOBUF_NAMESPACE_ID::Arena* arena = GetArena(); (void)arena;
-  while (!ctx->Done(&ptr)) {
-    ::PROTOBUF_NAMESPACE_ID::uint32 tag;
-    ptr = ::PROTOBUF_NAMESPACE_ID::internal::ReadTag(ptr, &tag);
-    CHK_(ptr);
-    switch (tag >> 3) {
-      // repeated uint32 terms = 2;
-      case 2:
-        if (PROTOBUF_PREDICT_TRUE(static_cast<::PROTOBUF_NAMESPACE_ID::uint8>(tag) == 18)) {
-          ptr = ::PROTOBUF_NAMESPACE_ID::internal::PackedUInt32Parser(_internal_mutable_terms(), ptr, ctx);
-          CHK_(ptr);
-        } else if (static_cast<::PROTOBUF_NAMESPACE_ID::uint8>(tag) == 16) {
-          _internal_add_terms(::PROTOBUF_NAMESPACE_ID::internal::ReadVarint32(&ptr));
-          CHK_(ptr);
-        } else goto handle_unusual;
-        continue;
-      default: {
-      handle_unusual:
-        if ((tag & 7) == 4 || tag == 0) {
-          ctx->SetLastTag(tag);
-          goto success;
-        }
-        ptr = UnknownFieldParse(tag,
-            _internal_metadata_.mutable_unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(),
-            ptr, ctx);
-        CHK_(ptr != nullptr);
-        continue;
-      }
-    }  // switch
-  }  // while
-success:
-  return ptr;
-failure:
-  ptr = nullptr;
-  goto success;
-#undef CHK_
-}
-
-::PROTOBUF_NAMESPACE_ID::uint8* GetDocumentResponse::_InternalSerialize(
-    ::PROTOBUF_NAMESPACE_ID::uint8* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const {
-  // @@protoc_insertion_point(serialize_to_array_start:Acoustid.Server.PB.GetDocumentResponse)
-  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
-  (void) cached_has_bits;
-
-  // repeated uint32 terms = 2;
-  {
-    int byte_size = _terms_cached_byte_size_.load(std::memory_order_relaxed);
-    if (byte_size > 0) {
-      target = stream->WriteUInt32Packed(
-          2, _internal_terms(), byte_size, target);
-    }
-  }
-
-  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
-    target = ::PROTOBUF_NAMESPACE_ID::internal::WireFormat::InternalSerializeUnknownFieldsToArray(
-        _internal_metadata_.unknown_fields<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(::PROTOBUF_NAMESPACE_ID::UnknownFieldSet::default_instance), target, stream);
-  }
-  // @@protoc_insertion_point(serialize_to_array_end:Acoustid.Server.PB.GetDocumentResponse)
-  return target;
-}
-
-size_t GetDocumentResponse::ByteSizeLong() const {
-// @@protoc_insertion_point(message_byte_size_start:Acoustid.Server.PB.GetDocumentResponse)
-  size_t total_size = 0;
-
-  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
-  // Prevent compiler warnings about cached_has_bits being unused
-  (void) cached_has_bits;
-
-  // repeated uint32 terms = 2;
-  {
-    size_t data_size = ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::
-      UInt32Size(this->terms_);
-    if (data_size > 0) {
-      total_size += 1 +
-        ::PROTOBUF_NAMESPACE_ID::internal::WireFormatLite::Int32Size(
-            static_cast<::PROTOBUF_NAMESPACE_ID::int32>(data_size));
-    }
-    int cached_size = ::PROTOBUF_NAMESPACE_ID::internal::ToCachedSize(data_size);
-    _terms_cached_byte_size_.store(cached_size,
-                                    std::memory_order_relaxed);
-    total_size += data_size;
-  }
-
-  if (PROTOBUF_PREDICT_FALSE(_internal_metadata_.have_unknown_fields())) {
-    return ::PROTOBUF_NAMESPACE_ID::internal::ComputeUnknownFieldsSize(
-        _internal_metadata_, total_size, &_cached_size_);
-  }
-  int cached_size = ::PROTOBUF_NAMESPACE_ID::internal::ToCachedSize(total_size);
-  SetCachedSize(cached_size);
-  return total_size;
-}
-
-void GetDocumentResponse::MergeFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) {
-// @@protoc_insertion_point(generalized_merge_from_start:Acoustid.Server.PB.GetDocumentResponse)
-  GOOGLE_DCHECK_NE(&from, this);
-  const GetDocumentResponse* source =
-      ::PROTOBUF_NAMESPACE_ID::DynamicCastToGenerated<GetDocumentResponse>(
-          &from);
-  if (source == nullptr) {
-  // @@protoc_insertion_point(generalized_merge_from_cast_fail:Acoustid.Server.PB.GetDocumentResponse)
-    ::PROTOBUF_NAMESPACE_ID::internal::ReflectionOps::Merge(from, this);
-  } else {
-  // @@protoc_insertion_point(generalized_merge_from_cast_success:Acoustid.Server.PB.GetDocumentResponse)
-    MergeFrom(*source);
-  }
-}
-
-void GetDocumentResponse::MergeFrom(const GetDocumentResponse& from) {
-// @@protoc_insertion_point(class_specific_merge_from_start:Acoustid.Server.PB.GetDocumentResponse)
-  GOOGLE_DCHECK_NE(&from, this);
-  _internal_metadata_.MergeFrom<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(from._internal_metadata_);
-  ::PROTOBUF_NAMESPACE_ID::uint32 cached_has_bits = 0;
-  (void) cached_has_bits;
-
-  terms_.MergeFrom(from.terms_);
-}
-
-void GetDocumentResponse::CopyFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) {
-// @@protoc_insertion_point(generalized_copy_from_start:Acoustid.Server.PB.GetDocumentResponse)
-  if (&from == this) return;
-  Clear();
-  MergeFrom(from);
-}
-
-void GetDocumentResponse::CopyFrom(const GetDocumentResponse& from) {
-// @@protoc_insertion_point(class_specific_copy_from_start:Acoustid.Server.PB.GetDocumentResponse)
-  if (&from == this) return;
-  Clear();
-  MergeFrom(from);
-}
-
-bool GetDocumentResponse::IsInitialized() const {
-  return true;
-}
-
-void GetDocumentResponse::InternalSwap(GetDocumentResponse* other) {
-  using std::swap;
-  _internal_metadata_.Swap<::PROTOBUF_NAMESPACE_ID::UnknownFieldSet>(&other->_internal_metadata_);
-  terms_.InternalSwap(&other->terms_);
-}
-
-::PROTOBUF_NAMESPACE_ID::Metadata GetDocumentResponse::GetMetadata() const {
-  return GetMetadataStatic();
-}
-
 
 // ===================================================================
 
@@ -3536,12 +3031,6 @@ void SearchResponse::InternalSwap(SearchResponse* other) {
 }  // namespace Server
 }  // namespace Acoustid
 PROTOBUF_NAMESPACE_OPEN
-template<> PROTOBUF_NOINLINE ::Acoustid::Server::PB::GetDocumentRequest* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::GetDocumentRequest >(Arena* arena) {
-  return Arena::CreateMessageInternal< ::Acoustid::Server::PB::GetDocumentRequest >(arena);
-}
-template<> PROTOBUF_NOINLINE ::Acoustid::Server::PB::GetDocumentResponse* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::GetDocumentResponse >(Arena* arena) {
-  return Arena::CreateMessageInternal< ::Acoustid::Server::PB::GetDocumentResponse >(arena);
-}
 template<> PROTOBUF_NOINLINE ::Acoustid::Server::PB::GetAttributeRequest* Arena::CreateMaybeMessage< ::Acoustid::Server::PB::GetAttributeRequest >(Arena* arena) {
   return Arena::CreateMessageInternal< ::Acoustid::Server::PB::GetAttributeRequest >(arena);
 }
