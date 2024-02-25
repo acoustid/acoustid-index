@@ -13,6 +13,9 @@ class IndexServiceImpl final : public fpindex::Index::Service {
  public:
     IndexServiceImpl(QSharedPointer<MultiIndex> indexes, QSharedPointer<Metrics> metrics);
 
+    virtual ::grpc::Status ListIndexes(::grpc::ServerContext* context, const fpindex::ListIndexesRequest* request,
+                                    fpindex::ListIndexesResponse* response) override;
+
     virtual ::grpc::Status GetIndex(::grpc::ServerContext* context, const fpindex::GetIndexRequest* request,
                                     fpindex::GetIndexResponse* response) override;
 

@@ -30,6 +30,7 @@ class Directory {
     virtual InputStream *openFile(const QString &name) = 0;
     virtual void renameFile(const QString &oldName, const QString &newName) = 0;
     virtual QStringList listFiles() = 0;
+    virtual QStringList listDirectories() = 0;
     virtual bool fileExists(const QString &name);
 
     virtual Directory *openDirectory(const QString &name) = 0;

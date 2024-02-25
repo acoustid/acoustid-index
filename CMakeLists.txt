@@ -232,6 +232,7 @@ set(tests_SOURCES
 	src/util/tests.cpp
 	src/server/session_test.cpp
 	src/server/http_test.cpp
+	src/server/grpc/service_test.cpp
 )
 
 install(

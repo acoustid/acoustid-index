@@ -79,6 +79,12 @@ QStringList FSDirectory::listFiles() {
     return dir.entryList(QStringList(), QDir::Files);
 }
 
+QStringList FSDirectory::listDirectories() {
+    QMutexLocker locker(&m_mutex);
+    QDir dir(m_path);
+    return dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+}
+
 bool FSDirectory::fileExists(const QString &name) {
     QMutexLocker locker(&m_mutex);
     return QFile::exists(filePath(name));

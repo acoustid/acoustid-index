@@ -30,6 +30,7 @@ class FSDirectory : public Directory {
     virtual InputStream *openFile(const QString &name);
     virtual void renameFile(const QString &oldName, const QString &newName);
     QStringList listFiles();
+    QStringList listDirectories();
     bool fileExists(const QString &name);
     virtual void sync(const QStringList &names);
 
