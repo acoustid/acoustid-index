@@ -187,7 +187,7 @@ void Index::applyUpdates(const OpBatch &batch) {
 
 }
 
-std::vector<SearchResult> Index::search(const std::vector<uint32_t> &terms, int64_t timeoutInMSecs) {
+std::vector<SearchResult> Index::search(const std::vector<uint32_t> &hashes, int64_t timeoutInMSecs) {
     auto reader = openReader();
-    return reader->search(terms.data(), terms.size(), timeoutInMSecs);
+    return reader->search(hashes, timeoutInMSecs);
 }

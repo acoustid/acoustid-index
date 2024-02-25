@@ -10,7 +10,6 @@
 namespace Acoustid {
 
 class SegmentDataReader;
-class Collector;
 
 class SegmentSearcher
 {
@@ -18,12 +17,7 @@ public:
 	SegmentSearcher(SegmentIndexSharedPtr index, SegmentDataReader *dataReader, uint32_t lastKey = UINT32_MAX);
 	virtual ~SegmentSearcher();
 
-	/**
-	 * Search for the fingerprint in one segment.
-	 *
-	 * The fingerprint must be sorted.
-	 */
-	void search(uint32_t *fingerprint, size_t length, Collector *collector);
+	void search(const std::vector<uint32_t> &hashes, std::unordered_map<uint32_t, int> &hits);
 
 private:
 	SegmentIndexSharedPtr m_index;

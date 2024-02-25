@@ -38,31 +38,33 @@ SegmentDataReader* IndexReader::segmentDataReader(const SegmentInfo& segment)
 	return new SegmentDataReader(m_dir->openFile(segment.dataFileName()), BLOCK_SIZE);
 }
 
-void IndexReader::search(const uint32_t* fingerprint, size_t length, Collector* collector, int64_t timeoutInMSecs)
+std::vector<SearchResult> IndexReader::search(const std::vector<uint32_t> &hashesIn, int64_t timeoutInMSecs)
 {
     auto deadline = timeoutInMSecs > 0 ? (QDateTime::currentMSecsSinceEpoch() + timeoutInMSecs) : 0;
-    std::vector<uint32_t> fp(fingerprint, fingerprint + length);
-	std::sort(fp.begin(), fp.end());
-	const SegmentInfoList& segments = m_info.segments();
-	for (int i = 0; i < segments.size(); i++) {
-        if (deadline > 0) {
-            if (QDateTime::currentMSecsSinceEpoch() > deadline) {
-                throw TimeoutExceeded();
-            }
-        }
-		const SegmentInfo& s = segments.at(i);
-		SegmentSearcher searcher(s.index(), segmentDataReader(s), s.lastKey());
-		searcher.search(fp.data(), fp.size(), collector);
-	}
-}
 
-std::vector<SearchResult> IndexReader::search(const uint32_t* fingerprint, size_t length, int64_t timeoutInMSecs)
-{
-    TopHitsCollector collector(1000);
-    search(fingerprint, length, &collector, timeoutInMSecs);
-    std::vector<SearchResult> results;
-    for (const auto result : collector.topResults()) {
-        results.emplace_back(result.id(), result.score());
+    std::vector<uint32_t> hashes(hashesIn);
+    std::sort(hashes.begin(), hashes.end());
+
+    std::unordered_map<uint32_t, int> hits;
+
+    const SegmentInfoList& segments = m_info.segments();
+    for (auto segment : segments) {
+	if (deadline > 0) {
+	    if (QDateTime::currentMSecsSinceEpoch() > deadline) {
+		throw TimeoutExceeded();
+	    }
+	}
+	SegmentSearcher searcher(segment.index(), segmentDataReader(segment), segment.lastKey());
+	searcher.search(hashes, hits);
     }
+
+    std::vector<SearchResult> results;
+    results.reserve(hits.size());
+    for (const auto &hit : hits) {
+	results.emplace_back(hit.first, hit.second);
+    }
+
+    sortSearchResults(results);
+
     return results;
 }

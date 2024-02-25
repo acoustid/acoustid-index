@@ -6,7 +6,7 @@
 
 #include <QMutex>
 #include <QSharedPointer>
-#include "index/top_hits_collector.h"
+#include "index/search_result.h"
 
 namespace Acoustid {
 
@@ -28,8 +28,8 @@ public:
     void rollback();
     void optimize();
     void cleanup();
-    void insert(uint32_t id, const QVector<uint32_t> &hashes);
-    QList<Result> search(const QVector<uint32_t> &hashes);
+    void insert(uint32_t id, const std::vector<uint32_t> &hashes);
+    std::vector<SearchResult> search(const std::vector<uint32_t> &hashes);
 
     QString getAttribute(const QString &name);
     void setAttribute(const QString &name, const QString &value);

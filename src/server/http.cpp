@@ -204,17 +204,13 @@ static HttpResponse handleSearchRequest(const HttpRequest &request, const QShare
         limit = 100;
     }
 
-    auto collector = QSharedPointer<TopHitsCollector>::create(limit);
-    {
-        auto reader = index->openReader();
-        reader->search(query.data(), query.size(), collector.data());
-    }
-    auto results = collector->topResults();
+    auto results = index->search(query);
+    filterSearchResults(results, limit);
 
     QJsonArray resultsJson;
     for (auto &result : results) {
         resultsJson.append(QJsonObject{
-            {"id", qint64(result.id())},
+            {"id", qint64(result.docId())},
             {"score", result.score()},
         });
     }

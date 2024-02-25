@@ -5,7 +5,6 @@
 #include "errors.h"
 #include "index/index.h"
 #include "index/index_writer.h"
-#include "index/top_hits_collector.h"
 
 using namespace Acoustid;
 using namespace Acoustid::Server;
@@ -99,7 +98,7 @@ void Session::setAttribute(const QString &name, const QString &value) {
     m_indexWriter->setAttribute(name, value);
 }
 
-void Session::insert(uint32_t id, const QVector<uint32_t> &hashes) {
+void Session::insert(uint32_t id, const std::vector<uint32_t> &hashes) {
     QMutexLocker locker(&m_mutex);
     if (m_indexWriter.isNull()) {
         throw NotInTransactionException();
@@ -107,16 +106,16 @@ void Session::insert(uint32_t id, const QVector<uint32_t> &hashes) {
     m_indexWriter->addDocument(id, hashes.data(), hashes.size());
 }
 
-QList<Result> Session::search(const QVector<uint32_t> &hashes) {
+std::vector<SearchResult> Session::search(const std::vector<uint32_t> &hashes) {
     QMutexLocker locker(&m_mutex);
-    TopHitsCollector collector(m_maxResults, m_topScorePercent);
+    std::vector<SearchResult> results;
     try {
-        auto reader = m_index->openReader();
-        reader->search(hashes.data(), hashes.size(), &collector, m_timeout);
+        results = m_index->search(hashes, m_timeout);
     } catch (TimeoutExceeded &ex) {
         throw HandlerException("timeout exceeded");
     }
-    return collector.topResults();
+    filterSearchResults(results, m_maxResults, m_topScorePercent);
+    return results;
 }
 
 QString Session::getTraceId() {

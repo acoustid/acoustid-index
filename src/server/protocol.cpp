@@ -4,9 +4,9 @@
 
 namespace Acoustid { namespace Server {
 
-QVector<uint32_t> parseFingerprint(const QString &input) {
-	QStringList inputParts = input.split(',');
-    QVector<uint32_t> output;
+std::vector<uint32_t> parseFingerprint(const QString &input) {
+    QStringList inputParts = input.split(',');
+    std::vector<uint32_t> output;
     output.reserve(inputParts.size());
     for (int i = 0; i < inputParts.size(); i++) {
         bool ok;
@@ -14,9 +14,9 @@ QVector<uint32_t> parseFingerprint(const QString &input) {
         if (!ok) {
             throw HandlerException("invalid fingerprint");
         }
-        output.append(value);
+        output.push_back(value);
     }
-    if (output.isEmpty()) {
+    if (output.empty()) {
         throw HandlerException("empty fingerprint");
     }
     return output;
@@ -92,9 +92,9 @@ ScopedHandlerFunc buildHandler(const QString &command, const QStringList &args) 
             auto results = session->search(hashes);
             QStringList output;
             output.reserve(results.size());
-            for (int i = 0; i < results.size(); i++) {
-                output.append(QString("%1:%2").arg(results[i].id()).arg(results[i].score()));
-            }
+	    for (auto result : results) {
+		output.append(QString("%1:%2").arg(result.docId()).arg(result.score()));
+	    }
 	    QString outputString = output.join(" ");
 	    session->clearTraceId();
             return outputString;
