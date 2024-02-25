@@ -11,7 +11,6 @@
 #include "segment_searcher.h"
 #include "index.h"
 #include "index_reader.h"
-#include "top_hits_collector.h"
 
 using namespace Acoustid;
 

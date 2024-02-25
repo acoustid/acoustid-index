@@ -5,7 +5,6 @@
 #include "index/index.h"
 #include "index/index_writer.h"
 #include "index/multi_index.h"
-#include "index/top_hits_collector.h"
 #include "metrics.h"
 
 using namespace qhttp;
