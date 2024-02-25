@@ -117,6 +117,10 @@ int main(int argc, char **argv)
         .setHelp("use specific number of threads")
         .setDefaultValue("0");
 
+    parser.addOption("no-root-index")
+	.setHelp("do not create the root index")
+	.setDefaultValue("NOT_SET");
+
     // clang-format on
 
     std::unique_ptr<Options> opts(parser.parse(argc, argv));
@@ -143,6 +147,12 @@ int main(int argc, char **argv)
     auto indexesDir = QSharedPointer<FSDirectory>::create(path, true);
     auto indexes = QSharedPointer<MultiIndex>::create(indexesDir);
     auto metrics = QSharedPointer<Metrics>::create();
+
+    auto noRootIndex = opts->option("no-root-index");
+    if (noRootIndex == "NOT_SET") {
+    	qDebug() << "Creating (legacy) root index";
+	indexes->createRootIndex();
+    }
 
     Listener::setupSignalHandlers();
 

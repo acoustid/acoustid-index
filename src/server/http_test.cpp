@@ -92,7 +92,7 @@ TEST_F(HttpTest, TestPutIndex) {
     ASSERT_EQ(response.body().toStdString(), "{\"revision\":1}");
 }
 
-TEST_F(HttpTest, TestPutIndexAleadyExists) {
+TEST_F(HttpTest, TestPutIndexAlreadyExists) {
     indexes->createIndex("testidx");
     auto request = HttpRequest(HTTP_PUT, QUrl("/testidx"));
     auto response = handler->router().handle(request);
