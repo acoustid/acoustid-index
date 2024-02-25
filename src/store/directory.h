@@ -33,7 +33,7 @@ class Directory {
     virtual QStringList listDirectories() = 0;
     virtual bool fileExists(const QString &name);
 
-    virtual Directory *openDirectory(const QString &name) = 0;
+    virtual QSharedPointer<Directory> openDirectory(const QString &name) = 0;
 
     virtual bool exists() = 0;
     virtual void ensureExists() = 0;
