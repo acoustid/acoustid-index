@@ -53,7 +53,11 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y qtbase5-dev libgtest-dev
+        sudo apt-get install -y qt6-base-dev libgtest-dev libgrpc++-dev protobuf-compiler-grpc protobuf-compiler libsqlite3-dev
+
+    - name: Build proto files
+      run: |
+        ./update_proto.sh
 
     # Autobuild attempts to build any compiled languages  (C/C++, C#, or Java).
     # If this step fails, then you should remove it and run the build manually (see below)
