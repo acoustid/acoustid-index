@@ -2,12 +2,6 @@ FROM ubuntu:22.04
 
 RUN useradd -m -s /bin/bash -u 1000 acoustid
 
-<<<<<<< HEAD
-=======
-RUN apt-get update && \
-    apt-get install -y libqt6network6 libqt6core6 libstdc++6 libgcc1 libgcc-s1
-
->>>>>>> origin/stable
 ADD acoustid-index.deb /tmp/
 RUN apt update && apt install -y /tmp/acoustid-index.deb && rm /tmp/acoustid-index.deb
 
