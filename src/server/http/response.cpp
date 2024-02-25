@@ -28,7 +28,7 @@ void HttpResponse::send(qhttp::server::QHttpRequest *req, qhttp::server::QHttpRe
         res->end();
         return;
     }
-    res->addHeaderValue("Content-Length", m_body.size());
+    res->addHeaderValue("Content-Length", static_cast<size_t>(m_body.size()));
     res->end(m_body);
 }
 

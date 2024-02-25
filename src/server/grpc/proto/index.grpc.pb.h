@@ -7,23 +7,24 @@
 #include "index.pb.h"
 
 #include <functional>
+#include <grpc/impl/codegen/port_platform.h>
 #include <grpcpp/impl/codegen/async_generic_service.h>
 #include <grpcpp/impl/codegen/async_stream.h>
 #include <grpcpp/impl/codegen/async_unary_call.h>
-#include <grpcpp/impl/codegen/method_handler_impl.h>
+#include <grpcpp/impl/codegen/client_callback.h>
+#include <grpcpp/impl/codegen/client_context.h>
+#include <grpcpp/impl/codegen/completion_queue.h>
+#include <grpcpp/impl/codegen/message_allocator.h>
+#include <grpcpp/impl/codegen/method_handler.h>
 #include <grpcpp/impl/codegen/proto_utils.h>
 #include <grpcpp/impl/codegen/rpc_method.h>
+#include <grpcpp/impl/codegen/server_callback.h>
+#include <grpcpp/impl/codegen/server_callback_handlers.h>
+#include <grpcpp/impl/codegen/server_context.h>
 #include <grpcpp/impl/codegen/service_type.h>
 #include <grpcpp/impl/codegen/status.h>
 #include <grpcpp/impl/codegen/stub_options.h>
 #include <grpcpp/impl/codegen/sync_stream.h>
-
-namespace grpc {
-class CompletionQueue;
-class Channel;
-class ServerCompletionQueue;
-class ServerContext;
-}  // namespace grpc
 
 namespace Acoustid {
 namespace Server {
@@ -69,10 +70,60 @@ class Index final {
      public:
       virtual ~experimental_async_interface() {}
       virtual void GetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response, std::function<void(::grpc::Status)>) = 0;
+      virtual void GetDocument(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetDocumentResponse* response, std::function<void(::grpc::Status)>) = 0;
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      virtual void GetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      #else
+      virtual void GetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) = 0;
+      #endif
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      virtual void GetDocument(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetDocumentResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      #else
+      virtual void GetDocument(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetDocumentResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) = 0;
+      #endif
       virtual void GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response, std::function<void(::grpc::Status)>) = 0;
+      virtual void GetAttribute(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetAttributeResponse* response, std::function<void(::grpc::Status)>) = 0;
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      virtual void GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      #else
+      virtual void GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) = 0;
+      #endif
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      virtual void GetAttribute(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetAttributeResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      #else
+      virtual void GetAttribute(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetAttributeResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) = 0;
+      #endif
       virtual void Update(::grpc::ClientContext* context, const ::Acoustid::Server::PB::UpdateRequest* request, ::Acoustid::Server::PB::UpdateResponse* response, std::function<void(::grpc::Status)>) = 0;
+      virtual void Update(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::UpdateResponse* response, std::function<void(::grpc::Status)>) = 0;
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      virtual void Update(::grpc::ClientContext* context, const ::Acoustid::Server::PB::UpdateRequest* request, ::Acoustid::Server::PB::UpdateResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      #else
+      virtual void Update(::grpc::ClientContext* context, const ::Acoustid::Server::PB::UpdateRequest* request, ::Acoustid::Server::PB::UpdateResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) = 0;
+      #endif
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      virtual void Update(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::UpdateResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      #else
+      virtual void Update(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::UpdateResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) = 0;
+      #endif
       virtual void Search(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest* request, ::Acoustid::Server::PB::SearchResponse* response, std::function<void(::grpc::Status)>) = 0;
+      virtual void Search(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::SearchResponse* response, std::function<void(::grpc::Status)>) = 0;
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      virtual void Search(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest* request, ::Acoustid::Server::PB::SearchResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      #else
+      virtual void Search(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest* request, ::Acoustid::Server::PB::SearchResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) = 0;
+      #endif
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      virtual void Search(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::SearchResponse* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      #else
+      virtual void Search(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::SearchResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) = 0;
+      #endif
     };
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+    typedef class experimental_async_interface async_interface;
+    #endif
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+    async_interface* async() { return experimental_async(); }
+    #endif
     virtual class experimental_async_interface* experimental_async() { return nullptr; }
   private:
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::Acoustid::Server::PB::GetDocumentResponse>* AsyncGetDocumentRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest& request, ::grpc::CompletionQueue* cq) = 0;
@@ -119,9 +170,53 @@ class Index final {
       public StubInterface::experimental_async_interface {
      public:
       void GetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response, std::function<void(::grpc::Status)>) override;
+      void GetDocument(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetDocumentResponse* response, std::function<void(::grpc::Status)>) override;
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      void GetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      #else
+      void GetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) override;
+      #endif
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      void GetDocument(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetDocumentResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      #else
+      void GetDocument(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetDocumentResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) override;
+      #endif
       void GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response, std::function<void(::grpc::Status)>) override;
+      void GetAttribute(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetAttributeResponse* response, std::function<void(::grpc::Status)>) override;
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      void GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      #else
+      void GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) override;
+      #endif
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      void GetAttribute(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetAttributeResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      #else
+      void GetAttribute(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetAttributeResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) override;
+      #endif
       void Update(::grpc::ClientContext* context, const ::Acoustid::Server::PB::UpdateRequest* request, ::Acoustid::Server::PB::UpdateResponse* response, std::function<void(::grpc::Status)>) override;
+      void Update(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::UpdateResponse* response, std::function<void(::grpc::Status)>) override;
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      void Update(::grpc::ClientContext* context, const ::Acoustid::Server::PB::UpdateRequest* request, ::Acoustid::Server::PB::UpdateResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      #else
+      void Update(::grpc::ClientContext* context, const ::Acoustid::Server::PB::UpdateRequest* request, ::Acoustid::Server::PB::UpdateResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) override;
+      #endif
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      void Update(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::UpdateResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      #else
+      void Update(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::UpdateResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) override;
+      #endif
       void Search(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest* request, ::Acoustid::Server::PB::SearchResponse* response, std::function<void(::grpc::Status)>) override;
+      void Search(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::SearchResponse* response, std::function<void(::grpc::Status)>) override;
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      void Search(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest* request, ::Acoustid::Server::PB::SearchResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      #else
+      void Search(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest* request, ::Acoustid::Server::PB::SearchResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) override;
+      #endif
+      #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      void Search(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::SearchResponse* response, ::grpc::ClientUnaryReactor* reactor) override;
+      #else
+      void Search(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::SearchResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) override;
+      #endif
      private:
       friend class Stub;
       explicit experimental_async(Stub* stub): stub_(stub) { }
@@ -160,7 +255,7 @@ class Index final {
   template <class BaseClass>
   class WithAsyncMethod_GetDocument : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_GetDocument() {
       ::grpc::Service::MarkMethodAsync(0);
@@ -169,7 +264,7 @@ class Index final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status GetDocument(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response) override {
+    ::grpc::Status GetDocument(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::GetDocumentRequest* /*request*/, ::Acoustid::Server::PB::GetDocumentResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -180,7 +275,7 @@ class Index final {
   template <class BaseClass>
   class WithAsyncMethod_GetAttribute : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_GetAttribute() {
       ::grpc::Service::MarkMethodAsync(1);
@@ -189,7 +284,7 @@ class Index final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status GetAttribute(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response) override {
+    ::grpc::Status GetAttribute(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::GetAttributeRequest* /*request*/, ::Acoustid::Server::PB::GetAttributeResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -200,7 +295,7 @@ class Index final {
   template <class BaseClass>
   class WithAsyncMethod_Update : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_Update() {
       ::grpc::Service::MarkMethodAsync(2);
@@ -209,7 +304,7 @@ class Index final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status Update(::grpc::ServerContext* context, const ::Acoustid::Server::PB::UpdateRequest* request, ::Acoustid::Server::PB::UpdateResponse* response) override {
+    ::grpc::Status Update(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::UpdateRequest* /*request*/, ::Acoustid::Server::PB::UpdateResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -220,7 +315,7 @@ class Index final {
   template <class BaseClass>
   class WithAsyncMethod_Search : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithAsyncMethod_Search() {
       ::grpc::Service::MarkMethodAsync(3);
@@ -229,7 +324,7 @@ class Index final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status Search(::grpc::ServerContext* context, const ::Acoustid::Server::PB::SearchRequest* request, ::Acoustid::Server::PB::SearchResponse* response) override {
+    ::grpc::Status Search(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::SearchRequest* /*request*/, ::Acoustid::Server::PB::SearchResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -239,9 +334,202 @@ class Index final {
   };
   typedef WithAsyncMethod_GetDocument<WithAsyncMethod_GetAttribute<WithAsyncMethod_Update<WithAsyncMethod_Search<Service > > > > AsyncService;
   template <class BaseClass>
+  class ExperimentalWithCallbackMethod_GetDocument : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    ExperimentalWithCallbackMethod_GetDocument() {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::Service::
+    #else
+      ::grpc::Service::experimental().
+    #endif
+        MarkMethodCallback(0,
+          new ::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::GetDocumentRequest, ::Acoustid::Server::PB::GetDocumentResponse>(
+            [this](
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+                   ::grpc::CallbackServerContext*
+    #else
+                   ::grpc::experimental::CallbackServerContext*
+    #endif
+                     context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response) { return this->GetDocument(context, request, response); }));}
+    void SetMessageAllocatorFor_GetDocument(
+        ::grpc::experimental::MessageAllocator< ::Acoustid::Server::PB::GetDocumentRequest, ::Acoustid::Server::PB::GetDocumentResponse>* allocator) {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(0);
+    #else
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::experimental().GetHandler(0);
+    #endif
+      static_cast<::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::GetDocumentRequest, ::Acoustid::Server::PB::GetDocumentResponse>*>(handler)
+              ->SetMessageAllocator(allocator);
+    }
+    ~ExperimentalWithCallbackMethod_GetDocument() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status GetDocument(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::GetDocumentRequest* /*request*/, ::Acoustid::Server::PB::GetDocumentResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+    virtual ::grpc::ServerUnaryReactor* GetDocument(
+      ::grpc::CallbackServerContext* /*context*/, const ::Acoustid::Server::PB::GetDocumentRequest* /*request*/, ::Acoustid::Server::PB::GetDocumentResponse* /*response*/)
+    #else
+    virtual ::grpc::experimental::ServerUnaryReactor* GetDocument(
+      ::grpc::experimental::CallbackServerContext* /*context*/, const ::Acoustid::Server::PB::GetDocumentRequest* /*request*/, ::Acoustid::Server::PB::GetDocumentResponse* /*response*/)
+    #endif
+      { return nullptr; }
+  };
+  template <class BaseClass>
+  class ExperimentalWithCallbackMethod_GetAttribute : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    ExperimentalWithCallbackMethod_GetAttribute() {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::Service::
+    #else
+      ::grpc::Service::experimental().
+    #endif
+        MarkMethodCallback(1,
+          new ::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::GetAttributeRequest, ::Acoustid::Server::PB::GetAttributeResponse>(
+            [this](
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+                   ::grpc::CallbackServerContext*
+    #else
+                   ::grpc::experimental::CallbackServerContext*
+    #endif
+                     context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response) { return this->GetAttribute(context, request, response); }));}
+    void SetMessageAllocatorFor_GetAttribute(
+        ::grpc::experimental::MessageAllocator< ::Acoustid::Server::PB::GetAttributeRequest, ::Acoustid::Server::PB::GetAttributeResponse>* allocator) {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(1);
+    #else
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::experimental().GetHandler(1);
+    #endif
+      static_cast<::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::GetAttributeRequest, ::Acoustid::Server::PB::GetAttributeResponse>*>(handler)
+              ->SetMessageAllocator(allocator);
+    }
+    ~ExperimentalWithCallbackMethod_GetAttribute() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status GetAttribute(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::GetAttributeRequest* /*request*/, ::Acoustid::Server::PB::GetAttributeResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+    virtual ::grpc::ServerUnaryReactor* GetAttribute(
+      ::grpc::CallbackServerContext* /*context*/, const ::Acoustid::Server::PB::GetAttributeRequest* /*request*/, ::Acoustid::Server::PB::GetAttributeResponse* /*response*/)
+    #else
+    virtual ::grpc::experimental::ServerUnaryReactor* GetAttribute(
+      ::grpc::experimental::CallbackServerContext* /*context*/, const ::Acoustid::Server::PB::GetAttributeRequest* /*request*/, ::Acoustid::Server::PB::GetAttributeResponse* /*response*/)
+    #endif
+      { return nullptr; }
+  };
+  template <class BaseClass>
+  class ExperimentalWithCallbackMethod_Update : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    ExperimentalWithCallbackMethod_Update() {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::Service::
+    #else
+      ::grpc::Service::experimental().
+    #endif
+        MarkMethodCallback(2,
+          new ::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::UpdateRequest, ::Acoustid::Server::PB::UpdateResponse>(
+            [this](
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+                   ::grpc::CallbackServerContext*
+    #else
+                   ::grpc::experimental::CallbackServerContext*
+    #endif
+                     context, const ::Acoustid::Server::PB::UpdateRequest* request, ::Acoustid::Server::PB::UpdateResponse* response) { return this->Update(context, request, response); }));}
+    void SetMessageAllocatorFor_Update(
+        ::grpc::experimental::MessageAllocator< ::Acoustid::Server::PB::UpdateRequest, ::Acoustid::Server::PB::UpdateResponse>* allocator) {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(2);
+    #else
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::experimental().GetHandler(2);
+    #endif
+      static_cast<::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::UpdateRequest, ::Acoustid::Server::PB::UpdateResponse>*>(handler)
+              ->SetMessageAllocator(allocator);
+    }
+    ~ExperimentalWithCallbackMethod_Update() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status Update(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::UpdateRequest* /*request*/, ::Acoustid::Server::PB::UpdateResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+    virtual ::grpc::ServerUnaryReactor* Update(
+      ::grpc::CallbackServerContext* /*context*/, const ::Acoustid::Server::PB::UpdateRequest* /*request*/, ::Acoustid::Server::PB::UpdateResponse* /*response*/)
+    #else
+    virtual ::grpc::experimental::ServerUnaryReactor* Update(
+      ::grpc::experimental::CallbackServerContext* /*context*/, const ::Acoustid::Server::PB::UpdateRequest* /*request*/, ::Acoustid::Server::PB::UpdateResponse* /*response*/)
+    #endif
+      { return nullptr; }
+  };
+  template <class BaseClass>
+  class ExperimentalWithCallbackMethod_Search : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    ExperimentalWithCallbackMethod_Search() {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::Service::
+    #else
+      ::grpc::Service::experimental().
+    #endif
+        MarkMethodCallback(3,
+          new ::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::SearchRequest, ::Acoustid::Server::PB::SearchResponse>(
+            [this](
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+                   ::grpc::CallbackServerContext*
+    #else
+                   ::grpc::experimental::CallbackServerContext*
+    #endif
+                     context, const ::Acoustid::Server::PB::SearchRequest* request, ::Acoustid::Server::PB::SearchResponse* response) { return this->Search(context, request, response); }));}
+    void SetMessageAllocatorFor_Search(
+        ::grpc::experimental::MessageAllocator< ::Acoustid::Server::PB::SearchRequest, ::Acoustid::Server::PB::SearchResponse>* allocator) {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(3);
+    #else
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::experimental().GetHandler(3);
+    #endif
+      static_cast<::grpc_impl::internal::CallbackUnaryHandler< ::Acoustid::Server::PB::SearchRequest, ::Acoustid::Server::PB::SearchResponse>*>(handler)
+              ->SetMessageAllocator(allocator);
+    }
+    ~ExperimentalWithCallbackMethod_Search() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status Search(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::SearchRequest* /*request*/, ::Acoustid::Server::PB::SearchResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+    virtual ::grpc::ServerUnaryReactor* Search(
+      ::grpc::CallbackServerContext* /*context*/, const ::Acoustid::Server::PB::SearchRequest* /*request*/, ::Acoustid::Server::PB::SearchResponse* /*response*/)
+    #else
+    virtual ::grpc::experimental::ServerUnaryReactor* Search(
+      ::grpc::experimental::CallbackServerContext* /*context*/, const ::Acoustid::Server::PB::SearchRequest* /*request*/, ::Acoustid::Server::PB::SearchResponse* /*response*/)
+    #endif
+      { return nullptr; }
+  };
+  #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+  typedef ExperimentalWithCallbackMethod_GetDocument<ExperimentalWithCallbackMethod_GetAttribute<ExperimentalWithCallbackMethod_Update<ExperimentalWithCallbackMethod_Search<Service > > > > CallbackService;
+  #endif
+
+  typedef ExperimentalWithCallbackMethod_GetDocument<ExperimentalWithCallbackMethod_GetAttribute<ExperimentalWithCallbackMethod_Update<ExperimentalWithCallbackMethod_Search<Service > > > > ExperimentalCallbackService;
+  template <class BaseClass>
   class WithGenericMethod_GetDocument : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_GetDocument() {
       ::grpc::Service::MarkMethodGeneric(0);
@@ -250,7 +538,7 @@ class Index final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status GetDocument(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response) override {
+    ::grpc::Status GetDocument(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::GetDocumentRequest* /*request*/, ::Acoustid::Server::PB::GetDocumentResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -258,7 +546,7 @@ class Index final {
   template <class BaseClass>
   class WithGenericMethod_GetAttribute : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_GetAttribute() {
       ::grpc::Service::MarkMethodGeneric(1);
@@ -267,7 +555,7 @@ class Index final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status GetAttribute(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response) override {
+    ::grpc::Status GetAttribute(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::GetAttributeRequest* /*request*/, ::Acoustid::Server::PB::GetAttributeResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -275,7 +563,7 @@ class Index final {
   template <class BaseClass>
   class WithGenericMethod_Update : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_Update() {
       ::grpc::Service::MarkMethodGeneric(2);
@@ -284,7 +572,7 @@ class Index final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status Update(::grpc::ServerContext* context, const ::Acoustid::Server::PB::UpdateRequest* request, ::Acoustid::Server::PB::UpdateResponse* response) override {
+    ::grpc::Status Update(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::UpdateRequest* /*request*/, ::Acoustid::Server::PB::UpdateResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -292,7 +580,7 @@ class Index final {
   template <class BaseClass>
   class WithGenericMethod_Search : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithGenericMethod_Search() {
       ::grpc::Service::MarkMethodGeneric(3);
@@ -301,7 +589,7 @@ class Index final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status Search(::grpc::ServerContext* context, const ::Acoustid::Server::PB::SearchRequest* request, ::Acoustid::Server::PB::SearchResponse* response) override {
+    ::grpc::Status Search(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::SearchRequest* /*request*/, ::Acoustid::Server::PB::SearchResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -309,7 +597,7 @@ class Index final {
   template <class BaseClass>
   class WithRawMethod_GetDocument : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_GetDocument() {
       ::grpc::Service::MarkMethodRaw(0);
@@ -318,7 +606,7 @@ class Index final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status GetDocument(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response) override {
+    ::grpc::Status GetDocument(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::GetDocumentRequest* /*request*/, ::Acoustid::Server::PB::GetDocumentResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -329,7 +617,7 @@ class Index final {
   template <class BaseClass>
   class WithRawMethod_GetAttribute : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_GetAttribute() {
       ::grpc::Service::MarkMethodRaw(1);
@@ -338,7 +626,7 @@ class Index final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status GetAttribute(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response) override {
+    ::grpc::Status GetAttribute(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::GetAttributeRequest* /*request*/, ::Acoustid::Server::PB::GetAttributeResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -349,7 +637,7 @@ class Index final {
   template <class BaseClass>
   class WithRawMethod_Update : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_Update() {
       ::grpc::Service::MarkMethodRaw(2);
@@ -358,7 +646,7 @@ class Index final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status Update(::grpc::ServerContext* context, const ::Acoustid::Server::PB::UpdateRequest* request, ::Acoustid::Server::PB::UpdateResponse* response) override {
+    ::grpc::Status Update(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::UpdateRequest* /*request*/, ::Acoustid::Server::PB::UpdateResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -369,7 +657,7 @@ class Index final {
   template <class BaseClass>
   class WithRawMethod_Search : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithRawMethod_Search() {
       ::grpc::Service::MarkMethodRaw(3);
@@ -378,7 +666,7 @@ class Index final {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable synchronous version of this method
-    ::grpc::Status Search(::grpc::ServerContext* context, const ::Acoustid::Server::PB::SearchRequest* request, ::Acoustid::Server::PB::SearchResponse* response) override {
+    ::grpc::Status Search(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::SearchRequest* /*request*/, ::Acoustid::Server::PB::SearchResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -387,19 +675,178 @@ class Index final {
     }
   };
   template <class BaseClass>
+  class ExperimentalWithRawCallbackMethod_GetDocument : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    ExperimentalWithRawCallbackMethod_GetDocument() {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::Service::
+    #else
+      ::grpc::Service::experimental().
+    #endif
+        MarkMethodRawCallback(0,
+          new ::grpc_impl::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
+            [this](
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+                   ::grpc::CallbackServerContext*
+    #else
+                   ::grpc::experimental::CallbackServerContext*
+    #endif
+                     context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->GetDocument(context, request, response); }));
+    }
+    ~ExperimentalWithRawCallbackMethod_GetDocument() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status GetDocument(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::GetDocumentRequest* /*request*/, ::Acoustid::Server::PB::GetDocumentResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+    virtual ::grpc::ServerUnaryReactor* GetDocument(
+      ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)
+    #else
+    virtual ::grpc::experimental::ServerUnaryReactor* GetDocument(
+      ::grpc::experimental::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)
+    #endif
+      { return nullptr; }
+  };
+  template <class BaseClass>
+  class ExperimentalWithRawCallbackMethod_GetAttribute : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    ExperimentalWithRawCallbackMethod_GetAttribute() {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::Service::
+    #else
+      ::grpc::Service::experimental().
+    #endif
+        MarkMethodRawCallback(1,
+          new ::grpc_impl::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
+            [this](
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+                   ::grpc::CallbackServerContext*
+    #else
+                   ::grpc::experimental::CallbackServerContext*
+    #endif
+                     context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->GetAttribute(context, request, response); }));
+    }
+    ~ExperimentalWithRawCallbackMethod_GetAttribute() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status GetAttribute(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::GetAttributeRequest* /*request*/, ::Acoustid::Server::PB::GetAttributeResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+    virtual ::grpc::ServerUnaryReactor* GetAttribute(
+      ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)
+    #else
+    virtual ::grpc::experimental::ServerUnaryReactor* GetAttribute(
+      ::grpc::experimental::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)
+    #endif
+      { return nullptr; }
+  };
+  template <class BaseClass>
+  class ExperimentalWithRawCallbackMethod_Update : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    ExperimentalWithRawCallbackMethod_Update() {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::Service::
+    #else
+      ::grpc::Service::experimental().
+    #endif
+        MarkMethodRawCallback(2,
+          new ::grpc_impl::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
+            [this](
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+                   ::grpc::CallbackServerContext*
+    #else
+                   ::grpc::experimental::CallbackServerContext*
+    #endif
+                     context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->Update(context, request, response); }));
+    }
+    ~ExperimentalWithRawCallbackMethod_Update() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status Update(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::UpdateRequest* /*request*/, ::Acoustid::Server::PB::UpdateResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+    virtual ::grpc::ServerUnaryReactor* Update(
+      ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)
+    #else
+    virtual ::grpc::experimental::ServerUnaryReactor* Update(
+      ::grpc::experimental::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)
+    #endif
+      { return nullptr; }
+  };
+  template <class BaseClass>
+  class ExperimentalWithRawCallbackMethod_Search : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    ExperimentalWithRawCallbackMethod_Search() {
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+      ::grpc::Service::
+    #else
+      ::grpc::Service::experimental().
+    #endif
+        MarkMethodRawCallback(3,
+          new ::grpc_impl::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
+            [this](
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+                   ::grpc::CallbackServerContext*
+    #else
+                   ::grpc::experimental::CallbackServerContext*
+    #endif
+                     context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->Search(context, request, response); }));
+    }
+    ~ExperimentalWithRawCallbackMethod_Search() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status Search(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::SearchRequest* /*request*/, ::Acoustid::Server::PB::SearchResponse* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    #ifdef GRPC_CALLBACK_API_NONEXPERIMENTAL
+    virtual ::grpc::ServerUnaryReactor* Search(
+      ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)
+    #else
+    virtual ::grpc::experimental::ServerUnaryReactor* Search(
+      ::grpc::experimental::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)
+    #endif
+      { return nullptr; }
+  };
+  template <class BaseClass>
   class WithStreamedUnaryMethod_GetDocument : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_GetDocument() {
       ::grpc::Service::MarkMethodStreamed(0,
-        new ::grpc::internal::StreamedUnaryHandler< ::Acoustid::Server::PB::GetDocumentRequest, ::Acoustid::Server::PB::GetDocumentResponse>(std::bind(&WithStreamedUnaryMethod_GetDocument<BaseClass>::StreamedGetDocument, this, std::placeholders::_1, std::placeholders::_2)));
+        new ::grpc::internal::StreamedUnaryHandler<
+          ::Acoustid::Server::PB::GetDocumentRequest, ::Acoustid::Server::PB::GetDocumentResponse>(
+            [this](::grpc_impl::ServerContext* context,
+                   ::grpc_impl::ServerUnaryStreamer<
+                     ::Acoustid::Server::PB::GetDocumentRequest, ::Acoustid::Server::PB::GetDocumentResponse>* streamer) {
+                       return this->StreamedGetDocument(context,
+                         streamer);
+                  }));
     }
     ~WithStreamedUnaryMethod_GetDocument() override {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable regular version of this method
-    ::grpc::Status GetDocument(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response) override {
+    ::grpc::Status GetDocument(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::GetDocumentRequest* /*request*/, ::Acoustid::Server::PB::GetDocumentResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -409,17 +856,24 @@ class Index final {
   template <class BaseClass>
   class WithStreamedUnaryMethod_GetAttribute : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_GetAttribute() {
       ::grpc::Service::MarkMethodStreamed(1,
-        new ::grpc::internal::StreamedUnaryHandler< ::Acoustid::Server::PB::GetAttributeRequest, ::Acoustid::Server::PB::GetAttributeResponse>(std::bind(&WithStreamedUnaryMethod_GetAttribute<BaseClass>::StreamedGetAttribute, this, std::placeholders::_1, std::placeholders::_2)));
+        new ::grpc::internal::StreamedUnaryHandler<
+          ::Acoustid::Server::PB::GetAttributeRequest, ::Acoustid::Server::PB::GetAttributeResponse>(
+            [this](::grpc_impl::ServerContext* context,
+                   ::grpc_impl::ServerUnaryStreamer<
+                     ::Acoustid::Server::PB::GetAttributeRequest, ::Acoustid::Server::PB::GetAttributeResponse>* streamer) {
+                       return this->StreamedGetAttribute(context,
+                         streamer);
+                  }));
     }
     ~WithStreamedUnaryMethod_GetAttribute() override {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable regular version of this method
-    ::grpc::Status GetAttribute(::grpc::ServerContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response) override {
+    ::grpc::Status GetAttribute(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::GetAttributeRequest* /*request*/, ::Acoustid::Server::PB::GetAttributeResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -429,17 +883,24 @@ class Index final {
   template <class BaseClass>
   class WithStreamedUnaryMethod_Update : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_Update() {
       ::grpc::Service::MarkMethodStreamed(2,
-        new ::grpc::internal::StreamedUnaryHandler< ::Acoustid::Server::PB::UpdateRequest, ::Acoustid::Server::PB::UpdateResponse>(std::bind(&WithStreamedUnaryMethod_Update<BaseClass>::StreamedUpdate, this, std::placeholders::_1, std::placeholders::_2)));
+        new ::grpc::internal::StreamedUnaryHandler<
+          ::Acoustid::Server::PB::UpdateRequest, ::Acoustid::Server::PB::UpdateResponse>(
+            [this](::grpc_impl::ServerContext* context,
+                   ::grpc_impl::ServerUnaryStreamer<
+                     ::Acoustid::Server::PB::UpdateRequest, ::Acoustid::Server::PB::UpdateResponse>* streamer) {
+                       return this->StreamedUpdate(context,
+                         streamer);
+                  }));
     }
     ~WithStreamedUnaryMethod_Update() override {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable regular version of this method
-    ::grpc::Status Update(::grpc::ServerContext* context, const ::Acoustid::Server::PB::UpdateRequest* request, ::Acoustid::Server::PB::UpdateResponse* response) override {
+    ::grpc::Status Update(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::UpdateRequest* /*request*/, ::Acoustid::Server::PB::UpdateResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -449,17 +910,24 @@ class Index final {
   template <class BaseClass>
   class WithStreamedUnaryMethod_Search : public BaseClass {
    private:
-    void BaseClassMustBeDerivedFromService(const Service *service) {}
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
    public:
     WithStreamedUnaryMethod_Search() {
       ::grpc::Service::MarkMethodStreamed(3,
-        new ::grpc::internal::StreamedUnaryHandler< ::Acoustid::Server::PB::SearchRequest, ::Acoustid::Server::PB::SearchResponse>(std::bind(&WithStreamedUnaryMethod_Search<BaseClass>::StreamedSearch, this, std::placeholders::_1, std::placeholders::_2)));
+        new ::grpc::internal::StreamedUnaryHandler<
+          ::Acoustid::Server::PB::SearchRequest, ::Acoustid::Server::PB::SearchResponse>(
+            [this](::grpc_impl::ServerContext* context,
+                   ::grpc_impl::ServerUnaryStreamer<
+                     ::Acoustid::Server::PB::SearchRequest, ::Acoustid::Server::PB::SearchResponse>* streamer) {
+                       return this->StreamedSearch(context,
+                         streamer);
+                  }));
     }
     ~WithStreamedUnaryMethod_Search() override {
       BaseClassMustBeDerivedFromService(this);
     }
     // disable regular version of this method
-    ::grpc::Status Search(::grpc::ServerContext* context, const ::Acoustid::Server::PB::SearchRequest* request, ::Acoustid::Server::PB::SearchResponse* response) override {
+    ::grpc::Status Search(::grpc::ServerContext* /*context*/, const ::Acoustid::Server::PB::SearchRequest* /*request*/, ::Acoustid::Server::PB::SearchResponse* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }

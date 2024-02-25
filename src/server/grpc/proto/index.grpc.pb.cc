@@ -11,8 +11,12 @@
 #include <grpcpp/impl/codegen/channel_interface.h>
 #include <grpcpp/impl/codegen/client_unary_call.h>
 #include <grpcpp/impl/codegen/client_callback.h>
-#include <grpcpp/impl/codegen/method_handler_impl.h>
+#include <grpcpp/impl/codegen/message_allocator.h>
+#include <grpcpp/impl/codegen/method_handler.h>
 #include <grpcpp/impl/codegen/rpc_service_method.h>
+#include <grpcpp/impl/codegen/server_callback.h>
+#include <grpcpp/impl/codegen/server_callback_handlers.h>
+#include <grpcpp/impl/codegen/server_context.h>
 #include <grpcpp/impl/codegen/service_type.h>
 #include <grpcpp/impl/codegen/sync_stream.h>
 namespace Acoustid {
@@ -44,15 +48,27 @@ Index::Stub::Stub(const std::shared_ptr< ::grpc::ChannelInterface>& channel)
 }
 
 void Index::Stub::experimental_async::GetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response, std::function<void(::grpc::Status)> f) {
-  return ::grpc::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_GetDocument_, context, request, response, std::move(f));
+  ::grpc_impl::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_GetDocument_, context, request, response, std::move(f));
+}
+
+void Index::Stub::experimental_async::GetDocument(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetDocumentResponse* response, std::function<void(::grpc::Status)> f) {
+  ::grpc_impl::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_GetDocument_, context, request, response, std::move(f));
+}
+
+void Index::Stub::experimental_async::GetDocument(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest* request, ::Acoustid::Server::PB::GetDocumentResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) {
+  ::grpc_impl::internal::ClientCallbackUnaryFactory::Create(stub_->channel_.get(), stub_->rpcmethod_GetDocument_, context, request, response, reactor);
+}
+
+void Index::Stub::experimental_async::GetDocument(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetDocumentResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) {
+  ::grpc_impl::internal::ClientCallbackUnaryFactory::Create(stub_->channel_.get(), stub_->rpcmethod_GetDocument_, context, request, response, reactor);
 }
 
 ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetDocumentResponse>* Index::Stub::AsyncGetDocumentRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest& request, ::grpc::CompletionQueue* cq) {
-  return ::grpc::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::GetDocumentResponse>::Create(channel_.get(), cq, rpcmethod_GetDocument_, context, request, true);
+  return ::grpc_impl::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::GetDocumentResponse>::Create(channel_.get(), cq, rpcmethod_GetDocument_, context, request, true);
 }
 
 ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetDocumentResponse>* Index::Stub::PrepareAsyncGetDocumentRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetDocumentRequest& request, ::grpc::CompletionQueue* cq) {
-  return ::grpc::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::GetDocumentResponse>::Create(channel_.get(), cq, rpcmethod_GetDocument_, context, request, false);
+  return ::grpc_impl::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::GetDocumentResponse>::Create(channel_.get(), cq, rpcmethod_GetDocument_, context, request, false);
 }
 
 ::grpc::Status Index::Stub::GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::Acoustid::Server::PB::GetAttributeResponse* response) {
@@ -60,15 +76,27 @@ void Index::Stub::experimental_async::GetDocument(::grpc::ClientContext* context
 }
 
 void Index::Stub::experimental_async::GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response, std::function<void(::grpc::Status)> f) {
-  return ::grpc::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_GetAttribute_, context, request, response, std::move(f));
+  ::grpc_impl::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_GetAttribute_, context, request, response, std::move(f));
+}
+
+void Index::Stub::experimental_async::GetAttribute(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetAttributeResponse* response, std::function<void(::grpc::Status)> f) {
+  ::grpc_impl::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_GetAttribute_, context, request, response, std::move(f));
+}
+
+void Index::Stub::experimental_async::GetAttribute(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest* request, ::Acoustid::Server::PB::GetAttributeResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) {
+  ::grpc_impl::internal::ClientCallbackUnaryFactory::Create(stub_->channel_.get(), stub_->rpcmethod_GetAttribute_, context, request, response, reactor);
+}
+
+void Index::Stub::experimental_async::GetAttribute(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::GetAttributeResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) {
+  ::grpc_impl::internal::ClientCallbackUnaryFactory::Create(stub_->channel_.get(), stub_->rpcmethod_GetAttribute_, context, request, response, reactor);
 }
 
 ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetAttributeResponse>* Index::Stub::AsyncGetAttributeRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::grpc::CompletionQueue* cq) {
-  return ::grpc::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::GetAttributeResponse>::Create(channel_.get(), cq, rpcmethod_GetAttribute_, context, request, true);
+  return ::grpc_impl::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::GetAttributeResponse>::Create(channel_.get(), cq, rpcmethod_GetAttribute_, context, request, true);
 }
 
 ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::GetAttributeResponse>* Index::Stub::PrepareAsyncGetAttributeRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::GetAttributeRequest& request, ::grpc::CompletionQueue* cq) {
-  return ::grpc::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::GetAttributeResponse>::Create(channel_.get(), cq, rpcmethod_GetAttribute_, context, request, false);
+  return ::grpc_impl::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::GetAttributeResponse>::Create(channel_.get(), cq, rpcmethod_GetAttribute_, context, request, false);
 }
 
 ::grpc::Status Index::Stub::Update(::grpc::ClientContext* context, const ::Acoustid::Server::PB::UpdateRequest& request, ::Acoustid::Server::PB::UpdateResponse* response) {
@@ -76,15 +104,27 @@ void Index::Stub::experimental_async::GetAttribute(::grpc::ClientContext* contex
 }
 
 void Index::Stub::experimental_async::Update(::grpc::ClientContext* context, const ::Acoustid::Server::PB::UpdateRequest* request, ::Acoustid::Server::PB::UpdateResponse* response, std::function<void(::grpc::Status)> f) {
-  return ::grpc::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_Update_, context, request, response, std::move(f));
+  ::grpc_impl::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_Update_, context, request, response, std::move(f));
+}
+
+void Index::Stub::experimental_async::Update(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::UpdateResponse* response, std::function<void(::grpc::Status)> f) {
+  ::grpc_impl::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_Update_, context, request, response, std::move(f));
+}
+
+void Index::Stub::experimental_async::Update(::grpc::ClientContext* context, const ::Acoustid::Server::PB::UpdateRequest* request, ::Acoustid::Server::PB::UpdateResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) {
+  ::grpc_impl::internal::ClientCallbackUnaryFactory::Create(stub_->channel_.get(), stub_->rpcmethod_Update_, context, request, response, reactor);
+}
+
+void Index::Stub::experimental_async::Update(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::UpdateResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) {
+  ::grpc_impl::internal::ClientCallbackUnaryFactory::Create(stub_->channel_.get(), stub_->rpcmethod_Update_, context, request, response, reactor);
 }
 
 ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::UpdateResponse>* Index::Stub::AsyncUpdateRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::UpdateRequest& request, ::grpc::CompletionQueue* cq) {
-  return ::grpc::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::UpdateResponse>::Create(channel_.get(), cq, rpcmethod_Update_, context, request, true);
+  return ::grpc_impl::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::UpdateResponse>::Create(channel_.get(), cq, rpcmethod_Update_, context, request, true);
 }
 
 ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::UpdateResponse>* Index::Stub::PrepareAsyncUpdateRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::UpdateRequest& request, ::grpc::CompletionQueue* cq) {
-  return ::grpc::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::UpdateResponse>::Create(channel_.get(), cq, rpcmethod_Update_, context, request, false);
+  return ::grpc_impl::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::UpdateResponse>::Create(channel_.get(), cq, rpcmethod_Update_, context, request, false);
 }
 
 ::grpc::Status Index::Stub::Search(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest& request, ::Acoustid::Server::PB::SearchResponse* response) {
@@ -92,15 +132,27 @@ void Index::Stub::experimental_async::Update(::grpc::ClientContext* context, con
 }
 
 void Index::Stub::experimental_async::Search(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest* request, ::Acoustid::Server::PB::SearchResponse* response, std::function<void(::grpc::Status)> f) {
-  return ::grpc::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_Search_, context, request, response, std::move(f));
+  ::grpc_impl::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_Search_, context, request, response, std::move(f));
+}
+
+void Index::Stub::experimental_async::Search(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::SearchResponse* response, std::function<void(::grpc::Status)> f) {
+  ::grpc_impl::internal::CallbackUnaryCall(stub_->channel_.get(), stub_->rpcmethod_Search_, context, request, response, std::move(f));
+}
+
+void Index::Stub::experimental_async::Search(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest* request, ::Acoustid::Server::PB::SearchResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) {
+  ::grpc_impl::internal::ClientCallbackUnaryFactory::Create(stub_->channel_.get(), stub_->rpcmethod_Search_, context, request, response, reactor);
+}
+
+void Index::Stub::experimental_async::Search(::grpc::ClientContext* context, const ::grpc::ByteBuffer* request, ::Acoustid::Server::PB::SearchResponse* response, ::grpc::experimental::ClientUnaryReactor* reactor) {
+  ::grpc_impl::internal::ClientCallbackUnaryFactory::Create(stub_->channel_.get(), stub_->rpcmethod_Search_, context, request, response, reactor);
 }
 
 ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::SearchResponse>* Index::Stub::AsyncSearchRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest& request, ::grpc::CompletionQueue* cq) {
-  return ::grpc::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::SearchResponse>::Create(channel_.get(), cq, rpcmethod_Search_, context, request, true);
+  return ::grpc_impl::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::SearchResponse>::Create(channel_.get(), cq, rpcmethod_Search_, context, request, true);
 }
 
 ::grpc::ClientAsyncResponseReader< ::Acoustid::Server::PB::SearchResponse>* Index::Stub::PrepareAsyncSearchRaw(::grpc::ClientContext* context, const ::Acoustid::Server::PB::SearchRequest& request, ::grpc::CompletionQueue* cq) {
-  return ::grpc::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::SearchResponse>::Create(channel_.get(), cq, rpcmethod_Search_, context, request, false);
+  return ::grpc_impl::internal::ClientAsyncResponseReaderFactory< ::Acoustid::Server::PB::SearchResponse>::Create(channel_.get(), cq, rpcmethod_Search_, context, request, false);
 }
 
 Index::Service::Service() {
@@ -108,22 +160,42 @@ Index::Service::Service() {
       Index_method_names[0],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Index::Service, ::Acoustid::Server::PB::GetDocumentRequest, ::Acoustid::Server::PB::GetDocumentResponse>(
-          std::mem_fn(&Index::Service::GetDocument), this)));
+          [](Index::Service* service,
+             ::grpc_impl::ServerContext* ctx,
+             const ::Acoustid::Server::PB::GetDocumentRequest* req,
+             ::Acoustid::Server::PB::GetDocumentResponse* resp) {
+               return service->GetDocument(ctx, req, resp);
+             }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
       Index_method_names[1],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Index::Service, ::Acoustid::Server::PB::GetAttributeRequest, ::Acoustid::Server::PB::GetAttributeResponse>(
-          std::mem_fn(&Index::Service::GetAttribute), this)));
+          [](Index::Service* service,
+             ::grpc_impl::ServerContext* ctx,
+             const ::Acoustid::Server::PB::GetAttributeRequest* req,
+             ::Acoustid::Server::PB::GetAttributeResponse* resp) {
+               return service->GetAttribute(ctx, req, resp);
+             }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
       Index_method_names[2],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Index::Service, ::Acoustid::Server::PB::UpdateRequest, ::Acoustid::Server::PB::UpdateResponse>(
-          std::mem_fn(&Index::Service::Update), this)));
+          [](Index::Service* service,
+             ::grpc_impl::ServerContext* ctx,
+             const ::Acoustid::Server::PB::UpdateRequest* req,
+             ::Acoustid::Server::PB::UpdateResponse* resp) {
+               return service->Update(ctx, req, resp);
+             }, this)));
   AddMethod(new ::grpc::internal::RpcServiceMethod(
       Index_method_names[3],
       ::grpc::internal::RpcMethod::NORMAL_RPC,
       new ::grpc::internal::RpcMethodHandler< Index::Service, ::Acoustid::Server::PB::SearchRequest, ::Acoustid::Server::PB::SearchResponse>(
-          std::mem_fn(&Index::Service::Search), this)));
+          [](Index::Service* service,
+             ::grpc_impl::ServerContext* ctx,
+             const ::Acoustid::Server::PB::SearchRequest* req,
+             ::Acoustid::Server::PB::SearchResponse* resp) {
+               return service->Search(ctx, req, resp);
+             }, this)));
 }
 
 Index::Service::~Service() {

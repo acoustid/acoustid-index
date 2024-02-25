@@ -39,6 +39,9 @@ public:
 
     QSharedPointer<Metrics> metrics() const { return m_metrics; }
 
+    QString getTraceId();
+    void clearTraceId();
+
 private:
 	QMutex m_mutex;
     QSharedPointer<Index> m_index;
@@ -48,6 +51,7 @@ private:
 	int m_maxResults { 500 };
     int64_t m_timeout { 0 };
     int64_t m_idle_timeout { 60 * 1000 };
+    QString m_traceId;
 };
 
 }

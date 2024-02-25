@@ -7,6 +7,8 @@
 
 #include <QCoreApplication>
 #include <QThreadPool>
+#include <QJsonObject>
+#include <QJsonDocument>
 
 #include "http.h"
 #include "index/index.h"
@@ -25,7 +27,47 @@ using namespace Acoustid::Server;
 
 using namespace qhttp::server;
 
-int main(int argc, char **argv) {
+static QTextStream stderrStream(stderr);
+
+void handleLogMessage(QtMsgType type, const QMessageLogContext &context, const QString &msg)
+{
+    QString time = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+
+    QString level;
+    switch (type) {
+	case QtDebugMsg:
+	    level = "debug";
+	    break;
+	case QtInfoMsg:
+	    level = "info";
+	    break;
+	case QtWarningMsg:
+	    level = "warning";
+	    break;
+	case QtCriticalMsg:
+	    level = "error";
+	    break;
+	case QtFatalMsg:
+	    level = "error";
+	    break;
+    }
+
+    QJsonObject obj;
+    obj.insert("time", time);
+    obj.insert("level", level);
+    obj.insert("message", msg);
+
+    stderrStream << QJsonDocument(obj).toJson(QJsonDocument::Compact) << Qt::endl;
+
+    if (type == QtFatalMsg) {
+	abort();
+    }
+}
+
+int main(int argc, char **argv)
+{
+    qInstallMessageHandler(handleLogMessage);
+
     OptionParser parser("%prog [options]");
 
     // clang-format off

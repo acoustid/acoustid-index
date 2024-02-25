@@ -29,16 +29,15 @@ Starting server locally:
 
  - C/C++ compiler supporting at least C++17
  - CMake
- - Qt5, at least the QtCore, QtNetwork and QtConcurrent components
+ - Qt6, at least the QtCore, QtNetwork and QtConcurrent components
  - GoogleTest (optional)
 
 ### For Debian  
 ```
 # apt install git gcc g++ cmake pkg-config qtbase5-dev libsqlite3-dev libprotobuf-dev libgrpc++-dev libgtest-dev protobuf-compiler protobuf-compiler-grpc
+# ./update_proto.sh 
 # cmake .
 # cmake --build .
-# ./update_proto.sh 
-# make
 ```
 
 ### Building the code

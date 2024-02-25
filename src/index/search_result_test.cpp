@@ -6,9 +6,13 @@
 
 using namespace Acoustid;
 
-std::ostream& operator<<(std::ostream& stream, const SearchResult& result) {
+namespace Acoustid {
+
+std::ostream& operator<<(std::ostream& stream, const SearchResult & result) {
   return stream << "SearchResult(docId=" << result.docId() << ", score=" << result.score() << ", version=" << result.version() <<")";
 } 
+
+}
 
 TEST(SearchResultTest, SortSearchResults) {
     std::vector<SearchResult> results = {

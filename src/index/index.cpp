@@ -15,7 +15,7 @@
 using namespace Acoustid;
 
 Index::Index(DirectorySharedPtr dir, bool create)
-	: m_mutex(QMutex::Recursive), m_dir(dir), m_open(false),
+	: m_mutex(), m_dir(dir), m_open(false),
 	  m_hasWriter(false),
 	  m_deleter(new IndexFileDeleter(dir))
 {
@@ -36,9 +36,11 @@ bool Index::exists(const QSharedPointer<Directory> &dir) {
 
 void Index::open(bool create)
 {
+	QMutexLocker locker(&m_mutex);
 	if (!m_info.load(m_dir.data(), true)) {
 		if (create) {
 			IndexWriter(m_dir, m_info).commit();
+			locker.unlock();
 			return open(false);
 	 	}
 		throw IOException("there is no index in the directory");
@@ -53,6 +55,7 @@ QSharedPointer<IndexReader> Index::openReader()
     if (!m_open) {
        throw IndexIsNotOpen("index is not open");
     }
+    locker.unlock();
     return QSharedPointer<IndexReader>::create(sharedFromThis());
 }
 
@@ -63,6 +66,7 @@ QSharedPointer<IndexWriter> Index::openWriter(bool wait, int64_t timeoutInMSecs)
         throw IndexIsNotOpen("index is not open");
     }
     acquireWriterLockInt(wait, timeoutInMSecs);
+    locker.unlock();
     return QSharedPointer<IndexWriter>::create(sharedFromThis(), true);
 }
 

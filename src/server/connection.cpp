@@ -10,6 +10,7 @@
 #include "errors.h"
 #include "protocol.h"
 #include "metrics.h"
+#include "util/tracing.h"
 
 using namespace Acoustid;
 using namespace Acoustid::Server;
@@ -133,6 +134,7 @@ void Connection::readIncomingData()
     }
 
     auto futureResult = QtConcurrent::run([=]() {
+	setTraceId(m_session->getTraceId());
         QString response;
         try {
             response = renderResponse(handler());
