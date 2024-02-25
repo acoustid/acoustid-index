@@ -159,6 +159,7 @@ int main(int argc, char **argv)
 
     IndexServiceImpl service(indexes, metrics);
 
+    grpc::EnableDefaultHealthCheckService(true);
     grpc::ServerBuilder grpcServerBuilder;
     grpcServerBuilder.AddListeningPort(grpcEndpoint.toStdString(), grpc::InsecureServerCredentials());
     grpcServerBuilder.RegisterService(&service);
