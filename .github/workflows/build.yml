@@ -19,6 +19,7 @@ jobs:
       - run: |
           sudo apt-get update
           sudo apt-get install -y qt6-base-dev libgtest-dev libgrpc++-dev protobuf-compiler-grpc protobuf-compiler libsqlite3-dev
+      - run: ./update_proto.sh
       - run: cmake -DCMAKE_BUILD_TYPE=Release .
       - run: make
       - run: make check
