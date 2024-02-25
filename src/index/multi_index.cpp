@@ -7,7 +7,6 @@
 
 namespace Acoustid {
 
-
 MultiIndex::MultiIndex(const QSharedPointer<Directory> &dir) : m_dir(dir) {}
 
 void MultiIndex::close() {
@@ -32,7 +31,11 @@ bool MultiIndex::indexExists(const QString &name) {
     if (m_indexes.contains(name)) {
         return true;
     }
-    return false;
+    if (name == ROOT_INDEX_NAME) {
+        return Index::exists(m_dir);
+    }
+    auto subDir = QSharedPointer<Directory>(m_dir->openDirectory(name));
+    return Index::exists(subDir);
 }
 
 QSharedPointer<Index> MultiIndex::getRootIndex(bool create) {
@@ -50,18 +53,26 @@ QSharedPointer<Index> MultiIndex::getIndex(const QString &name, bool create) {
         m_indexes[name] = index;
         return index;
     }
-    if (create) {
-        throw NotImplemented("Index creation is not supported");
-    }
-    throw IndexNotFoundException("Index does not exist");
+    auto subDir = QSharedPointer<Directory>(m_dir->openDirectory(name));
+    index = QSharedPointer<Index>::create(subDir, create);
+    m_indexes[name] = index;
+    return index;
 }
 
 void MultiIndex::createIndex(const QString &name) {
+    if (name == ROOT_INDEX_NAME) {
+        throw NotImplemented("Changing the legacy root index is not supported");
+    }
     getIndex(name, true);
 }
 
 void MultiIndex::deleteIndex(const QString &name) {
-    throw NotImplemented("Index deletion is not supported");
+    if (name == ROOT_INDEX_NAME) {
+        throw NotImplemented("Changing the legacy root index is not supported");
+    }
+    QMutexLocker locker(&m_mutex);
+    m_indexes.remove(name);
+    m_dir->deleteDirectory(name);
 }
 
 }  // namespace Acoustid

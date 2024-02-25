@@ -13,6 +13,15 @@ class IndexServiceImpl final : public fpindex::Index::Service {
  public:
     IndexServiceImpl(QSharedPointer<MultiIndex> indexes, QSharedPointer<Metrics> metrics);
 
+    virtual ::grpc::Status GetIndex(::grpc::ServerContext* context, const fpindex::GetIndexRequest* request,
+                                    fpindex::GetIndexResponse* response) override;
+
+    virtual ::grpc::Status CreateIndex(::grpc::ServerContext* context, const fpindex::CreateIndexRequest* request,
+                                       fpindex::CreateIndexResponse* response) override;
+
+    virtual ::grpc::Status DeleteIndex(::grpc::ServerContext* context, const fpindex::DeleteIndexRequest* request,
+                                       fpindex::DeleteIndexResponse* response) override;
+
     virtual ::grpc::Status Update(::grpc::ServerContext* context, const fpindex::UpdateRequest* request,
                                   fpindex::UpdateResponse* response) override;
 

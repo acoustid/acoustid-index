@@ -12,9 +12,38 @@ static inline int remainingTime(std::chrono::system_clock::time_point deadline) 
     return std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::system_clock::now()).count();
 }
 
+grpc::Status IndexServiceImpl::GetIndex(grpc::ServerContext* context, const fpindex::GetIndexRequest* request,
+                                        fpindex::GetIndexResponse* response) {
+    auto indexName = QString::fromStdString(request->index_name());
+    qDebug() << "[gRPC] GetIndex " << indexName;
+    try {
+        m_indexes->getIndex(indexName);
+    } catch (const IndexNotFoundException& e) {
+        return grpc::Status(grpc::NOT_FOUND, e.what());
+    }
+    return grpc::Status::OK;
+}
+
+grpc::Status IndexServiceImpl::CreateIndex(grpc::ServerContext* context, const fpindex::CreateIndexRequest* request,
+                                           fpindex::CreateIndexResponse* response) {
+    auto indexName = QString::fromStdString(request->index_name());
+    qDebug() << "[gRPC] CreateIndex " << indexName;
+    m_indexes->createIndex(indexName);
+    return grpc::Status::OK;
+}
+
+grpc::Status IndexServiceImpl::DeleteIndex(grpc::ServerContext* context, const fpindex::DeleteIndexRequest* request,
+                                           fpindex::DeleteIndexResponse* response) {
+    auto indexName = QString::fromStdString(request->index_name());
+    qDebug() << "[gRPC] DeleteIndex " << indexName;
+    m_indexes->deleteIndex(indexName);
+    return grpc::Status::OK;
+}
+
 grpc::Status IndexServiceImpl::Update(grpc::ServerContext* context, const fpindex::UpdateRequest* request,
                                       fpindex::UpdateResponse* response) {
     auto indexName = QString::fromStdString(request->index_name());
+    qDebug() << "[gRPC] Update " << indexName;
     OpBatch batch;
     for (const auto& op : request->ops()) {
         switch (op.op_case()) {
@@ -57,6 +86,7 @@ grpc::Status IndexServiceImpl::Update(grpc::ServerContext* context, const fpinde
 grpc::Status IndexServiceImpl::Search(grpc::ServerContext* context, const fpindex::SearchRequest* request,
                                       fpindex::SearchResponse* response) {
     auto indexName = QString::fromStdString(request->index_name());
+    qDebug() << "[gRPC] Search " << indexName;
     std::vector<uint32_t> terms;
     terms.assign(request->terms().begin(), request->terms().end());
     try {

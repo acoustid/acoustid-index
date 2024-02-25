@@ -43,7 +43,7 @@ void Index::open(bool create)
 			locker.unlock();
 			return open(false);
 	 	}
-		throw IOException("there is no index in the directory");
+		throw IndexNotFoundException("index directory does not exist");
 	}
 	m_deleter->incRef(m_info);
 	m_open = true;
@@ -184,10 +184,13 @@ void Index::applyUpdates(const OpBatch &batch) {
             }
         }
     }
-
+    writer->commit();
 }
 
 std::vector<SearchResult> Index::search(const std::vector<uint32_t> &hashes, int64_t timeoutInMSecs) {
     auto reader = openReader();
     return reader->search(hashes, timeoutInMSecs);
+}
+
+void Index::flush() {
 }

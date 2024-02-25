@@ -2,8 +2,6 @@
 
 #include <QtConcurrent>
 
-#include "index/index.h"
-#include "index/index_writer.h"
 #include "index/multi_index.h"
 #include "metrics.h"
 
@@ -59,7 +57,7 @@ static QString getIndexName(const HttpRequest &request) {
     if (indexName.isEmpty()) {
         throw HttpResponseException(errInvalidParameter("missing index name"));
     }
-    if (indexName.startsWith('_')) {
+    if (indexName.startsWith('_') && indexName != MultiIndex::ROOT_INDEX_NAME) {
         throw HttpResponseException(errInvalidParameter("invalid index name"));
     }
     return indexName;
@@ -115,24 +113,22 @@ static std::vector<uint32_t> parseTerms(const QJsonValue &value) {
     }
 }
 
-const QString MAIN_INDEX_NAME = "main";
-
-static QSharedPointer<Index> getIndex(const HttpRequest &request, const QSharedPointer<MultiIndex> &index,
+static QSharedPointer<Index> getIndex(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes,
                                       bool create = false) {
     auto indexName = getIndexName(request);
     try {
-        if (indexName == MAIN_INDEX_NAME) {
-            return index->getRootIndex(create);
-        } else {
-            return index->getIndex(indexName, create);
-        }
+        return indexes->getIndex(indexName, create);
     } catch (const IndexNotFoundException &e) {
         throw HttpResponseException(errNotFound("index does not exist"));
     }
 }
 
 static HttpResponse handleHeadIndexRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
-    getIndex(request, indexes, false);
+    auto indexName = getIndexName(request);
+
+    if (!indexes->indexExists(indexName)) {
+        return errNotFound("index does not exist");
+    }
 
     QJsonObject responseJson;
     return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
@@ -148,19 +144,55 @@ static HttpResponse handleGetIndexRequest(const HttpRequest &request, const QSha
 }
 
 static HttpResponse handlePutIndexRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
-    return errNotImplemented("not implemented in this version of acoustid-index");
+    auto index = getIndex(request, indexes, true);
+
+    QJsonObject responseJson{
+        {"revision", index->info().revision()},
+    };
+    return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
 }
 
 static HttpResponse handleDeleteIndexRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
-    return errNotImplemented("not implemented in this version of acoustid-index");
+    auto indexName = getIndexName(request);
+
+    if (!indexes->indexExists(indexName)) {
+        return errNotFound("index does not exist");
+    }
+
+    indexes->deleteIndex(indexName);
+
+    QJsonObject responseJson;
+    return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
 }
 
 static HttpResponse handleHeadDocumentRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
-    return errNotImplemented("not implemented in this version of acoustid-index");
+    auto index = getIndex(request, indexes);
+    auto docId = getDocId(request);
+
+    qDebug() << "Checking status of document" << docId;
+
+    if (!index->containsDocument(docId)) {
+        return errNotFound("document does not exist");
+    }
+
+    QJsonObject responseJson{
+        {"id", qint64(docId)},
+    };
+    return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
 }
 
 static HttpResponse handleGetDocumentRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
-    return errNotImplemented("not implemented in this version of acoustid-index");
+    auto index = getIndex(request, indexes);
+    auto docId = getDocId(request);
+
+    if (!index->containsDocument(docId)) {
+        return errNotFound("document does not exist");
+    }
+
+    QJsonObject responseJson{
+        {"id", qint64(docId)},
+    };
+    return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
 }
 
 static HttpResponse handlePutDocumentRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
@@ -173,20 +205,20 @@ static HttpResponse handlePutDocumentRequest(const HttpRequest &request, const Q
     }
     auto terms = parseTerms(body.value("terms"));
 
-    try {
-        auto writer = index->openWriter(true, 1000);
-        writer->addDocument(docId, terms.data(), terms.size());
-        writer->commit();
-    } catch (const IndexIsLocked &e) {
-        return errServiceUnavailable("index is locked");
-    }
+    index->insertOrUpdateDocument(docId, terms);
 
     QJsonObject responseJson;
     return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
 }
 
 static HttpResponse handleDeleteDocumentRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
-    return errNotImplemented("not implemented in this version of acoustid-index");
+    auto index = getIndex(request, indexes);
+    auto docId = getDocId(request);
+
+    index->deleteDocument(docId);
+
+    QJsonObject responseJson;
+    return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
 }
 
 // Handle search requests.
@@ -223,6 +255,8 @@ static HttpResponse handleSearchRequest(const HttpRequest &request, const QShare
 static HttpResponse handleBulkRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
     auto index = getIndex(request, indexes);
 
+    OpBatch batch;
+
     QJsonArray opsJsonArray;
 
     auto doc = request.json();
@@ -243,30 +277,29 @@ static HttpResponse handleBulkRequest(const HttpRequest &request, const QSharedP
                              "request body must be either an array or an object with 'operations' key in it");
     }
 
-    try {
-        auto writer = index->openWriter(true, 1000);
-        for (auto operation : opsJsonArray) {
-            if (!operation.isObject()) {
-                return errBadRequest("invalid_bulk_operation", "operation must be an object");
-            }
-            auto operationObj = operation.toObject();
-            if (operationObj.contains("upsert")) {
-                auto docObj = operationObj.value("upsert").toObject();
-                auto docId = docObj.value("id").toInt();
-                auto terms = parseTerms(docObj.value("terms"));
-                writer->addDocument(docId, terms.data(), terms.size());
-            }
-            if (operationObj.contains("delete")) {
-                return errNotImplemented("not implemented in this version of acoustid-index");
-            }
-            if (operationObj.contains("set")) {
-                auto attrObj = operationObj.value("set").toObject();
-                auto name = attrObj.value("name").toString();
-                auto value = attrObj.value("value").toString();
-                writer->setAttribute(name, value);
-            }
+    for (auto opJson : opsJsonArray) {
+        if (!opJson.isObject()) {
+            return errBadRequest("invalid_bulk_operation", "invalid bulk operation");
         }
-        writer->commit();
+        batch.add(Op::fromJson(opJson.toObject()));
+    }
+
+    try {
+        index->applyUpdates(batch);
+    } catch (const IndexIsLocked &e) {
+        return errServiceUnavailable("index is locked");
+    }
+
+    QJsonObject responseJson;
+    return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
+}
+
+// Flush all operations from the oplog to the index on disk.
+static HttpResponse handleFlushRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
+    auto index = getIndex(request, indexes);
+
+    try {
+        index->flush();
     } catch (const IndexIsLocked &e) {
         return errServiceUnavailable("index is locked");
     }
@@ -307,6 +340,10 @@ HttpRequestHandler::HttpRequestHandler(QSharedPointer<MultiIndex> indexes, QShar
     // Bulk API
     m_router.route(HTTP_POST, "/:index/_bulk", [=](auto req) {
         return handleBulkRequest(req, m_indexes);
+    });
+
+    m_router.route(HTTP_POST, "/:index/_flush", [=](auto req) {
+        return handleFlushRequest(req, m_indexes);
     });
 
     // Search API

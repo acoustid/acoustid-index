@@ -59,7 +59,7 @@ TEST_F(HttpTest, TestMetrics) {
 }
 
 TEST_F(HttpTest, TestHeadIndex) {
-    auto request = HttpRequest(HTTP_HEAD, QUrl("/main"));
+    auto request = HttpRequest(HTTP_HEAD, QUrl("/_root"));
     auto response = handler->router().handle(request);
     ASSERT_EQ(response.status(), HTTP_OK);
     ASSERT_EQ(response.body().toStdString(), "{}");
@@ -74,7 +74,7 @@ TEST_F(HttpTest, TestHeadIndexNotFound) {
 }
 
 TEST_F(HttpTest, TestGetIndex) {
-    auto request = HttpRequest(HTTP_GET, QUrl("/main"));
+    auto request = HttpRequest(HTTP_GET, QUrl("/_root"));
     auto response = handler->router().handle(request);
     ASSERT_EQ(response.status(), HTTP_OK);
     ASSERT_EQ(response.body().toStdString(), "{\"revision\":0}");
@@ -89,7 +89,7 @@ TEST_F(HttpTest, TestGetIndexNotFound) {
 }
 
 TEST_F(HttpTest, TestPutDocumentStringTerms) {
-    auto request = HttpRequest(HTTP_PUT, QUrl("/main/_doc/111"));
+    auto request = HttpRequest(HTTP_PUT, QUrl("/_root/_doc/111"));
     request.setBody(QJsonDocument(QJsonObject{{"terms", "1,2,3"}}));
     auto response = handler->router().handle(request);
     ASSERT_EQ(response.status(), HTTP_OK);
@@ -97,7 +97,7 @@ TEST_F(HttpTest, TestPutDocumentStringTerms) {
 }
 
 TEST_F(HttpTest, TestPutDocumentArrayTerms) {
-    auto request = HttpRequest(HTTP_PUT, QUrl("/main/_doc/111"));
+    auto request = HttpRequest(HTTP_PUT, QUrl("/_root/_doc/111"));
     request.setBody(QJsonDocument(QJsonObject{{"terms", QJsonArray{1, 2, 3}}}));
     auto response = handler->router().handle(request);
     ASSERT_EQ(response.status(), HTTP_OK);
@@ -161,7 +161,7 @@ TEST_F(HttpTest, TestBulkArray) {
 }*/
 
 TEST_F(HttpTest, TestBulkObject) {
-    auto request = HttpRequest(HTTP_POST, QUrl("/main/_bulk"));
+    auto request = HttpRequest(HTTP_POST, QUrl("/_root/_bulk"));
     request.setBody(QJsonDocument(QJsonObject{
         {"operations", QJsonArray{
             QJsonObject{{"upsert", QJsonObject{{"id", 111}, {"terms", QJsonArray{1, 2, 3}}}}},

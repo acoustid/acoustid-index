@@ -65,6 +65,9 @@ class Index : public BaseIndex, public QEnableSharedFromThis<Index> {
     void releaseInfo(const IndexInfo& info);
     void updateInfo(const IndexInfo& oldInfo, const IndexInfo& newInfo, bool updateIndex = false);
 
+    // Make sure all operation are persisted to disk.
+    void flush();
+
  private:
     ACOUSTID_DISABLE_COPY(Index)
 
