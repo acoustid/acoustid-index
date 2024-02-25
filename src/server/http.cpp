@@ -57,7 +57,7 @@ static QString getIndexName(const HttpRequest &request) {
     if (indexName.isEmpty()) {
         throw HttpResponseException(errInvalidParameter("missing index name"));
     }
-    if (indexName.startsWith('_')) {
+    if (indexName.startsWith('_') && indexName != MultiIndex::ROOT_INDEX_NAME) {
         throw HttpResponseException(errInvalidParameter("invalid index name"));
     }
     return indexName;
