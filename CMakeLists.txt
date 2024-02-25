@@ -68,6 +68,7 @@ set(fpindexlib_SOURCES
 	src/store/ram_output_stream.cpp
 	src/util/crc.c
 	src/util/options.cpp
+	src/util/tracing.cpp
 )
 add_library(fpindexlib ${fpindexlib_SOURCES})
 target_link_libraries(fpindexlib Qt6::Core Qt6::Network Qt6::Concurrent)

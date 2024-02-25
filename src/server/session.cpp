@@ -89,6 +89,10 @@ void Session::setAttribute(const QString &name, const QString &value) {
         m_idle_timeout = value.toInt();
         return;
     }
+    if (name == "trace_id") {
+	m_traceId = value;
+	return;
+    }
     if (m_indexWriter.isNull()) {
         throw NotInTransactionException();
     }
@@ -113,4 +117,14 @@ QList<Result> Session::search(const QVector<uint32_t> &hashes) {
         throw HandlerException("timeout exceeded");
     }
     return collector.topResults();
+}
+
+QString Session::getTraceId() {
+    QMutexLocker locker(&m_mutex);
+    return m_traceId;
+}
+
+void Session::clearTraceId() {
+    QMutexLocker locker(&m_mutex);
+    m_traceId.clear();
 }

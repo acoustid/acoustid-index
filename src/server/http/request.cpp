@@ -24,6 +24,15 @@ QString HttpRequest::param(const QString &name, const QString &defaultValue) con
     return defaultValue;
 }
 
+QString HttpRequest::header(const QString &name, const QString &defaultValue) const {
+    auto encodedName = name.toUtf8();
+    auto it = m_headers.find(encodedName);
+    if (it != m_headers.end()) {
+	return *it;
+    }
+    return defaultValue;
+}
+
 QUrl HttpRequest::url() const { return m_url; }
 
 QJsonDocument HttpRequest::json() const {

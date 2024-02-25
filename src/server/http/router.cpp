@@ -1,4 +1,5 @@
 #include "router.h"
+#include "util/tracing.h"
 
 #include <QRegularExpression>
 #include <QThreadPool>
@@ -52,6 +53,10 @@ void HttpRouter::handle(qhttp::server::QHttpRequest *req, qhttp::server::QHttpRe
         request.setHeaders(req->headers());
         request.setBody(req->collectedData());
 	QThreadPool::globalInstance()->start([=]() {
+            auto traceId = request.header("X-Trace-Id");
+	    if (!traceId.isEmpty()) {
+                setTraceId(traceId);
+	    }
             HttpResponse response;
             try {
                 response = handle(request);
