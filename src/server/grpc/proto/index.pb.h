@@ -32,6 +32,7 @@
 #include <google/protobuf/repeated_field.h>  // IWYU pragma: export
 #include <google/protobuf/extension_set.h>  // IWYU pragma: export
 #include <google/protobuf/unknown_field_set.h>
+#include "google/api/annotations.pb.h"
 // @@protoc_insertion_point(includes)
 #include <google/protobuf/port_def.inc>
 #define PROTOBUF_INTERNAL_EXPORT_index_2eproto
@@ -47,16 +48,14 @@ struct TableStruct_index_2eproto {
     PROTOBUF_SECTION_VARIABLE(protodesc_cold);
   static const ::PROTOBUF_NAMESPACE_ID::internal::AuxillaryParseTableField aux[]
     PROTOBUF_SECTION_VARIABLE(protodesc_cold);
-  static const ::PROTOBUF_NAMESPACE_ID::internal::ParseTable schema[17]
+  static const ::PROTOBUF_NAMESPACE_ID::internal::ParseTable schema[20]
     PROTOBUF_SECTION_VARIABLE(protodesc_cold);
   static const ::PROTOBUF_NAMESPACE_ID::internal::FieldMetadata field_metadata[];
   static const ::PROTOBUF_NAMESPACE_ID::internal::SerializationTable serialization_table[];
   static const ::PROTOBUF_NAMESPACE_ID::uint32 offsets[];
 };
 extern const ::PROTOBUF_NAMESPACE_ID::internal::DescriptorTable descriptor_table_index_2eproto;
-namespace Acoustid {
-namespace Server {
-namespace PB {
+namespace fpindex {
 class CreateIndexRequest;
 class CreateIndexRequestDefaultTypeInternal;
 extern CreateIndexRequestDefaultTypeInternal _CreateIndexRequest_default_instance_;
@@ -84,9 +83,18 @@ extern GetIndexRequestDefaultTypeInternal _GetIndexRequest_default_instance_;
 class GetIndexResponse;
 class GetIndexResponseDefaultTypeInternal;
 extern GetIndexResponseDefaultTypeInternal _GetIndexResponse_default_instance_;
+class IndexInfo;
+class IndexInfoDefaultTypeInternal;
+extern IndexInfoDefaultTypeInternal _IndexInfo_default_instance_;
 class InsertOrUpdateDocumentOp;
 class InsertOrUpdateDocumentOpDefaultTypeInternal;
 extern InsertOrUpdateDocumentOpDefaultTypeInternal _InsertOrUpdateDocumentOp_default_instance_;
+class ListIndexesRequest;
+class ListIndexesRequestDefaultTypeInternal;
+extern ListIndexesRequestDefaultTypeInternal _ListIndexesRequest_default_instance_;
+class ListIndexesResponse;
+class ListIndexesResponseDefaultTypeInternal;
+extern ListIndexesResponseDefaultTypeInternal _ListIndexesResponse_default_instance_;
 class Operation;
 class OperationDefaultTypeInternal;
 extern OperationDefaultTypeInternal _Operation_default_instance_;
@@ -108,36 +116,188 @@ extern UpdateRequestDefaultTypeInternal _UpdateRequest_default_instance_;
 class UpdateResponse;
 class UpdateResponseDefaultTypeInternal;
 extern UpdateResponseDefaultTypeInternal _UpdateResponse_default_instance_;
-}  // namespace PB
-}  // namespace Server
-}  // namespace Acoustid
+}  // namespace fpindex
 PROTOBUF_NAMESPACE_OPEN
-template<> ::Acoustid::Server::PB::CreateIndexRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::CreateIndexRequest>(Arena*);
-template<> ::Acoustid::Server::PB::CreateIndexResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::CreateIndexResponse>(Arena*);
-template<> ::Acoustid::Server::PB::DeleteDocumentOp* Arena::CreateMaybeMessage<::Acoustid::Server::PB::DeleteDocumentOp>(Arena*);
-template<> ::Acoustid::Server::PB::DeleteIndexRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::DeleteIndexRequest>(Arena*);
-template<> ::Acoustid::Server::PB::DeleteIndexResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::DeleteIndexResponse>(Arena*);
-template<> ::Acoustid::Server::PB::GetAttributeRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::GetAttributeRequest>(Arena*);
-template<> ::Acoustid::Server::PB::GetAttributeResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::GetAttributeResponse>(Arena*);
-template<> ::Acoustid::Server::PB::GetIndexRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::GetIndexRequest>(Arena*);
-template<> ::Acoustid::Server::PB::GetIndexResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::GetIndexResponse>(Arena*);
-template<> ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* Arena::CreateMaybeMessage<::Acoustid::Server::PB::InsertOrUpdateDocumentOp>(Arena*);
-template<> ::Acoustid::Server::PB::Operation* Arena::CreateMaybeMessage<::Acoustid::Server::PB::Operation>(Arena*);
-template<> ::Acoustid::Server::PB::SearchRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::SearchRequest>(Arena*);
-template<> ::Acoustid::Server::PB::SearchResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::SearchResponse>(Arena*);
-template<> ::Acoustid::Server::PB::SearchResult* Arena::CreateMaybeMessage<::Acoustid::Server::PB::SearchResult>(Arena*);
-template<> ::Acoustid::Server::PB::SetAttributeOp* Arena::CreateMaybeMessage<::Acoustid::Server::PB::SetAttributeOp>(Arena*);
-template<> ::Acoustid::Server::PB::UpdateRequest* Arena::CreateMaybeMessage<::Acoustid::Server::PB::UpdateRequest>(Arena*);
-template<> ::Acoustid::Server::PB::UpdateResponse* Arena::CreateMaybeMessage<::Acoustid::Server::PB::UpdateResponse>(Arena*);
+template<> ::fpindex::CreateIndexRequest* Arena::CreateMaybeMessage<::fpindex::CreateIndexRequest>(Arena*);
+template<> ::fpindex::CreateIndexResponse* Arena::CreateMaybeMessage<::fpindex::CreateIndexResponse>(Arena*);
+template<> ::fpindex::DeleteDocumentOp* Arena::CreateMaybeMessage<::fpindex::DeleteDocumentOp>(Arena*);
+template<> ::fpindex::DeleteIndexRequest* Arena::CreateMaybeMessage<::fpindex::DeleteIndexRequest>(Arena*);
+template<> ::fpindex::DeleteIndexResponse* Arena::CreateMaybeMessage<::fpindex::DeleteIndexResponse>(Arena*);
+template<> ::fpindex::GetAttributeRequest* Arena::CreateMaybeMessage<::fpindex::GetAttributeRequest>(Arena*);
+template<> ::fpindex::GetAttributeResponse* Arena::CreateMaybeMessage<::fpindex::GetAttributeResponse>(Arena*);
+template<> ::fpindex::GetIndexRequest* Arena::CreateMaybeMessage<::fpindex::GetIndexRequest>(Arena*);
+template<> ::fpindex::GetIndexResponse* Arena::CreateMaybeMessage<::fpindex::GetIndexResponse>(Arena*);
+template<> ::fpindex::IndexInfo* Arena::CreateMaybeMessage<::fpindex::IndexInfo>(Arena*);
+template<> ::fpindex::InsertOrUpdateDocumentOp* Arena::CreateMaybeMessage<::fpindex::InsertOrUpdateDocumentOp>(Arena*);
+template<> ::fpindex::ListIndexesRequest* Arena::CreateMaybeMessage<::fpindex::ListIndexesRequest>(Arena*);
+template<> ::fpindex::ListIndexesResponse* Arena::CreateMaybeMessage<::fpindex::ListIndexesResponse>(Arena*);
+template<> ::fpindex::Operation* Arena::CreateMaybeMessage<::fpindex::Operation>(Arena*);
+template<> ::fpindex::SearchRequest* Arena::CreateMaybeMessage<::fpindex::SearchRequest>(Arena*);
+template<> ::fpindex::SearchResponse* Arena::CreateMaybeMessage<::fpindex::SearchResponse>(Arena*);
+template<> ::fpindex::SearchResult* Arena::CreateMaybeMessage<::fpindex::SearchResult>(Arena*);
+template<> ::fpindex::SetAttributeOp* Arena::CreateMaybeMessage<::fpindex::SetAttributeOp>(Arena*);
+template<> ::fpindex::UpdateRequest* Arena::CreateMaybeMessage<::fpindex::UpdateRequest>(Arena*);
+template<> ::fpindex::UpdateResponse* Arena::CreateMaybeMessage<::fpindex::UpdateResponse>(Arena*);
 PROTOBUF_NAMESPACE_CLOSE
-namespace Acoustid {
-namespace Server {
-namespace PB {
+namespace fpindex {
 
 // ===================================================================
 
+class IndexInfo PROTOBUF_FINAL :
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.IndexInfo) */ {
+ public:
+  inline IndexInfo() : IndexInfo(nullptr) {};
+  virtual ~IndexInfo();
+
+  IndexInfo(const IndexInfo& from);
+  IndexInfo(IndexInfo&& from) noexcept
+    : IndexInfo() {
+    *this = ::std::move(from);
+  }
+
+  inline IndexInfo& operator=(const IndexInfo& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline IndexInfo& operator=(IndexInfo&& from) noexcept {
+    if (GetArena() == from.GetArena()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* GetDescriptor() {
+    return GetMetadataStatic().descriptor;
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Reflection* GetReflection() {
+    return GetMetadataStatic().reflection;
+  }
+  static const IndexInfo& default_instance();
+
+  static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
+  static inline const IndexInfo* internal_default_instance() {
+    return reinterpret_cast<const IndexInfo*>(
+               &_IndexInfo_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    0;
+
+  friend void swap(IndexInfo& a, IndexInfo& b) {
+    a.Swap(&b);
+  }
+  inline void Swap(IndexInfo* other) {
+    if (other == this) return;
+    if (GetArena() == other->GetArena()) {
+      InternalSwap(other);
+    } else {
+      ::PROTOBUF_NAMESPACE_ID::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(IndexInfo* other) {
+    if (other == this) return;
+    GOOGLE_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline IndexInfo* New() const final {
+    return CreateMaybeMessage<IndexInfo>(nullptr);
+  }
+
+  IndexInfo* New(::PROTOBUF_NAMESPACE_ID::Arena* arena) const final {
+    return CreateMaybeMessage<IndexInfo>(arena);
+  }
+  void CopyFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) final;
+  void MergeFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) final;
+  void CopyFrom(const IndexInfo& from);
+  void MergeFrom(const IndexInfo& from);
+  PROTOBUF_ATTRIBUTE_REINITIALIZES void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  const char* _InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) final;
+  ::PROTOBUF_NAMESPACE_ID::uint8* _InternalSerialize(
+      ::PROTOBUF_NAMESPACE_ID::uint8* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  inline void SharedCtor();
+  inline void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(IndexInfo* other);
+  friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
+  static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
+    return "fpindex.IndexInfo";
+  }
+  protected:
+  explicit IndexInfo(::PROTOBUF_NAMESPACE_ID::Arena* arena);
+  private:
+  static void ArenaDtor(void* object);
+  inline void RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena* arena);
+  public:
+
+  ::PROTOBUF_NAMESPACE_ID::Metadata GetMetadata() const final;
+  private:
+  static ::PROTOBUF_NAMESPACE_ID::Metadata GetMetadataStatic() {
+    ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(&::descriptor_table_index_2eproto);
+    return ::descriptor_table_index_2eproto.file_level_metadata[kIndexInFileMessages];
+  }
+
+  public:
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  enum : int {
+    kNameFieldNumber = 1,
+  };
+  // string name = 1;
+  void clear_name();
+  const std::string& name() const;
+  void set_name(const std::string& value);
+  void set_name(std::string&& value);
+  void set_name(const char* value);
+  void set_name(const char* value, size_t size);
+  std::string* mutable_name();
+  std::string* release_name();
+  void set_allocated_name(std::string* name);
+  GOOGLE_PROTOBUF_RUNTIME_DEPRECATED("The unsafe_arena_ accessors for"
+  "    string fields are deprecated and will be removed in a"
+  "    future release.")
+  std::string* unsafe_arena_release_name();
+  GOOGLE_PROTOBUF_RUNTIME_DEPRECATED("The unsafe_arena_ accessors for"
+  "    string fields are deprecated and will be removed in a"
+  "    future release.")
+  void unsafe_arena_set_allocated_name(
+      std::string* name);
+  private:
+  const std::string& _internal_name() const;
+  void _internal_set_name(const std::string& value);
+  std::string* _internal_mutable_name();
+  public:
+
+  // @@protoc_insertion_point(class_scope:fpindex.IndexInfo)
+ private:
+  class _Internal;
+
+  template <typename T> friend class ::PROTOBUF_NAMESPACE_ID::Arena::InternalHelper;
+  typedef void InternalArenaConstructable_;
+  typedef void DestructorSkippable_;
+  ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr name_;
+  mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
+  friend struct ::TableStruct_index_2eproto;
+};
+// -------------------------------------------------------------------
+
 class GetAttributeRequest PROTOBUF_FINAL :
-    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.GetAttributeRequest) */ {
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.GetAttributeRequest) */ {
  public:
   inline GetAttributeRequest() : GetAttributeRequest(nullptr) {};
   virtual ~GetAttributeRequest();
@@ -178,7 +338,7 @@ class GetAttributeRequest PROTOBUF_FINAL :
                &_GetAttributeRequest_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    0;
+    1;
 
   friend void swap(GetAttributeRequest& a, GetAttributeRequest& b) {
     a.Swap(&b);
@@ -226,7 +386,7 @@ class GetAttributeRequest PROTOBUF_FINAL :
   void InternalSwap(GetAttributeRequest* other);
   friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
   static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
-    return "Acoustid.Server.PB.GetAttributeRequest";
+    return "fpindex.GetAttributeRequest";
   }
   protected:
   explicit GetAttributeRequest(::PROTOBUF_NAMESPACE_ID::Arena* arena);
@@ -302,7 +462,7 @@ class GetAttributeRequest PROTOBUF_FINAL :
   std::string* _internal_mutable_name();
   public:
 
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.GetAttributeRequest)
+  // @@protoc_insertion_point(class_scope:fpindex.GetAttributeRequest)
  private:
   class _Internal;
 
@@ -317,7 +477,7 @@ class GetAttributeRequest PROTOBUF_FINAL :
 // -------------------------------------------------------------------
 
 class GetAttributeResponse PROTOBUF_FINAL :
-    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.GetAttributeResponse) */ {
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.GetAttributeResponse) */ {
  public:
   inline GetAttributeResponse() : GetAttributeResponse(nullptr) {};
   virtual ~GetAttributeResponse();
@@ -358,7 +518,7 @@ class GetAttributeResponse PROTOBUF_FINAL :
                &_GetAttributeResponse_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    1;
+    2;
 
   friend void swap(GetAttributeResponse& a, GetAttributeResponse& b) {
     a.Swap(&b);
@@ -406,7 +566,7 @@ class GetAttributeResponse PROTOBUF_FINAL :
   void InternalSwap(GetAttributeResponse* other);
   friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
   static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
-    return "Acoustid.Server.PB.GetAttributeResponse";
+    return "fpindex.GetAttributeResponse";
   }
   protected:
   explicit GetAttributeResponse(::PROTOBUF_NAMESPACE_ID::Arena* arena);
@@ -456,7 +616,7 @@ class GetAttributeResponse PROTOBUF_FINAL :
   std::string* _internal_mutable_value();
   public:
 
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.GetAttributeResponse)
+  // @@protoc_insertion_point(class_scope:fpindex.GetAttributeResponse)
  private:
   class _Internal;
 
@@ -470,7 +630,7 @@ class GetAttributeResponse PROTOBUF_FINAL :
 // -------------------------------------------------------------------
 
 class InsertOrUpdateDocumentOp PROTOBUF_FINAL :
-    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.InsertOrUpdateDocumentOp) */ {
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.InsertOrUpdateDocumentOp) */ {
  public:
   inline InsertOrUpdateDocumentOp() : InsertOrUpdateDocumentOp(nullptr) {};
   virtual ~InsertOrUpdateDocumentOp();
@@ -511,7 +671,7 @@ class InsertOrUpdateDocumentOp PROTOBUF_FINAL :
                &_InsertOrUpdateDocumentOp_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    2;
+    3;
 
   friend void swap(InsertOrUpdateDocumentOp& a, InsertOrUpdateDocumentOp& b) {
     a.Swap(&b);
@@ -559,7 +719,7 @@ class InsertOrUpdateDocumentOp PROTOBUF_FINAL :
   void InternalSwap(InsertOrUpdateDocumentOp* other);
   friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
   static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
-    return "Acoustid.Server.PB.InsertOrUpdateDocumentOp";
+    return "fpindex.InsertOrUpdateDocumentOp";
   }
   protected:
   explicit InsertOrUpdateDocumentOp(::PROTOBUF_NAMESPACE_ID::Arena* arena);
@@ -616,7 +776,7 @@ class InsertOrUpdateDocumentOp PROTOBUF_FINAL :
   void _internal_set_doc_id(::PROTOBUF_NAMESPACE_ID::uint32 value);
   public:
 
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.InsertOrUpdateDocumentOp)
+  // @@protoc_insertion_point(class_scope:fpindex.InsertOrUpdateDocumentOp)
  private:
   class _Internal;
 
@@ -632,7 +792,7 @@ class InsertOrUpdateDocumentOp PROTOBUF_FINAL :
 // -------------------------------------------------------------------
 
 class DeleteDocumentOp PROTOBUF_FINAL :
-    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.DeleteDocumentOp) */ {
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.DeleteDocumentOp) */ {
  public:
   inline DeleteDocumentOp() : DeleteDocumentOp(nullptr) {};
   virtual ~DeleteDocumentOp();
@@ -673,7 +833,7 @@ class DeleteDocumentOp PROTOBUF_FINAL :
                &_DeleteDocumentOp_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    3;
+    4;
 
   friend void swap(DeleteDocumentOp& a, DeleteDocumentOp& b) {
     a.Swap(&b);
@@ -721,7 +881,7 @@ class DeleteDocumentOp PROTOBUF_FINAL :
   void InternalSwap(DeleteDocumentOp* other);
   friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
   static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
-    return "Acoustid.Server.PB.DeleteDocumentOp";
+    return "fpindex.DeleteDocumentOp";
   }
   protected:
   explicit DeleteDocumentOp(::PROTOBUF_NAMESPACE_ID::Arena* arena);
@@ -755,7 +915,7 @@ class DeleteDocumentOp PROTOBUF_FINAL :
   void _internal_set_doc_id(::PROTOBUF_NAMESPACE_ID::uint32 value);
   public:
 
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.DeleteDocumentOp)
+  // @@protoc_insertion_point(class_scope:fpindex.DeleteDocumentOp)
  private:
   class _Internal;
 
@@ -769,7 +929,7 @@ class DeleteDocumentOp PROTOBUF_FINAL :
 // -------------------------------------------------------------------
 
 class SetAttributeOp PROTOBUF_FINAL :
-    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.SetAttributeOp) */ {
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.SetAttributeOp) */ {
  public:
   inline SetAttributeOp() : SetAttributeOp(nullptr) {};
   virtual ~SetAttributeOp();
@@ -810,7 +970,7 @@ class SetAttributeOp PROTOBUF_FINAL :
                &_SetAttributeOp_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    4;
+    5;
 
   friend void swap(SetAttributeOp& a, SetAttributeOp& b) {
     a.Swap(&b);
@@ -858,7 +1018,7 @@ class SetAttributeOp PROTOBUF_FINAL :
   void InternalSwap(SetAttributeOp* other);
   friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
   static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
-    return "Acoustid.Server.PB.SetAttributeOp";
+    return "fpindex.SetAttributeOp";
   }
   protected:
   explicit SetAttributeOp(::PROTOBUF_NAMESPACE_ID::Arena* arena);
@@ -934,7 +1094,7 @@ class SetAttributeOp PROTOBUF_FINAL :
   std::string* _internal_mutable_value();
   public:
 
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.SetAttributeOp)
+  // @@protoc_insertion_point(class_scope:fpindex.SetAttributeOp)
  private:
   class _Internal;
 
@@ -949,7 +1109,7 @@ class SetAttributeOp PROTOBUF_FINAL :
 // -------------------------------------------------------------------
 
 class Operation PROTOBUF_FINAL :
-    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.Operation) */ {
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.Operation) */ {
  public:
   inline Operation() : Operation(nullptr) {};
   virtual ~Operation();
@@ -997,7 +1157,7 @@ class Operation PROTOBUF_FINAL :
                &_Operation_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    5;
+    6;
 
   friend void swap(Operation& a, Operation& b) {
     a.Swap(&b);
@@ -1045,7 +1205,7 @@ class Operation PROTOBUF_FINAL :
   void InternalSwap(Operation* other);
   friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
   static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
-    return "Acoustid.Server.PB.Operation";
+    return "fpindex.Operation";
   }
   protected:
   explicit Operation(::PROTOBUF_NAMESPACE_ID::Arena* arena);
@@ -1072,63 +1232,63 @@ class Operation PROTOBUF_FINAL :
     kDeleteDocumentFieldNumber = 2,
     kSetAttributeFieldNumber = 3,
   };
-  // .Acoustid.Server.PB.InsertOrUpdateDocumentOp insert_or_update_document = 1;
+  // .fpindex.InsertOrUpdateDocumentOp insert_or_update_document = 1;
   bool has_insert_or_update_document() const;
   private:
   bool _internal_has_insert_or_update_document() const;
   public:
   void clear_insert_or_update_document();
-  const ::Acoustid::Server::PB::InsertOrUpdateDocumentOp& insert_or_update_document() const;
-  ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* release_insert_or_update_document();
-  ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* mutable_insert_or_update_document();
-  void set_allocated_insert_or_update_document(::Acoustid::Server::PB::InsertOrUpdateDocumentOp* insert_or_update_document);
+  const ::fpindex::InsertOrUpdateDocumentOp& insert_or_update_document() const;
+  ::fpindex::InsertOrUpdateDocumentOp* release_insert_or_update_document();
+  ::fpindex::InsertOrUpdateDocumentOp* mutable_insert_or_update_document();
+  void set_allocated_insert_or_update_document(::fpindex::InsertOrUpdateDocumentOp* insert_or_update_document);
   private:
-  const ::Acoustid::Server::PB::InsertOrUpdateDocumentOp& _internal_insert_or_update_document() const;
-  ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* _internal_mutable_insert_or_update_document();
+  const ::fpindex::InsertOrUpdateDocumentOp& _internal_insert_or_update_document() const;
+  ::fpindex::InsertOrUpdateDocumentOp* _internal_mutable_insert_or_update_document();
   public:
   void unsafe_arena_set_allocated_insert_or_update_document(
-      ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* insert_or_update_document);
-  ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* unsafe_arena_release_insert_or_update_document();
+      ::fpindex::InsertOrUpdateDocumentOp* insert_or_update_document);
+  ::fpindex::InsertOrUpdateDocumentOp* unsafe_arena_release_insert_or_update_document();
 
-  // .Acoustid.Server.PB.DeleteDocumentOp delete_document = 2;
+  // .fpindex.DeleteDocumentOp delete_document = 2;
   bool has_delete_document() const;
   private:
   bool _internal_has_delete_document() const;
   public:
   void clear_delete_document();
-  const ::Acoustid::Server::PB::DeleteDocumentOp& delete_document() const;
-  ::Acoustid::Server::PB::DeleteDocumentOp* release_delete_document();
-  ::Acoustid::Server::PB::DeleteDocumentOp* mutable_delete_document();
-  void set_allocated_delete_document(::Acoustid::Server::PB::DeleteDocumentOp* delete_document);
+  const ::fpindex::DeleteDocumentOp& delete_document() const;
+  ::fpindex::DeleteDocumentOp* release_delete_document();
+  ::fpindex::DeleteDocumentOp* mutable_delete_document();
+  void set_allocated_delete_document(::fpindex::DeleteDocumentOp* delete_document);
   private:
-  const ::Acoustid::Server::PB::DeleteDocumentOp& _internal_delete_document() const;
-  ::Acoustid::Server::PB::DeleteDocumentOp* _internal_mutable_delete_document();
+  const ::fpindex::DeleteDocumentOp& _internal_delete_document() const;
+  ::fpindex::DeleteDocumentOp* _internal_mutable_delete_document();
   public:
   void unsafe_arena_set_allocated_delete_document(
-      ::Acoustid::Server::PB::DeleteDocumentOp* delete_document);
-  ::Acoustid::Server::PB::DeleteDocumentOp* unsafe_arena_release_delete_document();
+      ::fpindex::DeleteDocumentOp* delete_document);
+  ::fpindex::DeleteDocumentOp* unsafe_arena_release_delete_document();
 
-  // .Acoustid.Server.PB.SetAttributeOp set_attribute = 3;
+  // .fpindex.SetAttributeOp set_attribute = 3;
   bool has_set_attribute() const;
   private:
   bool _internal_has_set_attribute() const;
   public:
   void clear_set_attribute();
-  const ::Acoustid::Server::PB::SetAttributeOp& set_attribute() const;
-  ::Acoustid::Server::PB::SetAttributeOp* release_set_attribute();
-  ::Acoustid::Server::PB::SetAttributeOp* mutable_set_attribute();
-  void set_allocated_set_attribute(::Acoustid::Server::PB::SetAttributeOp* set_attribute);
+  const ::fpindex::SetAttributeOp& set_attribute() const;
+  ::fpindex::SetAttributeOp* release_set_attribute();
+  ::fpindex::SetAttributeOp* mutable_set_attribute();
+  void set_allocated_set_attribute(::fpindex::SetAttributeOp* set_attribute);
   private:
-  const ::Acoustid::Server::PB::SetAttributeOp& _internal_set_attribute() const;
-  ::Acoustid::Server::PB::SetAttributeOp* _internal_mutable_set_attribute();
+  const ::fpindex::SetAttributeOp& _internal_set_attribute() const;
+  ::fpindex::SetAttributeOp* _internal_mutable_set_attribute();
   public:
   void unsafe_arena_set_allocated_set_attribute(
-      ::Acoustid::Server::PB::SetAttributeOp* set_attribute);
-  ::Acoustid::Server::PB::SetAttributeOp* unsafe_arena_release_set_attribute();
+      ::fpindex::SetAttributeOp* set_attribute);
+  ::fpindex::SetAttributeOp* unsafe_arena_release_set_attribute();
 
   void clear_op();
   OpCase op_case() const;
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.Operation)
+  // @@protoc_insertion_point(class_scope:fpindex.Operation)
  private:
   class _Internal;
   void set_has_insert_or_update_document();
@@ -1143,9 +1303,9 @@ class Operation PROTOBUF_FINAL :
   typedef void DestructorSkippable_;
   union OpUnion {
     OpUnion() {}
-    ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* insert_or_update_document_;
-    ::Acoustid::Server::PB::DeleteDocumentOp* delete_document_;
-    ::Acoustid::Server::PB::SetAttributeOp* set_attribute_;
+    ::fpindex::InsertOrUpdateDocumentOp* insert_or_update_document_;
+    ::fpindex::DeleteDocumentOp* delete_document_;
+    ::fpindex::SetAttributeOp* set_attribute_;
   } op_;
   mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
   ::PROTOBUF_NAMESPACE_ID::uint32 _oneof_case_[1];
@@ -1155,7 +1315,7 @@ class Operation PROTOBUF_FINAL :
 // -------------------------------------------------------------------
 
 class UpdateRequest PROTOBUF_FINAL :
-    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.UpdateRequest) */ {
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.UpdateRequest) */ {
  public:
   inline UpdateRequest() : UpdateRequest(nullptr) {};
   virtual ~UpdateRequest();
@@ -1196,7 +1356,7 @@ class UpdateRequest PROTOBUF_FINAL :
                &_UpdateRequest_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    6;
+    7;
 
   friend void swap(UpdateRequest& a, UpdateRequest& b) {
     a.Swap(&b);
@@ -1244,7 +1404,7 @@ class UpdateRequest PROTOBUF_FINAL :
   void InternalSwap(UpdateRequest* other);
   friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
   static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
-    return "Acoustid.Server.PB.UpdateRequest";
+    return "fpindex.UpdateRequest";
   }
   protected:
   explicit UpdateRequest(::PROTOBUF_NAMESPACE_ID::Arena* arena);
@@ -1270,22 +1430,22 @@ class UpdateRequest PROTOBUF_FINAL :
     kOpsFieldNumber = 2,
     kIndexNameFieldNumber = 1,
   };
-  // repeated .Acoustid.Server.PB.Operation ops = 2;
+  // repeated .fpindex.Operation ops = 2;
   int ops_size() const;
   private:
   int _internal_ops_size() const;
   public:
   void clear_ops();
-  ::Acoustid::Server::PB::Operation* mutable_ops(int index);
-  ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::Acoustid::Server::PB::Operation >*
+  ::fpindex::Operation* mutable_ops(int index);
+  ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::fpindex::Operation >*
       mutable_ops();
   private:
-  const ::Acoustid::Server::PB::Operation& _internal_ops(int index) const;
-  ::Acoustid::Server::PB::Operation* _internal_add_ops();
+  const ::fpindex::Operation& _internal_ops(int index) const;
+  ::fpindex::Operation* _internal_add_ops();
   public:
-  const ::Acoustid::Server::PB::Operation& ops(int index) const;
-  ::Acoustid::Server::PB::Operation* add_ops();
-  const ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::Acoustid::Server::PB::Operation >&
+  const ::fpindex::Operation& ops(int index) const;
+  ::fpindex::Operation* add_ops();
+  const ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::fpindex::Operation >&
       ops() const;
 
   // string index_name = 1;
@@ -1313,14 +1473,14 @@ class UpdateRequest PROTOBUF_FINAL :
   std::string* _internal_mutable_index_name();
   public:
 
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.UpdateRequest)
+  // @@protoc_insertion_point(class_scope:fpindex.UpdateRequest)
  private:
   class _Internal;
 
   template <typename T> friend class ::PROTOBUF_NAMESPACE_ID::Arena::InternalHelper;
   typedef void InternalArenaConstructable_;
   typedef void DestructorSkippable_;
-  ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::Acoustid::Server::PB::Operation > ops_;
+  ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::fpindex::Operation > ops_;
   ::PROTOBUF_NAMESPACE_ID::internal::ArenaStringPtr index_name_;
   mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
   friend struct ::TableStruct_index_2eproto;
@@ -1328,7 +1488,7 @@ class UpdateRequest PROTOBUF_FINAL :
 // -------------------------------------------------------------------
 
 class UpdateResponse PROTOBUF_FINAL :
-    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.UpdateResponse) */ {
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.UpdateResponse) */ {
  public:
   inline UpdateResponse() : UpdateResponse(nullptr) {};
   virtual ~UpdateResponse();
@@ -1369,7 +1529,7 @@ class UpdateResponse PROTOBUF_FINAL :
                &_UpdateResponse_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    7;
+    8;
 
   friend void swap(UpdateResponse& a, UpdateResponse& b) {
     a.Swap(&b);
@@ -1417,7 +1577,7 @@ class UpdateResponse PROTOBUF_FINAL :
   void InternalSwap(UpdateResponse* other);
   friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
   static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
-    return "Acoustid.Server.PB.UpdateResponse";
+    return "fpindex.UpdateResponse";
   }
   protected:
   explicit UpdateResponse(::PROTOBUF_NAMESPACE_ID::Arena* arena);
@@ -1439,7 +1599,7 @@ class UpdateResponse PROTOBUF_FINAL :
 
   // accessors -------------------------------------------------------
 
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.UpdateResponse)
+  // @@protoc_insertion_point(class_scope:fpindex.UpdateResponse)
  private:
   class _Internal;
 
@@ -1452,7 +1612,7 @@ class UpdateResponse PROTOBUF_FINAL :
 // -------------------------------------------------------------------
 
 class SearchResult PROTOBUF_FINAL :
-    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.SearchResult) */ {
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.SearchResult) */ {
  public:
   inline SearchResult() : SearchResult(nullptr) {};
   virtual ~SearchResult();
@@ -1493,7 +1653,7 @@ class SearchResult PROTOBUF_FINAL :
                &_SearchResult_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    8;
+    9;
 
   friend void swap(SearchResult& a, SearchResult& b) {
     a.Swap(&b);
@@ -1541,7 +1701,7 @@ class SearchResult PROTOBUF_FINAL :
   void InternalSwap(SearchResult* other);
   friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
   static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
-    return "Acoustid.Server.PB.SearchResult";
+    return "fpindex.SearchResult";
   }
   protected:
   explicit SearchResult(::PROTOBUF_NAMESPACE_ID::Arena* arena);
@@ -1585,7 +1745,7 @@ class SearchResult PROTOBUF_FINAL :
   void _internal_set_score(float value);
   public:
 
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.SearchResult)
+  // @@protoc_insertion_point(class_scope:fpindex.SearchResult)
  private:
   class _Internal;
 
@@ -1600,7 +1760,7 @@ class SearchResult PROTOBUF_FINAL :
 // -------------------------------------------------------------------
 
 class SearchRequest PROTOBUF_FINAL :
-    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.SearchRequest) */ {
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.SearchRequest) */ {
  public:
   inline SearchRequest() : SearchRequest(nullptr) {};
   virtual ~SearchRequest();
@@ -1641,7 +1801,7 @@ class SearchRequest PROTOBUF_FINAL :
                &_SearchRequest_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    9;
+    10;
 
   friend void swap(SearchRequest& a, SearchRequest& b) {
     a.Swap(&b);
@@ -1689,7 +1849,7 @@ class SearchRequest PROTOBUF_FINAL :
   void InternalSwap(SearchRequest* other);
   friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
   static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
-    return "Acoustid.Server.PB.SearchRequest";
+    return "fpindex.SearchRequest";
   }
   protected:
   explicit SearchRequest(::PROTOBUF_NAMESPACE_ID::Arena* arena);
@@ -1772,7 +1932,7 @@ class SearchRequest PROTOBUF_FINAL :
   void _internal_set_max_results(::PROTOBUF_NAMESPACE_ID::int32 value);
   public:
 
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.SearchRequest)
+  // @@protoc_insertion_point(class_scope:fpindex.SearchRequest)
  private:
   class _Internal;
 
@@ -1789,7 +1949,7 @@ class SearchRequest PROTOBUF_FINAL :
 // -------------------------------------------------------------------
 
 class SearchResponse PROTOBUF_FINAL :
-    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.SearchResponse) */ {
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.SearchResponse) */ {
  public:
   inline SearchResponse() : SearchResponse(nullptr) {};
   virtual ~SearchResponse();
@@ -1830,7 +1990,7 @@ class SearchResponse PROTOBUF_FINAL :
                &_SearchResponse_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    10;
+    11;
 
   friend void swap(SearchResponse& a, SearchResponse& b) {
     a.Swap(&b);
@@ -1878,7 +2038,7 @@ class SearchResponse PROTOBUF_FINAL :
   void InternalSwap(SearchResponse* other);
   friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
   static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
-    return "Acoustid.Server.PB.SearchResponse";
+    return "fpindex.SearchResponse";
   }
   protected:
   explicit SearchResponse(::PROTOBUF_NAMESPACE_ID::Arena* arena);
@@ -1903,39 +2063,39 @@ class SearchResponse PROTOBUF_FINAL :
   enum : int {
     kResultsFieldNumber = 1,
   };
-  // repeated .Acoustid.Server.PB.SearchResult results = 1;
+  // repeated .fpindex.SearchResult results = 1;
   int results_size() const;
   private:
   int _internal_results_size() const;
   public:
   void clear_results();
-  ::Acoustid::Server::PB::SearchResult* mutable_results(int index);
-  ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::Acoustid::Server::PB::SearchResult >*
+  ::fpindex::SearchResult* mutable_results(int index);
+  ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::fpindex::SearchResult >*
       mutable_results();
   private:
-  const ::Acoustid::Server::PB::SearchResult& _internal_results(int index) const;
-  ::Acoustid::Server::PB::SearchResult* _internal_add_results();
+  const ::fpindex::SearchResult& _internal_results(int index) const;
+  ::fpindex::SearchResult* _internal_add_results();
   public:
-  const ::Acoustid::Server::PB::SearchResult& results(int index) const;
-  ::Acoustid::Server::PB::SearchResult* add_results();
-  const ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::Acoustid::Server::PB::SearchResult >&
+  const ::fpindex::SearchResult& results(int index) const;
+  ::fpindex::SearchResult* add_results();
+  const ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::fpindex::SearchResult >&
       results() const;
 
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.SearchResponse)
+  // @@protoc_insertion_point(class_scope:fpindex.SearchResponse)
  private:
   class _Internal;
 
   template <typename T> friend class ::PROTOBUF_NAMESPACE_ID::Arena::InternalHelper;
   typedef void InternalArenaConstructable_;
   typedef void DestructorSkippable_;
-  ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::Acoustid::Server::PB::SearchResult > results_;
+  ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::fpindex::SearchResult > results_;
   mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
   friend struct ::TableStruct_index_2eproto;
 };
 // -------------------------------------------------------------------
 
 class GetIndexRequest PROTOBUF_FINAL :
-    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.GetIndexRequest) */ {
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.GetIndexRequest) */ {
  public:
   inline GetIndexRequest() : GetIndexRequest(nullptr) {};
   virtual ~GetIndexRequest();
@@ -1976,7 +2136,7 @@ class GetIndexRequest PROTOBUF_FINAL :
                &_GetIndexRequest_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    11;
+    12;
 
   friend void swap(GetIndexRequest& a, GetIndexRequest& b) {
     a.Swap(&b);
@@ -2024,7 +2184,7 @@ class GetIndexRequest PROTOBUF_FINAL :
   void InternalSwap(GetIndexRequest* other);
   friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
   static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
-    return "Acoustid.Server.PB.GetIndexRequest";
+    return "fpindex.GetIndexRequest";
   }
   protected:
   explicit GetIndexRequest(::PROTOBUF_NAMESPACE_ID::Arena* arena);
@@ -2074,7 +2234,7 @@ class GetIndexRequest PROTOBUF_FINAL :
   std::string* _internal_mutable_index_name();
   public:
 
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.GetIndexRequest)
+  // @@protoc_insertion_point(class_scope:fpindex.GetIndexRequest)
  private:
   class _Internal;
 
@@ -2088,7 +2248,7 @@ class GetIndexRequest PROTOBUF_FINAL :
 // -------------------------------------------------------------------
 
 class GetIndexResponse PROTOBUF_FINAL :
-    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.GetIndexResponse) */ {
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.GetIndexResponse) */ {
  public:
   inline GetIndexResponse() : GetIndexResponse(nullptr) {};
   virtual ~GetIndexResponse();
@@ -2129,7 +2289,7 @@ class GetIndexResponse PROTOBUF_FINAL :
                &_GetIndexResponse_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    12;
+    13;
 
   friend void swap(GetIndexResponse& a, GetIndexResponse& b) {
     a.Swap(&b);
@@ -2177,7 +2337,7 @@ class GetIndexResponse PROTOBUF_FINAL :
   void InternalSwap(GetIndexResponse* other);
   friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
   static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
-    return "Acoustid.Server.PB.GetIndexResponse";
+    return "fpindex.GetIndexResponse";
   }
   protected:
   explicit GetIndexResponse(::PROTOBUF_NAMESPACE_ID::Arena* arena);
@@ -2199,20 +2359,42 @@ class GetIndexResponse PROTOBUF_FINAL :
 
   // accessors -------------------------------------------------------
 
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.GetIndexResponse)
+  enum : int {
+    kIndexFieldNumber = 1,
+  };
+  // .fpindex.IndexInfo index = 1;
+  bool has_index() const;
+  private:
+  bool _internal_has_index() const;
+  public:
+  void clear_index();
+  const ::fpindex::IndexInfo& index() const;
+  ::fpindex::IndexInfo* release_index();
+  ::fpindex::IndexInfo* mutable_index();
+  void set_allocated_index(::fpindex::IndexInfo* index);
+  private:
+  const ::fpindex::IndexInfo& _internal_index() const;
+  ::fpindex::IndexInfo* _internal_mutable_index();
+  public:
+  void unsafe_arena_set_allocated_index(
+      ::fpindex::IndexInfo* index);
+  ::fpindex::IndexInfo* unsafe_arena_release_index();
+
+  // @@protoc_insertion_point(class_scope:fpindex.GetIndexResponse)
  private:
   class _Internal;
 
   template <typename T> friend class ::PROTOBUF_NAMESPACE_ID::Arena::InternalHelper;
   typedef void InternalArenaConstructable_;
   typedef void DestructorSkippable_;
+  ::fpindex::IndexInfo* index_;
   mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
   friend struct ::TableStruct_index_2eproto;
 };
 // -------------------------------------------------------------------
 
 class CreateIndexRequest PROTOBUF_FINAL :
-    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.CreateIndexRequest) */ {
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.CreateIndexRequest) */ {
  public:
   inline CreateIndexRequest() : CreateIndexRequest(nullptr) {};
   virtual ~CreateIndexRequest();
@@ -2253,7 +2435,7 @@ class CreateIndexRequest PROTOBUF_FINAL :
                &_CreateIndexRequest_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    13;
+    14;
 
   friend void swap(CreateIndexRequest& a, CreateIndexRequest& b) {
     a.Swap(&b);
@@ -2301,7 +2483,7 @@ class CreateIndexRequest PROTOBUF_FINAL :
   void InternalSwap(CreateIndexRequest* other);
   friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
   static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
-    return "Acoustid.Server.PB.CreateIndexRequest";
+    return "fpindex.CreateIndexRequest";
   }
   protected:
   explicit CreateIndexRequest(::PROTOBUF_NAMESPACE_ID::Arena* arena);
@@ -2351,7 +2533,7 @@ class CreateIndexRequest PROTOBUF_FINAL :
   std::string* _internal_mutable_index_name();
   public:
 
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.CreateIndexRequest)
+  // @@protoc_insertion_point(class_scope:fpindex.CreateIndexRequest)
  private:
   class _Internal;
 
@@ -2365,7 +2547,7 @@ class CreateIndexRequest PROTOBUF_FINAL :
 // -------------------------------------------------------------------
 
 class CreateIndexResponse PROTOBUF_FINAL :
-    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.CreateIndexResponse) */ {
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.CreateIndexResponse) */ {
  public:
   inline CreateIndexResponse() : CreateIndexResponse(nullptr) {};
   virtual ~CreateIndexResponse();
@@ -2406,7 +2588,7 @@ class CreateIndexResponse PROTOBUF_FINAL :
                &_CreateIndexResponse_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    14;
+    15;
 
   friend void swap(CreateIndexResponse& a, CreateIndexResponse& b) {
     a.Swap(&b);
@@ -2454,7 +2636,7 @@ class CreateIndexResponse PROTOBUF_FINAL :
   void InternalSwap(CreateIndexResponse* other);
   friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
   static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
-    return "Acoustid.Server.PB.CreateIndexResponse";
+    return "fpindex.CreateIndexResponse";
   }
   protected:
   explicit CreateIndexResponse(::PROTOBUF_NAMESPACE_ID::Arena* arena);
@@ -2476,20 +2658,42 @@ class CreateIndexResponse PROTOBUF_FINAL :
 
   // accessors -------------------------------------------------------
 
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.CreateIndexResponse)
+  enum : int {
+    kIndexFieldNumber = 1,
+  };
+  // .fpindex.IndexInfo index = 1;
+  bool has_index() const;
+  private:
+  bool _internal_has_index() const;
+  public:
+  void clear_index();
+  const ::fpindex::IndexInfo& index() const;
+  ::fpindex::IndexInfo* release_index();
+  ::fpindex::IndexInfo* mutable_index();
+  void set_allocated_index(::fpindex::IndexInfo* index);
+  private:
+  const ::fpindex::IndexInfo& _internal_index() const;
+  ::fpindex::IndexInfo* _internal_mutable_index();
+  public:
+  void unsafe_arena_set_allocated_index(
+      ::fpindex::IndexInfo* index);
+  ::fpindex::IndexInfo* unsafe_arena_release_index();
+
+  // @@protoc_insertion_point(class_scope:fpindex.CreateIndexResponse)
  private:
   class _Internal;
 
   template <typename T> friend class ::PROTOBUF_NAMESPACE_ID::Arena::InternalHelper;
   typedef void InternalArenaConstructable_;
   typedef void DestructorSkippable_;
+  ::fpindex::IndexInfo* index_;
   mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
   friend struct ::TableStruct_index_2eproto;
 };
 // -------------------------------------------------------------------
 
 class DeleteIndexRequest PROTOBUF_FINAL :
-    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.DeleteIndexRequest) */ {
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.DeleteIndexRequest) */ {
  public:
   inline DeleteIndexRequest() : DeleteIndexRequest(nullptr) {};
   virtual ~DeleteIndexRequest();
@@ -2530,7 +2734,7 @@ class DeleteIndexRequest PROTOBUF_FINAL :
                &_DeleteIndexRequest_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    15;
+    16;
 
   friend void swap(DeleteIndexRequest& a, DeleteIndexRequest& b) {
     a.Swap(&b);
@@ -2578,7 +2782,7 @@ class DeleteIndexRequest PROTOBUF_FINAL :
   void InternalSwap(DeleteIndexRequest* other);
   friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
   static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
-    return "Acoustid.Server.PB.DeleteIndexRequest";
+    return "fpindex.DeleteIndexRequest";
   }
   protected:
   explicit DeleteIndexRequest(::PROTOBUF_NAMESPACE_ID::Arena* arena);
@@ -2628,7 +2832,7 @@ class DeleteIndexRequest PROTOBUF_FINAL :
   std::string* _internal_mutable_index_name();
   public:
 
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.DeleteIndexRequest)
+  // @@protoc_insertion_point(class_scope:fpindex.DeleteIndexRequest)
  private:
   class _Internal;
 
@@ -2642,7 +2846,7 @@ class DeleteIndexRequest PROTOBUF_FINAL :
 // -------------------------------------------------------------------
 
 class DeleteIndexResponse PROTOBUF_FINAL :
-    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:Acoustid.Server.PB.DeleteIndexResponse) */ {
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.DeleteIndexResponse) */ {
  public:
   inline DeleteIndexResponse() : DeleteIndexResponse(nullptr) {};
   virtual ~DeleteIndexResponse();
@@ -2683,7 +2887,7 @@ class DeleteIndexResponse PROTOBUF_FINAL :
                &_DeleteIndexResponse_default_instance_);
   }
   static constexpr int kIndexInFileMessages =
-    16;
+    17;
 
   friend void swap(DeleteIndexResponse& a, DeleteIndexResponse& b) {
     a.Swap(&b);
@@ -2731,7 +2935,7 @@ class DeleteIndexResponse PROTOBUF_FINAL :
   void InternalSwap(DeleteIndexResponse* other);
   friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
   static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
-    return "Acoustid.Server.PB.DeleteIndexResponse";
+    return "fpindex.DeleteIndexResponse";
   }
   protected:
   explicit DeleteIndexResponse(::PROTOBUF_NAMESPACE_ID::Arena* arena);
@@ -2753,13 +2957,283 @@ class DeleteIndexResponse PROTOBUF_FINAL :
 
   // accessors -------------------------------------------------------
 
-  // @@protoc_insertion_point(class_scope:Acoustid.Server.PB.DeleteIndexResponse)
+  // @@protoc_insertion_point(class_scope:fpindex.DeleteIndexResponse)
  private:
   class _Internal;
 
   template <typename T> friend class ::PROTOBUF_NAMESPACE_ID::Arena::InternalHelper;
   typedef void InternalArenaConstructable_;
   typedef void DestructorSkippable_;
+  mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
+  friend struct ::TableStruct_index_2eproto;
+};
+// -------------------------------------------------------------------
+
+class ListIndexesRequest PROTOBUF_FINAL :
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.ListIndexesRequest) */ {
+ public:
+  inline ListIndexesRequest() : ListIndexesRequest(nullptr) {};
+  virtual ~ListIndexesRequest();
+
+  ListIndexesRequest(const ListIndexesRequest& from);
+  ListIndexesRequest(ListIndexesRequest&& from) noexcept
+    : ListIndexesRequest() {
+    *this = ::std::move(from);
+  }
+
+  inline ListIndexesRequest& operator=(const ListIndexesRequest& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline ListIndexesRequest& operator=(ListIndexesRequest&& from) noexcept {
+    if (GetArena() == from.GetArena()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* GetDescriptor() {
+    return GetMetadataStatic().descriptor;
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Reflection* GetReflection() {
+    return GetMetadataStatic().reflection;
+  }
+  static const ListIndexesRequest& default_instance();
+
+  static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
+  static inline const ListIndexesRequest* internal_default_instance() {
+    return reinterpret_cast<const ListIndexesRequest*>(
+               &_ListIndexesRequest_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    18;
+
+  friend void swap(ListIndexesRequest& a, ListIndexesRequest& b) {
+    a.Swap(&b);
+  }
+  inline void Swap(ListIndexesRequest* other) {
+    if (other == this) return;
+    if (GetArena() == other->GetArena()) {
+      InternalSwap(other);
+    } else {
+      ::PROTOBUF_NAMESPACE_ID::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(ListIndexesRequest* other) {
+    if (other == this) return;
+    GOOGLE_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline ListIndexesRequest* New() const final {
+    return CreateMaybeMessage<ListIndexesRequest>(nullptr);
+  }
+
+  ListIndexesRequest* New(::PROTOBUF_NAMESPACE_ID::Arena* arena) const final {
+    return CreateMaybeMessage<ListIndexesRequest>(arena);
+  }
+  void CopyFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) final;
+  void MergeFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) final;
+  void CopyFrom(const ListIndexesRequest& from);
+  void MergeFrom(const ListIndexesRequest& from);
+  PROTOBUF_ATTRIBUTE_REINITIALIZES void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  const char* _InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) final;
+  ::PROTOBUF_NAMESPACE_ID::uint8* _InternalSerialize(
+      ::PROTOBUF_NAMESPACE_ID::uint8* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  inline void SharedCtor();
+  inline void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(ListIndexesRequest* other);
+  friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
+  static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
+    return "fpindex.ListIndexesRequest";
+  }
+  protected:
+  explicit ListIndexesRequest(::PROTOBUF_NAMESPACE_ID::Arena* arena);
+  private:
+  static void ArenaDtor(void* object);
+  inline void RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena* arena);
+  public:
+
+  ::PROTOBUF_NAMESPACE_ID::Metadata GetMetadata() const final;
+  private:
+  static ::PROTOBUF_NAMESPACE_ID::Metadata GetMetadataStatic() {
+    ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(&::descriptor_table_index_2eproto);
+    return ::descriptor_table_index_2eproto.file_level_metadata[kIndexInFileMessages];
+  }
+
+  public:
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // @@protoc_insertion_point(class_scope:fpindex.ListIndexesRequest)
+ private:
+  class _Internal;
+
+  template <typename T> friend class ::PROTOBUF_NAMESPACE_ID::Arena::InternalHelper;
+  typedef void InternalArenaConstructable_;
+  typedef void DestructorSkippable_;
+  mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
+  friend struct ::TableStruct_index_2eproto;
+};
+// -------------------------------------------------------------------
+
+class ListIndexesResponse PROTOBUF_FINAL :
+    public ::PROTOBUF_NAMESPACE_ID::Message /* @@protoc_insertion_point(class_definition:fpindex.ListIndexesResponse) */ {
+ public:
+  inline ListIndexesResponse() : ListIndexesResponse(nullptr) {};
+  virtual ~ListIndexesResponse();
+
+  ListIndexesResponse(const ListIndexesResponse& from);
+  ListIndexesResponse(ListIndexesResponse&& from) noexcept
+    : ListIndexesResponse() {
+    *this = ::std::move(from);
+  }
+
+  inline ListIndexesResponse& operator=(const ListIndexesResponse& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline ListIndexesResponse& operator=(ListIndexesResponse&& from) noexcept {
+    if (GetArena() == from.GetArena()) {
+      if (this != &from) InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Descriptor* GetDescriptor() {
+    return GetMetadataStatic().descriptor;
+  }
+  static const ::PROTOBUF_NAMESPACE_ID::Reflection* GetReflection() {
+    return GetMetadataStatic().reflection;
+  }
+  static const ListIndexesResponse& default_instance();
+
+  static void InitAsDefaultInstance();  // FOR INTERNAL USE ONLY
+  static inline const ListIndexesResponse* internal_default_instance() {
+    return reinterpret_cast<const ListIndexesResponse*>(
+               &_ListIndexesResponse_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages =
+    19;
+
+  friend void swap(ListIndexesResponse& a, ListIndexesResponse& b) {
+    a.Swap(&b);
+  }
+  inline void Swap(ListIndexesResponse* other) {
+    if (other == this) return;
+    if (GetArena() == other->GetArena()) {
+      InternalSwap(other);
+    } else {
+      ::PROTOBUF_NAMESPACE_ID::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(ListIndexesResponse* other) {
+    if (other == this) return;
+    GOOGLE_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  inline ListIndexesResponse* New() const final {
+    return CreateMaybeMessage<ListIndexesResponse>(nullptr);
+  }
+
+  ListIndexesResponse* New(::PROTOBUF_NAMESPACE_ID::Arena* arena) const final {
+    return CreateMaybeMessage<ListIndexesResponse>(arena);
+  }
+  void CopyFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) final;
+  void MergeFrom(const ::PROTOBUF_NAMESPACE_ID::Message& from) final;
+  void CopyFrom(const ListIndexesResponse& from);
+  void MergeFrom(const ListIndexesResponse& from);
+  PROTOBUF_ATTRIBUTE_REINITIALIZES void Clear() final;
+  bool IsInitialized() const final;
+
+  size_t ByteSizeLong() const final;
+  const char* _InternalParse(const char* ptr, ::PROTOBUF_NAMESPACE_ID::internal::ParseContext* ctx) final;
+  ::PROTOBUF_NAMESPACE_ID::uint8* _InternalSerialize(
+      ::PROTOBUF_NAMESPACE_ID::uint8* target, ::PROTOBUF_NAMESPACE_ID::io::EpsCopyOutputStream* stream) const final;
+  int GetCachedSize() const final { return _cached_size_.Get(); }
+
+  private:
+  inline void SharedCtor();
+  inline void SharedDtor();
+  void SetCachedSize(int size) const final;
+  void InternalSwap(ListIndexesResponse* other);
+  friend class ::PROTOBUF_NAMESPACE_ID::internal::AnyMetadata;
+  static ::PROTOBUF_NAMESPACE_ID::StringPiece FullMessageName() {
+    return "fpindex.ListIndexesResponse";
+  }
+  protected:
+  explicit ListIndexesResponse(::PROTOBUF_NAMESPACE_ID::Arena* arena);
+  private:
+  static void ArenaDtor(void* object);
+  inline void RegisterArenaDtor(::PROTOBUF_NAMESPACE_ID::Arena* arena);
+  public:
+
+  ::PROTOBUF_NAMESPACE_ID::Metadata GetMetadata() const final;
+  private:
+  static ::PROTOBUF_NAMESPACE_ID::Metadata GetMetadataStatic() {
+    ::PROTOBUF_NAMESPACE_ID::internal::AssignDescriptors(&::descriptor_table_index_2eproto);
+    return ::descriptor_table_index_2eproto.file_level_metadata[kIndexInFileMessages];
+  }
+
+  public:
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  enum : int {
+    kIndexesFieldNumber = 1,
+  };
+  // repeated .fpindex.IndexInfo indexes = 1;
+  int indexes_size() const;
+  private:
+  int _internal_indexes_size() const;
+  public:
+  void clear_indexes();
+  ::fpindex::IndexInfo* mutable_indexes(int index);
+  ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::fpindex::IndexInfo >*
+      mutable_indexes();
+  private:
+  const ::fpindex::IndexInfo& _internal_indexes(int index) const;
+  ::fpindex::IndexInfo* _internal_add_indexes();
+  public:
+  const ::fpindex::IndexInfo& indexes(int index) const;
+  ::fpindex::IndexInfo* add_indexes();
+  const ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::fpindex::IndexInfo >&
+      indexes() const;
+
+  // @@protoc_insertion_point(class_scope:fpindex.ListIndexesResponse)
+ private:
+  class _Internal;
+
+  template <typename T> friend class ::PROTOBUF_NAMESPACE_ID::Arena::InternalHelper;
+  typedef void InternalArenaConstructable_;
+  typedef void DestructorSkippable_;
+  ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::fpindex::IndexInfo > indexes_;
   mutable ::PROTOBUF_NAMESPACE_ID::internal::CachedSize _cached_size_;
   friend struct ::TableStruct_index_2eproto;
 };
@@ -2772,6 +3246,91 @@ class DeleteIndexResponse PROTOBUF_FINAL :
   #pragma GCC diagnostic push
   #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif  // __GNUC__
+// IndexInfo
+
+// string name = 1;
+inline void IndexInfo::clear_name() {
+  name_.ClearToEmpty(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
+}
+inline const std::string& IndexInfo::name() const {
+  // @@protoc_insertion_point(field_get:fpindex.IndexInfo.name)
+  return _internal_name();
+}
+inline void IndexInfo::set_name(const std::string& value) {
+  _internal_set_name(value);
+  // @@protoc_insertion_point(field_set:fpindex.IndexInfo.name)
+}
+inline std::string* IndexInfo::mutable_name() {
+  // @@protoc_insertion_point(field_mutable:fpindex.IndexInfo.name)
+  return _internal_mutable_name();
+}
+inline const std::string& IndexInfo::_internal_name() const {
+  return name_.Get();
+}
+inline void IndexInfo::_internal_set_name(const std::string& value) {
+  
+  name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), value, GetArena());
+}
+inline void IndexInfo::set_name(std::string&& value) {
+  
+  name_.Set(
+    &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::move(value), GetArena());
+  // @@protoc_insertion_point(field_set_rvalue:fpindex.IndexInfo.name)
+}
+inline void IndexInfo::set_name(const char* value) {
+  GOOGLE_DCHECK(value != nullptr);
+  
+  name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(value),
+              GetArena());
+  // @@protoc_insertion_point(field_set_char:fpindex.IndexInfo.name)
+}
+inline void IndexInfo::set_name(const char* value,
+    size_t size) {
+  
+  name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(
+      reinterpret_cast<const char*>(value), size), GetArena());
+  // @@protoc_insertion_point(field_set_pointer:fpindex.IndexInfo.name)
+}
+inline std::string* IndexInfo::_internal_mutable_name() {
+  
+  return name_.Mutable(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
+}
+inline std::string* IndexInfo::release_name() {
+  // @@protoc_insertion_point(field_release:fpindex.IndexInfo.name)
+  return name_.Release(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
+}
+inline void IndexInfo::set_allocated_name(std::string* name) {
+  if (name != nullptr) {
+    
+  } else {
+    
+  }
+  name_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), name,
+      GetArena());
+  // @@protoc_insertion_point(field_set_allocated:fpindex.IndexInfo.name)
+}
+inline std::string* IndexInfo::unsafe_arena_release_name() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:fpindex.IndexInfo.name)
+  GOOGLE_DCHECK(GetArena() != nullptr);
+  
+  return name_.UnsafeArenaRelease(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      GetArena());
+}
+inline void IndexInfo::unsafe_arena_set_allocated_name(
+    std::string* name) {
+  GOOGLE_DCHECK(GetArena() != nullptr);
+  if (name != nullptr) {
+    
+  } else {
+    
+  }
+  name_.UnsafeArenaSetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
+      name, GetArena());
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:fpindex.IndexInfo.name)
+}
+
+// -------------------------------------------------------------------
+
 // GetAttributeRequest
 
 // string index_name = 1;
@@ -2779,15 +3338,15 @@ inline void GetAttributeRequest::clear_index_name() {
   index_name_.ClearToEmpty(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline const std::string& GetAttributeRequest::index_name() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.GetAttributeRequest.index_name)
+  // @@protoc_insertion_point(field_get:fpindex.GetAttributeRequest.index_name)
   return _internal_index_name();
 }
 inline void GetAttributeRequest::set_index_name(const std::string& value) {
   _internal_set_index_name(value);
-  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.GetAttributeRequest.index_name)
+  // @@protoc_insertion_point(field_set:fpindex.GetAttributeRequest.index_name)
 }
 inline std::string* GetAttributeRequest::mutable_index_name() {
-  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.GetAttributeRequest.index_name)
+  // @@protoc_insertion_point(field_mutable:fpindex.GetAttributeRequest.index_name)
   return _internal_mutable_index_name();
 }
 inline const std::string& GetAttributeRequest::_internal_index_name() const {
@@ -2801,28 +3360,28 @@ inline void GetAttributeRequest::set_index_name(std::string&& value) {
   
   index_name_.Set(
     &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::move(value), GetArena());
-  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.GetAttributeRequest.index_name)
+  // @@protoc_insertion_point(field_set_rvalue:fpindex.GetAttributeRequest.index_name)
 }
 inline void GetAttributeRequest::set_index_name(const char* value) {
   GOOGLE_DCHECK(value != nullptr);
   
   index_name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(value),
               GetArena());
-  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.GetAttributeRequest.index_name)
+  // @@protoc_insertion_point(field_set_char:fpindex.GetAttributeRequest.index_name)
 }
 inline void GetAttributeRequest::set_index_name(const char* value,
     size_t size) {
   
   index_name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(
       reinterpret_cast<const char*>(value), size), GetArena());
-  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.GetAttributeRequest.index_name)
+  // @@protoc_insertion_point(field_set_pointer:fpindex.GetAttributeRequest.index_name)
 }
 inline std::string* GetAttributeRequest::_internal_mutable_index_name() {
   
   return index_name_.Mutable(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline std::string* GetAttributeRequest::release_index_name() {
-  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.GetAttributeRequest.index_name)
+  // @@protoc_insertion_point(field_release:fpindex.GetAttributeRequest.index_name)
   return index_name_.Release(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline void GetAttributeRequest::set_allocated_index_name(std::string* index_name) {
@@ -2833,10 +3392,10 @@ inline void GetAttributeRequest::set_allocated_index_name(std::string* index_nam
   }
   index_name_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), index_name,
       GetArena());
-  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.GetAttributeRequest.index_name)
+  // @@protoc_insertion_point(field_set_allocated:fpindex.GetAttributeRequest.index_name)
 }
 inline std::string* GetAttributeRequest::unsafe_arena_release_index_name() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:Acoustid.Server.PB.GetAttributeRequest.index_name)
+  // @@protoc_insertion_point(field_unsafe_arena_release:fpindex.GetAttributeRequest.index_name)
   GOOGLE_DCHECK(GetArena() != nullptr);
   
   return index_name_.UnsafeArenaRelease(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
@@ -2852,7 +3411,7 @@ inline void GetAttributeRequest::unsafe_arena_set_allocated_index_name(
   }
   index_name_.UnsafeArenaSetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
       index_name, GetArena());
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:Acoustid.Server.PB.GetAttributeRequest.index_name)
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:fpindex.GetAttributeRequest.index_name)
 }
 
 // string name = 2;
@@ -2860,15 +3419,15 @@ inline void GetAttributeRequest::clear_name() {
   name_.ClearToEmpty(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline const std::string& GetAttributeRequest::name() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.GetAttributeRequest.name)
+  // @@protoc_insertion_point(field_get:fpindex.GetAttributeRequest.name)
   return _internal_name();
 }
 inline void GetAttributeRequest::set_name(const std::string& value) {
   _internal_set_name(value);
-  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.GetAttributeRequest.name)
+  // @@protoc_insertion_point(field_set:fpindex.GetAttributeRequest.name)
 }
 inline std::string* GetAttributeRequest::mutable_name() {
-  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.GetAttributeRequest.name)
+  // @@protoc_insertion_point(field_mutable:fpindex.GetAttributeRequest.name)
   return _internal_mutable_name();
 }
 inline const std::string& GetAttributeRequest::_internal_name() const {
@@ -2882,28 +3441,28 @@ inline void GetAttributeRequest::set_name(std::string&& value) {
   
   name_.Set(
     &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::move(value), GetArena());
-  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.GetAttributeRequest.name)
+  // @@protoc_insertion_point(field_set_rvalue:fpindex.GetAttributeRequest.name)
 }
 inline void GetAttributeRequest::set_name(const char* value) {
   GOOGLE_DCHECK(value != nullptr);
   
   name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(value),
               GetArena());
-  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.GetAttributeRequest.name)
+  // @@protoc_insertion_point(field_set_char:fpindex.GetAttributeRequest.name)
 }
 inline void GetAttributeRequest::set_name(const char* value,
     size_t size) {
   
   name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(
       reinterpret_cast<const char*>(value), size), GetArena());
-  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.GetAttributeRequest.name)
+  // @@protoc_insertion_point(field_set_pointer:fpindex.GetAttributeRequest.name)
 }
 inline std::string* GetAttributeRequest::_internal_mutable_name() {
   
   return name_.Mutable(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline std::string* GetAttributeRequest::release_name() {
-  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.GetAttributeRequest.name)
+  // @@protoc_insertion_point(field_release:fpindex.GetAttributeRequest.name)
   return name_.Release(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline void GetAttributeRequest::set_allocated_name(std::string* name) {
@@ -2914,10 +3473,10 @@ inline void GetAttributeRequest::set_allocated_name(std::string* name) {
   }
   name_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), name,
       GetArena());
-  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.GetAttributeRequest.name)
+  // @@protoc_insertion_point(field_set_allocated:fpindex.GetAttributeRequest.name)
 }
 inline std::string* GetAttributeRequest::unsafe_arena_release_name() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:Acoustid.Server.PB.GetAttributeRequest.name)
+  // @@protoc_insertion_point(field_unsafe_arena_release:fpindex.GetAttributeRequest.name)
   GOOGLE_DCHECK(GetArena() != nullptr);
   
   return name_.UnsafeArenaRelease(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
@@ -2933,7 +3492,7 @@ inline void GetAttributeRequest::unsafe_arena_set_allocated_name(
   }
   name_.UnsafeArenaSetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
       name, GetArena());
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:Acoustid.Server.PB.GetAttributeRequest.name)
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:fpindex.GetAttributeRequest.name)
 }
 
 // -------------------------------------------------------------------
@@ -2945,15 +3504,15 @@ inline void GetAttributeResponse::clear_value() {
   value_.ClearToEmpty(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline const std::string& GetAttributeResponse::value() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.GetAttributeResponse.value)
+  // @@protoc_insertion_point(field_get:fpindex.GetAttributeResponse.value)
   return _internal_value();
 }
 inline void GetAttributeResponse::set_value(const std::string& value) {
   _internal_set_value(value);
-  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.GetAttributeResponse.value)
+  // @@protoc_insertion_point(field_set:fpindex.GetAttributeResponse.value)
 }
 inline std::string* GetAttributeResponse::mutable_value() {
-  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.GetAttributeResponse.value)
+  // @@protoc_insertion_point(field_mutable:fpindex.GetAttributeResponse.value)
   return _internal_mutable_value();
 }
 inline const std::string& GetAttributeResponse::_internal_value() const {
@@ -2967,28 +3526,28 @@ inline void GetAttributeResponse::set_value(std::string&& value) {
   
   value_.Set(
     &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::move(value), GetArena());
-  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.GetAttributeResponse.value)
+  // @@protoc_insertion_point(field_set_rvalue:fpindex.GetAttributeResponse.value)
 }
 inline void GetAttributeResponse::set_value(const char* value) {
   GOOGLE_DCHECK(value != nullptr);
   
   value_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(value),
               GetArena());
-  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.GetAttributeResponse.value)
+  // @@protoc_insertion_point(field_set_char:fpindex.GetAttributeResponse.value)
 }
 inline void GetAttributeResponse::set_value(const char* value,
     size_t size) {
   
   value_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(
       reinterpret_cast<const char*>(value), size), GetArena());
-  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.GetAttributeResponse.value)
+  // @@protoc_insertion_point(field_set_pointer:fpindex.GetAttributeResponse.value)
 }
 inline std::string* GetAttributeResponse::_internal_mutable_value() {
   
   return value_.Mutable(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline std::string* GetAttributeResponse::release_value() {
-  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.GetAttributeResponse.value)
+  // @@protoc_insertion_point(field_release:fpindex.GetAttributeResponse.value)
   return value_.Release(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline void GetAttributeResponse::set_allocated_value(std::string* value) {
@@ -2999,10 +3558,10 @@ inline void GetAttributeResponse::set_allocated_value(std::string* value) {
   }
   value_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), value,
       GetArena());
-  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.GetAttributeResponse.value)
+  // @@protoc_insertion_point(field_set_allocated:fpindex.GetAttributeResponse.value)
 }
 inline std::string* GetAttributeResponse::unsafe_arena_release_value() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:Acoustid.Server.PB.GetAttributeResponse.value)
+  // @@protoc_insertion_point(field_unsafe_arena_release:fpindex.GetAttributeResponse.value)
   GOOGLE_DCHECK(GetArena() != nullptr);
   
   return value_.UnsafeArenaRelease(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
@@ -3018,7 +3577,7 @@ inline void GetAttributeResponse::unsafe_arena_set_allocated_value(
   }
   value_.UnsafeArenaSetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
       value, GetArena());
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:Acoustid.Server.PB.GetAttributeResponse.value)
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:fpindex.GetAttributeResponse.value)
 }
 
 // -------------------------------------------------------------------
@@ -3033,7 +3592,7 @@ inline ::PROTOBUF_NAMESPACE_ID::uint32 InsertOrUpdateDocumentOp::_internal_doc_i
   return doc_id_;
 }
 inline ::PROTOBUF_NAMESPACE_ID::uint32 InsertOrUpdateDocumentOp::doc_id() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.InsertOrUpdateDocumentOp.doc_id)
+  // @@protoc_insertion_point(field_get:fpindex.InsertOrUpdateDocumentOp.doc_id)
   return _internal_doc_id();
 }
 inline void InsertOrUpdateDocumentOp::_internal_set_doc_id(::PROTOBUF_NAMESPACE_ID::uint32 value) {
@@ -3042,7 +3601,7 @@ inline void InsertOrUpdateDocumentOp::_internal_set_doc_id(::PROTOBUF_NAMESPACE_
 }
 inline void InsertOrUpdateDocumentOp::set_doc_id(::PROTOBUF_NAMESPACE_ID::uint32 value) {
   _internal_set_doc_id(value);
-  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.InsertOrUpdateDocumentOp.doc_id)
+  // @@protoc_insertion_point(field_set:fpindex.InsertOrUpdateDocumentOp.doc_id)
 }
 
 // repeated uint32 terms = 2;
@@ -3059,19 +3618,19 @@ inline ::PROTOBUF_NAMESPACE_ID::uint32 InsertOrUpdateDocumentOp::_internal_terms
   return terms_.Get(index);
 }
 inline ::PROTOBUF_NAMESPACE_ID::uint32 InsertOrUpdateDocumentOp::terms(int index) const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.InsertOrUpdateDocumentOp.terms)
+  // @@protoc_insertion_point(field_get:fpindex.InsertOrUpdateDocumentOp.terms)
   return _internal_terms(index);
 }
 inline void InsertOrUpdateDocumentOp::set_terms(int index, ::PROTOBUF_NAMESPACE_ID::uint32 value) {
   terms_.Set(index, value);
-  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.InsertOrUpdateDocumentOp.terms)
+  // @@protoc_insertion_point(field_set:fpindex.InsertOrUpdateDocumentOp.terms)
 }
 inline void InsertOrUpdateDocumentOp::_internal_add_terms(::PROTOBUF_NAMESPACE_ID::uint32 value) {
   terms_.Add(value);
 }
 inline void InsertOrUpdateDocumentOp::add_terms(::PROTOBUF_NAMESPACE_ID::uint32 value) {
   _internal_add_terms(value);
-  // @@protoc_insertion_point(field_add:Acoustid.Server.PB.InsertOrUpdateDocumentOp.terms)
+  // @@protoc_insertion_point(field_add:fpindex.InsertOrUpdateDocumentOp.terms)
 }
 inline const ::PROTOBUF_NAMESPACE_ID::RepeatedField< ::PROTOBUF_NAMESPACE_ID::uint32 >&
 InsertOrUpdateDocumentOp::_internal_terms() const {
@@ -3079,7 +3638,7 @@ InsertOrUpdateDocumentOp::_internal_terms() const {
 }
 inline const ::PROTOBUF_NAMESPACE_ID::RepeatedField< ::PROTOBUF_NAMESPACE_ID::uint32 >&
 InsertOrUpdateDocumentOp::terms() const {
-  // @@protoc_insertion_point(field_list:Acoustid.Server.PB.InsertOrUpdateDocumentOp.terms)
+  // @@protoc_insertion_point(field_list:fpindex.InsertOrUpdateDocumentOp.terms)
   return _internal_terms();
 }
 inline ::PROTOBUF_NAMESPACE_ID::RepeatedField< ::PROTOBUF_NAMESPACE_ID::uint32 >*
@@ -3088,7 +3647,7 @@ InsertOrUpdateDocumentOp::_internal_mutable_terms() {
 }
 inline ::PROTOBUF_NAMESPACE_ID::RepeatedField< ::PROTOBUF_NAMESPACE_ID::uint32 >*
 InsertOrUpdateDocumentOp::mutable_terms() {
-  // @@protoc_insertion_point(field_mutable_list:Acoustid.Server.PB.InsertOrUpdateDocumentOp.terms)
+  // @@protoc_insertion_point(field_mutable_list:fpindex.InsertOrUpdateDocumentOp.terms)
   return _internal_mutable_terms();
 }
 
@@ -3104,7 +3663,7 @@ inline ::PROTOBUF_NAMESPACE_ID::uint32 DeleteDocumentOp::_internal_doc_id() cons
   return doc_id_;
 }
 inline ::PROTOBUF_NAMESPACE_ID::uint32 DeleteDocumentOp::doc_id() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.DeleteDocumentOp.doc_id)
+  // @@protoc_insertion_point(field_get:fpindex.DeleteDocumentOp.doc_id)
   return _internal_doc_id();
 }
 inline void DeleteDocumentOp::_internal_set_doc_id(::PROTOBUF_NAMESPACE_ID::uint32 value) {
@@ -3113,7 +3672,7 @@ inline void DeleteDocumentOp::_internal_set_doc_id(::PROTOBUF_NAMESPACE_ID::uint
 }
 inline void DeleteDocumentOp::set_doc_id(::PROTOBUF_NAMESPACE_ID::uint32 value) {
   _internal_set_doc_id(value);
-  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.DeleteDocumentOp.doc_id)
+  // @@protoc_insertion_point(field_set:fpindex.DeleteDocumentOp.doc_id)
 }
 
 // -------------------------------------------------------------------
@@ -3125,15 +3684,15 @@ inline void SetAttributeOp::clear_name() {
   name_.ClearToEmpty(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline const std::string& SetAttributeOp::name() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.SetAttributeOp.name)
+  // @@protoc_insertion_point(field_get:fpindex.SetAttributeOp.name)
   return _internal_name();
 }
 inline void SetAttributeOp::set_name(const std::string& value) {
   _internal_set_name(value);
-  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.SetAttributeOp.name)
+  // @@protoc_insertion_point(field_set:fpindex.SetAttributeOp.name)
 }
 inline std::string* SetAttributeOp::mutable_name() {
-  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.SetAttributeOp.name)
+  // @@protoc_insertion_point(field_mutable:fpindex.SetAttributeOp.name)
   return _internal_mutable_name();
 }
 inline const std::string& SetAttributeOp::_internal_name() const {
@@ -3147,28 +3706,28 @@ inline void SetAttributeOp::set_name(std::string&& value) {
   
   name_.Set(
     &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::move(value), GetArena());
-  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.SetAttributeOp.name)
+  // @@protoc_insertion_point(field_set_rvalue:fpindex.SetAttributeOp.name)
 }
 inline void SetAttributeOp::set_name(const char* value) {
   GOOGLE_DCHECK(value != nullptr);
   
   name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(value),
               GetArena());
-  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.SetAttributeOp.name)
+  // @@protoc_insertion_point(field_set_char:fpindex.SetAttributeOp.name)
 }
 inline void SetAttributeOp::set_name(const char* value,
     size_t size) {
   
   name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(
       reinterpret_cast<const char*>(value), size), GetArena());
-  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.SetAttributeOp.name)
+  // @@protoc_insertion_point(field_set_pointer:fpindex.SetAttributeOp.name)
 }
 inline std::string* SetAttributeOp::_internal_mutable_name() {
   
   return name_.Mutable(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline std::string* SetAttributeOp::release_name() {
-  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.SetAttributeOp.name)
+  // @@protoc_insertion_point(field_release:fpindex.SetAttributeOp.name)
   return name_.Release(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline void SetAttributeOp::set_allocated_name(std::string* name) {
@@ -3179,10 +3738,10 @@ inline void SetAttributeOp::set_allocated_name(std::string* name) {
   }
   name_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), name,
       GetArena());
-  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.SetAttributeOp.name)
+  // @@protoc_insertion_point(field_set_allocated:fpindex.SetAttributeOp.name)
 }
 inline std::string* SetAttributeOp::unsafe_arena_release_name() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:Acoustid.Server.PB.SetAttributeOp.name)
+  // @@protoc_insertion_point(field_unsafe_arena_release:fpindex.SetAttributeOp.name)
   GOOGLE_DCHECK(GetArena() != nullptr);
   
   return name_.UnsafeArenaRelease(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
@@ -3198,7 +3757,7 @@ inline void SetAttributeOp::unsafe_arena_set_allocated_name(
   }
   name_.UnsafeArenaSetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
       name, GetArena());
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:Acoustid.Server.PB.SetAttributeOp.name)
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:fpindex.SetAttributeOp.name)
 }
 
 // string value = 2;
@@ -3206,15 +3765,15 @@ inline void SetAttributeOp::clear_value() {
   value_.ClearToEmpty(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline const std::string& SetAttributeOp::value() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.SetAttributeOp.value)
+  // @@protoc_insertion_point(field_get:fpindex.SetAttributeOp.value)
   return _internal_value();
 }
 inline void SetAttributeOp::set_value(const std::string& value) {
   _internal_set_value(value);
-  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.SetAttributeOp.value)
+  // @@protoc_insertion_point(field_set:fpindex.SetAttributeOp.value)
 }
 inline std::string* SetAttributeOp::mutable_value() {
-  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.SetAttributeOp.value)
+  // @@protoc_insertion_point(field_mutable:fpindex.SetAttributeOp.value)
   return _internal_mutable_value();
 }
 inline const std::string& SetAttributeOp::_internal_value() const {
@@ -3228,28 +3787,28 @@ inline void SetAttributeOp::set_value(std::string&& value) {
   
   value_.Set(
     &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::move(value), GetArena());
-  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.SetAttributeOp.value)
+  // @@protoc_insertion_point(field_set_rvalue:fpindex.SetAttributeOp.value)
 }
 inline void SetAttributeOp::set_value(const char* value) {
   GOOGLE_DCHECK(value != nullptr);
   
   value_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(value),
               GetArena());
-  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.SetAttributeOp.value)
+  // @@protoc_insertion_point(field_set_char:fpindex.SetAttributeOp.value)
 }
 inline void SetAttributeOp::set_value(const char* value,
     size_t size) {
   
   value_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(
       reinterpret_cast<const char*>(value), size), GetArena());
-  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.SetAttributeOp.value)
+  // @@protoc_insertion_point(field_set_pointer:fpindex.SetAttributeOp.value)
 }
 inline std::string* SetAttributeOp::_internal_mutable_value() {
   
   return value_.Mutable(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline std::string* SetAttributeOp::release_value() {
-  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.SetAttributeOp.value)
+  // @@protoc_insertion_point(field_release:fpindex.SetAttributeOp.value)
   return value_.Release(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline void SetAttributeOp::set_allocated_value(std::string* value) {
@@ -3260,10 +3819,10 @@ inline void SetAttributeOp::set_allocated_value(std::string* value) {
   }
   value_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), value,
       GetArena());
-  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.SetAttributeOp.value)
+  // @@protoc_insertion_point(field_set_allocated:fpindex.SetAttributeOp.value)
 }
 inline std::string* SetAttributeOp::unsafe_arena_release_value() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:Acoustid.Server.PB.SetAttributeOp.value)
+  // @@protoc_insertion_point(field_unsafe_arena_release:fpindex.SetAttributeOp.value)
   GOOGLE_DCHECK(GetArena() != nullptr);
   
   return value_.UnsafeArenaRelease(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
@@ -3279,14 +3838,14 @@ inline void SetAttributeOp::unsafe_arena_set_allocated_value(
   }
   value_.UnsafeArenaSetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
       value, GetArena());
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:Acoustid.Server.PB.SetAttributeOp.value)
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:fpindex.SetAttributeOp.value)
 }
 
 // -------------------------------------------------------------------
 
 // Operation
 
-// .Acoustid.Server.PB.InsertOrUpdateDocumentOp insert_or_update_document = 1;
+// .fpindex.InsertOrUpdateDocumentOp insert_or_update_document = 1;
 inline bool Operation::_internal_has_insert_or_update_document() const {
   return op_case() == kInsertOrUpdateDocument;
 }
@@ -3304,11 +3863,11 @@ inline void Operation::clear_insert_or_update_document() {
     clear_has_op();
   }
 }
-inline ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* Operation::release_insert_or_update_document() {
-  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.Operation.insert_or_update_document)
+inline ::fpindex::InsertOrUpdateDocumentOp* Operation::release_insert_or_update_document() {
+  // @@protoc_insertion_point(field_release:fpindex.Operation.insert_or_update_document)
   if (_internal_has_insert_or_update_document()) {
     clear_has_op();
-      ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* temp = op_.insert_or_update_document_;
+      ::fpindex::InsertOrUpdateDocumentOp* temp = op_.insert_or_update_document_;
     if (GetArena() != nullptr) {
       temp = ::PROTOBUF_NAMESPACE_ID::internal::DuplicateIfNonNull(temp);
     }
@@ -3318,48 +3877,48 @@ inline ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* Operation::release_inse
     return nullptr;
   }
 }
-inline const ::Acoustid::Server::PB::InsertOrUpdateDocumentOp& Operation::_internal_insert_or_update_document() const {
+inline const ::fpindex::InsertOrUpdateDocumentOp& Operation::_internal_insert_or_update_document() const {
   return _internal_has_insert_or_update_document()
       ? *op_.insert_or_update_document_
-      : *reinterpret_cast< ::Acoustid::Server::PB::InsertOrUpdateDocumentOp*>(&::Acoustid::Server::PB::_InsertOrUpdateDocumentOp_default_instance_);
+      : *reinterpret_cast< ::fpindex::InsertOrUpdateDocumentOp*>(&::fpindex::_InsertOrUpdateDocumentOp_default_instance_);
 }
-inline const ::Acoustid::Server::PB::InsertOrUpdateDocumentOp& Operation::insert_or_update_document() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.Operation.insert_or_update_document)
+inline const ::fpindex::InsertOrUpdateDocumentOp& Operation::insert_or_update_document() const {
+  // @@protoc_insertion_point(field_get:fpindex.Operation.insert_or_update_document)
   return _internal_insert_or_update_document();
 }
-inline ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* Operation::unsafe_arena_release_insert_or_update_document() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:Acoustid.Server.PB.Operation.insert_or_update_document)
+inline ::fpindex::InsertOrUpdateDocumentOp* Operation::unsafe_arena_release_insert_or_update_document() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:fpindex.Operation.insert_or_update_document)
   if (_internal_has_insert_or_update_document()) {
     clear_has_op();
-    ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* temp = op_.insert_or_update_document_;
+    ::fpindex::InsertOrUpdateDocumentOp* temp = op_.insert_or_update_document_;
     op_.insert_or_update_document_ = nullptr;
     return temp;
   } else {
     return nullptr;
   }
 }
-inline void Operation::unsafe_arena_set_allocated_insert_or_update_document(::Acoustid::Server::PB::InsertOrUpdateDocumentOp* insert_or_update_document) {
+inline void Operation::unsafe_arena_set_allocated_insert_or_update_document(::fpindex::InsertOrUpdateDocumentOp* insert_or_update_document) {
   clear_op();
   if (insert_or_update_document) {
     set_has_insert_or_update_document();
     op_.insert_or_update_document_ = insert_or_update_document;
   }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:Acoustid.Server.PB.Operation.insert_or_update_document)
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:fpindex.Operation.insert_or_update_document)
 }
-inline ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* Operation::_internal_mutable_insert_or_update_document() {
+inline ::fpindex::InsertOrUpdateDocumentOp* Operation::_internal_mutable_insert_or_update_document() {
   if (!_internal_has_insert_or_update_document()) {
     clear_op();
     set_has_insert_or_update_document();
-    op_.insert_or_update_document_ = CreateMaybeMessage< ::Acoustid::Server::PB::InsertOrUpdateDocumentOp >(GetArena());
+    op_.insert_or_update_document_ = CreateMaybeMessage< ::fpindex::InsertOrUpdateDocumentOp >(GetArena());
   }
   return op_.insert_or_update_document_;
 }
-inline ::Acoustid::Server::PB::InsertOrUpdateDocumentOp* Operation::mutable_insert_or_update_document() {
-  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.Operation.insert_or_update_document)
+inline ::fpindex::InsertOrUpdateDocumentOp* Operation::mutable_insert_or_update_document() {
+  // @@protoc_insertion_point(field_mutable:fpindex.Operation.insert_or_update_document)
   return _internal_mutable_insert_or_update_document();
 }
 
-// .Acoustid.Server.PB.DeleteDocumentOp delete_document = 2;
+// .fpindex.DeleteDocumentOp delete_document = 2;
 inline bool Operation::_internal_has_delete_document() const {
   return op_case() == kDeleteDocument;
 }
@@ -3377,11 +3936,11 @@ inline void Operation::clear_delete_document() {
     clear_has_op();
   }
 }
-inline ::Acoustid::Server::PB::DeleteDocumentOp* Operation::release_delete_document() {
-  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.Operation.delete_document)
+inline ::fpindex::DeleteDocumentOp* Operation::release_delete_document() {
+  // @@protoc_insertion_point(field_release:fpindex.Operation.delete_document)
   if (_internal_has_delete_document()) {
     clear_has_op();
-      ::Acoustid::Server::PB::DeleteDocumentOp* temp = op_.delete_document_;
+      ::fpindex::DeleteDocumentOp* temp = op_.delete_document_;
     if (GetArena() != nullptr) {
       temp = ::PROTOBUF_NAMESPACE_ID::internal::DuplicateIfNonNull(temp);
     }
@@ -3391,48 +3950,48 @@ inline ::Acoustid::Server::PB::DeleteDocumentOp* Operation::release_delete_docum
     return nullptr;
   }
 }
-inline const ::Acoustid::Server::PB::DeleteDocumentOp& Operation::_internal_delete_document() const {
+inline const ::fpindex::DeleteDocumentOp& Operation::_internal_delete_document() const {
   return _internal_has_delete_document()
       ? *op_.delete_document_
-      : *reinterpret_cast< ::Acoustid::Server::PB::DeleteDocumentOp*>(&::Acoustid::Server::PB::_DeleteDocumentOp_default_instance_);
+      : *reinterpret_cast< ::fpindex::DeleteDocumentOp*>(&::fpindex::_DeleteDocumentOp_default_instance_);
 }
-inline const ::Acoustid::Server::PB::DeleteDocumentOp& Operation::delete_document() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.Operation.delete_document)
+inline const ::fpindex::DeleteDocumentOp& Operation::delete_document() const {
+  // @@protoc_insertion_point(field_get:fpindex.Operation.delete_document)
   return _internal_delete_document();
 }
-inline ::Acoustid::Server::PB::DeleteDocumentOp* Operation::unsafe_arena_release_delete_document() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:Acoustid.Server.PB.Operation.delete_document)
+inline ::fpindex::DeleteDocumentOp* Operation::unsafe_arena_release_delete_document() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:fpindex.Operation.delete_document)
   if (_internal_has_delete_document()) {
     clear_has_op();
-    ::Acoustid::Server::PB::DeleteDocumentOp* temp = op_.delete_document_;
+    ::fpindex::DeleteDocumentOp* temp = op_.delete_document_;
     op_.delete_document_ = nullptr;
     return temp;
   } else {
     return nullptr;
   }
 }
-inline void Operation::unsafe_arena_set_allocated_delete_document(::Acoustid::Server::PB::DeleteDocumentOp* delete_document) {
+inline void Operation::unsafe_arena_set_allocated_delete_document(::fpindex::DeleteDocumentOp* delete_document) {
   clear_op();
   if (delete_document) {
     set_has_delete_document();
     op_.delete_document_ = delete_document;
   }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:Acoustid.Server.PB.Operation.delete_document)
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:fpindex.Operation.delete_document)
 }
-inline ::Acoustid::Server::PB::DeleteDocumentOp* Operation::_internal_mutable_delete_document() {
+inline ::fpindex::DeleteDocumentOp* Operation::_internal_mutable_delete_document() {
   if (!_internal_has_delete_document()) {
     clear_op();
     set_has_delete_document();
-    op_.delete_document_ = CreateMaybeMessage< ::Acoustid::Server::PB::DeleteDocumentOp >(GetArena());
+    op_.delete_document_ = CreateMaybeMessage< ::fpindex::DeleteDocumentOp >(GetArena());
   }
   return op_.delete_document_;
 }
-inline ::Acoustid::Server::PB::DeleteDocumentOp* Operation::mutable_delete_document() {
-  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.Operation.delete_document)
+inline ::fpindex::DeleteDocumentOp* Operation::mutable_delete_document() {
+  // @@protoc_insertion_point(field_mutable:fpindex.Operation.delete_document)
   return _internal_mutable_delete_document();
 }
 
-// .Acoustid.Server.PB.SetAttributeOp set_attribute = 3;
+// .fpindex.SetAttributeOp set_attribute = 3;
 inline bool Operation::_internal_has_set_attribute() const {
   return op_case() == kSetAttribute;
 }
@@ -3450,11 +4009,11 @@ inline void Operation::clear_set_attribute() {
     clear_has_op();
   }
 }
-inline ::Acoustid::Server::PB::SetAttributeOp* Operation::release_set_attribute() {
-  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.Operation.set_attribute)
+inline ::fpindex::SetAttributeOp* Operation::release_set_attribute() {
+  // @@protoc_insertion_point(field_release:fpindex.Operation.set_attribute)
   if (_internal_has_set_attribute()) {
     clear_has_op();
-      ::Acoustid::Server::PB::SetAttributeOp* temp = op_.set_attribute_;
+      ::fpindex::SetAttributeOp* temp = op_.set_attribute_;
     if (GetArena() != nullptr) {
       temp = ::PROTOBUF_NAMESPACE_ID::internal::DuplicateIfNonNull(temp);
     }
@@ -3464,44 +4023,44 @@ inline ::Acoustid::Server::PB::SetAttributeOp* Operation::release_set_attribute(
     return nullptr;
   }
 }
-inline const ::Acoustid::Server::PB::SetAttributeOp& Operation::_internal_set_attribute() const {
+inline const ::fpindex::SetAttributeOp& Operation::_internal_set_attribute() const {
   return _internal_has_set_attribute()
       ? *op_.set_attribute_
-      : *reinterpret_cast< ::Acoustid::Server::PB::SetAttributeOp*>(&::Acoustid::Server::PB::_SetAttributeOp_default_instance_);
+      : *reinterpret_cast< ::fpindex::SetAttributeOp*>(&::fpindex::_SetAttributeOp_default_instance_);
 }
-inline const ::Acoustid::Server::PB::SetAttributeOp& Operation::set_attribute() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.Operation.set_attribute)
+inline const ::fpindex::SetAttributeOp& Operation::set_attribute() const {
+  // @@protoc_insertion_point(field_get:fpindex.Operation.set_attribute)
   return _internal_set_attribute();
 }
-inline ::Acoustid::Server::PB::SetAttributeOp* Operation::unsafe_arena_release_set_attribute() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:Acoustid.Server.PB.Operation.set_attribute)
+inline ::fpindex::SetAttributeOp* Operation::unsafe_arena_release_set_attribute() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:fpindex.Operation.set_attribute)
   if (_internal_has_set_attribute()) {
     clear_has_op();
-    ::Acoustid::Server::PB::SetAttributeOp* temp = op_.set_attribute_;
+    ::fpindex::SetAttributeOp* temp = op_.set_attribute_;
     op_.set_attribute_ = nullptr;
     return temp;
   } else {
     return nullptr;
   }
 }
-inline void Operation::unsafe_arena_set_allocated_set_attribute(::Acoustid::Server::PB::SetAttributeOp* set_attribute) {
+inline void Operation::unsafe_arena_set_allocated_set_attribute(::fpindex::SetAttributeOp* set_attribute) {
   clear_op();
   if (set_attribute) {
     set_has_set_attribute();
     op_.set_attribute_ = set_attribute;
   }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:Acoustid.Server.PB.Operation.set_attribute)
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:fpindex.Operation.set_attribute)
 }
-inline ::Acoustid::Server::PB::SetAttributeOp* Operation::_internal_mutable_set_attribute() {
+inline ::fpindex::SetAttributeOp* Operation::_internal_mutable_set_attribute() {
   if (!_internal_has_set_attribute()) {
     clear_op();
     set_has_set_attribute();
-    op_.set_attribute_ = CreateMaybeMessage< ::Acoustid::Server::PB::SetAttributeOp >(GetArena());
+    op_.set_attribute_ = CreateMaybeMessage< ::fpindex::SetAttributeOp >(GetArena());
   }
   return op_.set_attribute_;
 }
-inline ::Acoustid::Server::PB::SetAttributeOp* Operation::mutable_set_attribute() {
-  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.Operation.set_attribute)
+inline ::fpindex::SetAttributeOp* Operation::mutable_set_attribute() {
+  // @@protoc_insertion_point(field_mutable:fpindex.Operation.set_attribute)
   return _internal_mutable_set_attribute();
 }
 
@@ -3523,15 +4082,15 @@ inline void UpdateRequest::clear_index_name() {
   index_name_.ClearToEmpty(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline const std::string& UpdateRequest::index_name() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.UpdateRequest.index_name)
+  // @@protoc_insertion_point(field_get:fpindex.UpdateRequest.index_name)
   return _internal_index_name();
 }
 inline void UpdateRequest::set_index_name(const std::string& value) {
   _internal_set_index_name(value);
-  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.UpdateRequest.index_name)
+  // @@protoc_insertion_point(field_set:fpindex.UpdateRequest.index_name)
 }
 inline std::string* UpdateRequest::mutable_index_name() {
-  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.UpdateRequest.index_name)
+  // @@protoc_insertion_point(field_mutable:fpindex.UpdateRequest.index_name)
   return _internal_mutable_index_name();
 }
 inline const std::string& UpdateRequest::_internal_index_name() const {
@@ -3545,28 +4104,28 @@ inline void UpdateRequest::set_index_name(std::string&& value) {
   
   index_name_.Set(
     &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::move(value), GetArena());
-  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.UpdateRequest.index_name)
+  // @@protoc_insertion_point(field_set_rvalue:fpindex.UpdateRequest.index_name)
 }
 inline void UpdateRequest::set_index_name(const char* value) {
   GOOGLE_DCHECK(value != nullptr);
   
   index_name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(value),
               GetArena());
-  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.UpdateRequest.index_name)
+  // @@protoc_insertion_point(field_set_char:fpindex.UpdateRequest.index_name)
 }
 inline void UpdateRequest::set_index_name(const char* value,
     size_t size) {
   
   index_name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(
       reinterpret_cast<const char*>(value), size), GetArena());
-  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.UpdateRequest.index_name)
+  // @@protoc_insertion_point(field_set_pointer:fpindex.UpdateRequest.index_name)
 }
 inline std::string* UpdateRequest::_internal_mutable_index_name() {
   
   return index_name_.Mutable(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline std::string* UpdateRequest::release_index_name() {
-  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.UpdateRequest.index_name)
+  // @@protoc_insertion_point(field_release:fpindex.UpdateRequest.index_name)
   return index_name_.Release(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline void UpdateRequest::set_allocated_index_name(std::string* index_name) {
@@ -3577,10 +4136,10 @@ inline void UpdateRequest::set_allocated_index_name(std::string* index_name) {
   }
   index_name_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), index_name,
       GetArena());
-  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.UpdateRequest.index_name)
+  // @@protoc_insertion_point(field_set_allocated:fpindex.UpdateRequest.index_name)
 }
 inline std::string* UpdateRequest::unsafe_arena_release_index_name() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:Acoustid.Server.PB.UpdateRequest.index_name)
+  // @@protoc_insertion_point(field_unsafe_arena_release:fpindex.UpdateRequest.index_name)
   GOOGLE_DCHECK(GetArena() != nullptr);
   
   return index_name_.UnsafeArenaRelease(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
@@ -3596,10 +4155,10 @@ inline void UpdateRequest::unsafe_arena_set_allocated_index_name(
   }
   index_name_.UnsafeArenaSetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
       index_name, GetArena());
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:Acoustid.Server.PB.UpdateRequest.index_name)
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:fpindex.UpdateRequest.index_name)
 }
 
-// repeated .Acoustid.Server.PB.Operation ops = 2;
+// repeated .fpindex.Operation ops = 2;
 inline int UpdateRequest::_internal_ops_size() const {
   return ops_.size();
 }
@@ -3609,32 +4168,32 @@ inline int UpdateRequest::ops_size() const {
 inline void UpdateRequest::clear_ops() {
   ops_.Clear();
 }
-inline ::Acoustid::Server::PB::Operation* UpdateRequest::mutable_ops(int index) {
-  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.UpdateRequest.ops)
+inline ::fpindex::Operation* UpdateRequest::mutable_ops(int index) {
+  // @@protoc_insertion_point(field_mutable:fpindex.UpdateRequest.ops)
   return ops_.Mutable(index);
 }
-inline ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::Acoustid::Server::PB::Operation >*
+inline ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::fpindex::Operation >*
 UpdateRequest::mutable_ops() {
-  // @@protoc_insertion_point(field_mutable_list:Acoustid.Server.PB.UpdateRequest.ops)
+  // @@protoc_insertion_point(field_mutable_list:fpindex.UpdateRequest.ops)
   return &ops_;
 }
-inline const ::Acoustid::Server::PB::Operation& UpdateRequest::_internal_ops(int index) const {
+inline const ::fpindex::Operation& UpdateRequest::_internal_ops(int index) const {
   return ops_.Get(index);
 }
-inline const ::Acoustid::Server::PB::Operation& UpdateRequest::ops(int index) const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.UpdateRequest.ops)
+inline const ::fpindex::Operation& UpdateRequest::ops(int index) const {
+  // @@protoc_insertion_point(field_get:fpindex.UpdateRequest.ops)
   return _internal_ops(index);
 }
-inline ::Acoustid::Server::PB::Operation* UpdateRequest::_internal_add_ops() {
+inline ::fpindex::Operation* UpdateRequest::_internal_add_ops() {
   return ops_.Add();
 }
-inline ::Acoustid::Server::PB::Operation* UpdateRequest::add_ops() {
-  // @@protoc_insertion_point(field_add:Acoustid.Server.PB.UpdateRequest.ops)
+inline ::fpindex::Operation* UpdateRequest::add_ops() {
+  // @@protoc_insertion_point(field_add:fpindex.UpdateRequest.ops)
   return _internal_add_ops();
 }
-inline const ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::Acoustid::Server::PB::Operation >&
+inline const ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::fpindex::Operation >&
 UpdateRequest::ops() const {
-  // @@protoc_insertion_point(field_list:Acoustid.Server.PB.UpdateRequest.ops)
+  // @@protoc_insertion_point(field_list:fpindex.UpdateRequest.ops)
   return ops_;
 }
 
@@ -3654,7 +4213,7 @@ inline ::PROTOBUF_NAMESPACE_ID::uint32 SearchResult::_internal_doc_id() const {
   return doc_id_;
 }
 inline ::PROTOBUF_NAMESPACE_ID::uint32 SearchResult::doc_id() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.SearchResult.doc_id)
+  // @@protoc_insertion_point(field_get:fpindex.SearchResult.doc_id)
   return _internal_doc_id();
 }
 inline void SearchResult::_internal_set_doc_id(::PROTOBUF_NAMESPACE_ID::uint32 value) {
@@ -3663,7 +4222,7 @@ inline void SearchResult::_internal_set_doc_id(::PROTOBUF_NAMESPACE_ID::uint32 v
 }
 inline void SearchResult::set_doc_id(::PROTOBUF_NAMESPACE_ID::uint32 value) {
   _internal_set_doc_id(value);
-  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.SearchResult.doc_id)
+  // @@protoc_insertion_point(field_set:fpindex.SearchResult.doc_id)
 }
 
 // float score = 2;
@@ -3674,7 +4233,7 @@ inline float SearchResult::_internal_score() const {
   return score_;
 }
 inline float SearchResult::score() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.SearchResult.score)
+  // @@protoc_insertion_point(field_get:fpindex.SearchResult.score)
   return _internal_score();
 }
 inline void SearchResult::_internal_set_score(float value) {
@@ -3683,7 +4242,7 @@ inline void SearchResult::_internal_set_score(float value) {
 }
 inline void SearchResult::set_score(float value) {
   _internal_set_score(value);
-  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.SearchResult.score)
+  // @@protoc_insertion_point(field_set:fpindex.SearchResult.score)
 }
 
 // -------------------------------------------------------------------
@@ -3695,15 +4254,15 @@ inline void SearchRequest::clear_index_name() {
   index_name_.ClearToEmpty(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline const std::string& SearchRequest::index_name() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.SearchRequest.index_name)
+  // @@protoc_insertion_point(field_get:fpindex.SearchRequest.index_name)
   return _internal_index_name();
 }
 inline void SearchRequest::set_index_name(const std::string& value) {
   _internal_set_index_name(value);
-  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.SearchRequest.index_name)
+  // @@protoc_insertion_point(field_set:fpindex.SearchRequest.index_name)
 }
 inline std::string* SearchRequest::mutable_index_name() {
-  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.SearchRequest.index_name)
+  // @@protoc_insertion_point(field_mutable:fpindex.SearchRequest.index_name)
   return _internal_mutable_index_name();
 }
 inline const std::string& SearchRequest::_internal_index_name() const {
@@ -3717,28 +4276,28 @@ inline void SearchRequest::set_index_name(std::string&& value) {
   
   index_name_.Set(
     &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::move(value), GetArena());
-  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.SearchRequest.index_name)
+  // @@protoc_insertion_point(field_set_rvalue:fpindex.SearchRequest.index_name)
 }
 inline void SearchRequest::set_index_name(const char* value) {
   GOOGLE_DCHECK(value != nullptr);
   
   index_name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(value),
               GetArena());
-  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.SearchRequest.index_name)
+  // @@protoc_insertion_point(field_set_char:fpindex.SearchRequest.index_name)
 }
 inline void SearchRequest::set_index_name(const char* value,
     size_t size) {
   
   index_name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(
       reinterpret_cast<const char*>(value), size), GetArena());
-  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.SearchRequest.index_name)
+  // @@protoc_insertion_point(field_set_pointer:fpindex.SearchRequest.index_name)
 }
 inline std::string* SearchRequest::_internal_mutable_index_name() {
   
   return index_name_.Mutable(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline std::string* SearchRequest::release_index_name() {
-  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.SearchRequest.index_name)
+  // @@protoc_insertion_point(field_release:fpindex.SearchRequest.index_name)
   return index_name_.Release(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline void SearchRequest::set_allocated_index_name(std::string* index_name) {
@@ -3749,10 +4308,10 @@ inline void SearchRequest::set_allocated_index_name(std::string* index_name) {
   }
   index_name_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), index_name,
       GetArena());
-  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.SearchRequest.index_name)
+  // @@protoc_insertion_point(field_set_allocated:fpindex.SearchRequest.index_name)
 }
 inline std::string* SearchRequest::unsafe_arena_release_index_name() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:Acoustid.Server.PB.SearchRequest.index_name)
+  // @@protoc_insertion_point(field_unsafe_arena_release:fpindex.SearchRequest.index_name)
   GOOGLE_DCHECK(GetArena() != nullptr);
   
   return index_name_.UnsafeArenaRelease(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
@@ -3768,7 +4327,7 @@ inline void SearchRequest::unsafe_arena_set_allocated_index_name(
   }
   index_name_.UnsafeArenaSetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
       index_name, GetArena());
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:Acoustid.Server.PB.SearchRequest.index_name)
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:fpindex.SearchRequest.index_name)
 }
 
 // repeated uint32 terms = 2;
@@ -3785,19 +4344,19 @@ inline ::PROTOBUF_NAMESPACE_ID::uint32 SearchRequest::_internal_terms(int index)
   return terms_.Get(index);
 }
 inline ::PROTOBUF_NAMESPACE_ID::uint32 SearchRequest::terms(int index) const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.SearchRequest.terms)
+  // @@protoc_insertion_point(field_get:fpindex.SearchRequest.terms)
   return _internal_terms(index);
 }
 inline void SearchRequest::set_terms(int index, ::PROTOBUF_NAMESPACE_ID::uint32 value) {
   terms_.Set(index, value);
-  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.SearchRequest.terms)
+  // @@protoc_insertion_point(field_set:fpindex.SearchRequest.terms)
 }
 inline void SearchRequest::_internal_add_terms(::PROTOBUF_NAMESPACE_ID::uint32 value) {
   terms_.Add(value);
 }
 inline void SearchRequest::add_terms(::PROTOBUF_NAMESPACE_ID::uint32 value) {
   _internal_add_terms(value);
-  // @@protoc_insertion_point(field_add:Acoustid.Server.PB.SearchRequest.terms)
+  // @@protoc_insertion_point(field_add:fpindex.SearchRequest.terms)
 }
 inline const ::PROTOBUF_NAMESPACE_ID::RepeatedField< ::PROTOBUF_NAMESPACE_ID::uint32 >&
 SearchRequest::_internal_terms() const {
@@ -3805,7 +4364,7 @@ SearchRequest::_internal_terms() const {
 }
 inline const ::PROTOBUF_NAMESPACE_ID::RepeatedField< ::PROTOBUF_NAMESPACE_ID::uint32 >&
 SearchRequest::terms() const {
-  // @@protoc_insertion_point(field_list:Acoustid.Server.PB.SearchRequest.terms)
+  // @@protoc_insertion_point(field_list:fpindex.SearchRequest.terms)
   return _internal_terms();
 }
 inline ::PROTOBUF_NAMESPACE_ID::RepeatedField< ::PROTOBUF_NAMESPACE_ID::uint32 >*
@@ -3814,7 +4373,7 @@ SearchRequest::_internal_mutable_terms() {
 }
 inline ::PROTOBUF_NAMESPACE_ID::RepeatedField< ::PROTOBUF_NAMESPACE_ID::uint32 >*
 SearchRequest::mutable_terms() {
-  // @@protoc_insertion_point(field_mutable_list:Acoustid.Server.PB.SearchRequest.terms)
+  // @@protoc_insertion_point(field_mutable_list:fpindex.SearchRequest.terms)
   return _internal_mutable_terms();
 }
 
@@ -3826,7 +4385,7 @@ inline ::PROTOBUF_NAMESPACE_ID::int32 SearchRequest::_internal_max_results() con
   return max_results_;
 }
 inline ::PROTOBUF_NAMESPACE_ID::int32 SearchRequest::max_results() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.SearchRequest.max_results)
+  // @@protoc_insertion_point(field_get:fpindex.SearchRequest.max_results)
   return _internal_max_results();
 }
 inline void SearchRequest::_internal_set_max_results(::PROTOBUF_NAMESPACE_ID::int32 value) {
@@ -3835,14 +4394,14 @@ inline void SearchRequest::_internal_set_max_results(::PROTOBUF_NAMESPACE_ID::in
 }
 inline void SearchRequest::set_max_results(::PROTOBUF_NAMESPACE_ID::int32 value) {
   _internal_set_max_results(value);
-  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.SearchRequest.max_results)
+  // @@protoc_insertion_point(field_set:fpindex.SearchRequest.max_results)
 }
 
 // -------------------------------------------------------------------
 
 // SearchResponse
 
-// repeated .Acoustid.Server.PB.SearchResult results = 1;
+// repeated .fpindex.SearchResult results = 1;
 inline int SearchResponse::_internal_results_size() const {
   return results_.size();
 }
@@ -3852,32 +4411,32 @@ inline int SearchResponse::results_size() const {
 inline void SearchResponse::clear_results() {
   results_.Clear();
 }
-inline ::Acoustid::Server::PB::SearchResult* SearchResponse::mutable_results(int index) {
-  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.SearchResponse.results)
+inline ::fpindex::SearchResult* SearchResponse::mutable_results(int index) {
+  // @@protoc_insertion_point(field_mutable:fpindex.SearchResponse.results)
   return results_.Mutable(index);
 }
-inline ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::Acoustid::Server::PB::SearchResult >*
+inline ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::fpindex::SearchResult >*
 SearchResponse::mutable_results() {
-  // @@protoc_insertion_point(field_mutable_list:Acoustid.Server.PB.SearchResponse.results)
+  // @@protoc_insertion_point(field_mutable_list:fpindex.SearchResponse.results)
   return &results_;
 }
-inline const ::Acoustid::Server::PB::SearchResult& SearchResponse::_internal_results(int index) const {
+inline const ::fpindex::SearchResult& SearchResponse::_internal_results(int index) const {
   return results_.Get(index);
 }
-inline const ::Acoustid::Server::PB::SearchResult& SearchResponse::results(int index) const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.SearchResponse.results)
+inline const ::fpindex::SearchResult& SearchResponse::results(int index) const {
+  // @@protoc_insertion_point(field_get:fpindex.SearchResponse.results)
   return _internal_results(index);
 }
-inline ::Acoustid::Server::PB::SearchResult* SearchResponse::_internal_add_results() {
+inline ::fpindex::SearchResult* SearchResponse::_internal_add_results() {
   return results_.Add();
 }
-inline ::Acoustid::Server::PB::SearchResult* SearchResponse::add_results() {
-  // @@protoc_insertion_point(field_add:Acoustid.Server.PB.SearchResponse.results)
+inline ::fpindex::SearchResult* SearchResponse::add_results() {
+  // @@protoc_insertion_point(field_add:fpindex.SearchResponse.results)
   return _internal_add_results();
 }
-inline const ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::Acoustid::Server::PB::SearchResult >&
+inline const ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::fpindex::SearchResult >&
 SearchResponse::results() const {
-  // @@protoc_insertion_point(field_list:Acoustid.Server.PB.SearchResponse.results)
+  // @@protoc_insertion_point(field_list:fpindex.SearchResponse.results)
   return results_;
 }
 
@@ -3890,15 +4449,15 @@ inline void GetIndexRequest::clear_index_name() {
   index_name_.ClearToEmpty(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline const std::string& GetIndexRequest::index_name() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.GetIndexRequest.index_name)
+  // @@protoc_insertion_point(field_get:fpindex.GetIndexRequest.index_name)
   return _internal_index_name();
 }
 inline void GetIndexRequest::set_index_name(const std::string& value) {
   _internal_set_index_name(value);
-  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.GetIndexRequest.index_name)
+  // @@protoc_insertion_point(field_set:fpindex.GetIndexRequest.index_name)
 }
 inline std::string* GetIndexRequest::mutable_index_name() {
-  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.GetIndexRequest.index_name)
+  // @@protoc_insertion_point(field_mutable:fpindex.GetIndexRequest.index_name)
   return _internal_mutable_index_name();
 }
 inline const std::string& GetIndexRequest::_internal_index_name() const {
@@ -3912,28 +4471,28 @@ inline void GetIndexRequest::set_index_name(std::string&& value) {
   
   index_name_.Set(
     &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::move(value), GetArena());
-  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.GetIndexRequest.index_name)
+  // @@protoc_insertion_point(field_set_rvalue:fpindex.GetIndexRequest.index_name)
 }
 inline void GetIndexRequest::set_index_name(const char* value) {
   GOOGLE_DCHECK(value != nullptr);
   
   index_name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(value),
               GetArena());
-  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.GetIndexRequest.index_name)
+  // @@protoc_insertion_point(field_set_char:fpindex.GetIndexRequest.index_name)
 }
 inline void GetIndexRequest::set_index_name(const char* value,
     size_t size) {
   
   index_name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(
       reinterpret_cast<const char*>(value), size), GetArena());
-  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.GetIndexRequest.index_name)
+  // @@protoc_insertion_point(field_set_pointer:fpindex.GetIndexRequest.index_name)
 }
 inline std::string* GetIndexRequest::_internal_mutable_index_name() {
   
   return index_name_.Mutable(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline std::string* GetIndexRequest::release_index_name() {
-  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.GetIndexRequest.index_name)
+  // @@protoc_insertion_point(field_release:fpindex.GetIndexRequest.index_name)
   return index_name_.Release(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline void GetIndexRequest::set_allocated_index_name(std::string* index_name) {
@@ -3944,10 +4503,10 @@ inline void GetIndexRequest::set_allocated_index_name(std::string* index_name) {
   }
   index_name_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), index_name,
       GetArena());
-  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.GetIndexRequest.index_name)
+  // @@protoc_insertion_point(field_set_allocated:fpindex.GetIndexRequest.index_name)
 }
 inline std::string* GetIndexRequest::unsafe_arena_release_index_name() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:Acoustid.Server.PB.GetIndexRequest.index_name)
+  // @@protoc_insertion_point(field_unsafe_arena_release:fpindex.GetIndexRequest.index_name)
   GOOGLE_DCHECK(GetArena() != nullptr);
   
   return index_name_.UnsafeArenaRelease(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
@@ -3963,12 +4522,93 @@ inline void GetIndexRequest::unsafe_arena_set_allocated_index_name(
   }
   index_name_.UnsafeArenaSetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
       index_name, GetArena());
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:Acoustid.Server.PB.GetIndexRequest.index_name)
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:fpindex.GetIndexRequest.index_name)
 }
 
 // -------------------------------------------------------------------
 
 // GetIndexResponse
+
+// .fpindex.IndexInfo index = 1;
+inline bool GetIndexResponse::_internal_has_index() const {
+  return this != internal_default_instance() && index_ != nullptr;
+}
+inline bool GetIndexResponse::has_index() const {
+  return _internal_has_index();
+}
+inline void GetIndexResponse::clear_index() {
+  if (GetArena() == nullptr && index_ != nullptr) {
+    delete index_;
+  }
+  index_ = nullptr;
+}
+inline const ::fpindex::IndexInfo& GetIndexResponse::_internal_index() const {
+  const ::fpindex::IndexInfo* p = index_;
+  return p != nullptr ? *p : *reinterpret_cast<const ::fpindex::IndexInfo*>(
+      &::fpindex::_IndexInfo_default_instance_);
+}
+inline const ::fpindex::IndexInfo& GetIndexResponse::index() const {
+  // @@protoc_insertion_point(field_get:fpindex.GetIndexResponse.index)
+  return _internal_index();
+}
+inline void GetIndexResponse::unsafe_arena_set_allocated_index(
+    ::fpindex::IndexInfo* index) {
+  if (GetArena() == nullptr) {
+    delete reinterpret_cast<::PROTOBUF_NAMESPACE_ID::MessageLite*>(index_);
+  }
+  index_ = index;
+  if (index) {
+    
+  } else {
+    
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:fpindex.GetIndexResponse.index)
+}
+inline ::fpindex::IndexInfo* GetIndexResponse::release_index() {
+  auto temp = unsafe_arena_release_index();
+  if (GetArena() != nullptr) {
+    temp = ::PROTOBUF_NAMESPACE_ID::internal::DuplicateIfNonNull(temp);
+  }
+  return temp;
+}
+inline ::fpindex::IndexInfo* GetIndexResponse::unsafe_arena_release_index() {
+  // @@protoc_insertion_point(field_release:fpindex.GetIndexResponse.index)
+  
+  ::fpindex::IndexInfo* temp = index_;
+  index_ = nullptr;
+  return temp;
+}
+inline ::fpindex::IndexInfo* GetIndexResponse::_internal_mutable_index() {
+  
+  if (index_ == nullptr) {
+    auto* p = CreateMaybeMessage<::fpindex::IndexInfo>(GetArena());
+    index_ = p;
+  }
+  return index_;
+}
+inline ::fpindex::IndexInfo* GetIndexResponse::mutable_index() {
+  // @@protoc_insertion_point(field_mutable:fpindex.GetIndexResponse.index)
+  return _internal_mutable_index();
+}
+inline void GetIndexResponse::set_allocated_index(::fpindex::IndexInfo* index) {
+  ::PROTOBUF_NAMESPACE_ID::Arena* message_arena = GetArena();
+  if (message_arena == nullptr) {
+    delete index_;
+  }
+  if (index) {
+    ::PROTOBUF_NAMESPACE_ID::Arena* submessage_arena =
+      ::PROTOBUF_NAMESPACE_ID::Arena::GetArena(index);
+    if (message_arena != submessage_arena) {
+      index = ::PROTOBUF_NAMESPACE_ID::internal::GetOwnedMessage(
+          message_arena, index, submessage_arena);
+    }
+    
+  } else {
+    
+  }
+  index_ = index;
+  // @@protoc_insertion_point(field_set_allocated:fpindex.GetIndexResponse.index)
+}
 
 // -------------------------------------------------------------------
 
@@ -3979,15 +4619,15 @@ inline void CreateIndexRequest::clear_index_name() {
   index_name_.ClearToEmpty(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline const std::string& CreateIndexRequest::index_name() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.CreateIndexRequest.index_name)
+  // @@protoc_insertion_point(field_get:fpindex.CreateIndexRequest.index_name)
   return _internal_index_name();
 }
 inline void CreateIndexRequest::set_index_name(const std::string& value) {
   _internal_set_index_name(value);
-  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.CreateIndexRequest.index_name)
+  // @@protoc_insertion_point(field_set:fpindex.CreateIndexRequest.index_name)
 }
 inline std::string* CreateIndexRequest::mutable_index_name() {
-  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.CreateIndexRequest.index_name)
+  // @@protoc_insertion_point(field_mutable:fpindex.CreateIndexRequest.index_name)
   return _internal_mutable_index_name();
 }
 inline const std::string& CreateIndexRequest::_internal_index_name() const {
@@ -4001,28 +4641,28 @@ inline void CreateIndexRequest::set_index_name(std::string&& value) {
   
   index_name_.Set(
     &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::move(value), GetArena());
-  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.CreateIndexRequest.index_name)
+  // @@protoc_insertion_point(field_set_rvalue:fpindex.CreateIndexRequest.index_name)
 }
 inline void CreateIndexRequest::set_index_name(const char* value) {
   GOOGLE_DCHECK(value != nullptr);
   
   index_name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(value),
               GetArena());
-  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.CreateIndexRequest.index_name)
+  // @@protoc_insertion_point(field_set_char:fpindex.CreateIndexRequest.index_name)
 }
 inline void CreateIndexRequest::set_index_name(const char* value,
     size_t size) {
   
   index_name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(
       reinterpret_cast<const char*>(value), size), GetArena());
-  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.CreateIndexRequest.index_name)
+  // @@protoc_insertion_point(field_set_pointer:fpindex.CreateIndexRequest.index_name)
 }
 inline std::string* CreateIndexRequest::_internal_mutable_index_name() {
   
   return index_name_.Mutable(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline std::string* CreateIndexRequest::release_index_name() {
-  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.CreateIndexRequest.index_name)
+  // @@protoc_insertion_point(field_release:fpindex.CreateIndexRequest.index_name)
   return index_name_.Release(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline void CreateIndexRequest::set_allocated_index_name(std::string* index_name) {
@@ -4033,10 +4673,10 @@ inline void CreateIndexRequest::set_allocated_index_name(std::string* index_name
   }
   index_name_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), index_name,
       GetArena());
-  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.CreateIndexRequest.index_name)
+  // @@protoc_insertion_point(field_set_allocated:fpindex.CreateIndexRequest.index_name)
 }
 inline std::string* CreateIndexRequest::unsafe_arena_release_index_name() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:Acoustid.Server.PB.CreateIndexRequest.index_name)
+  // @@protoc_insertion_point(field_unsafe_arena_release:fpindex.CreateIndexRequest.index_name)
   GOOGLE_DCHECK(GetArena() != nullptr);
   
   return index_name_.UnsafeArenaRelease(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
@@ -4052,12 +4692,93 @@ inline void CreateIndexRequest::unsafe_arena_set_allocated_index_name(
   }
   index_name_.UnsafeArenaSetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
       index_name, GetArena());
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:Acoustid.Server.PB.CreateIndexRequest.index_name)
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:fpindex.CreateIndexRequest.index_name)
 }
 
 // -------------------------------------------------------------------
 
 // CreateIndexResponse
+
+// .fpindex.IndexInfo index = 1;
+inline bool CreateIndexResponse::_internal_has_index() const {
+  return this != internal_default_instance() && index_ != nullptr;
+}
+inline bool CreateIndexResponse::has_index() const {
+  return _internal_has_index();
+}
+inline void CreateIndexResponse::clear_index() {
+  if (GetArena() == nullptr && index_ != nullptr) {
+    delete index_;
+  }
+  index_ = nullptr;
+}
+inline const ::fpindex::IndexInfo& CreateIndexResponse::_internal_index() const {
+  const ::fpindex::IndexInfo* p = index_;
+  return p != nullptr ? *p : *reinterpret_cast<const ::fpindex::IndexInfo*>(
+      &::fpindex::_IndexInfo_default_instance_);
+}
+inline const ::fpindex::IndexInfo& CreateIndexResponse::index() const {
+  // @@protoc_insertion_point(field_get:fpindex.CreateIndexResponse.index)
+  return _internal_index();
+}
+inline void CreateIndexResponse::unsafe_arena_set_allocated_index(
+    ::fpindex::IndexInfo* index) {
+  if (GetArena() == nullptr) {
+    delete reinterpret_cast<::PROTOBUF_NAMESPACE_ID::MessageLite*>(index_);
+  }
+  index_ = index;
+  if (index) {
+    
+  } else {
+    
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:fpindex.CreateIndexResponse.index)
+}
+inline ::fpindex::IndexInfo* CreateIndexResponse::release_index() {
+  auto temp = unsafe_arena_release_index();
+  if (GetArena() != nullptr) {
+    temp = ::PROTOBUF_NAMESPACE_ID::internal::DuplicateIfNonNull(temp);
+  }
+  return temp;
+}
+inline ::fpindex::IndexInfo* CreateIndexResponse::unsafe_arena_release_index() {
+  // @@protoc_insertion_point(field_release:fpindex.CreateIndexResponse.index)
+  
+  ::fpindex::IndexInfo* temp = index_;
+  index_ = nullptr;
+  return temp;
+}
+inline ::fpindex::IndexInfo* CreateIndexResponse::_internal_mutable_index() {
+  
+  if (index_ == nullptr) {
+    auto* p = CreateMaybeMessage<::fpindex::IndexInfo>(GetArena());
+    index_ = p;
+  }
+  return index_;
+}
+inline ::fpindex::IndexInfo* CreateIndexResponse::mutable_index() {
+  // @@protoc_insertion_point(field_mutable:fpindex.CreateIndexResponse.index)
+  return _internal_mutable_index();
+}
+inline void CreateIndexResponse::set_allocated_index(::fpindex::IndexInfo* index) {
+  ::PROTOBUF_NAMESPACE_ID::Arena* message_arena = GetArena();
+  if (message_arena == nullptr) {
+    delete index_;
+  }
+  if (index) {
+    ::PROTOBUF_NAMESPACE_ID::Arena* submessage_arena =
+      ::PROTOBUF_NAMESPACE_ID::Arena::GetArena(index);
+    if (message_arena != submessage_arena) {
+      index = ::PROTOBUF_NAMESPACE_ID::internal::GetOwnedMessage(
+          message_arena, index, submessage_arena);
+    }
+    
+  } else {
+    
+  }
+  index_ = index;
+  // @@protoc_insertion_point(field_set_allocated:fpindex.CreateIndexResponse.index)
+}
 
 // -------------------------------------------------------------------
 
@@ -4068,15 +4789,15 @@ inline void DeleteIndexRequest::clear_index_name() {
   index_name_.ClearToEmpty(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline const std::string& DeleteIndexRequest::index_name() const {
-  // @@protoc_insertion_point(field_get:Acoustid.Server.PB.DeleteIndexRequest.index_name)
+  // @@protoc_insertion_point(field_get:fpindex.DeleteIndexRequest.index_name)
   return _internal_index_name();
 }
 inline void DeleteIndexRequest::set_index_name(const std::string& value) {
   _internal_set_index_name(value);
-  // @@protoc_insertion_point(field_set:Acoustid.Server.PB.DeleteIndexRequest.index_name)
+  // @@protoc_insertion_point(field_set:fpindex.DeleteIndexRequest.index_name)
 }
 inline std::string* DeleteIndexRequest::mutable_index_name() {
-  // @@protoc_insertion_point(field_mutable:Acoustid.Server.PB.DeleteIndexRequest.index_name)
+  // @@protoc_insertion_point(field_mutable:fpindex.DeleteIndexRequest.index_name)
   return _internal_mutable_index_name();
 }
 inline const std::string& DeleteIndexRequest::_internal_index_name() const {
@@ -4090,28 +4811,28 @@ inline void DeleteIndexRequest::set_index_name(std::string&& value) {
   
   index_name_.Set(
     &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::move(value), GetArena());
-  // @@protoc_insertion_point(field_set_rvalue:Acoustid.Server.PB.DeleteIndexRequest.index_name)
+  // @@protoc_insertion_point(field_set_rvalue:fpindex.DeleteIndexRequest.index_name)
 }
 inline void DeleteIndexRequest::set_index_name(const char* value) {
   GOOGLE_DCHECK(value != nullptr);
   
   index_name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(value),
               GetArena());
-  // @@protoc_insertion_point(field_set_char:Acoustid.Server.PB.DeleteIndexRequest.index_name)
+  // @@protoc_insertion_point(field_set_char:fpindex.DeleteIndexRequest.index_name)
 }
 inline void DeleteIndexRequest::set_index_name(const char* value,
     size_t size) {
   
   index_name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(
       reinterpret_cast<const char*>(value), size), GetArena());
-  // @@protoc_insertion_point(field_set_pointer:Acoustid.Server.PB.DeleteIndexRequest.index_name)
+  // @@protoc_insertion_point(field_set_pointer:fpindex.DeleteIndexRequest.index_name)
 }
 inline std::string* DeleteIndexRequest::_internal_mutable_index_name() {
   
   return index_name_.Mutable(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline std::string* DeleteIndexRequest::release_index_name() {
-  // @@protoc_insertion_point(field_release:Acoustid.Server.PB.DeleteIndexRequest.index_name)
+  // @@protoc_insertion_point(field_release:fpindex.DeleteIndexRequest.index_name)
   return index_name_.Release(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline void DeleteIndexRequest::set_allocated_index_name(std::string* index_name) {
@@ -4122,10 +4843,10 @@ inline void DeleteIndexRequest::set_allocated_index_name(std::string* index_name
   }
   index_name_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), index_name,
       GetArena());
-  // @@protoc_insertion_point(field_set_allocated:Acoustid.Server.PB.DeleteIndexRequest.index_name)
+  // @@protoc_insertion_point(field_set_allocated:fpindex.DeleteIndexRequest.index_name)
 }
 inline std::string* DeleteIndexRequest::unsafe_arena_release_index_name() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:Acoustid.Server.PB.DeleteIndexRequest.index_name)
+  // @@protoc_insertion_point(field_unsafe_arena_release:fpindex.DeleteIndexRequest.index_name)
   GOOGLE_DCHECK(GetArena() != nullptr);
   
   return index_name_.UnsafeArenaRelease(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
@@ -4141,12 +4862,59 @@ inline void DeleteIndexRequest::unsafe_arena_set_allocated_index_name(
   }
   index_name_.UnsafeArenaSetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
       index_name, GetArena());
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:Acoustid.Server.PB.DeleteIndexRequest.index_name)
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:fpindex.DeleteIndexRequest.index_name)
 }
 
 // -------------------------------------------------------------------
 
 // DeleteIndexResponse
+
+// -------------------------------------------------------------------
+
+// ListIndexesRequest
+
+// -------------------------------------------------------------------
+
+// ListIndexesResponse
+
+// repeated .fpindex.IndexInfo indexes = 1;
+inline int ListIndexesResponse::_internal_indexes_size() const {
+  return indexes_.size();
+}
+inline int ListIndexesResponse::indexes_size() const {
+  return _internal_indexes_size();
+}
+inline void ListIndexesResponse::clear_indexes() {
+  indexes_.Clear();
+}
+inline ::fpindex::IndexInfo* ListIndexesResponse::mutable_indexes(int index) {
+  // @@protoc_insertion_point(field_mutable:fpindex.ListIndexesResponse.indexes)
+  return indexes_.Mutable(index);
+}
+inline ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::fpindex::IndexInfo >*
+ListIndexesResponse::mutable_indexes() {
+  // @@protoc_insertion_point(field_mutable_list:fpindex.ListIndexesResponse.indexes)
+  return &indexes_;
+}
+inline const ::fpindex::IndexInfo& ListIndexesResponse::_internal_indexes(int index) const {
+  return indexes_.Get(index);
+}
+inline const ::fpindex::IndexInfo& ListIndexesResponse::indexes(int index) const {
+  // @@protoc_insertion_point(field_get:fpindex.ListIndexesResponse.indexes)
+  return _internal_indexes(index);
+}
+inline ::fpindex::IndexInfo* ListIndexesResponse::_internal_add_indexes() {
+  return indexes_.Add();
+}
+inline ::fpindex::IndexInfo* ListIndexesResponse::add_indexes() {
+  // @@protoc_insertion_point(field_add:fpindex.ListIndexesResponse.indexes)
+  return _internal_add_indexes();
+}
+inline const ::PROTOBUF_NAMESPACE_ID::RepeatedPtrField< ::fpindex::IndexInfo >&
+ListIndexesResponse::indexes() const {
+  // @@protoc_insertion_point(field_list:fpindex.ListIndexesResponse.indexes)
+  return indexes_;
+}
 
 #ifdef __GNUC__
   #pragma GCC diagnostic pop
@@ -4183,12 +4951,16 @@ inline void DeleteIndexRequest::unsafe_arena_set_allocated_index_name(
 
 // -------------------------------------------------------------------
 
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
+// -------------------------------------------------------------------
+
 
 // @@protoc_insertion_point(namespace_scope)
 
-}  // namespace PB
-}  // namespace Server
-}  // namespace Acoustid
+}  // namespace fpindex
 
 // @@protoc_insertion_point(global_scope)
 

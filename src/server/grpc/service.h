@@ -9,24 +9,24 @@
 namespace Acoustid {
 namespace Server {
 
-class IndexServiceImpl final : public PB::Index::Service {
+class IndexServiceImpl final : public fpindex::Index::Service {
  public:
     IndexServiceImpl(QSharedPointer<MultiIndex> indexes, QSharedPointer<Metrics> metrics);
 
-    virtual ::grpc::Status GetIndex(::grpc::ServerContext* context, const PB::GetIndexRequest* request,
-                                    PB::GetIndexResponse* response) override;
+    virtual ::grpc::Status GetIndex(::grpc::ServerContext* context, const fpindex::GetIndexRequest* request,
+                                    fpindex::GetIndexResponse* response) override;
 
-    virtual ::grpc::Status CreateIndex(::grpc::ServerContext* context, const PB::CreateIndexRequest* request,
-                                       PB::CreateIndexResponse* response) override;
+    virtual ::grpc::Status CreateIndex(::grpc::ServerContext* context, const fpindex::CreateIndexRequest* request,
+                                       fpindex::CreateIndexResponse* response) override;
 
-    virtual ::grpc::Status DeleteIndex(::grpc::ServerContext* context, const PB::DeleteIndexRequest* request,
-                                       PB::DeleteIndexResponse* response) override;
+    virtual ::grpc::Status DeleteIndex(::grpc::ServerContext* context, const fpindex::DeleteIndexRequest* request,
+                                       fpindex::DeleteIndexResponse* response) override;
 
-    virtual ::grpc::Status Update(::grpc::ServerContext* context, const PB::UpdateRequest* request,
-                                  PB::UpdateResponse* response) override;
+    virtual ::grpc::Status Update(::grpc::ServerContext* context, const fpindex::UpdateRequest* request,
+                                  fpindex::UpdateResponse* response) override;
 
-    virtual ::grpc::Status Search(::grpc::ServerContext* context, const PB::SearchRequest* request,
-                                  PB::SearchResponse* response) override;
+    virtual ::grpc::Status Search(::grpc::ServerContext* context, const fpindex::SearchRequest* request,
+                                  fpindex::SearchResponse* response) override;
 
  private:
     QSharedPointer<MultiIndex> m_indexes;
