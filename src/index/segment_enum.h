@@ -14,7 +14,7 @@ class SegmentEnum
 {
 public:
 	SegmentEnum(SegmentIndexSharedPtr index, SegmentDataReader *dataReader)
-		: m_index(index), m_dataReader(dataReader)
+		: m_index(index), m_dataReader(std::move(dataReader))
 	{}
 
     void setFilter(const QSet<uint32_t> &excludeDocIds) { m_excludeDocIds = excludeDocIds; }
@@ -27,7 +27,7 @@ public:
                     return false;
                 }
                 uint32_t firstKey = m_index->key(m_block);
-                m_currentBlock.reset(m_dataReader->readBlock(m_block, firstKey));
+                m_currentBlock = m_dataReader->readBlock(m_block, firstKey);
                 m_currentBlock->next();
                 m_block++;
             }
@@ -53,7 +53,7 @@ private:
 	SegmentIndexSharedPtr m_index;
 	std::unique_ptr<SegmentDataReader> m_dataReader;
 	std::unique_ptr<BlockDataIterator> m_currentBlock;
-    QSet<uint32_t> m_excludeDocIds;
+  QSet<uint32_t> m_excludeDocIds;
 };
 
 }

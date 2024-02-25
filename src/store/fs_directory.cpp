@@ -105,10 +105,10 @@ void FSDirectory::fsync(const QString &name) {
     }
 }
 
-Directory *FSDirectory::openDirectory(const QString &name) {
+QSharedPointer<Directory> FSDirectory::openDirectory(const QString &name) {
     QMutexLocker locker(&m_mutex);
     QString path = filePath(name);
-    return new FSDirectory(path, m_mmap);
+    return QSharedPointer<FSDirectory>::create(path, m_mmap);
 }
 
 FSDirectory *FSDirectory::openTemporary(bool autoDelete) {

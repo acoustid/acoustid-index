@@ -14,7 +14,7 @@ class SegmentDataReader;
 class SegmentSearcher
 {
 public:
-	SegmentSearcher(SegmentIndexSharedPtr index, SegmentDataReader *dataReader, uint32_t lastKey = UINT32_MAX);
+	SegmentSearcher(SegmentIndexSharedPtr index, std::unique_ptr<SegmentDataReader> &&dataReader, uint32_t lastKey = UINT32_MAX);
 	virtual ~SegmentSearcher();
 
 	void search(const std::vector<uint32_t> &hashes, std::unordered_map<uint32_t, int> &hits);

@@ -39,7 +39,7 @@ class FSDirectory : public Directory {
     virtual bool exists() override;
     virtual void ensureExists() override;
 
-    virtual Directory *openDirectory(const QString &name);
+    virtual QSharedPointer<Directory> openDirectory(const QString &name) override;
     virtual void deleteDirectory(const QString &name) override;
 
     void setAutoDelete(bool autoDelete) { m_autoDelete = autoDelete; }

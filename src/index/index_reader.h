@@ -34,7 +34,7 @@ public:
 
     std::vector<SearchResult> search(const std::vector<uint32_t> &fingerprint, int64_t timeoutInMSecs = 0);
 
-	SegmentDataReader* segmentDataReader(const SegmentInfo& segment);
+    std::unique_ptr<SegmentDataReader> segmentDataReader(const SegmentInfo& segment);
 
 protected:
 	DirectorySharedPtr m_dir;

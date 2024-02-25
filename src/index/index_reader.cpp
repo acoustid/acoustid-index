@@ -33,9 +33,9 @@ IndexReader::~IndexReader()
 	}
 }
 
-SegmentDataReader* IndexReader::segmentDataReader(const SegmentInfo& segment)
+std::unique_ptr<SegmentDataReader> IndexReader::segmentDataReader(const SegmentInfo& segment)
 {
-	return new SegmentDataReader(m_dir->openFile(segment.dataFileName()), BLOCK_SIZE);
+	return std::make_unique<SegmentDataReader>(m_dir->openFile(segment.dataFileName()), BLOCK_SIZE);
 }
 
 bool IndexReader::containsDocument(uint32_t docId)

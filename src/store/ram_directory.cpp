@@ -57,13 +57,13 @@ OutputStream *RAMDirectory::createFile(const QString &name) {
 
 const QByteArray &RAMDirectory::fileData(const QString &name) { return *m_data->files.value(name); }
 
-Directory *RAMDirectory::openDirectory(const QString &name) {
+QSharedPointer<Directory> RAMDirectory::openDirectory(const QString &name) {
     auto data = m_data->directories.value(name);
     if (!data) {
         data = QSharedPointer<RAMDirectoryData>::create();
         m_data->directories.insert(name, data);
     }
-    return new RAMDirectory(data);
+    return QSharedPointer<RAMDirectory>::create(data);
 }
 
 bool RAMDirectory::exists() { return true; }

@@ -47,7 +47,7 @@ bool MultiIndex::checkIndex(const QString &name) {
     if (name == ROOT_INDEX_NAME) {
         return Index::exists(m_dir);
     }
-    auto subDir = QSharedPointer<Directory>(m_dir->openDirectory(name));
+    auto subDir = m_dir->openDirectory(name);
     return Index::exists(subDir);
 }
 
@@ -71,7 +71,7 @@ QSharedPointer<Index> MultiIndex::getIndex(const QString &name, bool create) {
         m_indexes[name] = index;
         return index;
     }
-    auto subDir = QSharedPointer<Directory>(m_dir->openDirectory(name));
+    auto subDir = m_dir->openDirectory(name);
     index = QSharedPointer<Index>::create(subDir, create);
     m_indexes[name] = index;
     return index;

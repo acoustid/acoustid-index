@@ -25,7 +25,7 @@ IndexWriter::IndexWriter(IndexSharedPtr index, bool alreadyHasLock) : IndexReade
     if (!alreadyHasLock) {
         m_index->acquireWriterLock();
     }
-    m_mergePolicy.reset(new SegmentMergePolicy());
+    m_mergePolicy = std::make_unique<SegmentMergePolicy>();
     m_info.incRevision();
 }
 

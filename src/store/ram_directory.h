@@ -23,6 +23,7 @@ struct RAMDirectoryData {
 class RAMDirectory : public Directory {
  public:
     RAMDirectory();
+    explicit RAMDirectory(const QSharedPointer<RAMDirectoryData> &data);
     virtual ~RAMDirectory();
 
     virtual void close();
@@ -44,12 +45,11 @@ class RAMDirectory : public Directory {
     virtual bool exists() override;
     virtual void ensureExists() override;
 
-    virtual Directory *openDirectory(const QString &name) override;
+    virtual QSharedPointer<Directory> openDirectory(const QString &name) override;
 
     virtual void deleteDirectory(const QString &name) override;
 
  private:
-    RAMDirectory(const QSharedPointer<RAMDirectoryData> &data);
 
     QString m_dbPrefix;
     QSharedPointer<RAMDirectoryData> m_data;

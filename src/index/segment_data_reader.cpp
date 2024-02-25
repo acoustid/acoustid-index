@@ -20,9 +20,9 @@ void SegmentDataReader::setBlockSize(size_t blockSize)
 	m_blockSize = blockSize;
 }
 
-BlockDataIterator *SegmentDataReader::readBlock(size_t n, uint32_t key)
+std::unique_ptr<BlockDataIterator> SegmentDataReader::readBlock(size_t n, uint32_t key)
 {
 	m_input->seek(m_blockSize * n);
 	size_t length = m_input->readInt16();
-	return new BlockDataIterator(m_input.get(), length, key);
+	return std::make_unique<BlockDataIterator>(m_input.get(), length, key);
 }
