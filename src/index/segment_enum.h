@@ -25,7 +25,7 @@ public:
 				return false;
 			}
 			uint32_t firstKey = m_index->key(m_block);
-			m_currentBlock.reset(m_dataReader->readBlock(m_block, firstKey));
+			m_currentBlock = m_dataReader->readBlock(m_block, firstKey);
 			m_currentBlock->next();
 			m_block++;
 		}

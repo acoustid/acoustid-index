@@ -20,7 +20,7 @@ using namespace Acoustid;
 IndexWriter::IndexWriter(DirectorySharedPtr dir, const IndexInfo& info)
 	: IndexReader(dir, info), m_maxSegmentBufferSize(MAX_SEGMENT_BUFFER_SIZE), m_maxDocumentId(0)
 {
-	m_mergePolicy.reset(new SegmentMergePolicy());
+    m_mergePolicy = std::make_unique<SegmentMergePolicy>();
 }
 
 IndexWriter::IndexWriter(IndexSharedPtr index, bool alreadyHasLock)
@@ -29,7 +29,7 @@ IndexWriter::IndexWriter(IndexSharedPtr index, bool alreadyHasLock)
     if (!alreadyHasLock) {
 	    m_index->acquireWriterLock();
     }
-	m_mergePolicy.reset(new SegmentMergePolicy());
+    m_mergePolicy = std::make_unique<SegmentMergePolicy>();
 }
 
 IndexWriter::~IndexWriter()
