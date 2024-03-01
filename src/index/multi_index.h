@@ -36,7 +36,6 @@ class MultiIndex {
     void createIndex(const QString &name);
     void deleteIndex(const QString &name);
 
-
     constexpr static const char* ROOT_INDEX_NAME = "_root";
 
  private:

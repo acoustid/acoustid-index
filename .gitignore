@@ -30,5 +30,7 @@ install_manifest.txt
 moc_*.cpp
 moc_*.cpp_parameters
 *_autogen
+*.pb.cc
+*.pb.h
 /src/server/grpc/proto/**/*.cc
 /src/server/grpc/proto/**/*.h

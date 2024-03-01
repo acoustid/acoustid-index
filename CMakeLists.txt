@@ -89,10 +89,33 @@ set(fpindexlib_SOURCES
 	src/util/crc.c
 	src/util/options.cpp
 	src/util/tracing.cpp
+	src/fpindex/search_result.h
+	src/fpindex/base_segment.h
+	src/fpindex/base_segment.cpp
+	src/fpindex/segment_file_format.h
+	src/fpindex/segment.h
+	src/fpindex/segment.cpp
+	src/fpindex/in_memory_segment.h
+	src/fpindex/in_memory_segment.cpp
+	src/fpindex/proto/internal.pb.h
+	src/fpindex/proto/internal.pb.cc
 )
 
 add_library(fpindexlib ${fpindexlib_SOURCES})
-target_link_libraries(fpindexlib Qt6::Core Qt6::Network Qt6::Concurrent SQLite::SQLite3)
+target_link_libraries(fpindexlib Qt6::Core Qt6::Network Qt6::Concurrent SQLite::SQLite3 PkgConfig::PROTOBUF)
+
+add_custom_command(
+    COMMAND
+        protoc
+          -Isrc/fpindex/proto
+	  --cpp_out=src/fpindex/proto
+	  src/fpindex/proto/internal.proto
+    OUTPUT
+      src/fpindex/proto/internal.pb.h
+      src/fpindex/proto/internal.pb.cc
+    DEPENDS
+      src/fpindex/proto/internal.proto
+)
 
 set(qhttp_SOURCES
     ./src/3rdparty/qhttp/src/qhttpserverconnection.cpp
