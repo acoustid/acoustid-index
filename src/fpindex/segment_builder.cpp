@@ -5,6 +5,7 @@
 #include <mutex>
 
 #include "fpindex/search_result.h"
+#include "fpindex/segment.h"
 #include "fpindex/segment_file_format.h"
 
 namespace fpindex {
@@ -52,7 +53,7 @@ bool SegmentBuilder::Search(const std::vector<uint32_t>& hashes, std::vector<Sea
     return true;
 }
 
-bool SegmentBuilder::Save(const std::shared_ptr<io::File> &file) {
+std::shared_ptr<Segment> SegmentBuilder::Save(const std::shared_ptr<io::File>& file) {
     std::shared_lock<std::shared_mutex> lock;
     if (!frozen_) {
         lock = std::shared_lock<std::shared_mutex>(mutex_);
@@ -65,7 +66,7 @@ bool SegmentBuilder::Save(const std::shared_ptr<io::File> &file) {
     internal::InitializeSegmentHeader(&header);
     internal::SerializeSegmentHeader(coded_stream.get(), header);
     if (coded_stream->HadError()) {
-        return false;
+        return nullptr;
     }
 
     const int block_size = header.block_size();
@@ -73,19 +74,25 @@ bool SegmentBuilder::Save(const std::shared_ptr<io::File> &file) {
 
     int block_count = 0;
     auto it = data_.begin();
+    std::vector<std::pair<uint32_t, uint32_t>> block_index;
     while (it != data_.end()) {
-        it = internal::SerializeSegmentBlock(coded_stream.get(), header, it, data_.end());
+        auto next_it = internal::SerializeSegmentBlock(coded_stream.get(), header, it, data_.end());
         if (coded_stream->HadError()) {
-            return false;
+            return nullptr;
         }
+        auto first_key = it->first, last_key = std::prev(next_it)->first;
+        block_index.emplace_back(first_key, last_key);
+        it = next_it;
         block_count++;
     }
 
     if (header_size + block_count * block_size != coded_stream->ByteCount()) {
-        return false;
+        return nullptr;
     }
 
-    return true;
+    auto result = std::make_shared<Segment>(id());
+    result->Load(file, header, header_size, std::move(block_index));
+    return result;
 }
 
 }  // namespace fpindex

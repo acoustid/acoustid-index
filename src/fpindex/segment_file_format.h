@@ -89,7 +89,7 @@ inline Iter SerializeSegmentBlock(io::CodedOutputStream *output, const SegmentHe
 }
 
 inline bool ParseSegmentBlockV1(io::CodedInputStream *input, const SegmentHeader &header,
-                         std::vector<std::pair<uint32_t, uint32_t>> *entries) {
+                                std::vector<std::pair<uint32_t, uint32_t>> *entries) {
     const int block_size = header.block_size();
     auto start = input->CurrentPosition();
     auto limit = input->PushLimit(block_size);
@@ -129,7 +129,7 @@ inline bool ParseSegmentBlockV1(io::CodedInputStream *input, const SegmentHeader
 }
 
 inline bool ParseSegmentBlock(io::CodedInputStream *input, const SegmentHeader &header,
-                       std::vector<std::pair<uint32_t, uint32_t>> *entries) {
+                              std::vector<std::pair<uint32_t, uint32_t>> *entries) {
     if (header.block_format() == SegmentBlockFormat::BLOCK_FORMAT_V1) {
         return ParseSegmentBlockV1(input, header, entries);
     }

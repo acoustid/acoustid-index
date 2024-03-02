@@ -1,11 +1,11 @@
 #include "fpindex/segment.h"
 
+#include <QDebug>
+
+#include "fpindex/io/file.h"
 #include "fpindex/proto/internal.pb.h"
 #include "fpindex/search_result.h"
 #include "fpindex/segment_file_format.h"
-#include "fpindex/io/file.h"
-
-#include <QDebug>
 
 namespace fpindex {
 
@@ -37,7 +37,8 @@ bool BlockBasedSegment::Search(const std::vector<uint32_t>& hashes, std::vector<
     auto prev_block_range_start = block_index.begin();
 
     for (const auto& hash : hashes) {
-        auto block_it = std::lower_bound(prev_block_range_start, block_index.end(), hash, CompareHashAgainstBlockIndexBack{});
+        auto block_it =
+            std::lower_bound(prev_block_range_start, block_index.end(), hash, CompareHashAgainstBlockIndexBack{});
         if (block_it == block_index.end()) {
             block_it = prev_block_range_start;
         }
@@ -138,10 +139,14 @@ bool Segment::Load(const std::shared_ptr<io::File>& file) {
     return true;
 }
 
-Segment::Segment(uint32_t id, std::shared_ptr<io::File> file, SegmentHeader header, size_t first_block_offset,
-                 std::vector<std::pair<uint32_t, uint32_t>>&& block_index)
-    : BlockBasedSegment(id), header_(header), file_(file), first_block_offset_(first_block_offset), block_index_(std::move(block_index)) {
-        ready_ = true;
+bool Segment::Load(std::shared_ptr<io::File> file, SegmentHeader header, size_t first_block_offset,
+                   std::vector<std::pair<uint32_t, uint32_t>>&& block_index) {
+    file_ = file;
+    header_ = header;
+    first_block_offset_ = first_block_offset;
+    block_index_ = std::move(block_index);
+    ready_ = true;
+    return true;
 }
 
 }  // namespace fpindex

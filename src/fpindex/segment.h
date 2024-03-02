@@ -26,6 +26,8 @@ class BlockBasedSegment : public BaseSegment {
     virtual bool GetBlock(size_t block_no, std::vector<std::pair<uint32_t, uint32_t>> *items) = 0;
 };
 
+class SegmentBuilder;
+
 class Segment : public BlockBasedSegment {
  public:
     Segment(uint32_t id) : BlockBasedSegment(id) {}
@@ -40,8 +42,9 @@ class Segment : public BlockBasedSegment {
     bool GetBlock(size_t block_no, std::vector<std::pair<uint32_t, uint32_t>> *items) override;
 
  private:
-    Segment(uint32_t id, std::shared_ptr<io::File> file, SegmentHeader header, size_t first_block_offset,
-            std::vector<std::pair<uint32_t, uint32_t>> &&block_index);
+    friend class fpindex::SegmentBuilder;
+    bool Load(std::shared_ptr<io::File> file, SegmentHeader header, size_t first_block_offset,
+              std::vector<std::pair<uint32_t, uint32_t>> &&block_index);
 
     std::mutex mutex_;
     std::atomic<bool> ready_{false};

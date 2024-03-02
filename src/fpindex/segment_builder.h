@@ -10,6 +10,8 @@
 
 namespace fpindex {
 
+class Segment;
+
 class SegmentBuilder : public BaseSegment {
  public:
     SegmentBuilder(uint32_t id) : BaseSegment(id) {}
@@ -25,7 +27,7 @@ class SegmentBuilder : public BaseSegment {
     bool IsFrozen();
 
     // Serialize the segment data to the output stream.
-    bool Save(const std::shared_ptr<io::File> &file);
+    std::shared_ptr<Segment> Save(const std::shared_ptr<io::File>& file);
 
  private:
     std::shared_mutex mutex_;

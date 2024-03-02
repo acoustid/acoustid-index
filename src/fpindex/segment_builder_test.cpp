@@ -1,8 +1,9 @@
-#include "fpindex/segment.h"
 #include "fpindex/segment_builder.h"
-#include "fpindex/io/memory_file.h"
 
 #include <gtest/gtest.h>
+
+#include "fpindex/io/memory_file.h"
+#include "fpindex/segment.h"
 
 using namespace fpindex;
 using namespace testing;
@@ -33,18 +34,26 @@ TEST(SegmentBuilderTest, Save) {
     segment.Add(1, {1, 2, 3});
 
     auto file = std::make_shared<io::MemoryFile>();
-    segment.Save(file);
+    auto segment2 = segment.Save(file);
 
-    Segment new_segment(0);
-    new_segment.Load(file);
-
-    std::vector<uint32_t> query{1, 2, 3};
-    std::vector<SearchResult> results;
-    ASSERT_TRUE(new_segment.Search(query, &results));
-    for (const auto& result : results) {
-        std::cout << result.id() << " " << result.score() << std::endl;
+    {
+        std::vector<uint32_t> query{1, 2, 3};
+        std::vector<SearchResult> results;
+        ASSERT_TRUE(segment2->Search(query, &results));
+        ASSERT_EQ(1, results.size());
+        ASSERT_EQ(1, results[0].id());
+        ASSERT_EQ(3, results[0].score());
     }
-    ASSERT_EQ(1, results.size());
-    ASSERT_EQ(1, results[0].id());
-    ASSERT_EQ(3, results[0].score());
+
+    Segment segment3(0);
+    segment3.Load(file);
+
+    {
+        std::vector<uint32_t> query{1, 2, 3};
+        std::vector<SearchResult> results;
+        ASSERT_TRUE(segment3.Search(query, &results));
+        ASSERT_EQ(1, results.size());
+        ASSERT_EQ(1, results[0].id());
+        ASSERT_EQ(3, results[0].score());
+    }
 }
