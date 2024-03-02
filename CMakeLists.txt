@@ -265,6 +265,8 @@ install(
     COMPONENT application
 )
 
+add_custom_target(format clang-format -i ${fpindexlib_SOURCES} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+
 if(GTEST_FOUND)
     add_library(gtest STATIC ${GTEST_SOURCES})
     target_include_directories(gtest INTERFACE ${GTEST_INCLUDE_DIRS})

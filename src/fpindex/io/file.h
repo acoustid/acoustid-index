@@ -16,10 +16,10 @@ class CodedOutputStream;
 namespace fpindex {
 namespace io {
 
-using google::protobuf::io::ZeroCopyInputStream;
-using google::protobuf::io::ZeroCopyOutputStream;
 using google::protobuf::io::CodedInputStream;
 using google::protobuf::io::CodedOutputStream;
+using google::protobuf::io::ZeroCopyInputStream;
+using google::protobuf::io::ZeroCopyOutputStream;
 
 class File {
  public:
