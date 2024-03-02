@@ -3,9 +3,9 @@
 #include <cstdint>
 #include <vector>
 
-namespace fpindex {
+#include "fpindex/search_result.h"
 
-class SearchResult;
+namespace fpindex {
 
 class BaseSegment {
  public:
@@ -17,7 +17,7 @@ class BaseSegment {
     uint32_t id() const { return id_; }
 
     virtual bool Search(const std::vector<uint32_t> &hashes, std::vector<SearchResult> *results) = 0;
-    std::vector<SearchResult> Search(const std::vector<uint32_t> &hashes);
+    virtual std::vector<SearchResult> Search(const std::vector<uint32_t> &hashes);
 
  protected:
     BaseSegment(uint32_t id) : id_(id) {}

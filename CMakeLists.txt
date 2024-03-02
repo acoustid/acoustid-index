@@ -107,14 +107,14 @@ target_link_libraries(fpindexlib Qt6::Core Qt6::Network Qt6::Concurrent SQLite::
 add_custom_command(
     COMMAND
         protoc
-          -Isrc/fpindex/proto
-	  --cpp_out=src/fpindex/proto
-	  src/fpindex/proto/internal.proto
+			-I${CMAKE_CURRENT_SOURCE_DIR}/src/fpindex/proto
+	  		--cpp_out=${CMAKE_CURRENT_BINARY_DIR}/src/fpindex/proto
+			${CMAKE_CURRENT_SOURCE_DIR}/src/fpindex/proto/internal.proto
     OUTPUT
-      src/fpindex/proto/internal.pb.h
-      src/fpindex/proto/internal.pb.cc
+		${CMAKE_CURRENT_BINARY_DIR}/src/fpindex/proto/internal.pb.h
+		${CMAKE_CURRENT_BINARY_DIR}/src/fpindex/proto/internal.pb.cc
     DEPENDS
-      src/fpindex/proto/internal.proto
+		${CMAKE_CURRENT_SOURCE_DIR}/src/fpindex/proto/internal.proto
 )
 
 set(qhttp_SOURCES
@@ -163,35 +163,35 @@ target_link_libraries(fpserverlib fpindexlib qhttp PkgConfig::GRPCPP PkgConfig::
 add_custom_command(
     COMMAND
         protoc
-          -Isrc/server/grpc/proto
-	  --cpp_out=src/server/grpc/proto
-	  --grpc_out=src/server/grpc/proto
-          --plugin=protoc-gen-grpc=/usr/bin/grpc_cpp_plugin
-	  src/server/grpc/proto/index.proto
+			-I${CMAKE_CURRENT_SOURCE_DIR}/src/server/grpc/proto
+		  	--cpp_out=${CMAKE_CURRENT_BINARY_DIR}/src/server/grpc/proto
+	  	  	--grpc_out=${CMAKE_CURRENT_BINARY_DIR}/src/server/grpc/proto
+          	--plugin=protoc-gen-grpc=/usr/bin/grpc_cpp_plugin
+		  	${CMAKE_CURRENT_SOURCE_DIR}/src/server/grpc/proto/index.proto
     OUTPUT
-      src/server/grpc/proto/index.pb.h
-      src/server/grpc/proto/index.pb.cc
-      src/server/grpc/proto/index.grpc.pb.h
-      src/server/grpc/proto/index.grpc.pb.cc
+		${CMAKE_CURRENT_BINARY_DIR}/src/server/grpc/proto/index.pb.h
+		${CMAKE_CURRENT_BINARY_DIR}/src/server/grpc/proto/index.pb.cc
+		${CMAKE_CURRENT_BINARY_DIR}/src/server/grpc/proto/index.grpc.pb.h
+		${CMAKE_CURRENT_BINARY_DIR}/src/server/grpc/proto/index.grpc.pb.cc
     DEPENDS
-      src/server/grpc/proto/index.proto
+		${CMAKE_CURRENT_SOURCE_DIR}/src/server/grpc/proto/index.proto
 )
 
 add_custom_command(
-    COMMAND
-	protoc
-	  -Isrc/server/grpc/proto
-	  --cpp_out=${CMAKE_CURRENT_SOURCE_DIR}/src/server/grpc/proto
-	  src/server/grpc/proto/google/api/annotations.proto
-	  src/server/grpc/proto/google/api/http.proto
+	COMMAND
+		protoc
+	  		-I${CMAKE_CURRENT_SOURCE_DIR}/src/server/grpc/proto
+			--cpp_out=${CMAKE_CURRENT_BINARY_DIR}/src/server/grpc/proto
+			${CMAKE_CURRENT_SOURCE_DIR}/src/server/grpc/proto/google/api/annotations.proto
+			${CMAKE_CURRENT_SOURCE_DIR}/src/server/grpc/proto/google/api/http.proto
     OUTPUT
-      src/server/grpc/proto/google/api/annotations.pb.h
-      src/server/grpc/proto/google/api/annotations.pb.cc
-      src/server/grpc/proto/google/api/http.pb.h
-      src/server/grpc/proto/google/api/http.pb.cc
+		${CMAKE_CURRENT_BINARY_DIR}/src/server/grpc/proto/google/api/annotations.pb.h
+		${CMAKE_CURRENT_BINARY_DIR}/src/server/grpc/proto/google/api/annotations.pb.cc
+		${CMAKE_CURRENT_BINARY_DIR}/src/server/grpc/proto/google/api/http.pb.h
+		${CMAKE_CURRENT_BINARY_DIR}/src/server/grpc/proto/google/api/http.pb.cc
     DEPENDS
-      src/server/grpc/proto/google/api/annotations.proto
-      src/server/grpc/proto/google/api/http.proto
+		${CMAKE_CURRENT_SOURCE_DIR}/src/server/grpc/proto/google/api/annotations.proto
+		${CMAKE_CURRENT_SOURCE_DIR}/src/server/grpc/proto/google/api/http.proto
 )
 
 include_directories(
@@ -233,6 +233,7 @@ set(tests_SOURCES
 	src/index/segment_merger_test.cpp
 	src/index/segment_merge_policy_test.cpp
 	src/index/op_test.cpp
+	src/fpindex/segment_test.cpp
 	src/store/buffered_input_stream_test.cpp
 	src/store/input_stream_test.cpp
 	src/store/output_stream_test.cpp

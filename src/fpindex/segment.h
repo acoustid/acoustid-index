@@ -13,18 +13,31 @@ namespace io {
 class File;
 }  // namespace io
 
-class Segment : public BaseSegment {
+class BlockBasedSegment : public BaseSegment {
  public:
-    Segment(uint32_t id) : BaseSegment(id) {}
+    BlockBasedSegment(uint32_t id) : BaseSegment(id) {}
+    BlockBasedSegment(const BlockBasedSegment &) = delete;
+    BlockBasedSegment &operator=(const BlockBasedSegment &) = delete;
+
+    bool Search(const std::vector<uint32_t> &hashes, std::vector<SearchResult> *results) override;
+
+ protected:
+    virtual const std::vector<uint32_t> &GetBlockIndex() = 0;
+    virtual bool GetBlock(size_t block_no, std::vector<std::pair<uint32_t, uint32_t>> *items) = 0;
+};
+
+class Segment : public BlockBasedSegment {
+ public:
+    Segment(uint32_t id) : BlockBasedSegment(id) {}
     Segment(const Segment &) = delete;
     Segment &operator=(const Segment &) = delete;
 
     bool Search(const std::vector<uint32_t> &hashes, std::vector<SearchResult> *results) override;
-
     bool Load(const std::shared_ptr<io::File> &file);
 
  protected:
-    bool ReadBlock(size_t block_no, std::vector<std::pair<uint32_t, uint32_t>> *items);
+    const std::vector<uint32_t> &GetBlockIndex() override;
+    bool GetBlock(size_t block_no, std::vector<std::pair<uint32_t, uint32_t>> *items) override;
 
  private:
     std::mutex mutex_;
