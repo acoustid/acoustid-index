@@ -28,7 +28,7 @@ class InMemorySegment : public BaseSegment {
 
     bool Add(uint32_t id, const std::vector<uint32_t>& values);
 
-    void Search(const std::vector<uint32_t>& hashes, std::vector<SearchResult>* results) override;
+    bool Search(const std::vector<uint32_t>& hashes, std::vector<SearchResult>* results) override;
 
     // Freeze the segment so that no more data can be added to it.
     void Freeze();

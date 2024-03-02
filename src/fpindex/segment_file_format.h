@@ -15,8 +15,7 @@ using google::protobuf::util::SerializeDelimitedToCodedStream;
 static constexpr uint32_t SEGMENT_HEADER_MAGIC = 0x22de521c;
 static constexpr int DEFAULT_BLOCK_SIZE = 4096;
 
-inline void InitializeSegmentHeader(SegmentHeader *header, uint32_t segment_id) {
-    header->set_id(segment_id);
+inline void InitializeSegmentHeader(SegmentHeader *header) {
     header->set_block_format(SegmentBlockFormat::BLOCK_FORMAT_V1);
     header->set_block_size(DEFAULT_BLOCK_SIZE);
 }

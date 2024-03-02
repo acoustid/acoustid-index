@@ -27,7 +27,7 @@ void InMemorySegment::Freeze() {
     }
 }
 
-void InMemorySegment::Search(const std::vector<uint32_t>& hashes, std::vector<SearchResult>* results) {
+bool InMemorySegment::Search(const std::vector<uint32_t>& hashes, std::vector<SearchResult>* results) {
     std::shared_lock<std::shared_mutex> lock;
     if (!frozen_) {
         lock = std::shared_lock<std::shared_mutex>(mutex_);
@@ -44,6 +44,7 @@ void InMemorySegment::Search(const std::vector<uint32_t>& hashes, std::vector<Se
     for (auto score : scores) {
         results->emplace_back(score.first, score.second);
     }
+    return true;
 }
 
 bool InMemorySegment::Serialize(io::ZeroCopyOutputStream* output) {
@@ -58,8 +59,7 @@ bool InMemorySegment::Serialize(io::CodedOutputStream* output) {
     }
 
     SegmentHeader header;
-    internal::InitializeSegmentHeader(&header, id());
-
+    internal::InitializeSegmentHeader(&header);
     internal::SerializeSegmentHeader(output, header);
     if (output->HadError()) {
         return false;

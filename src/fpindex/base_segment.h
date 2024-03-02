@@ -16,7 +16,7 @@ class BaseSegment {
 
     uint32_t id() const { return id_; }
 
-    virtual void Search(const std::vector<uint32_t> &hashes, std::vector<SearchResult> *results) = 0;
+    virtual bool Search(const std::vector<uint32_t> &hashes, std::vector<SearchResult> *results) = 0;
     std::vector<SearchResult> Search(const std::vector<uint32_t> &hashes);
 
  protected:

@@ -8,7 +8,6 @@ enum SegmentBlockFormat {
 }
 
 message SegmentHeader {
-  uint32 id = 1;
+  SegmentBlockFormat block_format = 1;
   uint32 block_size = 2;
-  SegmentBlockFormat block_format = 3;
 }
