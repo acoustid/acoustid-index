@@ -22,7 +22,7 @@ class BlockBasedSegment : public BaseSegment {
     bool Search(const std::vector<uint32_t> &hashes, std::vector<SearchResult> *results) override;
 
  protected:
-    virtual const std::vector<uint32_t> &GetBlockIndex() = 0;
+    virtual const std::vector<std::pair<uint32_t, uint32_t>> &GetBlockIndex() = 0;
     virtual bool GetBlock(size_t block_no, std::vector<std::pair<uint32_t, uint32_t>> *items) = 0;
 };
 
@@ -36,7 +36,7 @@ class Segment : public BlockBasedSegment {
     bool Load(const std::shared_ptr<io::File> &file);
 
  protected:
-    const std::vector<uint32_t> &GetBlockIndex() override;
+    const std::vector<std::pair<uint32_t, uint32_t>> &GetBlockIndex() override;
     bool GetBlock(size_t block_no, std::vector<std::pair<uint32_t, uint32_t>> *items) override;
 
  private:
@@ -45,7 +45,7 @@ class Segment : public BlockBasedSegment {
     SegmentHeader header_;
     std::shared_ptr<io::File> file_;
     size_t first_block_offset_{0};
-    std::vector<uint32_t> block_index_;
+    std::vector<std::pair<uint32_t, uint32_t>> block_index_;
 };
 
 }  // namespace fpindex

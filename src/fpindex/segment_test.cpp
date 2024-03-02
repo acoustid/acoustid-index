@@ -33,7 +33,7 @@ class MockSegment : public BlockBasedSegment {
  public:
     MockSegment() : BlockBasedSegment(0) {}
 
-    const std::vector<uint32_t>& GetBlockIndex() override { return block_index_; }
+    const std::vector<std::pair<uint32_t, uint32_t>>& GetBlockIndex() override { return block_index_; }
 
     bool GetBlock(size_t block_no, std::vector<std::pair<uint32_t, uint32_t>>* block) override {
         if (block_no < block_index_.size()) {
@@ -45,10 +45,10 @@ class MockSegment : public BlockBasedSegment {
 
     void AddBlock(const std::vector<std::pair<uint32_t, uint32_t>>& block) {
         blocks_.push_back(block);
-        block_index_.push_back(block.front().first);
+        block_index_.emplace_back(block.front().first, block.back().first);
     }
 
-    std::vector<uint32_t> block_index_;
+    std::vector<std::pair<uint32_t, uint32_t>> block_index_;
     std::vector<std::vector<std::pair<uint32_t, uint32_t>>> blocks_;
 };
 

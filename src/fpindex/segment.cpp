@@ -28,9 +28,19 @@ class FileInputStream : public google::protobuf::io::ZeroCopyInputStream {
     int64_t ByteCount() const override;
 };
 
-struct CompareKeyValuePairAndKey {
+struct CompareHashAgainstBlockData {
     bool operator()(const std::pair<uint32_t, uint32_t>& item, uint32_t key) const { return item.first < key; }
     bool operator()(uint32_t key, const std::pair<uint32_t, uint32_t>& item) const { return key < item.first; }
+};
+
+struct CompareHashAgainstBlockIndexFront {
+    bool operator()(const std::pair<uint32_t, uint32_t>& a, uint32_t b) const { return a.first < b; }
+    bool operator()(uint32_t a, const std::pair<uint32_t, uint32_t>& b) const { return a < b.first; }
+};
+
+struct CompareHashAgainstBlockIndexBack {
+    bool operator()(const std::pair<uint32_t, uint32_t>& a, uint32_t b) const { return a.second < b; }
+    bool operator()(uint32_t a, const std::pair<uint32_t, uint32_t>& b) const { return a < b.second; }
 };
 
 bool BlockBasedSegment::Search(const std::vector<uint32_t>& hashes, std::vector<SearchResult>* results) {
@@ -38,44 +48,33 @@ bool BlockBasedSegment::Search(const std::vector<uint32_t>& hashes, std::vector<
     if (block_index.empty()) {
         return true;
     }
+
     std::map<uint32_t, uint32_t> scores;
 
-    std::vector<std::pair<uint32_t, uint32_t>> block;
+    std::vector<std::pair<uint32_t, uint32_t>> block_data;
     size_t prev_block_no = SIZE_MAX;
+    auto prev_block_range_start = block_index.begin();
 
     for (const auto& hash : hashes) {
-        auto block_range_start = std::lower_bound(block_index.begin(), block_index.end(), hash);
-        if (block_range_start == block_index.end()) {
-            if (block_index.front() > hash) {
-                // The hash is definitely not in any block.
-                continue;
-            }
-            // We did not find any block that starts with a hash smaller than the current hash.
-            // We need to start from the first block.
-            block_range_start = block_index.begin();
-        } else if (block_range_start != block_index.begin()) {
-            // We need to start from the previous block.
-            --block_range_start;
+        auto block_it = std::lower_bound(prev_block_range_start, block_index.end(), hash, CompareHashAgainstBlockIndexBack{});
+        if (block_it == block_index.end()) {
+            block_it = prev_block_range_start;
         }
+        prev_block_range_start = block_it;
 
-        for (auto block_it = block_range_start; block_it != block_index.end(); ++block_it) {
-            if (*block_it > hash) {
-                // We have passed the block that can contain the hash.
-                break;
-            }
+        while (block_it != block_index.end() && block_it->first <= hash) {
             const size_t block_no = block_it - block_index.begin();
-            qDebug() << "scanning block_no" << block_no;
             if (prev_block_no != block_no) {
-                if (!GetBlock(block_no, &block)) {
+                if (!GetBlock(block_no, &block_data)) {
                     return false;
                 }
                 prev_block_no = block_no;
             }
-
-            auto items = std::equal_range(block.begin(), block.end(), hash, CompareKeyValuePairAndKey{});
-            for (auto i = items.first; i != items.second; ++i) {
+            auto matches = std::equal_range(block_data.begin(), block_data.end(), hash, CompareHashAgainstBlockData{});
+            for (auto i = matches.first; i != matches.second; ++i) {
                 scores[i->second]++;
             }
+            ++block_it;
         }
     }
 
@@ -94,7 +93,7 @@ bool Segment::Search(const std::vector<uint32_t>& hashes, std::vector<SearchResu
     return BlockBasedSegment::Search(hashes, results);
 }
 
-const std::vector<uint32_t>& Segment::GetBlockIndex() { return block_index_; }
+const std::vector<std::pair<uint32_t, uint32_t>>& Segment::GetBlockIndex() { return block_index_; }
 
 bool Segment::GetBlock(size_t block_no, std::vector<std::pair<uint32_t, uint32_t>>* items) { return false; }
 
