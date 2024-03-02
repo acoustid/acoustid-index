@@ -58,8 +58,7 @@ bool InMemorySegment::Serialize(io::CodedOutputStream* output) {
     }
 
     SegmentHeader header;
-    header.set_id(id());
-    header.set_block_size(internal::DEFAULT_BLOCK_SIZE);
+    internal::InitializeSegmentHeader(&header, id());
 
     internal::SerializeSegmentHeader(output, header);
     if (output->HadError()) {
@@ -72,7 +71,7 @@ bool InMemorySegment::Serialize(io::CodedOutputStream* output) {
     int block_count = 0;
     auto it = data_.begin();
     while (it != data_.end()) {
-        it = internal::SerializeSegmentBlock(output, block_size, it, data_.end());
+        it = internal::SerializeSegmentBlock(output, header, it, data_.end());
         if (output->HadError()) {
             return false;
         }
