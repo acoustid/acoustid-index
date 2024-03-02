@@ -25,7 +25,7 @@ class SegmentBuilder : public BaseSegment {
     bool IsFrozen();
 
     // Serialize the segment data to the output stream.
-    bool Serialize(io::File* file);
+    bool Save(const std::shared_ptr<io::File> &file);
 
  private:
     std::shared_mutex mutex_;

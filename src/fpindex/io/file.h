@@ -8,6 +8,7 @@ namespace io {
 class ZeroCopyInputStream;
 class ZeroCopyOutputStream;
 class CodedInputStream;
+class CodedOutputStream;
 }  // namespace io
 }  // namespace protobuf
 }  // namespace google
@@ -18,6 +19,7 @@ namespace io {
 using google::protobuf::io::ZeroCopyInputStream;
 using google::protobuf::io::ZeroCopyOutputStream;
 using google::protobuf::io::CodedInputStream;
+using google::protobuf::io::CodedOutputStream;
 
 class File {
  public:

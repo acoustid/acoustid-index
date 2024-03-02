@@ -15,7 +15,7 @@ bool SegmentBuilder::Add(uint32_t id, const std::vector<uint32_t>& hashes) {
         return false;
     }
     for (auto hash : hashes) {
-        data_.insert(std::make_pair(id, hash));
+        data_.insert(std::make_pair(hash, id));
     }
     return true;
 }
@@ -41,7 +41,7 @@ bool SegmentBuilder::Search(const std::vector<uint32_t>& hashes, std::vector<Sea
     for (auto hash : hashes) {
         auto range = data_.equal_range(hash);
         for (auto it = range.first; it != range.second; ++it) {
-            scores[it->first]++;
+            scores[it->second]++;
         }
     }
     results->clear();
@@ -52,7 +52,7 @@ bool SegmentBuilder::Search(const std::vector<uint32_t>& hashes, std::vector<Sea
     return true;
 }
 
-bool SegmentBuilder::Serialize(io::File* file) {
+bool SegmentBuilder::Save(const std::shared_ptr<io::File> &file) {
     std::shared_lock<std::shared_mutex> lock;
     if (!frozen_) {
         lock = std::shared_lock<std::shared_mutex>(mutex_);

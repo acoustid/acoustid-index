@@ -97,6 +97,10 @@ set(fpindexlib_SOURCES
 	src/fpindex/segment.cpp
 	src/fpindex/segment_builder.h
 	src/fpindex/segment_builder.cpp
+	src/fpindex/io/file.h
+	src/fpindex/io/directory.h
+	src/fpindex/io/memory_directory.h
+	src/fpindex/io/memory_directory.cpp
 	src/fpindex/io/memory_file.h
 	src/fpindex/io/memory_file.cpp
 	src/fpindex/proto/internal.pb.h

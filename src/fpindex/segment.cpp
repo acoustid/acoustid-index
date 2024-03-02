@@ -125,6 +125,7 @@ bool Segment::Load(const std::shared_ptr<io::File>& file) {
         if (items.empty()) {
             return false;
         }
+        qDebug() << "new block: " << items.front().first << " " << items.back().first;
         block_index_.emplace_back(items.front().first, items.back().first);
     }
 
