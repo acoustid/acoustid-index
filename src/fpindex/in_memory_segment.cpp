@@ -47,38 +47,36 @@ bool InMemorySegment::Search(const std::vector<uint32_t>& hashes, std::vector<Se
     return true;
 }
 
-bool InMemorySegment::Serialize(io::ZeroCopyOutputStream* output) {
-    io::CodedOutputStream coded_output(output);
-    return Serialize(&coded_output);
-}
-
-bool InMemorySegment::Serialize(io::CodedOutputStream* output) {
+bool InMemorySegment::Serialize(io::File* file) {
     std::shared_lock<std::shared_mutex> lock;
     if (!frozen_) {
         lock = std::shared_lock<std::shared_mutex>(mutex_);
     }
 
+    auto stream = file->GetOutputStream();
+    auto coded_stream = std::make_unique<google::protobuf::io::CodedOutputStream>(stream.get());
+
     SegmentHeader header;
     internal::InitializeSegmentHeader(&header);
-    internal::SerializeSegmentHeader(output, header);
-    if (output->HadError()) {
+    internal::SerializeSegmentHeader(coded_stream.get(), header);
+    if (coded_stream->HadError()) {
         return false;
     }
 
     const int block_size = header.block_size();
-    const int header_size = output->ByteCount();
+    const int header_size = coded_stream->ByteCount();
 
     int block_count = 0;
     auto it = data_.begin();
     while (it != data_.end()) {
-        it = internal::SerializeSegmentBlock(output, header, it, data_.end());
-        if (output->HadError()) {
+        it = internal::SerializeSegmentBlock(coded_stream.get(), header, it, data_.end());
+        if (coded_stream->HadError()) {
             return false;
         }
         block_count++;
     }
 
-    if (header_size + block_count * block_size != output->ByteCount()) {
+    if (header_size + block_count * block_size != coded_stream->ByteCount()) {
         return false;
     }
 

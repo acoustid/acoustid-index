@@ -3,30 +3,11 @@
 #include "fpindex/proto/internal.pb.h"
 #include "fpindex/search_result.h"
 #include "fpindex/segment_file_format.h"
+#include "fpindex/io/file.h"
 
 #include <QDebug>
 
 namespace fpindex {
-
-namespace io {
-
-class File {
- public:
-    size_t Size();
-    int FileDescriptor();
-};
-
-};  // namespace io
-
-class FileInputStream : public google::protobuf::io::ZeroCopyInputStream {
- public:
-    FileInputStream(const std::shared_ptr<io::File>& file);
-
-    bool Next(const void** data, int* size) override;
-    void BackUp(int count) override;
-    bool Skip(int count) override;
-    int64_t ByteCount() const override;
-};
 
 struct CompareHashAgainstBlockData {
     bool operator()(const std::pair<uint32_t, uint32_t>& item, uint32_t key) const { return item.first < key; }
@@ -95,21 +76,13 @@ bool Segment::Search(const std::vector<uint32_t>& hashes, std::vector<SearchResu
 
 const std::vector<std::pair<uint32_t, uint32_t>>& Segment::GetBlockIndex() { return block_index_; }
 
-bool Segment::GetBlock(size_t block_no, std::vector<std::pair<uint32_t, uint32_t>>* items) { return false; }
-
-/*
-
 bool Segment::GetBlock(size_t block_no, std::vector<std::pair<uint32_t, uint32_t>>* items) {
     if (block_no >= block_index_.size()) {
         return false;
     }
     const size_t block_offset = first_block_offset_ + block_no * header_.block_size();
-    FileInputStream stream(file_);
-    if (!stream.Skip(block_offset)) {
-        return false;
-    }
-    google::protobuf::io::CodedInputStream coded_stream(&stream);
-    return internal::ParseSegmentBlock(&coded_stream, header_, items);
+    auto coded_stream = file_->GetCodedInputStream(block_offset, header_.block_size());
+    return internal::ParseSegmentBlock(coded_stream.get(), header_, items);
 }
 
 bool Segment::Load(const std::shared_ptr<io::File>& file) {
@@ -118,7 +91,7 @@ bool Segment::Load(const std::shared_ptr<io::File>& file) {
     }
     std::lock_guard<std::mutex> lock(mutex_);
 
-    auto stream = std::make_unique<google::protobuf::io::FileInputStream>(file->FileDescriptor());
+    auto stream = file->GetInputStream();
     auto coded_stream = std::make_unique<google::protobuf::io::CodedInputStream>(stream.get());
 
     if (!internal::ParseSegmentHeader(coded_stream.get(), &header_)) {
@@ -152,7 +125,7 @@ bool Segment::Load(const std::shared_ptr<io::File>& file) {
         if (items.empty()) {
             return false;
         }
-        block_index_.push_back(items.front().first);
+        block_index_.emplace_back(items.front().first, items.back().first);
     }
 
     if (block_index_.size() != block_count) {
@@ -163,7 +136,5 @@ bool Segment::Load(const std::shared_ptr<io::File>& file) {
     ready_ = true;
     return true;
 }
-
-*/
 
 }  // namespace fpindex

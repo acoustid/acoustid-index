@@ -6,19 +6,9 @@
 #include <vector>
 
 #include "fpindex/base_segment.h"
-
-namespace google {
-namespace protobuf {
-namespace io {
-class ZeroCopyOutputStream;
-class CodedOutputStream;
-}  // namespace io
-}  // namespace protobuf
-}  // namespace google
+#include "fpindex/io/file.h"
 
 namespace fpindex {
-
-namespace io = google::protobuf::io;
 
 class InMemorySegment : public BaseSegment {
  public:
@@ -34,8 +24,7 @@ class InMemorySegment : public BaseSegment {
     void Freeze();
 
     // Serialize the segment data to the output stream.
-    bool Serialize(io::ZeroCopyOutputStream* output);
-    bool Serialize(io::CodedOutputStream* output);
+    bool Serialize(io::File* file);
 
  private:
     std::shared_mutex mutex_;
