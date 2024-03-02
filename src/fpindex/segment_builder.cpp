@@ -1,4 +1,4 @@
-#include "fpindex/in_memory_segment.h"
+#include "fpindex/segment_builder.h"
 
 #include <google/protobuf/io/coded_stream.h>
 
@@ -9,7 +9,7 @@
 
 namespace fpindex {
 
-bool InMemorySegment::Add(uint32_t id, const std::vector<uint32_t>& hashes) {
+bool SegmentBuilder::Add(uint32_t id, const std::vector<uint32_t>& hashes) {
     std::unique_lock<std::shared_mutex> lock(mutex_);
     if (frozen_) {
         return false;
@@ -20,14 +20,19 @@ bool InMemorySegment::Add(uint32_t id, const std::vector<uint32_t>& hashes) {
     return true;
 }
 
-void InMemorySegment::Freeze() {
+bool SegmentBuilder::IsFrozen() {
+    std::unique_lock<std::shared_mutex> lock(mutex_);
+    return frozen_;
+}
+
+void SegmentBuilder::Freeze() {
     if (!frozen_) {
         std::unique_lock<std::shared_mutex> lock(mutex_);
         frozen_ = true;
     }
 }
 
-bool InMemorySegment::Search(const std::vector<uint32_t>& hashes, std::vector<SearchResult>* results) {
+bool SegmentBuilder::Search(const std::vector<uint32_t>& hashes, std::vector<SearchResult>* results) {
     std::shared_lock<std::shared_mutex> lock;
     if (!frozen_) {
         lock = std::shared_lock<std::shared_mutex>(mutex_);
@@ -47,7 +52,7 @@ bool InMemorySegment::Search(const std::vector<uint32_t>& hashes, std::vector<Se
     return true;
 }
 
-bool InMemorySegment::Serialize(io::File* file) {
+bool SegmentBuilder::Serialize(io::File* file) {
     std::shared_lock<std::shared_mutex> lock;
     if (!frozen_) {
         lock = std::shared_lock<std::shared_mutex>(mutex_);

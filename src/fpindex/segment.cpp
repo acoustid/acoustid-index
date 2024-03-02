@@ -137,4 +137,10 @@ bool Segment::Load(const std::shared_ptr<io::File>& file) {
     return true;
 }
 
+Segment::Segment(uint32_t id, std::shared_ptr<io::File> file, SegmentHeader header, size_t first_block_offset,
+                 std::vector<std::pair<uint32_t, uint32_t>>&& block_index)
+    : BlockBasedSegment(id), header_(header), file_(file), first_block_offset_(first_block_offset), block_index_(std::move(block_index)) {
+        ready_ = true;
+}
+
 }  // namespace fpindex

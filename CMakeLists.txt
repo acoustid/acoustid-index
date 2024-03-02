@@ -95,8 +95,8 @@ set(fpindexlib_SOURCES
 	src/fpindex/segment_file_format.h
 	src/fpindex/segment.h
 	src/fpindex/segment.cpp
-	src/fpindex/in_memory_segment.h
-	src/fpindex/in_memory_segment.cpp
+	src/fpindex/segment_builder.h
+	src/fpindex/segment_builder.cpp
 	src/fpindex/io/memory_file.h
 	src/fpindex/io/memory_file.cpp
 	src/fpindex/proto/internal.pb.h
@@ -236,6 +236,7 @@ set(tests_SOURCES
 	src/index/segment_merge_policy_test.cpp
 	src/index/op_test.cpp
 	src/fpindex/segment_test.cpp
+	src/fpindex/segment_builder_test.cpp
 	src/store/buffered_input_stream_test.cpp
 	src/store/input_stream_test.cpp
 	src/store/output_stream_test.cpp

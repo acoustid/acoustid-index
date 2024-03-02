@@ -10,11 +10,11 @@
 
 namespace fpindex {
 
-class InMemorySegment : public BaseSegment {
+class SegmentBuilder : public BaseSegment {
  public:
-    InMemorySegment(uint32_t id) : BaseSegment(id) {}
-    InMemorySegment(const InMemorySegment&) = delete;
-    InMemorySegment& operator=(const InMemorySegment&) = delete;
+    SegmentBuilder(uint32_t id) : BaseSegment(id) {}
+    SegmentBuilder(const SegmentBuilder&) = delete;
+    SegmentBuilder& operator=(const SegmentBuilder&) = delete;
 
     bool Add(uint32_t id, const std::vector<uint32_t>& values);
 
@@ -22,6 +22,7 @@ class InMemorySegment : public BaseSegment {
 
     // Freeze the segment so that no more data can be added to it.
     void Freeze();
+    bool IsFrozen();
 
     // Serialize the segment data to the output stream.
     bool Serialize(io::File* file);
