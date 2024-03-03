@@ -30,10 +30,13 @@ class SQLite3Deleter {
     bool cancelled_{false};
 };
 
-std::shared_ptr<sqlite3> OpenDatabase(const std::string& db_name) {
+std::shared_ptr<sqlite3> OpenDatabase(const std::string& db_name, bool create) {
     sqlite3* db = nullptr;
-    int rc = sqlite3_open_v2(db_name.c_str(), &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX,
-                             nullptr);
+    int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX;
+    if (create) {
+        flags |= SQLITE_OPEN_CREATE;
+    }
+    int rc = sqlite3_open_v2(db_name.c_str(), &db, flags, nullptr);
     if (rc) {
         LOG_ERROR() << "Can't open SQLite database: " << sqlite3_errstr(rc);
         sqlite3_close_and_log_error(db);
