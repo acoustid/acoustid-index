@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "fpindex/search_result.h"
+#include "fpindex/proto/internal.pb.h"
 
 namespace fpindex {
 
@@ -14,16 +15,18 @@ class BaseSegment {
     BaseSegment &operator=(const BaseSegment &) = delete;
     virtual ~BaseSegment() = default;
 
-    uint32_t id() const { return id_; }
+    uint32_t id() const { return info_.id(); }
 
     virtual bool Search(const std::vector<uint32_t> &hashes, std::vector<SearchResult> *results) = 0;
     virtual std::vector<SearchResult> Search(const std::vector<uint32_t> &hashes);
 
  protected:
-    BaseSegment(uint32_t id) : id_(id) {}
+    BaseSegment(uint32_t id) {
+        info_.set_id(id);
+    }
 
  private:
-    uint32_t id_{0};
+    SegmentInfo info_;
 };
 
 }  // namespace fpindex

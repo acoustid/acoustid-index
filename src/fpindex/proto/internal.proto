@@ -11,3 +11,13 @@ message SegmentHeader {
   SegmentBlockFormat block_format = 1;
   uint32 block_size = 2;
 }
+
+message SegmentInfo {
+  uint32 id = 1;
+  uint64 first_op_id = 2;
+  uint64 last_op_id = 3;
+}
+
+message IndexInfo {
+  repeated SegmentInfo segments = 1;
+}
