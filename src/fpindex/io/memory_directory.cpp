@@ -52,7 +52,6 @@ std::vector<std::string> MemoryDirectory::ListFiles() {
     return files;
 }
 
-
 std::vector<std::string> MemoryDirectory::ListDirectories() {
     std::lock_guard<std::mutex> lock(mutex_);
     std::vector<std::string> directories;
