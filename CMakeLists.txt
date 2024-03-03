@@ -103,6 +103,7 @@ set(fpindexlib_SOURCES
 	src/fpindex/io/memory_directory.cpp
 	src/fpindex/io/memory_file.h
 	src/fpindex/io/memory_file.cpp
+	src/fpindex/util/cleanup.h
 	src/fpindex/proto/internal.pb.h
 	src/fpindex/proto/internal.pb.cc
 )
@@ -241,6 +242,7 @@ set(tests_SOURCES
 	src/index/op_test.cpp
 	src/fpindex/segment_test.cpp
 	src/fpindex/segment_builder_test.cpp
+	src/fpindex/util/cleanup_test.cpp
 	src/store/buffered_input_stream_test.cpp
 	src/store/input_stream_test.cpp
 	src/store/output_stream_test.cpp
