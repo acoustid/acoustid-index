@@ -3,7 +3,7 @@
 #include <memory>
 #include <string>
 
-typedef struct sqlite3 sqlite3;
+#include <sqlite3.h>
 
 namespace fpindex {
 namespace io {

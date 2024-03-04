@@ -1,6 +1,10 @@
 #include "fpindex/oplog.h"
+#include "fpindex/logging.h"
+#include "fpindex/util/cleanup.h"
 
 #include <sqlite3.h>
+
+namespace fpindex {
 
 Oplog::Oplog(std::shared_ptr<sqlite3> db) : db_(db) {}
 
@@ -38,7 +42,7 @@ bool Oplog::Write(const OplogEntries &entries) {
         LOG_ERROR() << "failed to prepare statement: " << sqlite3_errstr(rc);
         return false;
     }
-    auto finalize_stmt = MakeCleanup([stmt]() { sqlite3_finalize(stmt); });
+    auto finalize_stmt = util::MakeCleanup([stmt]() { sqlite3_finalize(stmt); });
 
     char *err_msg = nullptr;
     rc = sqlite3_exec(db_.get(), "BEGIN TRANSACTION", nullptr, nullptr, &err_msg);
@@ -64,7 +68,7 @@ bool Oplog::Write(const OplogEntries &entries) {
         if (rc != SQLITE_DONE) {
             LOG_ERROR() << "failed to insert oplog entry: " << sqlite3_errstr(rc);
             rollback = true;
-            break
+            break;
         }
     }
 
@@ -78,3 +82,5 @@ bool Oplog::Write(const OplogEntries &entries) {
 
     return true;
 };
+
+}  // namespace fpindex

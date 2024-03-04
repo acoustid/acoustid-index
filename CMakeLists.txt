@@ -97,6 +97,8 @@ set(fpindexlib_SOURCES
 	src/fpindex/segment.cpp
 	src/fpindex/segment_builder.h
 	src/fpindex/segment_builder.cpp
+	src/fpindex/oplog.h
+	src/fpindex/oplog.cpp
 	src/fpindex/io/file.h
 	src/fpindex/io/directory.h
 	src/fpindex/io/memory_directory.h
@@ -246,6 +248,7 @@ set(tests_SOURCES
 	src/fpindex/segment_builder_test.cpp
 	src/fpindex/util/cleanup_test.cpp
 	src/fpindex/io/sqlite_test.cpp
+	src/fpindex/oplog_test.cpp
 	src/store/buffered_input_stream_test.cpp
 	src/store/input_stream_test.cpp
 	src/store/output_stream_test.cpp
