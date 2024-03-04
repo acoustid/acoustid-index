@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <vector>
 
-#include "fpindex/search_result.h"
 #include "fpindex/proto/internal.pb.h"
+#include "fpindex/search_result.h"
 
 namespace fpindex {
 
@@ -21,9 +21,7 @@ class BaseSegment {
     virtual std::vector<SearchResult> Search(const std::vector<uint32_t> &hashes);
 
  protected:
-    BaseSegment(uint32_t id) {
-        info_.set_id(id);
-    }
+    BaseSegment(uint32_t id) { info_.set_id(id); }
 
  private:
     SegmentInfo info_;

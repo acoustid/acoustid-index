@@ -17,7 +17,7 @@ class Oplog {
     bool CreateTable();
 
  private:
- std::mutex mutex_;
+    std::mutex mutex_;
     std::shared_ptr<sqlite3> db_;
 };
 

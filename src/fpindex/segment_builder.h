@@ -3,6 +3,7 @@
 #include <atomic>
 #include <map>
 #include <shared_mutex>
+#include <unordered_set>
 #include <vector>
 
 #include "fpindex/base_segment.h"
@@ -18,7 +19,10 @@ class SegmentBuilder : public BaseSegment {
     SegmentBuilder(const SegmentBuilder&) = delete;
     SegmentBuilder& operator=(const SegmentBuilder&) = delete;
 
-    bool Add(uint32_t id, const std::vector<uint32_t>& values);
+    bool InsertOrUpdate(uint32_t id, const std::vector<uint32_t>& values);
+    bool Delete(uint32_t id);
+
+    bool Contains(uint32_t id);
 
     bool Search(const std::vector<uint32_t>& hashes, std::vector<SearchResult>* results) override;
 
@@ -30,8 +34,11 @@ class SegmentBuilder : public BaseSegment {
     std::shared_ptr<Segment> Save(const std::shared_ptr<io::File>& file);
 
  private:
+    void DeleteInternal(uint32_t id);
+
     std::shared_mutex mutex_;
     std::multimap<uint32_t, uint32_t> data_;
+    std::unordered_set<uint32_t> ids_;
     std::atomic<bool> frozen_{false};
 };
 

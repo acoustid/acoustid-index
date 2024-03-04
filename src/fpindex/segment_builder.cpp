@@ -5,20 +5,47 @@
 #include <mutex>
 
 #include "fpindex/search_result.h"
+#include "fpindex/logging.h"
 #include "fpindex/segment.h"
 #include "fpindex/segment_file_format.h"
 
 namespace fpindex {
 
-bool SegmentBuilder::Add(uint32_t id, const std::vector<uint32_t>& hashes) {
+bool SegmentBuilder::InsertOrUpdate(uint32_t id, const std::vector<uint32_t>& hashes) {
     std::unique_lock<std::shared_mutex> lock(mutex_);
     if (frozen_) {
         return false;
     }
+    DeleteInternal(id);
     for (auto hash : hashes) {
         data_.insert(std::make_pair(hash, id));
     }
+    ids_.insert(id);
     return true;
+}
+
+bool SegmentBuilder::Delete(uint32_t id) {
+    std::unique_lock<std::shared_mutex> lock(mutex_);
+    if (frozen_) {
+        return false;
+    }
+    DeleteInternal(id);
+    return true;
+}
+
+void SegmentBuilder::DeleteInternal(uint32_t id) {
+    if (auto it = ids_.find(id); it != ids_.end()) {
+        ids_.erase(it);
+        std::erase_if(data_, [id](const auto& pair) { return pair.second == id; });
+    }
+}
+
+bool SegmentBuilder::Contains(uint32_t id) {
+    std::shared_lock<std::shared_mutex> lock;
+    if (!frozen_) {
+        lock = std::shared_lock<std::shared_mutex>(mutex_);
+    }
+    return ids_.contains(id);
 }
 
 bool SegmentBuilder::IsFrozen() {

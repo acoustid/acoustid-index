@@ -17,9 +17,50 @@ TEST(SegmentBuilderTest, SearchEmpty) {
     ASSERT_TRUE(results.empty());
 }
 
+TEST(SegmentBuilderTest, Insert) {
+    SegmentBuilder segment(0);
+    segment.InsertOrUpdate(1, {1, 2, 3});
+
+    std::vector<SearchResult> results;
+
+    ASSERT_TRUE(segment.Search({1,2,3}, &results));
+    ASSERT_EQ(1, results.size());
+
+    ASSERT_TRUE(segment.Search({4, 5,6}, &results));
+    ASSERT_EQ(0, results.size());
+}
+
+TEST(SegmentBuilderTest, Update) {
+    SegmentBuilder segment(0);
+    segment.InsertOrUpdate(1, {1, 2, 3});
+    segment.InsertOrUpdate(1, {4, 5, 6});
+
+    std::vector<SearchResult> results;
+
+    EXPECT_TRUE(segment.Search({1,2,3}, &results));
+    EXPECT_EQ(0, results.size());
+
+    EXPECT_TRUE(segment.Search({4, 5,6}, &results));
+    EXPECT_EQ(1, results.size());
+}
+
+TEST(SegmentBuilderTest, Delete) {
+    SegmentBuilder segment(0);
+    segment.InsertOrUpdate(1, {1, 2, 3});
+    segment.Delete(1);
+
+    std::vector<SearchResult> results;
+
+    ASSERT_TRUE(segment.Search({1,2,3}, &results));
+    ASSERT_EQ(0, results.size());
+
+    ASSERT_TRUE(segment.Search({4, 5,6}, &results));
+    ASSERT_EQ(0, results.size());
+}
+
 TEST(SegmentBuilderTest, SearchExactMatch) {
     SegmentBuilder segment(0);
-    segment.Add(1, {1, 2, 3});
+    segment.InsertOrUpdate(1, {1, 2, 3});
 
     std::vector<uint32_t> query{1, 2, 3};
     std::vector<SearchResult> results;
@@ -31,7 +72,7 @@ TEST(SegmentBuilderTest, SearchExactMatch) {
 
 TEST(SegmentBuilderTest, Save) {
     SegmentBuilder segment(0);
-    segment.Add(1, {1, 2, 3});
+    segment.InsertOrUpdate(1, {1, 2, 3});
 
     auto file = std::make_shared<io::MemoryFile>();
     auto segment2 = segment.Save(file);
