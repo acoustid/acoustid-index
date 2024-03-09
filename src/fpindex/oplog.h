@@ -11,7 +11,7 @@ class Oplog {
  public:
     Oplog(std::shared_ptr<sqlite3> db);
     bool Open();
-    bool Write(const OplogEntries &entries);
+    bool Write(std::vector<OplogEntry> &entries);
 
  protected:
     bool CreateTable();

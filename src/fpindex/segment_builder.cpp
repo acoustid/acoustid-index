@@ -4,12 +4,26 @@
 
 #include <mutex>
 
-#include "fpindex/search_result.h"
 #include "fpindex/logging.h"
+#include "fpindex/search_result.h"
 #include "fpindex/segment.h"
 #include "fpindex/segment_file_format.h"
 
 namespace fpindex {
+
+bool SegmentBuilder::InsertOrUpdate(uint32_t id, const google::protobuf::RepeatedField<uint32_t>& hashes) {
+    std::unique_lock<std::shared_mutex> lock(mutex_);
+    if (frozen_) {
+        return false;
+    }
+    DeleteInternal(id);
+    for (auto hash : hashes) {
+        data_.insert(std::make_pair(hash, id));
+    }
+    ids_.insert(id);
+    updates_[id] = DocStatus::UPDATED;
+    return true;
+}
 
 bool SegmentBuilder::InsertOrUpdate(uint32_t id, const std::vector<uint32_t>& hashes) {
     std::unique_lock<std::shared_mutex> lock(mutex_);
@@ -21,6 +35,7 @@ bool SegmentBuilder::InsertOrUpdate(uint32_t id, const std::vector<uint32_t>& ha
         data_.insert(std::make_pair(hash, id));
     }
     ids_.insert(id);
+    updates_[id] = DocStatus::UPDATED;
     return true;
 }
 
@@ -30,13 +45,16 @@ bool SegmentBuilder::Delete(uint32_t id) {
         return false;
     }
     DeleteInternal(id);
+    updates_[id] = DocStatus::DELETED;
     return true;
 }
 
 void SegmentBuilder::DeleteInternal(uint32_t id) {
     if (auto it = ids_.find(id); it != ids_.end()) {
         ids_.erase(it);
-        std::erase_if(data_, [id](const auto& pair) { return pair.second == id; });
+        std::erase_if(data_, [id](const auto& pair) {
+            return pair.second == id;
+        });
     }
 }
 
@@ -120,6 +138,33 @@ std::shared_ptr<Segment> SegmentBuilder::Save(const std::shared_ptr<io::File>& f
     auto result = std::make_shared<Segment>(id());
     result->Load(file, header, header_size, std::move(block_index));
     return result;
+}
+
+bool SegmentBuilder::Update(const std::vector<OplogEntry>& entries) {
+    std::unique_lock<std::shared_mutex> lock(mutex_);
+    if (frozen_) {
+        return false;
+    }
+    for (const auto& entry : entries) {
+        if (entry.data().has_insert_or_update()) {
+            auto data = entry.data().insert_or_update();
+            InsertOrUpdate(data.id(), data.hashes());
+        } else if (entry.data().has_delete_()) {
+            auto data = entry.data().delete_();
+            Delete(data.id());
+        }
+        if (info_.min_oplog_id() == 0) {
+            info_.set_min_oplog_id(entry.id());
+            info_.set_max_oplog_id(entry.id());
+        } else {
+            if (entry.id() <= info_.max_oplog_id()) {
+                LOG_ERROR() << "oplog entries are not in ascending order";
+                return false;
+            }
+            info_.set_max_oplog_id(entry.id());
+        }
+    }
+    return true;
 }
 
 }  // namespace fpindex

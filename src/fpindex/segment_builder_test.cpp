@@ -23,10 +23,10 @@ TEST(SegmentBuilderTest, Insert) {
 
     std::vector<SearchResult> results;
 
-    ASSERT_TRUE(segment.Search({1,2,3}, &results));
+    ASSERT_TRUE(segment.Search({1, 2, 3}, &results));
     ASSERT_EQ(1, results.size());
 
-    ASSERT_TRUE(segment.Search({4, 5,6}, &results));
+    ASSERT_TRUE(segment.Search({4, 5, 6}, &results));
     ASSERT_EQ(0, results.size());
 }
 
@@ -37,10 +37,10 @@ TEST(SegmentBuilderTest, Update) {
 
     std::vector<SearchResult> results;
 
-    EXPECT_TRUE(segment.Search({1,2,3}, &results));
+    EXPECT_TRUE(segment.Search({1, 2, 3}, &results));
     EXPECT_EQ(0, results.size());
 
-    EXPECT_TRUE(segment.Search({4, 5,6}, &results));
+    EXPECT_TRUE(segment.Search({4, 5, 6}, &results));
     EXPECT_EQ(1, results.size());
 }
 
@@ -51,10 +51,10 @@ TEST(SegmentBuilderTest, Delete) {
 
     std::vector<SearchResult> results;
 
-    ASSERT_TRUE(segment.Search({1,2,3}, &results));
+    ASSERT_TRUE(segment.Search({1, 2, 3}, &results));
     ASSERT_EQ(0, results.size());
 
-    ASSERT_TRUE(segment.Search({4, 5,6}, &results));
+    ASSERT_TRUE(segment.Search({4, 5, 6}, &results));
     ASSERT_EQ(0, results.size());
 }
 

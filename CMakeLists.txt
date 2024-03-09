@@ -92,6 +92,8 @@ set(fpindexlib_SOURCES
 	src/fpindex/search_result.h
 	src/fpindex/base_segment.h
 	src/fpindex/base_segment.cpp
+	src/fpindex/index.h
+	src/fpindex/index.cpp
 	src/fpindex/segment_file_format.h
 	src/fpindex/segment.h
 	src/fpindex/segment.cpp

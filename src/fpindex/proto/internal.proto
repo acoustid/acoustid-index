@@ -14,8 +14,8 @@ message SegmentHeader {
 
 message SegmentInfo {
   uint32 id = 1;
-  uint64 first_op_id = 2;
-  uint64 last_op_id = 3;
+  uint64 min_oplog_id = 2;
+  uint64 max_oplog_id = 3;
 }
 
 message IndexInfo {
@@ -37,15 +37,15 @@ message SetAttributeRequest {
   string value = 2;
 }
 
-message OplogEntry {
-  uint64 op_id = 1;
-  oneof op {
-    InsertOrUpdateFingerprintRequest insert_or_update = 2;
-    DeleteFingerprintRequest delete = 3;
-    SetAttributeRequest set_attribute = 4;
-  }
+message OplogEntryData {
+   oneof operation {
+        InsertOrUpdateFingerprintRequest insert_or_update = 1;
+        DeleteFingerprintRequest delete = 2;
+        SetAttributeRequest set_attribute = 3;
+   }
 }
 
-message OplogEntries {
-  repeated OplogEntry entries = 1;
+message OplogEntry {
+  uint64 id = 1;
+  OplogEntryData data = 2;
 }

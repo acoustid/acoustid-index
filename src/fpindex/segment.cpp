@@ -68,6 +68,8 @@ bool BlockBasedSegment::Search(const std::vector<uint32_t>& hashes, std::vector<
     return true;
 }
 
+bool Segment::IsReady() { return ready_; }
+
 bool Segment::Search(const std::vector<uint32_t>& hashes, std::vector<SearchResult>* results) {
     if (!ready_) {
         return false;

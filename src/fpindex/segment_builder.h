@@ -3,6 +3,7 @@
 #include <atomic>
 #include <map>
 #include <shared_mutex>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -13,14 +14,22 @@ namespace fpindex {
 
 class Segment;
 
+enum class DocStatus {
+    UPDATED = 0,
+    DELETED = 1,
+};
+
 class SegmentBuilder : public BaseSegment {
  public:
     SegmentBuilder(uint32_t id) : BaseSegment(id) {}
     SegmentBuilder(const SegmentBuilder&) = delete;
     SegmentBuilder& operator=(const SegmentBuilder&) = delete;
 
+    bool InsertOrUpdate(uint32_t id, const google::protobuf::RepeatedField<uint32_t>& values);
     bool InsertOrUpdate(uint32_t id, const std::vector<uint32_t>& values);
     bool Delete(uint32_t id);
+
+    bool Update(const std::vector<OplogEntry>& update);
 
     bool Contains(uint32_t id);
 
@@ -39,6 +48,7 @@ class SegmentBuilder : public BaseSegment {
     std::shared_mutex mutex_;
     std::multimap<uint32_t, uint32_t> data_;
     std::unordered_set<uint32_t> ids_;
+    std::unordered_map<uint32_t, DocStatus> updates_;
     std::atomic<bool> frozen_{false};
 };
 

@@ -35,6 +35,7 @@ class Segment : public BlockBasedSegment {
     Segment &operator=(const Segment &) = delete;
 
     bool Search(const std::vector<uint32_t> &hashes, std::vector<SearchResult> *results) override;
+    bool IsReady() override;
     bool Load(const std::shared_ptr<io::File> &file);
 
  protected:
