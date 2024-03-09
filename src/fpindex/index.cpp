@@ -3,6 +3,7 @@
 #include <atomic>
 #include <unordered_map>
 
+#include "fpindex/logging.h"
 #include "fpindex/oplog.h"
 #include "fpindex/proto/internal.pb.h"
 #include "fpindex/segment.h"
@@ -125,6 +126,18 @@ bool Index::Open() {
         return true;
     }
 
+    db_ = dir_->OpenDatabase("index.db", true);
+    if (!db_) {
+        LOG_ERROR() << "failed to open database";
+        return false;
+    }
+
+    oplog_ = std::make_shared<Oplog>(db_);
+    if (!oplog_->Open()) {
+        LOG_ERROR() << "failed to open oplog";
+        return false;
+    }
+
     auto index_info = std::make_shared<IndexInfo>();
     for (auto& segment_info : index_info->segments()) {
         auto segment = std::make_shared<Segment>(segment_info.id());
@@ -135,6 +148,11 @@ bool Index::Open() {
     }
 
     data_ = std::make_shared<IndexData>(segment_cache_, index_info);
+    return true;
+}
+
+bool Index::Close() {
+    std::lock_guard<std::mutex> lock(mutex_);
     return true;
 }
 
@@ -151,17 +169,20 @@ bool Index::Search(const std::vector<uint32_t>& hashes, std::vector<SearchResult
     return data->Search(hashes, results);
 }
 
-bool Index::Update(const std::vector<OplogEntryData>& updates) {
+bool Index::Update(IndexUpdate&& update) {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    std::vector<OplogEntry> oplog_entries;
-    for (auto& update : updates) {
-        OplogEntry entry;
-        entry.mutable_data()->CopyFrom(update);
-        oplog_entries.push_back(std::move(entry));
+    if (!oplog_ || !oplog_->IsReady()) {
+        LOG_ERROR() << "oplog is not open";
+        return false;
     }
 
-    oplog_->Write(oplog_entries);
+    auto entries = update.Finish();
+    if (!oplog_->Write(entries)) {
+        LOG_ERROR() << "failed to write to oplog";
+        return false;
+    }
+
     return true;
 }
 

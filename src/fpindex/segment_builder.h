@@ -25,10 +25,6 @@ class SegmentBuilder : public BaseSegment {
     SegmentBuilder(const SegmentBuilder&) = delete;
     SegmentBuilder& operator=(const SegmentBuilder&) = delete;
 
-    bool InsertOrUpdate(uint32_t id, const google::protobuf::RepeatedField<uint32_t>& values);
-    bool InsertOrUpdate(uint32_t id, const std::vector<uint32_t>& values);
-    bool Delete(uint32_t id);
-
     bool Update(const std::vector<OplogEntry>& update);
 
     bool Contains(uint32_t id);
@@ -43,6 +39,9 @@ class SegmentBuilder : public BaseSegment {
     std::shared_ptr<Segment> Save(const std::shared_ptr<io::File>& file);
 
  private:
+    bool InsertOrUpdate(uint32_t id, const google::protobuf::RepeatedField<uint32_t>& hashes);
+    bool Delete(uint32_t id);
+
     void DeleteInternal(uint32_t id);
 
     std::shared_mutex mutex_;

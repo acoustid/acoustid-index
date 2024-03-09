@@ -246,6 +246,7 @@ set(tests_SOURCES
 	src/index/segment_merger_test.cpp
 	src/index/segment_merge_policy_test.cpp
 	src/index/op_test.cpp
+	src/fpindex/index_test.cpp
 	src/fpindex/segment_test.cpp
 	src/fpindex/segment_builder_test.cpp
 	src/fpindex/util/cleanup_test.cpp

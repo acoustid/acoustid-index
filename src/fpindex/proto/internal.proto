@@ -33,7 +33,7 @@ message DeleteFingerprintRequest {
 }
 
 message SetAttributeRequest {
-  string key = 1;
+  string name = 1;
   string value = 2;
 }
 

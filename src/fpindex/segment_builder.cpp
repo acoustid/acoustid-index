@@ -12,24 +12,6 @@
 namespace fpindex {
 
 bool SegmentBuilder::InsertOrUpdate(uint32_t id, const google::protobuf::RepeatedField<uint32_t>& hashes) {
-    std::unique_lock<std::shared_mutex> lock(mutex_);
-    if (frozen_) {
-        return false;
-    }
-    DeleteInternal(id);
-    for (auto hash : hashes) {
-        data_.insert(std::make_pair(hash, id));
-    }
-    ids_.insert(id);
-    updates_[id] = DocStatus::UPDATED;
-    return true;
-}
-
-bool SegmentBuilder::InsertOrUpdate(uint32_t id, const std::vector<uint32_t>& hashes) {
-    std::unique_lock<std::shared_mutex> lock(mutex_);
-    if (frozen_) {
-        return false;
-    }
     DeleteInternal(id);
     for (auto hash : hashes) {
         data_.insert(std::make_pair(hash, id));
@@ -40,10 +22,6 @@ bool SegmentBuilder::InsertOrUpdate(uint32_t id, const std::vector<uint32_t>& ha
 }
 
 bool SegmentBuilder::Delete(uint32_t id) {
-    std::unique_lock<std::shared_mutex> lock(mutex_);
-    if (frozen_) {
-        return false;
-    }
     DeleteInternal(id);
     updates_[id] = DocStatus::DELETED;
     return true;

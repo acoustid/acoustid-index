@@ -7,7 +7,7 @@
 
 namespace fpindex {
 
-Oplog::Oplog(std::shared_ptr<sqlite3> db) : db_(db) {}
+Oplog::Oplog(std::shared_ptr<io::Database> db) : db_(db) {}
 
 static const char *kCreateOplogTableSql = R"(
     CREATE TABLE IF NOT EXISTS oplog (
@@ -22,7 +22,7 @@ static const char *kInsertOplogEntrySql = R"(
 
 bool Oplog::CreateTable() {
     char *err_msg = nullptr;
-    int rc = sqlite3_exec(db_.get(), kCreateOplogTableSql, nullptr, nullptr, &err_msg);
+    int rc = sqlite3_exec(db_->get(), kCreateOplogTableSql, nullptr, nullptr, &err_msg);
     if (rc != SQLITE_OK) {
         LOG_ERROR() << "failed to create oplog error: " << err_msg;
         sqlite3_free(err_msg);
@@ -31,18 +31,27 @@ bool Oplog::CreateTable() {
     return true;
 }
 
+bool Oplog::IsReady() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return ready_;
+}
+
 bool Oplog::Open() {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (!CreateTable()) {
         return false;
     }
+    ready_ = true;
     return true;
 }
 
 bool Oplog::Write(std::vector<OplogEntry> &entries) {
     std::lock_guard<std::mutex> lock(mutex_);
 
+    sqlite3 *db = db_->get();
+
     sqlite3_stmt *stmt = nullptr;
-    int rc = sqlite3_prepare_v2(db_.get(), kInsertOplogEntrySql, -1, &stmt, nullptr);
+    int rc = sqlite3_prepare_v2(db, kInsertOplogEntrySql, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
         LOG_ERROR() << "failed to prepare statement: " << sqlite3_errstr(rc);
         return false;
@@ -52,7 +61,7 @@ bool Oplog::Write(std::vector<OplogEntry> &entries) {
     });
 
     char *err_msg = nullptr;
-    rc = sqlite3_exec(db_.get(), "BEGIN TRANSACTION", nullptr, nullptr, &err_msg);
+    rc = sqlite3_exec(db, "BEGIN TRANSACTION", nullptr, nullptr, &err_msg);
     if (rc != SQLITE_OK) {
         LOG_ERROR() << "failed to begin transaction: " << err_msg;
         sqlite3_free(err_msg);
@@ -88,7 +97,7 @@ bool Oplog::Write(std::vector<OplogEntry> &entries) {
     }
 
     const char *end_txn_sql = rollback ? "ROLLBACK TRANSACTION" : "COMMIT TRANSACTION";
-    rc = sqlite3_exec(db_.get(), end_txn_sql, nullptr, nullptr, &err_msg);
+    rc = sqlite3_exec(db, end_txn_sql, nullptr, nullptr, &err_msg);
     if (rc != SQLITE_OK) {
         LOG_ERROR() << "failed to " << (rollback ? "rollback" : "commit") << " transaction: " << err_msg;
         sqlite3_free(err_msg);

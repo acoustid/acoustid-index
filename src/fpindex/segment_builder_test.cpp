@@ -4,6 +4,7 @@
 
 #include "fpindex/io/memory_file.h"
 #include "fpindex/segment.h"
+#include "fpindex/update.h"
 
 using namespace fpindex;
 using namespace testing;
@@ -19,7 +20,10 @@ TEST(SegmentBuilderTest, SearchEmpty) {
 
 TEST(SegmentBuilderTest, Insert) {
     SegmentBuilder segment(0);
-    segment.InsertOrUpdate(1, {1, 2, 3});
+
+    IndexUpdate batch;
+    batch.InsertOrUpdate(1, {1, 2, 3});
+    segment.Update(batch.Finish());
 
     std::vector<SearchResult> results;
 
@@ -32,8 +36,11 @@ TEST(SegmentBuilderTest, Insert) {
 
 TEST(SegmentBuilderTest, Update) {
     SegmentBuilder segment(0);
-    segment.InsertOrUpdate(1, {1, 2, 3});
-    segment.InsertOrUpdate(1, {4, 5, 6});
+
+    IndexUpdate batch;
+    batch.InsertOrUpdate(1, {1, 2, 3});
+    batch.InsertOrUpdate(1, {4, 5, 6});
+    segment.Update(batch.Finish());
 
     std::vector<SearchResult> results;
 
@@ -46,8 +53,11 @@ TEST(SegmentBuilderTest, Update) {
 
 TEST(SegmentBuilderTest, Delete) {
     SegmentBuilder segment(0);
-    segment.InsertOrUpdate(1, {1, 2, 3});
-    segment.Delete(1);
+
+    IndexUpdate batch;
+    batch.InsertOrUpdate(1, {1, 2, 3});
+    batch.Delete(1);
+    segment.Update(batch.Finish());
 
     std::vector<SearchResult> results;
 
@@ -60,7 +70,10 @@ TEST(SegmentBuilderTest, Delete) {
 
 TEST(SegmentBuilderTest, SearchExactMatch) {
     SegmentBuilder segment(0);
-    segment.InsertOrUpdate(1, {1, 2, 3});
+
+    IndexUpdate batch;
+    batch.InsertOrUpdate(1, {1, 2, 3});
+    segment.Update(batch.Finish());
 
     std::vector<uint32_t> query{1, 2, 3};
     std::vector<SearchResult> results;
@@ -72,7 +85,9 @@ TEST(SegmentBuilderTest, SearchExactMatch) {
 
 TEST(SegmentBuilderTest, Save) {
     SegmentBuilder segment(0);
-    segment.InsertOrUpdate(1, {1, 2, 3});
+    IndexUpdate batch;
+    batch.InsertOrUpdate(1, {1, 2, 3});
+    segment.Update(batch.Finish());
 
     auto file = std::make_shared<io::MemoryFile>();
     auto segment2 = segment.Save(file);
