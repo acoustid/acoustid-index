@@ -11,56 +11,32 @@
 
 namespace fpindex {
 
-bool SegmentBuilder::InsertOrUpdate(uint32_t id, const google::protobuf::RepeatedField<uint32_t>& hashes) {
-    DeleteInternal(id);
+void SegmentBuilder::InsertOrUpdate(uint32_t id, const google::protobuf::RepeatedField<uint32_t>& hashes) {
+    Delete(id);
     for (auto hash : hashes) {
         data_.insert(std::make_pair(hash, id));
     }
     ids_.insert(id);
     updates_[id] = DocStatus::UPDATED;
-    return true;
 }
 
-bool SegmentBuilder::Delete(uint32_t id) {
-    DeleteInternal(id);
-    updates_[id] = DocStatus::DELETED;
-    return true;
-}
-
-void SegmentBuilder::DeleteInternal(uint32_t id) {
+void SegmentBuilder::Delete(uint32_t id) {
     if (auto it = ids_.find(id); it != ids_.end()) {
         ids_.erase(it);
         std::erase_if(data_, [id](const auto& pair) {
             return pair.second == id;
         });
     }
+    updates_[id] = DocStatus::DELETED;
 }
 
 bool SegmentBuilder::Contains(uint32_t id) {
-    std::shared_lock<std::shared_mutex> lock;
-    if (!frozen_) {
-        lock = std::shared_lock<std::shared_mutex>(mutex_);
-    }
+    std::shared_lock<std::shared_mutex> lock(mutex_);
     return ids_.contains(id);
 }
 
-bool SegmentBuilder::IsFrozen() {
-    std::unique_lock<std::shared_mutex> lock(mutex_);
-    return frozen_;
-}
-
-void SegmentBuilder::Freeze() {
-    if (!frozen_) {
-        std::unique_lock<std::shared_mutex> lock(mutex_);
-        frozen_ = true;
-    }
-}
-
 bool SegmentBuilder::Search(const std::vector<uint32_t>& hashes, std::vector<SearchResult>* results) {
-    std::shared_lock<std::shared_mutex> lock;
-    if (!frozen_) {
-        lock = std::shared_lock<std::shared_mutex>(mutex_);
-    }
+    std::shared_lock<std::shared_mutex> lock(mutex_);
     std::map<uint32_t, uint32_t> scores;
     for (auto hash : hashes) {
         auto range = data_.equal_range(hash);
@@ -77,10 +53,7 @@ bool SegmentBuilder::Search(const std::vector<uint32_t>& hashes, std::vector<Sea
 }
 
 std::shared_ptr<Segment> SegmentBuilder::Save(const std::shared_ptr<io::File>& file) {
-    std::shared_lock<std::shared_mutex> lock;
-    if (!frozen_) {
-        lock = std::shared_lock<std::shared_mutex>(mutex_);
-    }
+    std::shared_lock<std::shared_mutex> lock(mutex_);
 
     auto stream = file->GetOutputStream();
     auto coded_stream = std::make_unique<google::protobuf::io::CodedOutputStream>(stream.get());
@@ -118,11 +91,27 @@ std::shared_ptr<Segment> SegmentBuilder::Save(const std::shared_ptr<io::File>& f
     return result;
 }
 
-bool SegmentBuilder::Update(const std::vector<OplogEntry>& entries) {
-    std::unique_lock<std::shared_mutex> lock(mutex_);
-    if (frozen_) {
-        return false;
+bool SegmentBuilder::CheckUpdate(const std::vector<OplogEntry>& entries) {
+    std::shared_lock<std::shared_mutex> lock(mutex_);
+    auto min_oplog_id = info_.min_oplog_id();
+    auto max_oplog_id = info_.max_oplog_id();
+    for (const auto& entry : entries) {
+        if (min_oplog_id == 0) {
+            min_oplog_id = entry.id();
+            max_oplog_id = entry.id();
+        } else {
+            if (entry.id() <= max_oplog_id) {
+                LOG_ERROR() << "oplog entries are not in ascending order";
+                return false;
+            }
+            max_oplog_id = entry.id();
+        }
     }
+    return true;
+}
+
+void SegmentBuilder::Update(const std::vector<OplogEntry>& entries) {
+    std::unique_lock<std::shared_mutex> lock(mutex_);
     for (const auto& entry : entries) {
         if (entry.data().has_insert_or_update()) {
             auto data = entry.data().insert_or_update();
@@ -135,14 +124,9 @@ bool SegmentBuilder::Update(const std::vector<OplogEntry>& entries) {
             info_.set_min_oplog_id(entry.id());
             info_.set_max_oplog_id(entry.id());
         } else {
-            if (entry.id() <= info_.max_oplog_id()) {
-                LOG_ERROR() << "oplog entries are not in ascending order";
-                return false;
-            }
             info_.set_max_oplog_id(entry.id());
         }
     }
-    return true;
 }
 
 }  // namespace fpindex

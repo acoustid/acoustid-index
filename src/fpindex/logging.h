@@ -1,7 +1,7 @@
 #pragma once
 
-#include <string>
 #include <QDebug>
+#include <string>
 
 #define LOG_ERROR() qCritical()
 #define LOG_WARNING() qWarning()

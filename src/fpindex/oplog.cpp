@@ -45,7 +45,14 @@ bool Oplog::Open() {
     return true;
 }
 
-bool Oplog::Write(std::vector<OplogEntry> &entries) {
+bool Oplog::Close() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    db_.reset();
+    ready_ = false;
+    return true;
+}
+
+bool Oplog::Write(std::vector<OplogEntry> &entries, std::function<bool(std::vector<OplogEntry> &)> callback) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     sqlite3 *db = db_->get();
@@ -96,6 +103,14 @@ bool Oplog::Write(std::vector<OplogEntry> &entries) {
         }
     }
 
+    if (!rollback) {
+        if (callback) {
+            if (!callback(entries)) {
+                rollback = true;
+            }
+        }
+    }
+
     const char *end_txn_sql = rollback ? "ROLLBACK TRANSACTION" : "COMMIT TRANSACTION";
     rc = sqlite3_exec(db, end_txn_sql, nullptr, nullptr, &err_msg);
     if (rc != SQLITE_OK) {
@@ -106,5 +121,27 @@ bool Oplog::Write(std::vector<OplogEntry> &entries) {
 
     return true;
 };
+
+std::optional<uint64_t> Oplog::GetLastId() {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    sqlite3 *db = db_->get();
+    sqlite3_stmt *stmt = nullptr;
+    int rc = sqlite3_prepare_v2(db, "SELECT MAX(op_id) FROM oplog", -1, &stmt, nullptr);
+    if (rc != SQLITE_OK) {
+        LOG_ERROR() << "failed to prepare statement: " << sqlite3_errstr(rc);
+        return std::nullopt;
+    }
+    auto finalize_stmt = util::MakeCleanup([stmt]() {
+        sqlite3_finalize(stmt);
+    });
+
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW) {
+        LOG_ERROR() << "failed to get last oplog id: " << sqlite3_errstr(rc);
+        return std::nullopt;
+    }
+    return sqlite3_column_int64(stmt, 0);
+}
 
 }  // namespace fpindex

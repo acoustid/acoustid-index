@@ -153,6 +153,10 @@ bool Index::Open() {
 
 bool Index::Close() {
     std::lock_guard<std::mutex> lock(mutex_);
+    if (oplog_) {
+        oplog_->Close();
+        oplog_.reset();
+    }
     return true;
 }
 
@@ -172,17 +176,43 @@ bool Index::Search(const std::vector<uint32_t>& hashes, std::vector<SearchResult
 bool Index::Update(IndexUpdate&& update) {
     std::lock_guard<std::mutex> lock(mutex_);
 
+    if (!data_) {
+        LOG_ERROR() << "index is not open";
+        return false;
+    }
+
     if (!oplog_ || !oplog_->IsReady()) {
         LOG_ERROR() << "oplog is not open";
         return false;
     }
 
-    auto entries = update.Finish();
-    if (!oplog_->Write(entries)) {
-        LOG_ERROR() << "failed to write to oplog";
+    auto stage = data_->stage_;
+    if (!stage) {
+        LOG_ERROR() << "stage is not open";
         return false;
     }
 
+    auto last_oplog_id = oplog_->GetLastId();
+    if (!last_oplog_id) {
+        LOG_ERROR() << "failed to get last oplog id";
+        return false;
+    }
+
+    if (stage->max_oplog_id() != last_oplog_id) {
+        LOG_ERROR() << "stage is not up-to-date";
+        return false;
+    }
+
+    auto check_update = [=](const auto& entries) {
+        return stage->CheckUpdate(entries);
+    };
+    auto entries = update.Finish();
+    if (!oplog_->Write(entries, check_update)) {
+        LOG_ERROR() << "failed to write oplog";
+        return false;
+    }
+
+    stage->Update(entries);
     return true;
 }
 
