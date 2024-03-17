@@ -2,6 +2,7 @@
 
 #include <mutex>
 #include <optional>
+#include <functional>
 
 #include "fpindex/io/database.h"
 #include "fpindex/proto/internal.pb.h"

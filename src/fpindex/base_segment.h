@@ -15,6 +15,8 @@ class BaseSegment {
     BaseSegment &operator=(const BaseSegment &) = delete;
     virtual ~BaseSegment() = default;
 
+    const SegmentInfo &info() const { return info_; }
+
     uint32_t id() const { return info_.id(); }
     uint64_t min_oplog_id() const { return info_.min_oplog_id(); }
     uint64_t max_oplog_id() const { return info_.max_oplog_id(); }
