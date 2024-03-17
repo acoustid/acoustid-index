@@ -46,6 +46,9 @@ class Index {
     void Writer();
 
     void AddSegment(std::shared_ptr<BaseSegment> segment);
+    int GetNextSegmentId();
+
+    std::shared_ptr<Segment> LoadSegment(uint32_t id);
 
     std::mutex mutex_;
     std::atomic<bool> stop_{false};
@@ -57,7 +60,7 @@ class Index {
     std::shared_ptr<IndexInfo> info_;
     std::map<uint32_t, std::shared_ptr<BaseSegment>> segments_;
 
-    std::deque<std::shared_ptr<SegmentBuilder>> segments_to_write_;
+    std::deque<std::pair<std::shared_ptr<IndexInfo>, std::shared_ptr<SegmentBuilder>>> segments_to_write_;
     std::shared_ptr<SegmentBuilder> current_segment_;
 
     std::atomic<std::shared_ptr<IndexSnapshot>> snapshot_;

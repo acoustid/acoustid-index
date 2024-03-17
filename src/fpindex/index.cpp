@@ -33,9 +33,12 @@ void Index::Writer() {
         if (segments_to_write_.empty()) {
             continue;
         }
-        auto segment_builder = segments_to_write_.front();
+        auto to_write = segments_to_write_.front();
 
         lock.unlock();
+
+        auto index_info = to_write.first;
+        auto segment_builder = to_write.second;
 
         auto file_name = GenerateSegmentFileName(segment_builder->id());
         auto file = dir_->OpenFile(file_name, true);
@@ -77,15 +80,9 @@ bool Index::Open() {
 
     info_ = std::make_shared<IndexInfo>();
     for (auto& segment_info : info_->segments()) {
-        auto segment = std::make_shared<Segment>(segment_info.id());
-        auto file_name = GenerateSegmentFileName(segment->id());
-        auto file = dir_->OpenFile(file_name, true);
-        if (!file) {
-            LOG_ERROR() << "failed to open file" << QString::fromStdString(file_name);
-            return false;
-        }
-        if (!segment->Load(file)) {
-            LOG_ERROR() << "failed to load segment" << QString::fromStdString(file_name);
+        auto segment = LoadSegment(segment_info.id());
+        if (!segment) {
+            LOG_ERROR() << "failed to load segment" << segment_info.id();
             return false;
         }
         segments_.insert({segment->id(), segment});
@@ -93,6 +90,21 @@ bool Index::Open() {
     snapshot_ = std::make_shared<IndexSnapshot>(info_, segments_);
 
     return true;
+}
+
+std::shared_ptr<Segment> Index::LoadSegment(uint32_t id) {
+    auto file_name = GenerateSegmentFileName(id);
+    auto file = dir_->OpenFile(file_name, false);
+    if (!file) {
+        LOG_ERROR() << "failed to open file" << QString::fromStdString(file_name);
+        return nullptr;
+    }
+    auto segment = std::make_shared<Segment>(id);
+    if (!segment->Load(file)) {
+        LOG_ERROR() << "failed to load segment" << QString::fromStdString(file_name);
+        return nullptr;
+    }
+    return segment;
 }
 
 bool Index::Close() {
@@ -130,18 +142,27 @@ void Index::AddSegment(std::shared_ptr<BaseSegment> segment) {
     snapshot_.store(snapshot);
 }
 
+int Index::GetNextSegmentId() {
+    for (auto i = info_->segments_size() - 1; i >= 0; i--) {
+        return info_->segments(i).id() + 1;
+    }
+    return 0;
+}
+
 std::shared_ptr<SegmentBuilder> Index::GetCurrentSegment() {
     std::lock_guard<std::mutex> lock(mutex_);
 
     if (!current_segment_) {
-        current_segment_ = std::make_shared<SegmentBuilder>(0);
+        current_segment_ = std::make_shared<SegmentBuilder>(GetNextSegmentId());
         AddSegment(current_segment_);
     }
 
     if (current_segment_->Size() >= MAX_STAGE_SIZE) {
-        auto next_segment = std::make_shared<SegmentBuilder>(current_segment_->id() + 1);
-        segments_to_write_.push_back(current_segment_);
+        auto next_segment = std::make_shared<SegmentBuilder>(GetNextSegmentId());
+        auto next_index_info = std::make_shared<IndexInfo>(*info_);
+        segments_to_write_.push_back({info_, current_segment_});
         current_segment_ = next_segment;
+        info_ = next_index_info;
         AddSegment(current_segment_);
         writer_cv_.notify_one();
     }
@@ -180,7 +201,20 @@ bool Index::Update(IndexUpdate&& update) {
     }
 
     current_segment->Update(entries);
-    AddSegment(current_segment);
+
+    for (auto i = info_->segments_size() - 1; i >= 0; i--) {
+        if (info_->segments(i).id() == current_segment->id()) {
+            info_->mutable_segments(i)->CopyFrom(current_segment->info());
+            break;
+        }
+    }
+
+    for (const auto& entry : entries) {
+        if (entry.data().has_set_attribute()) {
+            auto data = entry.data().set_attribute();
+            info_->mutable_attributes()->insert({data.name(), data.value()});
+        }
+    }
 
     return true;
 }
