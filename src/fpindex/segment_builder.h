@@ -28,6 +28,7 @@ class SegmentBuilder : public BaseSegment {
     bool CheckUpdate(const std::vector<OplogEntry>& update);
     void Update(const std::vector<OplogEntry>& update);
 
+    size_t Size();
     bool Contains(uint32_t id);
 
     bool Search(const std::vector<uint32_t>& hashes, std::vector<SearchResult>* results) override;

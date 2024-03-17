@@ -35,6 +35,11 @@ bool SegmentBuilder::Contains(uint32_t id) {
     return ids_.contains(id);
 }
 
+size_t SegmentBuilder::Size() {
+    std::shared_lock<std::shared_mutex> lock(mutex_);
+    return data_.size();
+}
+
 bool SegmentBuilder::Search(const std::vector<uint32_t>& hashes, std::vector<SearchResult>* results) {
     std::shared_lock<std::shared_mutex> lock(mutex_);
     std::map<uint32_t, uint32_t> scores;

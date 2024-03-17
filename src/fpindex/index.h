@@ -1,7 +1,11 @@
 #pragma once
 
+#include <atomic>
+#include <condition_variable>
+#include <deque>
 #include <memory>
 #include <mutex>
+#include <thread>
 
 #include "fpindex/io/directory.h"
 #include "fpindex/proto/internal.pb.h"
@@ -10,8 +14,9 @@
 
 namespace fpindex {
 
-class IndexData;
-class SegmentCache;
+class Segment;
+class BaseSegment;
+class SegmentBuilder;
 class Oplog;
 
 class Index {
@@ -26,11 +31,23 @@ class Index {
     bool Search(const std::vector<uint32_t> &hashes, std::vector<SearchResult> *results);
 
  private:
+    std::shared_ptr<SegmentBuilder> GetCurrentSegment();
+    void Writer();
+
     std::mutex mutex_;
+    std::atomic<bool> stop_{false};
+
+    std::mutex writer_mutex_;
+    std::condition_variable writer_cv_;
+    std::unique_ptr<std::thread> writer_thread_;
+
+    std::map<uint32_t, std::shared_ptr<BaseSegment>> segments_;
+
+    std::deque<std::shared_ptr<SegmentBuilder>> segments_to_write_;
+    std::shared_ptr<SegmentBuilder> current_segment_;
+
     std::shared_ptr<io::Directory> dir_;
     std::shared_ptr<io::Database> db_;
-    std::shared_ptr<SegmentCache> segment_cache_;
-    std::shared_ptr<IndexData> data_;
     std::shared_ptr<Oplog> oplog_;
 };
 

@@ -11,110 +11,45 @@
 
 namespace fpindex {
 
-class SegmentCache {
- public:
-    std::shared_ptr<BaseSegment> GetSegment(uint32_t id);
-    void AddSegment(uint32_t id, std::shared_ptr<BaseSegment> segment);
+constexpr size_t MAX_STAGE_SIZE = 1000000;
 
- private:
-    std::mutex mutex_;
-    std::shared_ptr<std::unordered_map<uint32_t, std::weak_ptr<BaseSegment>>> segments_;
-};
+std::string GenerateSegmentFileName(uint32_t id) { return "segment-" + std::to_string(id) + ".data"; }
 
-std::shared_ptr<BaseSegment> SegmentCache::GetSegment(uint32_t id) {
-    auto segments = segments_;
-    if (!segments) {
-        return nullptr;
-    }
-    auto it = segments->find(id);
-    if (it != segments->end()) {
-        auto segment = it->second.lock();
-        if (segment) {
-            return segment;
+void Index::Writer() {
+    while (true) {
+        std::unique_lock<std::mutex> writer_lock(writer_mutex_);
+        writer_cv_.wait_for(writer_lock, std::chrono::seconds(1));
+
+        if (stop_) {
+            return;
         }
-    }
-    return nullptr;
-}
 
-void SegmentCache::AddSegment(uint32_t id, std::shared_ptr<BaseSegment> segment) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto new_segments = std::make_shared<std::unordered_map<uint32_t, std::weak_ptr<BaseSegment>>>();
-    auto old_segments = segments_;
-    if (old_segments) {
-        for (auto& it : *old_segments) {
-            if (!it.second.expired()) {
-                new_segments->insert(it);
-            }
+        std::unique_lock<std::mutex> lock(mutex_);
+
+        if (segments_to_write_.empty()) {
+            continue;
         }
-    }
-    new_segments->insert({id, segment});
-    segments_ = new_segments;
-}
+        auto segment_builder = segments_to_write_.front();
 
-class IndexData {
- public:
-    IndexData(std::shared_ptr<SegmentCache> segment_cache, std::shared_ptr<IndexInfo> info);
+        lock.unlock();
 
-    bool IsReady();
-    bool Open();
+        auto file_name = GenerateSegmentFileName(segment_builder->id());
+        auto file = dir_->OpenFile(file_name, true);
+        if (!file) {
+            LOG_ERROR() << "failed to open file " << QString::fromStdString(file_name);
+            continue;
+        }
 
-    bool Search(const std::vector<uint32_t>& hashes, std::vector<SearchResult>* results);
-
- private:
-    friend class Index;
-
-    std::shared_ptr<SegmentCache> segment_cache_;
-    std::shared_ptr<SegmentBuilder> stage_;
-    std::shared_ptr<IndexInfo> info_;
-};
-
-IndexData::IndexData(std::shared_ptr<SegmentCache> segment_cache, std::shared_ptr<IndexInfo> info)
-    : segment_cache_(segment_cache), info_(info) {
-    uint32_t next_segment_id = 0;
-    if (info_->segments_size() > 0) {
-        next_segment_id = info_->segments(info_->segments_size() - 1).id() + 1;
-    }
-
-    stage_ = std::make_shared<SegmentBuilder>(next_segment_id);
-}
-
-bool IndexData::IsReady() {
-    for (auto& segment_info : info_->segments()) {
-        auto segment = segment_cache_->GetSegment(segment_info.id());
+        auto segment = segment_builder->Save(file);
         if (!segment) {
-            return false;
+            LOG_ERROR() << "failed to write segment";
+            continue;
         }
-        if (!segment->IsReady()) {
-            return false;
-        }
-    }
-    return true;
-}
 
-bool IndexData::Search(const std::vector<uint32_t>& hashes, std::vector<SearchResult>* results) {
-    std::vector<std::shared_ptr<BaseSegment>> segments;
-    segments.reserve(info_->segments_size() + 1);
-    for (auto& segment_info : info_->segments()) {
-        auto segment = segment_cache_->GetSegment(segment_info.id());
-        if (!segment) {
-            return false;
-        }
-        if (!segment->IsReady()) {
-            return false;
-        }
-        segments.push_back(segment);
+        lock.lock();
+        segments_.insert({segment->id(), segment});
+        segments_to_write_.pop_front();
     }
-    segments.push_back(stage_);
-
-    results->clear();
-    std::vector<SearchResult> partial_results;
-    for (auto& segment : segments) {
-        if (!segment->Search(hashes, &partial_results)) {
-            return false;
-        }
-        results->insert(results->end(), partial_results.begin(), partial_results.end());
-    }
-    return true;
 }
 
 Index::Index(std::shared_ptr<io::Directory> dir) : dir_(dir) {}
@@ -122,9 +57,7 @@ Index::Index(std::shared_ptr<io::Directory> dir) : dir_(dir) {}
 bool Index::Open() {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    if (data_) {
-        return true;
-    }
+    writer_thread_ = std::make_unique<std::thread>(&Index::Writer, this);
 
     db_ = dir_->OpenDatabase("index.db", true);
     if (!db_) {
@@ -144,10 +77,9 @@ bool Index::Open() {
         if (!segment->Load(nullptr)) {
             return false;
         }
-        segment_cache_->AddSegment(segment_info.id(), segment);
+        segments_.insert({segment->id(), segment});
     }
 
-    data_ = std::make_shared<IndexData>(segment_cache_, index_info);
     return true;
 }
 
@@ -157,38 +89,45 @@ bool Index::Close() {
         oplog_->Close();
         oplog_.reset();
     }
+
+    stop_ = true;
+    writer_cv_.notify_all();
+
+    writer_thread_->join();
+    writer_thread_.reset();
     return true;
 }
 
-bool Index::IsReady() {
-    auto data = data_;
-    return data && data->IsReady();
-}
+bool Index::IsReady() { return oplog_ && oplog_->IsReady() && writer_thread_; }
 
-bool Index::Search(const std::vector<uint32_t>& hashes, std::vector<SearchResult>* results) {
-    auto data = data_;
-    if (!data) {
-        return false;
+bool Index::Search(const std::vector<uint32_t>& hashes, std::vector<SearchResult>* results) { return false; }
+
+std::shared_ptr<SegmentBuilder> Index::GetCurrentSegment() {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (!current_segment_) {
+        current_segment_ = std::make_shared<SegmentBuilder>(0);
+        segments_.insert({current_segment_->id(), current_segment_});
     }
-    return data->Search(hashes, results);
+
+    if (current_segment_->Size() >= MAX_STAGE_SIZE) {
+        auto next_segment = std::make_shared<SegmentBuilder>(current_segment_->id() + 1);
+        segments_.insert({next_segment->id(), next_segment});
+        segments_to_write_.push_back(current_segment_);
+        current_segment_ = next_segment;
+        writer_cv_.notify_one();
+    }
+
+    return current_segment_;
 }
 
 bool Index::Update(IndexUpdate&& update) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    auto current_segment = GetCurrentSegment();
 
-    if (!data_) {
-        LOG_ERROR() << "index is not open";
-        return false;
-    }
+    std::lock_guard<std::mutex> lock(mutex_);
 
     if (!oplog_ || !oplog_->IsReady()) {
         LOG_ERROR() << "oplog is not open";
-        return false;
-    }
-
-    auto stage = data_->stage_;
-    if (!stage) {
-        LOG_ERROR() << "stage is not open";
         return false;
     }
 
@@ -198,13 +137,13 @@ bool Index::Update(IndexUpdate&& update) {
         return false;
     }
 
-    if (stage->max_oplog_id() != last_oplog_id) {
-        LOG_ERROR() << "stage is not up-to-date";
+    if (current_segment->max_oplog_id() != last_oplog_id) {
+        LOG_ERROR() << "current_segment is not up-to-date";
         return false;
     }
 
     auto check_update = [=](const auto& entries) {
-        return stage->CheckUpdate(entries);
+        return current_segment->CheckUpdate(entries);
     };
     auto entries = update.Finish();
     if (!oplog_->Write(entries, check_update)) {
@@ -212,7 +151,7 @@ bool Index::Update(IndexUpdate&& update) {
         return false;
     }
 
-    stage->Update(entries);
+    current_segment->Update(entries);
     return true;
 }
 
