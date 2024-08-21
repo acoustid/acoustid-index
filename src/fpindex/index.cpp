@@ -138,8 +138,7 @@ void Index::AddSegment(std::shared_ptr<BaseSegment> segment) {
         }
     }
     info_->add_segments()->CopyFrom(current_segment_->info());
-    auto snapshot = std::make_shared<IndexSnapshot>(info_, segments_);
-    snapshot_.store(snapshot);
+    snapshot_.store(std::make_shared<IndexSnapshot>(info_, segments_));
 }
 
 int Index::GetNextSegmentId() {
@@ -149,8 +148,19 @@ int Index::GetNextSegmentId() {
     return 0;
 }
 
-std::shared_ptr<SegmentBuilder> Index::GetCurrentSegment() {
+bool Index::Update(IndexUpdate&& update) {
     std::lock_guard<std::mutex> lock(mutex_);
+
+    if (!oplog_ || !oplog_->IsReady()) {
+        LOG_ERROR() << "oplog is not open";
+        return false;
+    }
+
+    auto last_oplog_id = oplog_->GetLastId();
+    if (!last_oplog_id) {
+        LOG_ERROR() << "failed to get last oplog id";
+        return false;
+    }
 
     if (!current_segment_) {
         current_segment_ = std::make_shared<SegmentBuilder>(GetNextSegmentId());
@@ -167,32 +177,13 @@ std::shared_ptr<SegmentBuilder> Index::GetCurrentSegment() {
         writer_cv_.notify_one();
     }
 
-    return current_segment_;
-}
-
-bool Index::Update(IndexUpdate&& update) {
-    auto current_segment = GetCurrentSegment();
-
-    std::lock_guard<std::mutex> lock(mutex_);
-
-    if (!oplog_ || !oplog_->IsReady()) {
-        LOG_ERROR() << "oplog is not open";
-        return false;
-    }
-
-    auto last_oplog_id = oplog_->GetLastId();
-    if (!last_oplog_id) {
-        LOG_ERROR() << "failed to get last oplog id";
-        return false;
-    }
-
-    if (current_segment->max_oplog_id() != last_oplog_id) {
+    if (current_segment_->max_oplog_id() != last_oplog_id) {
         LOG_ERROR() << "current_segment is not up-to-date";
         return false;
     }
 
-    auto check_update = [=](const auto& entries) {
-        return current_segment->CheckUpdate(entries);
+    auto check_update = [this](const auto& entries) {
+        return current_segment_->CheckUpdate(entries);
     };
     auto entries = update.Finish();
     if (!oplog_->Write(entries, check_update)) {
@@ -200,11 +191,11 @@ bool Index::Update(IndexUpdate&& update) {
         return false;
     }
 
-    current_segment->Update(entries);
+    current_segment_->Update(entries);
 
     for (auto i = info_->segments_size() - 1; i >= 0; i--) {
-        if (info_->segments(i).id() == current_segment->id()) {
-            info_->mutable_segments(i)->CopyFrom(current_segment->info());
+        if (info_->segments(i).id() == current_segment_->id()) {
+            info_->mutable_segments(i)->CopyFrom(current_segment_->info());
             break;
         }
     }
@@ -215,6 +206,8 @@ bool Index::Update(IndexUpdate&& update) {
             info_->mutable_attributes()->insert({data.name(), data.value()});
         }
     }
+
+    snapshot_.store(std::make_shared<IndexSnapshot>(info_, segments_));
 
     return true;
 }

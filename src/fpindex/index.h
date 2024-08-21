@@ -26,6 +26,7 @@ class IndexSnapshot {
     bool Search(const std::vector<uint32_t> &hashes, std::vector<SearchResult> *results);
 
  private:
+    std::mutex mutex_;
     std::shared_ptr<IndexInfo> info_;
     std::map<uint32_t, std::shared_ptr<BaseSegment>> segments_;
 };
@@ -42,7 +43,7 @@ class Index {
     bool Search(const std::vector<uint32_t> &hashes, std::vector<SearchResult> *results);
 
  private:
-    std::shared_ptr<SegmentBuilder> GetCurrentSegment();
+    void EnsureWritable();
     void Writer();
 
     void AddSegment(std::shared_ptr<BaseSegment> segment);
