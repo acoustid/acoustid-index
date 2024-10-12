@@ -8,8 +8,6 @@ const filefmt = @import("filefmt.zig");
 
 const Self = @This();
 
-const default_block_size = 1024;
-
 allocator: std.mem.Allocator,
 version: u32,
 docs: std.AutoHashMap(u32, bool),
@@ -31,19 +29,11 @@ pub fn deinit(self: *Self) void {
     self.items.deinit();
 }
 
-pub fn write(self: *Self, writer: anytype, block_size: comptime_int) !void {
+pub fn write(self: *Self, writer: anytype) !void {
     if (self.version == 0) {
         return error.InvalidSegmentVersion;
     }
-
-    const header = filefmt.Header{
-        .version = self.version,
-        .num_docs = @intCast(self.docs.count()),
-        .num_items = @intCast(self.items.items.len),
-        .block_size = block_size,
-    };
-    try filefmt.writeHeader(writer, header);
-    try filefmt.writeBlocks(writer, self.items.items, block_size);
+    try filefmt.writeFile(writer, self);
 }
 
 pub fn ensureSorted(self: *Self) void {
@@ -69,5 +59,5 @@ test "write to file" {
 
     segment.ensureSorted();
 
-    try segment.write(file.writer(), default_block_size);
+    try segment.write(file.writer());
 }

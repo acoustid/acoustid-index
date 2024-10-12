@@ -4,6 +4,9 @@ const assert = std.debug.assert;
 const math = std.math;
 
 const Item = @import("common.zig").Item;
+const InMemorySegment = @import("InMemorySegment.zig");
+
+pub const default_block_size = 1024;
 
 const minVarint32Size = 1;
 const maxVarint32Size = 5;
@@ -178,20 +181,6 @@ test "writeBlock/readBlock" {
     );
 }
 
-pub fn writeBlocks(writer: anytype, items: []const Item, block_size: comptime_int) !void {
-    var num_blocks: usize = 0;
-    var block_data: [block_size]u8 = undefined;
-    var ptr = items[0..];
-    while (ptr.len > 0) {
-        const n = try writeBlock(block_data[0..], ptr);
-        ptr = ptr[n..];
-        try writer.writeAll(block_data[0..]);
-        num_blocks += 1;
-    }
-    const footer = Footer{ .num_blocks = @intCast(num_blocks) };
-    try writeFooter(writer, footer);
-}
-
 const header_magic_v1 = 0x21f75da5;
 const footer_magic_v1 = 0x5fb83a32;
 
@@ -230,4 +219,45 @@ pub fn writeFooter(writer: anytype, footer: Footer) !void {
     assert(footer.magic == footer_magic_v1);
     try writer.writeStructEndian(footer, .little);
     try writePadding(writer, reserved_header_size, footer_size);
+}
+
+const DocInfo = packed struct(u64) {
+    id: u32,
+    version: u24,
+    deleted: u8,
+};
+
+pub fn writeFile(writer: anytype, segment: *InMemorySegment) !void {
+    const block_size = default_block_size;
+
+    const header = Header{
+        .version = segment.version,
+        .num_docs = @intCast(segment.docs.count()),
+        .num_items = @intCast(segment.items.items.len),
+        .block_size = block_size,
+    };
+    try writeHeader(writer, header);
+
+    var docs_iter = segment.docs.iterator();
+    while (docs_iter.next()) |entry| {
+        const info = DocInfo{
+            .id = entry.key_ptr.*,
+            .version = 0,
+            .deleted = if (entry.value_ptr.*) 0 else 1,
+        };
+        try writer.writeStructEndian(info, .little);
+    }
+
+    var num_blocks: usize = 0;
+    var block_data: [block_size]u8 = undefined;
+    var items = segment.items.items[0..];
+    while (items.len > 0) {
+        const n = try writeBlock(block_data[0..], items);
+        items = items[n..];
+        try writer.writeAll(block_data[0..]);
+        num_blocks += 1;
+    }
+
+    const footer = Footer{ .num_blocks = @intCast(num_blocks) };
+    try writeFooter(writer, footer);
 }
