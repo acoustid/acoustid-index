@@ -109,7 +109,7 @@ pub fn update(self: *Self, changes: []const Change) !void {
         }
     }
 
-    std.sort.pdq(Item, node.data.items.items, {}, Item.cmp);
+    node.data.ensureSorted();
 
     var needsMerging = false;
 
@@ -250,7 +250,7 @@ fn prepareMerge(self: *Self) !?Merge {
         }
     }
 
-    std.sort.pdq(Item, node.data.items.items, {}, Item.cmp);
+    node.data.ensureSorted();
 
     committed = true;
     return merge;

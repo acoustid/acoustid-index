@@ -8,6 +8,8 @@ const filefmt = @import("filefmt.zig");
 
 const Self = @This();
 
+const defaultBlockSize = 1024;
+
 allocator: std.mem.Allocator,
 version: u32,
 docs: std.AutoHashMap(u32, bool),
@@ -29,12 +31,37 @@ pub fn deinit(self: *Self) void {
     self.items.deinit();
 }
 
-pub fn writeToFile(self: *Self, writer: io.Writer, blockSize: comptime_int) !void {
+pub fn write(self: *Self, writer: anytype, blockSize: comptime_int) !void {
     var blockData: [blockSize]u8 = undefined;
-
-    while (true) {
-        const written = try filefmt.writeBlock(blockData, self.items.items);
-        _ = written;
-        try writer.writeAll(blockData);
+    var items = self.items.items[0..];
+    while (items.len > 0) {
+        const n = try filefmt.writeBlock(blockData[0..], items);
+        items = items[n..];
+        try writer.writeAll(blockData[0..]);
     }
+}
+
+pub fn ensureSorted(self: *Self) void {
+    std.sort.pdq(Item, self.items.items, {}, Item.cmp);
+}
+
+const testing = std.testing;
+
+test "write to file" {
+    var tmpDir = testing.tmpDir(.{});
+    defer tmpDir.cleanup();
+
+    var file = try tmpDir.dir.createFile("test.dat", .{});
+    defer file.close();
+
+    var segment = Self.init(testing.allocator);
+    defer segment.deinit();
+
+    try segment.docs.put(1, true);
+    try segment.items.append(Item{ .hash = 1, .docId = 1 });
+    try segment.items.append(Item{ .hash = 2, .docId = 1 });
+
+    segment.ensureSorted();
+
+    try segment.write(file, defaultBlockSize);
 }
