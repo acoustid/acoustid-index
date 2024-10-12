@@ -36,13 +36,14 @@ pub fn write(self: *Self, writer: anytype, block_size: comptime_int) !void {
         return error.InvalidSegmentVersion;
     }
 
-    var block_data: [block_size]u8 = undefined;
-    var items = self.items.items[0..];
-    while (items.len > 0) {
-        const n = try filefmt.writeBlock(block_data[0..], items);
-        items = items[n..];
-        try writer.writeAll(block_data[0..]);
-    }
+    const header = filefmt.Header{
+        .version = self.version,
+        .num_docs = @intCast(self.docs.count()),
+        .num_items = @intCast(self.items.items.len),
+        .block_size = block_size,
+    };
+    try filefmt.writeHeader(writer, header);
+    try filefmt.writeBlocks(writer, self.items.items, block_size);
 }
 
 pub fn ensureSorted(self: *Self) void {
@@ -68,5 +69,5 @@ test "write to file" {
 
     segment.ensureSorted();
 
-    try segment.write(file, default_block_size);
+    try segment.write(file.writer(), default_block_size);
 }

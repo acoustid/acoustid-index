@@ -177,3 +177,57 @@ test "writeBlock/readBlock" {
         items.items,
     );
 }
+
+pub fn writeBlocks(writer: anytype, items: []const Item, block_size: comptime_int) !void {
+    var num_blocks: usize = 0;
+    var block_data: [block_size]u8 = undefined;
+    var ptr = items[0..];
+    while (ptr.len > 0) {
+        const n = try writeBlock(block_data[0..], ptr);
+        ptr = ptr[n..];
+        try writer.writeAll(block_data[0..]);
+        num_blocks += 1;
+    }
+    const footer = Footer{ .num_blocks = @intCast(num_blocks) };
+    try writeFooter(writer, footer);
+}
+
+const header_magic_v1 = 0x21f75da5;
+const footer_magic_v1 = 0x5fb83a32;
+
+pub const Header = packed struct {
+    magic: u32 = header_magic_v1,
+    version: u32,
+    num_docs: u32,
+    num_items: u32,
+    block_size: u32,
+};
+
+pub const Footer = packed struct {
+    magic: u32 = footer_magic_v1,
+    num_blocks: u32,
+};
+
+const reserved_header_size = 256;
+const header_size = @sizeOf(Header);
+
+const reserved_footer_size = 64;
+const footer_size = @sizeOf(Footer);
+
+fn writePadding(writer: anytype, reserved: comptime_int, used: comptime_int) !void {
+    const padding_size = reserved - used;
+    const padding = &[_]u8{0} ** padding_size;
+    try writer.writeAll(padding);
+}
+
+pub fn writeHeader(writer: anytype, header: Header) !void {
+    assert(header.magic == header_magic_v1);
+    try writer.writeStructEndian(header, .little);
+    try writePadding(writer, reserved_header_size, header_size);
+}
+
+pub fn writeFooter(writer: anytype, footer: Footer) !void {
+    assert(footer.magic == footer_magic_v1);
+    try writer.writeStructEndian(footer, .little);
+    try writePadding(writer, reserved_header_size, footer_size);
+}
