@@ -14,7 +14,7 @@ pub fn main() !void {
     defer index.deinit();
 
     try index.update(&[_]InMemoryIndex.Change{.{ .insert = .{
-        .docId = 1,
+        .id = 1,
         .hashes = &[_]u32{ 1, 2, 3 },
     } }});
 

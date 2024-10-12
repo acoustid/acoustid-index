@@ -13,20 +13,20 @@ const Segment = @import("InMemorySegment.zig");
 const Segments = std.DoublyLinkedList(Segment);
 
 allocator: std.mem.Allocator,
-writeLock: std.Thread.RwLock,
-mergeLock: std.Thread.Mutex,
+write_lock: std.Thread.RwLock,
+merge_lock: std.Thread.Mutex,
 segments: Segments,
-maxSegments: usize = 16,
+max_segments: usize = 16,
 
 const Self = @This();
 
 pub const Insert = struct {
-    docId: u32,
+    id: u32,
     hashes: []const u32,
 };
 
 pub const Delete = struct {
-    docId: u32,
+    id: u32,
 };
 
 pub const Change = union(enum) {
@@ -37,15 +37,15 @@ pub const Change = union(enum) {
 pub fn init(allocator: std.mem.Allocator) Self {
     return .{
         .allocator = allocator,
-        .writeLock = .{},
-        .mergeLock = .{},
+        .write_lock = .{},
+        .merge_lock = .{},
         .segments = .{},
     };
 }
 
 pub fn deinit(self: *Self) void {
-    self.writeLock.lock();
-    defer self.writeLock.unlock();
+    self.write_lock.lock();
+    defer self.write_lock.unlock();
 
     while (self.segments.popFirst()) |node| {
         self.destroyNode(node);
@@ -72,16 +72,16 @@ pub fn update(self: *Self, changes: []const Change) !void {
         }
     }
 
-    var numItems: usize = 0;
+    var num_items: usize = 0;
     for (changes) |change| {
         switch (change) {
             .insert => |op| {
-                numItems += op.hashes.len;
+                num_items += op.hashes.len;
             },
             .delete => {},
         }
     }
-    try node.data.items.ensureTotalCapacity(numItems);
+    try node.data.items.ensureTotalCapacity(num_items);
 
     var i = changes.len;
     while (i > 0) {
@@ -89,19 +89,17 @@ pub fn update(self: *Self, changes: []const Change) !void {
         const change = changes[i];
         switch (change) {
             .insert => |op| {
-                const docId = op.docId;
-                const result = try node.data.docs.getOrPut(docId);
+                const result = try node.data.docs.getOrPut(op.id);
                 if (!result.found_existing) {
                     result.value_ptr.* = true;
                     var items = try node.data.items.addManyAsSlice(op.hashes.len);
                     for (op.hashes, 0..) |hash, j| {
-                        items[j] = .{ .hash = hash, .docId = docId };
+                        items[j] = .{ .hash = hash, .docId = op.id };
                     }
                 }
             },
             .delete => |op| {
-                const docId = op.docId;
-                const result = try node.data.docs.getOrPut(docId);
+                const result = try node.data.docs.getOrPut(op.id);
                 if (!result.found_existing) {
                     result.value_ptr.* = false;
                 }
@@ -111,23 +109,23 @@ pub fn update(self: *Self, changes: []const Change) !void {
 
     node.data.ensureSorted();
 
-    var needsMerging = false;
+    var needs_merging = false;
 
-    self.writeLock.lock();
+    self.write_lock.lock();
     self.segments.append(node);
     if (node.prev) |prev| {
         node.data.version = prev.data.version + 1;
     } else {
         node.data.version = 1;
     }
-    if (self.segments.len > self.maxSegments) {
-        needsMerging = true;
+    if (self.segments.len > self.max_segments) {
+        needs_merging = true;
     }
     self.checkSegments();
     committed = true;
-    self.writeLock.unlock();
+    self.write_lock.unlock();
 
-    if (needsMerging) {
+    if (needs_merging) {
         self.mergeSegments() catch |err| {
             std.debug.print("mergeSegments failed: {}\n", .{err});
         };
@@ -155,25 +153,23 @@ const Merge = struct {
 };
 
 fn prepareMerge(self: *Self) !?Merge {
-    self.writeLock.lockShared();
-    defer self.writeLock.unlockShared();
+    self.write_lock.lockShared();
+    defer self.write_lock.unlockShared();
 
-    var totalSize: usize = 0;
-    {
-        var segmentIter = self.segments.first;
-        while (segmentIter) |node| : (segmentIter = node.next) {
-            totalSize += node.data.items.items.len;
-        }
+    var total_size: usize = 0;
+    var segments_iter = self.segments.first;
+    while (segments_iter) |node| : (segments_iter = node.next) {
+        total_size += node.data.items.items.len;
     }
-    const avgSize = totalSize / self.segments.len;
+    const avg_size = total_size / self.segments.len;
 
     var bestNode: ?*Segments.Node = null;
     var bestScore: usize = std.math.maxInt(usize);
-    var segmentIter = self.segments.first;
-    while (segmentIter) |node| : (segmentIter = node.next) {
+    segments_iter = self.segments.first;
+    while (segments_iter) |node| : (segments_iter = node.next) {
         if (node.next) |nextNode| {
             const size = node.data.items.items.len + nextNode.data.items.items.len;
-            const score = if (size > avgSize) size - avgSize else avgSize - size;
+            const score = if (size > avg_size) size - avg_size else avg_size - size;
             if (score < bestScore) {
                 bestNode = node;
                 bestScore = score;
@@ -212,38 +208,38 @@ fn prepareMerge(self: *Self) !?Merge {
 
     log.debug("Merging in-memory segments {}:{} and {}:{}", .{ segment1.version, segment1.merged, segment2.version, segment2.merged });
 
-    var totalDocs: usize = 0;
-    var totalItems: usize = 0;
+    var total_docs: usize = 0;
+    var total_items: usize = 0;
     for (segments) |segment| {
-        totalDocs += segment.docs.count();
-        totalItems += segment.items.items.len;
+        total_docs += segment.docs.count();
+        total_items += segment.items.items.len;
     }
 
-    try node.data.docs.ensureUnusedCapacity(@truncate(totalDocs));
-    try node.data.items.ensureTotalCapacity(totalItems);
+    try node.data.docs.ensureUnusedCapacity(@truncate(total_docs));
+    try node.data.items.ensureTotalCapacity(total_items);
 
     {
-        var skipDocs = std.AutoHashMap(u32, void).init(self.allocator);
-        defer skipDocs.deinit();
+        var skip_docs = std.AutoHashMap(u32, void).init(self.allocator);
+        defer skip_docs.deinit();
 
-        try skipDocs.ensureTotalCapacity(@truncate(totalDocs / 10));
+        try skip_docs.ensureTotalCapacity(@truncate(total_docs / 10));
 
         for (segments) |segment| {
-            skipDocs.clearRetainingCapacity();
+            skip_docs.clearRetainingCapacity();
 
-            var docsIter = segment.docs.iterator();
-            while (docsIter.next()) |entry| {
-                const docId = entry.key_ptr.*;
+            var docs_iter = segment.docs.iterator();
+            while (docs_iter.next()) |entry| {
+                const id = entry.key_ptr.*;
                 const status = entry.value_ptr.*;
-                if (!self.hasNewerVersion(docId, segment.version)) {
-                    try node.data.docs.put(docId, status);
+                if (!self.hasNewerVersion(id, segment.version)) {
+                    try node.data.docs.put(id, status);
                 } else {
-                    try skipDocs.put(docId, {});
+                    try skip_docs.put(id, {});
                 }
             }
 
             for (segment.items.items) |item| {
-                if (!skipDocs.contains(item.docId)) {
+                if (!skip_docs.contains(item.docId)) {
                     try node.data.items.append(item);
                 }
             }
@@ -270,8 +266,8 @@ fn checkSegments(self: *Self) void {
 }
 
 fn commitMerge(self: *Self, merge: Merge) void {
-    self.writeLock.lock();
-    defer self.writeLock.unlock();
+    self.write_lock.lock();
+    defer self.write_lock.unlock();
 
     log.debug("Adding in-memory segment {}:{}", .{ merge.replacement.data.version, merge.replacement.data.merged });
     self.segments.insertAfter(merge.last, merge.replacement);
@@ -289,8 +285,8 @@ fn commitMerge(self: *Self, merge: Merge) void {
 }
 
 fn mergeSegments(self: *Self) !void {
-    self.mergeLock.lock();
-    defer self.mergeLock.unlock();
+    self.merge_lock.lock();
+    defer self.merge_lock.unlock();
 
     const maybeMerge = try self.prepareMerge();
     if (maybeMerge) |merge| {
@@ -299,8 +295,8 @@ fn mergeSegments(self: *Self) !void {
 }
 
 pub fn search(self: *Self, hashes: []const u32, results: *SearchResultHashMap, deadline: Deadline) !void {
-    self.writeLock.lockShared();
-    defer self.writeLock.unlockShared();
+    self.write_lock.lockShared();
+    defer self.write_lock.unlockShared();
 
     var previousSegmentVersion: u32 = 0;
     var segmentIter = self.segments.first;
@@ -345,12 +341,11 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResultHashMap, d
         // Remove results for docs that have been updated/deleted in the current segment.
         // We can do it here, because we know previously processed segments always have
         // lower version numbers.
-        var resultIter = results.iterator();
-        while (resultIter.next()) |result| {
+        var results_iter = results.iterator();
+        while (results_iter.next()) |result| {
             const version = result.value_ptr.version;
             if (version < segment.version) {
-                const docId = result.key_ptr.*;
-                if (segment.docs.contains(docId)) {
+                if (segment.docs.contains(result.key_ptr.*)) {
                     result.value_ptr.score = 0;
                     result.value_ptr.version = segment.version;
                 }
@@ -364,7 +359,7 @@ test "insert and search" {
     defer index.deinit();
 
     try index.update(&[_]Change{.{ .insert = .{
-        .docId = 1,
+        .id = 1,
         .hashes = &[_]u32{ 1, 2, 3 },
     } }});
 
@@ -387,12 +382,12 @@ test "insert, partial update and search" {
     defer index.deinit();
 
     try index.update(&[_]Change{.{ .insert = .{
-        .docId = 1,
+        .id = 1,
         .hashes = &[_]u32{ 1, 2, 3 },
     } }});
 
     try index.update(&[_]Change{.{ .insert = .{
-        .docId = 1,
+        .id = 1,
         .hashes = &[_]u32{ 1, 2, 4 },
     } }});
 
@@ -415,12 +410,12 @@ test "insert, full update and search" {
     defer index.deinit();
 
     try index.update(&[_]Change{.{ .insert = .{
-        .docId = 1,
+        .id = 1,
         .hashes = &[_]u32{ 1, 2, 3 },
     } }});
 
     try index.update(&[_]Change{.{ .insert = .{
-        .docId = 1,
+        .id = 1,
         .hashes = &[_]u32{ 100, 200, 300 },
     } }});
 
@@ -440,7 +435,7 @@ test "insert, full update (multiple times) and search" {
     var i: u32 = 1000;
     while (i > 0) : (i -= 1) {
         try index.update(&[_]Change{.{ .insert = .{
-            .docId = i % 10,
+            .id = i % 10,
             .hashes = &[_]u32{ i * 1000 + 1, i * 1000 + 2, i * 1000 + 3 },
         } }});
     }
@@ -465,12 +460,12 @@ test "insert, delete and search" {
     defer index.deinit();
 
     try index.update(&[_]Change{.{ .insert = .{
-        .docId = 1,
+        .id = 1,
         .hashes = &[_]u32{ 1, 2, 3 },
     } }});
 
     try index.update(&[_]Change{.{ .delete = .{
-        .docId = 1,
+        .id = 1,
     } }});
 
     var results = SearchResultHashMap.init(std.testing.allocator);
