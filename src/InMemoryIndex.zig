@@ -81,7 +81,7 @@ pub fn update(self: *Self, changes: []const Change) !void {
                     result.value_ptr.* = true;
                     var items = try node.data.items.addManyAsSlice(op.hashes.len);
                     for (op.hashes, 0..) |hash, j| {
-                        items[j] = .{ .hash = hash, .docId = op.id };
+                        items[j] = .{ .hash = hash, .doc_id = op.id };
                     }
                 }
             },
@@ -119,11 +119,11 @@ pub fn update(self: *Self, changes: []const Change) !void {
     }
 }
 
-fn hasNewerVersion(self: *Self, docId: u32, version: u32) bool {
+fn hasNewerVersion(self: *Self, doc_id: u32, version: u32) bool {
     var it = self.segments.last;
     while (it) |node| : (it = node.prev) {
         if (node.data.version > version) {
-            if (node.data.docs.contains(docId)) {
+            if (node.data.docs.contains(doc_id)) {
                 return true;
             }
         } else {
@@ -234,7 +234,7 @@ fn prepareMerge(self: *Self) !?Merge {
             }
 
             for (segment.items.items) |item| {
-                if (!skip_docs.contains(item.docId)) {
+                if (!skip_docs.contains(item.doc_id)) {
                     try node.data.items.append(item);
                 }
             }
@@ -359,7 +359,7 @@ test "insert and search" {
 
     const result = results.get(1);
     try std.testing.expect(result != null);
-    try std.testing.expectEqual(1, result.?.docId);
+    try std.testing.expectEqual(1, result.?.doc_id);
     try std.testing.expectEqual(3, result.?.score);
     try std.testing.expect(result.?.version != 0);
 }
@@ -387,7 +387,7 @@ test "insert, partial update and search" {
 
     const result = results.get(1);
     try std.testing.expect(result != null);
-    try std.testing.expectEqual(1, result.?.docId);
+    try std.testing.expectEqual(1, result.?.doc_id);
     try std.testing.expectEqual(2, result.?.score);
     try std.testing.expect(result.?.version != 0);
 }
@@ -437,7 +437,7 @@ test "insert, full update (multiple times) and search" {
 
     const result = results.get(i % 10);
     try std.testing.expect(result != null);
-    try std.testing.expectEqual(1, result.?.docId);
+    try std.testing.expectEqual(1, result.?.doc_id);
     try std.testing.expectEqual(3, result.?.score);
     try std.testing.expect(result.?.version != 0);
 }

@@ -2,7 +2,7 @@ const std = @import("std");
 const testing = std.testing;
 
 pub const Item = packed struct(u64) {
-    docId: u32,
+    doc_id: u32,
     hash: u32,
 
     pub fn cmp(_: void, a: Item, b: Item) bool {
@@ -19,11 +19,11 @@ pub const Item = packed struct(u64) {
 test "Item binary" {
     try testing.expectEqual(8, @sizeOf(Item));
     try testing.expectEqual(64, @bitSizeOf(Item));
-    try testing.expectEqual(0, @bitOffsetOf(Item, "docId"));
+    try testing.expectEqual(0, @bitOffsetOf(Item, "doc_id"));
     try testing.expectEqual(32, @bitOffsetOf(Item, "hash"));
 
-    const item1 = Item{ .hash = 1, .docId = 2 };
-    const item2 = Item{ .hash = 2, .docId = 1 };
+    const item1 = Item{ .hash = 1, .doc_id = 2 };
+    const item2 = Item{ .hash = 2, .doc_id = 1 };
 
     const x1: u64 = @bitCast(item1);
     const x2: u64 = @bitCast(item2);
@@ -36,26 +36,26 @@ test "Item array sort" {
     var items = try testing.allocator.alloc(Item, 3);
     defer testing.allocator.free(items);
 
-    items[0] = Item{ .hash = 2, .docId = 200 };
-    items[1] = Item{ .hash = 2, .docId = 100 };
-    items[2] = Item{ .hash = 1, .docId = 300 };
+    items[0] = Item{ .hash = 2, .doc_id = 200 };
+    items[1] = Item{ .hash = 2, .doc_id = 100 };
+    items[2] = Item{ .hash = 1, .doc_id = 300 };
 
     std.sort.insertion(Item, items, {}, Item.cmp);
 
     try testing.expectEqualSlices(Item, &[_]Item{
-        Item{ .hash = 1, .docId = 300 },
-        Item{ .hash = 2, .docId = 100 },
-        Item{ .hash = 2, .docId = 200 },
+        Item{ .hash = 1, .doc_id = 300 },
+        Item{ .hash = 2, .doc_id = 100 },
+        Item{ .hash = 2, .doc_id = 200 },
     }, items);
 }
 
 pub const SearchResult = struct {
-    docId: u32,
+    doc_id: u32,
     score: u32,
     version: u32,
 
     pub fn cmp(_: void, a: SearchResult, b: SearchResult) bool {
-        return a.score > b.score or (a.score == b.score and a.docId > b.docId);
+        return a.score > b.score or (a.score == b.score and a.doc_id > b.doc_id);
     }
 };
 
@@ -77,7 +77,7 @@ pub const SearchResults = struct {
     pub fn incr(self: *SearchResults, doc_id: u32, version: u32) !void {
         const r = try self.results.getOrPut(doc_id);
         if (!r.found_existing or r.value_ptr.version < version) {
-            r.value_ptr.docId = doc_id;
+            r.value_ptr.doc_id = doc_id;
             r.value_ptr.score = 1;
             r.value_ptr.version = version;
         } else if (r.value_ptr.version == version) {
@@ -119,8 +119,8 @@ test "sort search results" {
     results.sort();
 
     try testing.expectEqualSlices(SearchResult, &[_]SearchResult{
-        SearchResult{ .docId = 2, .score = 2, .version = 1 },
-        SearchResult{ .docId = 1, .score = 1, .version = 1 },
+        SearchResult{ .doc_id = 2, .score = 2, .version = 1 },
+        SearchResult{ .doc_id = 1, .score = 1, .version = 1 },
     }, results.values());
 }
 

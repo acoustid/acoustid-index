@@ -24,7 +24,7 @@ pub fn main() !void {
     try index.search(&[_]u32{ 1, 2, 3 }, &results, .{});
 
     for (results.values()) |result| {
-        std.debug.print("docId: {}, score: {}, version: {}\n", .{ result.docId, result.score, result.version });
+        std.debug.print("doc_id: {}, score: {}, version: {}\n", .{ result.doc_id, result.score, result.version });
     }
 }
 

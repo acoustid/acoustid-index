@@ -45,9 +45,9 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults) !void {
     assert(std.sort.isSorted(u32, hashes, {}, std.sort.asc(u32)));
     var items = self.items.items;
     for (hashes) |hash| {
-        const matches = std.sort.equalRange(Item, Item{ .hash = hash, .docId = 0 }, items, {}, Item.cmpByHash);
+        const matches = std.sort.equalRange(Item, Item{ .hash = hash, .doc_id = 0 }, items, {}, Item.cmpByHash);
         for (matches[0]..matches[1]) |i| {
-            try results.incr(items[i].docId, self.version);
+            try results.incr(items[i].doc_id, self.version);
         }
         items = items[matches[1]..];
     }

@@ -98,7 +98,7 @@ pub fn readFirstItemFromBlock(data: []const u8) !Item {
     ptr += hash.size;
     const doc_id = readVarint32(data[ptr..]);
     ptr += doc_id.size;
-    return Item{ .hash = hash.value, .docId = doc_id.value };
+    return Item{ .hash = hash.value, .doc_id = doc_id.value };
 }
 
 pub fn readBlock(data: []const u8, items: *std.ArrayList(Item)) !void {
@@ -126,7 +126,7 @@ pub fn readBlock(data: []const u8, items: *std.ArrayList(Item)) !void {
         lastHash += diffHash.value;
         lastDocId = if (diffHash.value > 0) diffDocId.value else lastDocId + diffDocId.value;
 
-        try items.append(.{ .hash = lastHash, .docId = lastDocId });
+        try items.append(.{ .hash = lastHash, .doc_id = lastDocId });
 
         if (items.items.len >= numItems) {
             break;
@@ -147,10 +147,10 @@ pub fn writeBlock(data: []u8, items: []const Item) !usize {
     var lastDocId: u32 = 0;
 
     for (items) |item| {
-        assert(item.hash > lastHash or (item.hash == lastHash and item.docId >= lastDocId));
+        assert(item.hash > lastHash or (item.hash == lastHash and item.doc_id >= lastDocId));
 
         const diffHash = item.hash - lastHash;
-        const diffDocId = if (diffHash > 0) item.docId else item.docId - lastDocId;
+        const diffDocId = if (diffHash > 0) item.doc_id else item.doc_id - lastDocId;
 
         if (ptr + varint32Size(diffHash) + varint32Size(diffDocId) > data.len) {
             break;
@@ -161,7 +161,7 @@ pub fn writeBlock(data: []u8, items: []const Item) !usize {
         numItems += 1;
 
         lastHash = item.hash;
-        lastDocId = item.docId;
+        lastDocId = item.doc_id;
     }
 
     std.mem.writeInt(u16, data[0..2], numItems, .little);
@@ -174,11 +174,11 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
     var items = std.ArrayList(Item).init(std.testing.allocator);
     defer items.deinit();
 
-    try items.append(.{ .hash = 1, .docId = 1 });
-    try items.append(.{ .hash = 2, .docId = 1 });
-    try items.append(.{ .hash = 3, .docId = 1 });
-    try items.append(.{ .hash = 3, .docId = 2 });
-    try items.append(.{ .hash = 4, .docId = 1 });
+    try items.append(.{ .hash = 1, .doc_id = 1 });
+    try items.append(.{ .hash = 2, .doc_id = 1 });
+    try items.append(.{ .hash = 3, .doc_id = 1 });
+    try items.append(.{ .hash = 3, .doc_id = 2 });
+    try items.append(.{ .hash = 4, .doc_id = 1 });
 
     const blockSize = 1024;
     var blockData: [blockSize]u8 = undefined;
@@ -192,11 +192,11 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
     try testing.expectEqualSlices(
         Item,
         &[_]Item{
-            .{ .hash = 1, .docId = 1 },
-            .{ .hash = 2, .docId = 1 },
-            .{ .hash = 3, .docId = 1 },
-            .{ .hash = 3, .docId = 2 },
-            .{ .hash = 4, .docId = 1 },
+            .{ .hash = 1, .doc_id = 1 },
+            .{ .hash = 2, .doc_id = 1 },
+            .{ .hash = 3, .doc_id = 1 },
+            .{ .hash = 3, .doc_id = 2 },
+            .{ .hash = 4, .doc_id = 1 },
         },
         items.items,
     );
@@ -369,8 +369,8 @@ test "writeFile/readFile" {
 
         in_memory_segment.version = 1;
         try in_memory_segment.docs.put(1, true);
-        try in_memory_segment.items.append(Item{ .hash = 1, .docId = 1 });
-        try in_memory_segment.items.append(Item{ .hash = 2, .docId = 1 });
+        try in_memory_segment.items.append(Item{ .hash = 1, .doc_id = 1 });
+        try in_memory_segment.items.append(Item{ .hash = 2, .doc_id = 1 });
 
         in_memory_segment.ensureSorted();
 
