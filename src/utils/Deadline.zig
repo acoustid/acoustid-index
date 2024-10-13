@@ -5,6 +5,10 @@ const Self = @This();
 
 deadline: i64 = 0,
 
+pub fn init(timeout: i64) Self {
+    return Self{ .deadline = if (timeout > 0) time.milliTimestamp() + timeout else 0 };
+}
+
 pub fn setTimeoutMs(self: *Self, timeout: i64) void {
     self.deadline = if (timeout > 0) time.milliTimestamp() + timeout else 0;
 }

@@ -15,5 +15,5 @@ pub fn main() !void {
     var index = Index.init(allocator);
     defer index.deinit();
 
-    try server.run(&index, 8080);
+    try server.run(&index, "127.0.0.1", 8080);
 }
