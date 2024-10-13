@@ -17,6 +17,7 @@ allocator: std.mem.Allocator,
 write_lock: std.Thread.RwLock,
 merge_lock: std.Thread.Mutex,
 segments: Segments,
+max_items_per_segment: usize = 100000,
 max_segments: usize = 16,
 auto_cleanup: bool = true,
 
@@ -97,7 +98,9 @@ pub fn update(self: *Self, changes: []const Change) !void {
 
     node.data.ensureSorted();
 
-    var needs_merging = false;
+    if (node.data.items.items.len > self.max_items_per_segment) {
+        node.data.frozen = true;
+    }
 
     self.write_lock.lock();
     self.segments.append(node);
@@ -106,14 +109,11 @@ pub fn update(self: *Self, changes: []const Change) !void {
     } else {
         node.data.version = 1;
     }
-    if (self.segments.len > self.max_segments) {
-        needs_merging = true;
-    }
     self.checkSegments();
     committed = true;
     self.write_lock.unlock();
 
-    if (needs_merging and self.auto_cleanup) {
+    if (self.auto_cleanup) {
         self.mergeSegments() catch |err| {
             std.debug.print("mergeSegments failed: {}\n", .{err});
         };
@@ -155,34 +155,40 @@ fn prepareMerge(self: *Self) !?Merge {
         if (node.data.frozen) {
             continue;
         }
-        total_size += node.data.items.items.len;
         num_segments += 1;
+        total_size += node.data.items.items.len;
     }
-    const avg_size = total_size / num_segments;
 
-    var bestNode: ?*Segments.Node = null;
-    var bestScore: usize = std.math.maxInt(usize);
+    if (num_segments < self.max_segments) {
+        return null;
+    }
+
+    var best_node: ?*Segments.Node = null;
+    var best_score: f32 = std.math.inf(f32);
     segments_iter = self.segments.first;
+    var level_size = total_size / 2;
     while (segments_iter) |node| : (segments_iter = node.next) {
         if (node.data.frozen) {
             continue;
         }
         if (node.next) |nextNode| {
             const size = node.data.items.items.len + nextNode.data.items.items.len;
-            const score = if (size > avg_size) size - avg_size else avg_size - size;
-            if (score < bestScore) {
-                bestNode = node;
-                bestScore = score;
+            const raw_score = if (size > level_size) size - level_size else level_size - size;
+            const score = std.math.log2(@as(f32, @floatFromInt(raw_score)));
+            if (score < best_score) {
+                best_node = node;
+                best_score = score;
             }
         }
+        level_size /= 2;
     }
 
-    if (bestNode == null or bestNode.?.next == null) {
+    if (best_node == null or best_node.?.next == null) {
         return null;
     }
 
-    const node1 = bestNode.?;
-    const node2 = bestNode.?.next.?;
+    const node1 = best_node.?;
+    const node2 = best_node.?.next.?;
 
     const segment1 = node1.data;
     const segment2 = node2.data;
@@ -248,6 +254,10 @@ fn prepareMerge(self: *Self) !?Merge {
 
     node.data.ensureSorted();
 
+    if (node.data.items.items.len > self.max_items_per_segment) {
+        node.data.frozen = true;
+    }
+
     committed = true;
     return merge;
 }
@@ -294,7 +304,7 @@ fn mergeSegments(self: *Self) !void {
     }
 }
 
-pub fn freezeFirstSegment(self: *Self) ?*Segment {
+pub fn freezeFirstSegment(self: *Self, if_larger_than: usize) ?*Segment {
     self.merge_lock.lock();
     defer self.merge_lock.unlock();
 
@@ -305,8 +315,14 @@ pub fn freezeFirstSegment(self: *Self) ?*Segment {
     if (first) |node| {
         if (node.next != null) { // only continue if there is more than one segment
             const segment = &node.data;
-            segment.frozen = true;
-            return segment;
+            if (segment.frozen) {
+                return segment;
+            }
+            log.debug("segment {} has {} items", .{ segment.version, segment.items.items.len });
+            if (segment.items.items.len >= if_larger_than) {
+                segment.frozen = true;
+                return segment;
+            }
         }
     }
     return null;
@@ -478,20 +494,20 @@ test "freeze segment" {
         .hashes = &[_]u32{ 1, 2, 3 },
     } }});
 
-    const segment1 = index.freezeFirstSegment();
+    const segment1 = index.freezeFirstSegment(0);
     try std.testing.expect(segment1 == null);
 
-    for (0..100) |_| {
+    for (1..100) |i| {
         try index.update(&[_]Change{.{ .insert = .{
-            .id = 1,
+            .id = @intCast(i),
             .hashes = &[_]u32{ 1, 2, 3 },
         } }});
     }
 
-    const segment2 = index.freezeFirstSegment();
+    const segment2 = index.freezeFirstSegment(0);
     try std.testing.expect(segment2 != null);
     try std.testing.expect(segment2.?.frozen);
 
-    const segment3 = index.freezeFirstSegment();
+    const segment3 = index.freezeFirstSegment(0);
     try std.testing.expect(segment3 == segment2);
 }

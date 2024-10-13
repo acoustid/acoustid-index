@@ -128,6 +128,9 @@ pub fn main() !void {
     var args = try zul.CommandLineArgs.parse(allocator);
     defer args.deinit();
 
+    const dir_path = args.get("dir") orelse ".";
+    const dir = try std.fs.cwd().openDir(dir_path, .{});
+
     const address = args.get("address") orelse "127.0.0.1";
 
     const port_str = args.get("port") orelse "8080";
@@ -141,7 +144,7 @@ pub fn main() !void {
         threads = @intCast(try std.Thread.getCpuCount());
     }
 
-    var index = Index.init(allocator);
+    var index = Index.init(allocator, dir);
     defer index.deinit();
 
     try index.start();
