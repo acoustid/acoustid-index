@@ -1,4 +1,6 @@
 const std = @import("std");
+const log = std.log.scoped(.main);
+
 const zul = @import("zul");
 
 const common = @import("common.zig");
@@ -20,7 +22,17 @@ pub fn main() !void {
     defer args.deinit();
 
     const address = args.get("address") orelse "127.0.0.1";
-    const port = try std.fmt.parseInt(u16, args.get("port") orelse "8080", 10);
 
-    try server.run(&index, address, port);
+    const port_str = args.get("port") orelse "8080";
+    const port = try std.fmt.parseInt(u16, port_str, 10);
+
+    _ = try std.net.Address.parseIp(address, port);
+
+    const threads_str = args.get("threads") orelse "0";
+    var threads = try std.fmt.parseInt(u16, threads_str, 10);
+    if (threads == 0) {
+        threads = @intCast(try std.Thread.getCpuCount());
+    }
+
+    try server.run(&index, address, port, threads);
 }

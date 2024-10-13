@@ -13,14 +13,14 @@ const Context = struct {
     index: *Index,
 };
 
-pub fn run(index: *Index, address: []const u8, port: u16) !void {
+pub fn run(index: *Index, address: []const u8, port: u16, threads: u16) !void {
     var ctx = Context{ .index = index };
 
     const config = httpz.Config{
         .address = address,
         .port = port,
         .thread_pool = .{
-            .count = @intCast(try std.Thread.getCpuCount()),
+            .count = threads,
         },
     };
 
