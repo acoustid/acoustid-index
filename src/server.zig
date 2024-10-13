@@ -15,7 +15,7 @@ const Context = struct {
     index: *Index,
 };
 
-pub fn run(index: *Index, address: []const u8, port: u16, threads: u16) !void {
+fn run(index: *Index, address: []const u8, port: u16, threads: u16) !void {
     var ctx = Context{ .index = index };
 
     const config = httpz.Config{
@@ -124,6 +124,7 @@ pub fn main() !void {
     defer _ = gpa.deinit();
 
     const allocator = gpa.allocator();
+
     var index = Index.init(allocator);
     defer index.deinit();
 
@@ -144,4 +145,8 @@ pub fn main() !void {
     }
 
     try run(&index, address, port, threads);
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }

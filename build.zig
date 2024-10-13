@@ -37,6 +37,17 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(server_exe);
 
+    const client_exe = b.addExecutable(.{
+        .name = "fpindex-client",
+        .root_source_file = b.path("src/client.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    client_exe.root_module.addImport("zul", zul.module("zul"));
+
+    b.installArtifact(client_exe);
+
     // This *creates* a Run step in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
     // such a dependency.
@@ -60,17 +71,30 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    const exe_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
+    const server_exe_unit_tests = b.addTest(.{
+        .name = "server_tests",
+        .root_source_file = b.path("src/server.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
+    server_exe_unit_tests.root_module.addImport("httpz", httpz.module("httpz"));
+    server_exe_unit_tests.root_module.addImport("zul", zul.module("zul"));
 
-    // Similar to creating the run step earlier, this exposes a `test` step to
-    // the `zig build --help` menu, providing a way for the user to request
-    // running the unit tests.
+    const run_server_exe_unit_tests = b.addRunArtifact(server_exe_unit_tests);
+
+    const client_exe_unit_tests = b.addTest(.{
+        .name = "client_tests",
+        .root_source_file = b.path("src/client.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    client_exe_unit_tests.root_module.addImport("zul", zul.module("zul"));
+
+    const run_client_exe_unit_tests = b.addRunArtifact(client_exe_unit_tests);
+
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_exe_unit_tests.step);
+    test_step.dependOn(&run_server_exe_unit_tests.step);
+    test_step.dependOn(&run_client_exe_unit_tests.step);
 }
