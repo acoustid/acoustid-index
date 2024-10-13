@@ -1,4 +1,7 @@
 const std = @import("std");
+const log = std.log.scoped(.index);
+
+const zul = @import("zul");
 
 const InMemoryIndex = @import("InMemoryIndex.zig");
 
@@ -17,12 +20,34 @@ allocator: std.mem.Allocator,
 stage: InMemoryIndex,
 segments: Segments,
 
+scheduler: zul.Scheduler(Task, *Self),
+last_cleanup_at: i64 = 0,
+cleanup_interval: i64 = 1000,
+
+const Task = union(enum) {
+    cleanup: void,
+
+    pub fn run(task: Task, index: *Self, at: i64) void {
+        _ = at;
+        switch (task) {
+            .cleanup => {
+                index.cleanup();
+            },
+        }
+    }
+};
+
 pub fn init(allocator: std.mem.Allocator) Self {
     return .{
         .allocator = allocator,
         .stage = InMemoryIndex.init(allocator),
         .segments = .{},
+        .scheduler = zul.Scheduler(Task, *Self).init(allocator),
     };
+}
+
+pub fn start(self: *Self) !void {
+    try self.scheduler.start(self);
 }
 
 pub fn deinit(self: *Self) void {
@@ -31,10 +56,20 @@ pub fn deinit(self: *Self) void {
         node.data.deinit();
         self.allocator.destroy(node);
     }
+    self.scheduler.deinit();
+}
+
+fn cleanup(self: *Self) void {
+    const now = std.time.milliTimestamp();
+    if (now - self.last_cleanup_at < self.cleanup_interval)
+        return;
+    self.last_cleanup_at = now;
+    log.info("cleanup", .{});
 }
 
 pub fn update(self: *Self, changes: []const Change) !void {
     try self.stage.update(changes);
+    try self.scheduler.scheduleIn(.{ .cleanup = {} }, 0);
 }
 
 pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
@@ -58,6 +93,8 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadlin
 test "insert and search" {
     var index = Self.init(std.testing.allocator);
     defer index.deinit();
+
+    try index.start();
 
     try index.update(&[_]Change{.{ .insert = .{
         .id = 1,

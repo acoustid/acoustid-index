@@ -125,9 +125,6 @@ pub fn main() !void {
 
     const allocator = gpa.allocator();
 
-    var index = Index.init(allocator);
-    defer index.deinit();
-
     var args = try zul.CommandLineArgs.parse(allocator);
     defer args.deinit();
 
@@ -143,6 +140,11 @@ pub fn main() !void {
     if (threads == 0) {
         threads = @intCast(try std.Thread.getCpuCount());
     }
+
+    var index = Index.init(allocator);
+    defer index.deinit();
+
+    try index.start();
 
     try run(&index, address, port, threads);
 }
