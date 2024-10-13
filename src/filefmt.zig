@@ -2,11 +2,16 @@ const std = @import("std");
 const testing = std.testing;
 const assert = std.debug.assert;
 const math = std.math;
+const io = std.io;
+const fs = std.fs;
 
 const Item = @import("common.zig").Item;
 const InMemorySegment = @import("InMemorySegment.zig");
+const Segment = @import("Segment.zig");
 
 pub const default_block_size = 1024;
+pub const min_block_size = 256;
+pub const max_block_size = 4096;
 
 const minVarint32Size = 1;
 const maxVarint32Size = 5;
@@ -80,6 +85,22 @@ pub fn minItemsPerBlock(blockSize: usize) usize {
     return (blockSize - 4) / 2;
 }
 
+pub fn readFirstItemFromBlock(data: []const u8) !Item {
+    if (data.len < 2 + minVarint32Size * 2) {
+        return error.InvalidBlock;
+    }
+    const num_items = std.mem.readInt(u16, data[0..2], .little);
+    if (num_items == 0) {
+        return error.InvalidBlock;
+    }
+    var ptr: usize = 2;
+    const hash = readVarint32(data[ptr..]);
+    ptr += hash.size;
+    const doc_id = readVarint32(data[ptr..]);
+    ptr += doc_id.size;
+    return Item{ .hash = hash.value, .docId = doc_id.value };
+}
+
 pub fn readBlock(data: []const u8, items: *std.ArrayList(Item)) !void {
     var ptr: usize = 0;
 
@@ -149,7 +170,7 @@ pub fn writeBlock(data: []u8, items: []const Item) !usize {
     return numItems;
 }
 
-test "writeBlock/readBlock" {
+test "writeBlock/readBlock/readFirstItemFromBlock" {
     var items = std.ArrayList(Item).init(std.testing.allocator);
     defer items.deinit();
 
@@ -179,6 +200,9 @@ test "writeBlock/readBlock" {
         },
         items.items,
     );
+
+    const item = try readFirstItemFromBlock(blockData[0..]);
+    try testing.expectEqual(items.items[0], item);
 }
 
 const header_magic_v1 = 0x21f75da5;
@@ -203,10 +227,21 @@ const header_size = @sizeOf(Header);
 const reserved_footer_size = 64;
 const footer_size = @sizeOf(Footer);
 
+fn skipPadding(reader: anytype, reserved: comptime_int, used: comptime_int) !void {
+    const padding_size = reserved - used;
+    try reader.skipBytes(padding_size, .{});
+}
+
 fn writePadding(writer: anytype, reserved: comptime_int, used: comptime_int) !void {
     const padding_size = reserved - used;
     const padding = &[_]u8{0} ** padding_size;
     try writer.writeAll(padding);
+}
+
+pub fn readHeader(reader: anytype) !Header {
+    const header = try reader.readStructEndian(Header, .little);
+    try skipPadding(reader, reserved_header_size, header_size);
+    return header;
 }
 
 pub fn writeHeader(writer: anytype, header: Header) !void {
@@ -215,10 +250,16 @@ pub fn writeHeader(writer: anytype, header: Header) !void {
     try writePadding(writer, reserved_header_size, header_size);
 }
 
+pub fn readFooter(reader: anytype) !Footer {
+    const footer = try reader.readStructEndian(Footer, .little);
+    try skipPadding(reader, reserved_footer_size, footer_size);
+    return footer;
+}
+
 pub fn writeFooter(writer: anytype, footer: Footer) !void {
     assert(footer.magic == footer_magic_v1);
     try writer.writeStructEndian(footer, .little);
-    try writePadding(writer, reserved_header_size, footer_size);
+    try writePadding(writer, reserved_footer_size, footer_size);
 }
 
 const DocInfo = packed struct(u64) {
@@ -260,4 +301,94 @@ pub fn writeFile(writer: anytype, segment: *InMemorySegment) !void {
 
     const footer = Footer{ .num_blocks = @intCast(num_blocks) };
     try writeFooter(writer, footer);
+}
+
+pub fn readFile(file: fs.File, segment: *Segment) !void {
+    const file_size = try file.getEndPos();
+    const reader = file.reader();
+
+    const header = try readHeader(reader);
+    if (header.magic != header_magic_v1) {
+        return error.InvalidSegment;
+    }
+
+    if (header.block_size < min_block_size or header.block_size > max_block_size) {
+        return error.InvalidSegment;
+    }
+    const blocks_data_size = file_size - reserved_header_size - reserved_footer_size - header.num_docs * @sizeOf(DocInfo);
+    if (blocks_data_size % header.block_size != 0) {
+        return error.InvalidSegment;
+    }
+    var num_blocks = blocks_data_size / header.block_size;
+
+    var block_data_buffer: [max_block_size]u8 = undefined;
+    const block_data = block_data_buffer[0..header.block_size];
+
+    segment.version = header.version;
+    segment.block_size = header.block_size;
+
+    try segment.docs.ensureTotalCapacity(header.num_docs);
+
+    for (0..header.num_docs) |_| {
+        const info = try reader.readStructEndian(DocInfo, .little);
+        try segment.docs.put(info.id, info.deleted == 0);
+    }
+
+    try segment.index.ensureTotalCapacity(num_blocks);
+    try segment.blocks.ensureTotalCapacity(blocks_data_size);
+
+    while (num_blocks > 0) : (num_blocks -= 1) {
+        const n = try reader.readAll(block_data);
+        if (n != block_data.len) {
+            return error.InvalidSegment;
+        }
+        const item = try readFirstItemFromBlock(block_data[0..n]);
+        try segment.index.append(item.hash);
+        try segment.blocks.appendSlice(block_data[0..n]);
+    }
+
+    const footer = try readFooter(reader);
+    if (footer.magic != footer_magic_v1) {
+        return error.InvalidSegment;
+    }
+    if (footer.num_blocks != segment.index.items.len) {
+        return error.InvalidSegment;
+    }
+}
+
+test "writeFile/readFile" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    {
+        var file = try tmp.dir.createFile("test.dat", .{});
+        defer file.close();
+
+        var in_memory_segment = InMemorySegment.init(testing.allocator);
+        defer in_memory_segment.deinit();
+
+        in_memory_segment.version = 1;
+        try in_memory_segment.docs.put(1, true);
+        try in_memory_segment.items.append(Item{ .hash = 1, .docId = 1 });
+        try in_memory_segment.items.append(Item{ .hash = 2, .docId = 1 });
+
+        in_memory_segment.ensureSorted();
+
+        try writeFile(file.writer(), &in_memory_segment);
+    }
+
+    {
+        var file = try tmp.dir.openFile("test.dat", .{});
+        defer file.close();
+
+        var segment = Segment.init(testing.allocator);
+        defer segment.deinit();
+
+        try readFile(file, &segment);
+
+        try testing.expectEqual(1, segment.version);
+        try testing.expectEqual(1, segment.docs.count());
+        try testing.expectEqual(1, segment.index.items.len);
+        try testing.expectEqual(1, segment.index.items[0]);
+    }
 }
