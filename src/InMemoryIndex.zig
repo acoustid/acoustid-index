@@ -326,6 +326,8 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadlin
             }
         }
     }
+
+    results.sort();
 }
 
 test "insert and search" {
