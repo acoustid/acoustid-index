@@ -313,10 +313,8 @@ pub fn freezeFirstSegment(self: *Self) ?*Segment {
     if (first) |node| {
         if (node.next != null) { // only continue if there is more than one segment
             const segment = &node.data;
-            if (!segment.frozen) {
-                segment.frozen = true;
-                return segment;
-            }
+            segment.frozen = true;
+            return segment;
         }
     }
 
@@ -506,5 +504,5 @@ test "freeze segment" {
     try std.testing.expect(segment2.?.frozen);
 
     const segment3 = index.freezeFirstSegment();
-    try std.testing.expect(segment3 == null);
+    try std.testing.expect(segment3 == segment2);
 }
