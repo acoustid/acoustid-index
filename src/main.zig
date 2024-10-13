@@ -1,4 +1,5 @@
 const std = @import("std");
+const zul = @import("zul");
 
 const common = @import("common.zig");
 const SearchResults = common.SearchResults;
@@ -15,5 +16,11 @@ pub fn main() !void {
     var index = Index.init(allocator);
     defer index.deinit();
 
-    try server.run(&index, "127.0.0.1", 8080);
+    var args = try zul.CommandLineArgs.parse(allocator);
+    defer args.deinit();
+
+    const address = args.get("address") orelse "127.0.0.1";
+    const port = try std.fmt.parseInt(u16, args.get("port") orelse "8080", 10);
+
+    try server.run(&index, address, port);
 }
