@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const common = @import("common.zig");
-const SearchResultHashMap = common.SearchResultHashMap;
+const SearchResults = common.SearchResults;
 
 const InMemoryIndex = @import("InMemoryIndex.zig");
 
@@ -18,7 +18,7 @@ pub fn main() !void {
         .hashes = &[_]u32{ 1, 2, 3 },
     } }});
 
-    var results = SearchResultHashMap.init(allocator);
+    var results = SearchResults.init(allocator);
     defer results.deinit();
 
     try index.search(&[_]u32{ 1, 2, 3 }, &results, .{});

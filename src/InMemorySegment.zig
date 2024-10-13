@@ -1,8 +1,13 @@
 const std = @import("std");
 const log = std.log;
 const io = std.io;
+const assert = std.debug.assert;
 
-const Item = @import("common.zig").Item;
+const common = @import("common.zig");
+const Item = common.Item;
+const SearchResults = common.SearchResults;
+
+const Deadline = @import("utils/Deadline.zig");
 
 const filefmt = @import("filefmt.zig");
 
@@ -36,28 +41,18 @@ pub fn write(self: *Self, writer: anytype) !void {
     try filefmt.writeFile(writer, self);
 }
 
-pub fn ensureSorted(self: *Self) void {
-    std.sort.pdq(Item, self.items.items, {}, Item.cmp);
+pub fn search(self: *Self, hashes: []const u32, results: *SearchResults) !void {
+    assert(std.sort.isSorted(u32, hashes, {}, std.sort.asc(u32)));
+    var items = self.items.items;
+    for (hashes) |hash| {
+        const matches = std.sort.equalRange(Item, Item{ .hash = hash, .docId = 0 }, items, {}, Item.cmpByHash);
+        for (matches[0]..matches[1]) |i| {
+            try results.incr(items[i].docId, self.version);
+        }
+        items = items[matches[1]..];
+    }
 }
 
-const testing = std.testing;
-
-test "write to file" {
-    var tmp = testing.tmpDir(.{});
-    defer tmp.cleanup();
-
-    var file = try tmp.dir.createFile("test.dat", .{});
-    defer file.close();
-
-    var segment = Self.init(testing.allocator);
-    defer segment.deinit();
-
-    segment.version = 1;
-    try segment.docs.put(1, true);
-    try segment.items.append(Item{ .hash = 1, .docId = 1 });
-    try segment.items.append(Item{ .hash = 2, .docId = 1 });
-
-    segment.ensureSorted();
-
-    try segment.write(file.writer());
+pub fn ensureSorted(self: *Self) void {
+    std.sort.pdq(Item, self.items.items, {}, Item.cmp);
 }

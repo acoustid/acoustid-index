@@ -10,6 +10,10 @@ pub const Item = packed struct(u64) {
         const xb: u64 = @bitCast(b);
         return xa < xb;
     }
+
+    pub fn cmpByHash(_: void, a: Item, b: Item) bool {
+        return a.hash < b.hash;
+    }
 };
 
 test "Item binary" {
@@ -49,6 +53,47 @@ pub const SearchResult = struct {
     docId: u32,
     score: u32,
     version: u32,
+
+    pub fn cmp(_: void, a: SearchResult, b: SearchResult) bool {
+        return a.score > b.score or (a.score == b.score and a.docId > b.docId);
+    }
 };
 
 pub const SearchResultHashMap = std.AutoArrayHashMap(u32, SearchResult);
+
+pub const SearchResults = struct {
+    results: SearchResultHashMap,
+
+    pub fn init(allocator: std.mem.Allocator) SearchResults {
+        return SearchResults{
+            .results = SearchResultHashMap.init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *SearchResults) void {
+        self.results.deinit();
+    }
+
+    pub fn incr(self: *SearchResults, doc_id: u32, version: u32) !void {
+        const r = try self.results.getOrPut(doc_id);
+        if (!r.found_existing or r.value_ptr.version < version) {
+            r.value_ptr.docId = doc_id;
+            r.value_ptr.score = 1;
+            r.value_ptr.version = version;
+        } else if (r.value_ptr.version == version) {
+            r.value_ptr.score += 1;
+        }
+    }
+
+    pub fn count(self: *SearchResults) usize {
+        return self.results.count();
+    }
+
+    pub fn get(self: *SearchResults, doc_id: u32) ?SearchResult {
+        return self.results.get(doc_id);
+    }
+
+    pub fn values(self: *SearchResults) []SearchResult {
+        return self.results.values();
+    }
+};

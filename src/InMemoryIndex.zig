@@ -7,7 +7,7 @@ const assert = std.debug.assert;
 
 const common = @import("common.zig");
 const Item = common.Item;
-const SearchResultHashMap = common.SearchResultHashMap;
+const SearchResults = common.SearchResults;
 
 const Segment = @import("InMemorySegment.zig");
 const Segments = std.DoublyLinkedList(Segment);
@@ -294,7 +294,7 @@ fn mergeSegments(self: *Self) !void {
     }
 }
 
-pub fn search(self: *Self, hashes: []const u32, results: *SearchResultHashMap, deadline: Deadline) !void {
+pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
     self.write_lock.lockShared();
     defer self.write_lock.unlockShared();
 
@@ -302,7 +302,6 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResultHashMap, d
     var segmentIter = self.segments.first;
     while (segmentIter) |node| : (segmentIter = node.next) {
         const segment = &node.data;
-        const items = segment.items.items;
 
         if (deadline.isExpired()) {
             return error.Timeout;
@@ -311,37 +310,12 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResultHashMap, d
         assert(segment.version > previousSegmentVersion);
         previousSegmentVersion = segment.version;
 
-        var previousHash: u32 = 0;
-        var previousHashStartedAt: usize = 0;
-        var previousHashEndedAt: usize = 0;
-        for (hashes) |hash| {
-            var i = previousHashStartedAt;
-            if (hash > previousHash) {
-                const offset = std.sort.lowerBound(Item, Item{ .hash = hash, .docId = 0 }, items[previousHashEndedAt..], {}, Item.cmp);
-                i = previousHashEndedAt + offset;
-                previousHash = hash;
-                previousHashStartedAt = i;
-            } else {
-                assert(hash == previousHash);
-            }
-            while (i < items.len and items[i].hash == hash) : (i += 1) {
-                const docId = items[i].docId;
-                const r = try results.getOrPut(docId);
-                if (!r.found_existing or r.value_ptr.version < segment.version) {
-                    r.value_ptr.docId = docId;
-                    r.value_ptr.score = 1;
-                    r.value_ptr.version = segment.version;
-                } else if (r.value_ptr.version == segment.version) {
-                    r.value_ptr.score += 1;
-                }
-                previousHashEndedAt = i;
-            }
-        }
+        try segment.search(hashes, results);
 
         // Remove results for docs that have been updated/deleted in the current segment.
         // We can do it here, because we know previously processed segments always have
         // lower version numbers.
-        var results_iter = results.iterator();
+        var results_iter = results.results.iterator();
         while (results_iter.next()) |result| {
             const version = result.value_ptr.version;
             if (version < segment.version) {
@@ -363,7 +337,7 @@ test "insert and search" {
         .hashes = &[_]u32{ 1, 2, 3 },
     } }});
 
-    var results = SearchResultHashMap.init(std.testing.allocator);
+    var results = SearchResults.init(std.testing.allocator);
     defer results.deinit();
 
     try index.search(&[_]u32{ 1, 2, 3 }, &results, .{});
@@ -391,7 +365,7 @@ test "insert, partial update and search" {
         .hashes = &[_]u32{ 1, 2, 4 },
     } }});
 
-    var results = SearchResultHashMap.init(std.testing.allocator);
+    var results = SearchResults.init(std.testing.allocator);
     defer results.deinit();
 
     try index.search(&[_]u32{ 1, 2, 3 }, &results, .{});
@@ -419,7 +393,7 @@ test "insert, full update and search" {
         .hashes = &[_]u32{ 100, 200, 300 },
     } }});
 
-    var results = SearchResultHashMap.init(std.testing.allocator);
+    var results = SearchResults.init(std.testing.allocator);
     defer results.deinit();
 
     try index.search(&[_]u32{ 1, 2, 3 }, &results, .{});
@@ -441,7 +415,7 @@ test "insert, full update (multiple times) and search" {
     }
     i += 1;
 
-    var results = SearchResultHashMap.init(std.testing.allocator);
+    var results = SearchResults.init(std.testing.allocator);
     defer results.deinit();
 
     try index.search(&[_]u32{ i * 1000 + 1, i * 1000 + 2, i * 1000 + 3 }, &results, .{});
@@ -468,7 +442,7 @@ test "insert, delete and search" {
         .id = 1,
     } }});
 
-    var results = SearchResultHashMap.init(std.testing.allocator);
+    var results = SearchResults.init(std.testing.allocator);
     defer results.deinit();
 
     try index.search(&[_]u32{ 1, 2, 3 }, &results, .{});
