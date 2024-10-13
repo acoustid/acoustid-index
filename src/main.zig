@@ -5,6 +5,8 @@ const SearchResults = common.SearchResults;
 
 const Index = @import("Index.zig");
 
+const server = @import("server.zig");
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -13,22 +15,5 @@ pub fn main() !void {
     var index = Index.init(allocator);
     defer index.deinit();
 
-    try index.update(&[_]common.Change{.{ .insert = .{
-        .id = 1,
-        .hashes = &[_]u32{ 1, 2, 3 },
-    } }});
-
-    var results = SearchResults.init(allocator);
-    defer results.deinit();
-
-    try index.search(&[_]u32{ 1, 2, 3 }, &results, .{});
-
-    for (results.values()) |result| {
-        std.debug.print("id: {}, score: {}, version: {}\n", .{ result.id, result.score, result.version });
-    }
-}
-
-test {
-    _ = @import("filefmt.zig");
-    std.testing.refAllDeclsRecursive(@This());
+    try server.run(&index, 8080);
 }
