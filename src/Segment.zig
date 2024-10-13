@@ -58,9 +58,9 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults) !void {
                 const block_data = self.getBlockData(block_no);
                 try filefmt.readBlock(block_data, &block_items);
             }
-            const matches = std.sort.equalRange(Item, Item{ .hash = hash, .doc_id = 0 }, block_items.items, {}, Item.cmpByHash);
+            const matches = std.sort.equalRange(Item, Item{ .hash = hash, .id = 0 }, block_items.items, {}, Item.cmpByHash);
             for (matches[0]..matches[1]) |i| {
-                try results.incr(block_items.items[i].doc_id, self.version);
+                try results.incr(block_items.items[i].id, self.version);
             }
         }
     }

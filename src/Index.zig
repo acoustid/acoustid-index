@@ -73,7 +73,7 @@ test "insert and search" {
 
     const result = results.get(1);
     try std.testing.expect(result != null);
-    try std.testing.expectEqual(1, result.?.doc_id);
+    try std.testing.expectEqual(1, result.?.id);
     try std.testing.expectEqual(3, result.?.score);
     try std.testing.expect(result.?.version != 0);
 }
