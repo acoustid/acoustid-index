@@ -31,19 +31,23 @@ const Task = union(enum) {
         _ = at;
         switch (task) {
             .cleanup => {
-                index.cleanup();
+                index.cleanup() catch |err| {
+                    log.err("cleanup failed: {}", .{err});
+                };
             },
         }
     }
 };
 
 pub fn init(allocator: std.mem.Allocator) Self {
-    return .{
+    var self = Self{
         .allocator = allocator,
         .stage = InMemoryIndex.init(allocator),
         .segments = .{},
         .scheduler = zul.Scheduler(Task, *Self).init(allocator),
     };
+    self.stage.auto_cleanup = false;
+    return self;
 }
 
 pub fn start(self: *Self) !void {
@@ -59,12 +63,9 @@ pub fn deinit(self: *Self) void {
     self.scheduler.deinit();
 }
 
-fn cleanup(self: *Self) void {
-    const now = std.time.milliTimestamp();
-    if (now - self.last_cleanup_at < self.cleanup_interval)
-        return;
-    self.last_cleanup_at = now;
-    log.info("cleanup", .{});
+fn cleanup(self: *Self) !void {
+    log.info("running cleanup", .{});
+    try self.stage.cleanup();
 }
 
 pub fn update(self: *Self, changes: []const Change) !void {

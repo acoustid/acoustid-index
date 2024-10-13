@@ -18,6 +18,7 @@ write_lock: std.Thread.RwLock,
 merge_lock: std.Thread.Mutex,
 segments: Segments,
 max_segments: usize = 16,
+auto_cleanup: bool = true,
 
 const Self = @This();
 
@@ -112,11 +113,15 @@ pub fn update(self: *Self, changes: []const Change) !void {
     committed = true;
     self.write_lock.unlock();
 
-    if (needs_merging) {
+    if (needs_merging and self.auto_cleanup) {
         self.mergeSegments() catch |err| {
             std.debug.print("mergeSegments failed: {}\n", .{err});
         };
     }
+}
+
+pub fn cleanup(self: *Self) !void {
+    try self.mergeSegments();
 }
 
 fn hasNewerVersion(self: *Self, id: u32, version: u32) bool {
