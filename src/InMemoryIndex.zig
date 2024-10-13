@@ -157,16 +157,24 @@ fn prepareMerge(self: *Self) !?Merge {
     defer self.write_lock.unlockShared();
 
     var total_size: usize = 0;
+    var num_segments: usize = 0;
     var segments_iter = self.segments.first;
     while (segments_iter) |node| : (segments_iter = node.next) {
+        if (node.data.frozen) {
+            continue;
+        }
         total_size += node.data.items.items.len;
+        num_segments += 1;
     }
-    const avg_size = total_size / self.segments.len;
+    const avg_size = total_size / num_segments;
 
     var bestNode: ?*Segments.Node = null;
     var bestScore: usize = std.math.maxInt(usize);
     segments_iter = self.segments.first;
     while (segments_iter) |node| : (segments_iter = node.next) {
+        if (node.data.frozen) {
+            continue;
+        }
         if (node.next) |nextNode| {
             const size = node.data.items.items.len + nextNode.data.items.items.len;
             const score = if (size > avg_size) size - avg_size else avg_size - size;
@@ -292,6 +300,23 @@ fn mergeSegments(self: *Self) !void {
     if (maybeMerge) |merge| {
         self.commitMerge(merge);
     }
+}
+
+pub fn freezeFirstSegment(self: *Self) !?*Self {
+    self.merge_lock.lock();
+    defer self.merge_lock.unlock();
+
+    self.write_lock.lockShared();
+    defer self.write_lock.unlockShared();
+
+    const first = self.segments.first;
+    if (first) |node| {
+        const segment = &node.data;
+        segment.frozen = true;
+        return segment;
+    }
+
+    return null;
 }
 
 pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
