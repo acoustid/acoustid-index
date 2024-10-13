@@ -25,25 +25,22 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const exe = b.addExecutable(.{
-        .name = "idx",
-        .root_source_file = b.path("src/main.zig"),
+    const server_exe = b.addExecutable(.{
+        .name = "fpindex",
+        .root_source_file = b.path("src/server.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    // This declares intent for the executable to be installed into the
-    // standard location when the user invokes the "install" step (the default
-    // step when running `zig build`).
-    b.installArtifact(exe);
+    server_exe.root_module.addImport("httpz", httpz.module("httpz"));
+    server_exe.root_module.addImport("zul", zul.module("zul"));
 
-    exe.root_module.addImport("httpz", httpz.module("httpz"));
-    exe.root_module.addImport("zul", zul.module("zul"));
+    b.installArtifact(server_exe);
 
     // This *creates* a Run step in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
     // such a dependency.
-    const run_cmd = b.addRunArtifact(exe);
+    const run_cmd = b.addRunArtifact(server_exe);
 
     // By making the run step depend on the install step, it will be run from the
     // installation directory rather than directly from within the cache directory.
