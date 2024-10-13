@@ -12,8 +12,10 @@ version: u32 = 0,
 docs: std.AutoHashMap(u32, bool),
 index: std.ArrayList(u32),
 block_size: usize = 0,
-blocks: std.ArrayList(u8),
+blocks: []const u8,
 merged: u32 = 0,
+
+raw_data: ?[]align(std.mem.page_size) u8 = null,
 
 const Self = @This();
 
@@ -22,18 +24,22 @@ pub fn init(allocator: std.mem.Allocator) Self {
         .allocator = allocator,
         .docs = std.AutoHashMap(u32, bool).init(allocator),
         .index = std.ArrayList(u32).init(allocator),
-        .blocks = std.ArrayList(u8).init(allocator),
+        .blocks = undefined,
     };
 }
 
 pub fn deinit(self: *Self) void {
     self.docs.deinit();
     self.index.deinit();
-    self.blocks.deinit();
+
+    if (self.raw_data) |data| {
+        std.posix.munmap(data);
+        self.raw_data = null;
+    }
 }
 
 pub fn getBlockData(self: *Self, block: usize) []const u8 {
-    return self.blocks.items[block * self.block_size .. (block + 1) * self.block_size];
+    return self.blocks[block * self.block_size .. (block + 1) * self.block_size];
 }
 
 pub fn search(self: *Self, hashes: []const u32, results: *SearchResults) !void {

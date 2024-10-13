@@ -305,7 +305,25 @@ pub fn writeFile(writer: anytype, segment: *InMemorySegment) !void {
 
 pub fn readFile(file: fs.File, segment: *Segment) !void {
     const file_size = try file.getEndPos();
-    const reader = file.reader();
+
+    var raw_data = try std.posix.mmap(
+        null,
+        file_size,
+        std.posix.PROT.READ,
+        .{ .TYPE = .PRIVATE, .POPULATE = true },
+        file.handle,
+        0,
+    );
+    segment.raw_data = raw_data;
+
+    try std.posix.madvise(
+        raw_data.ptr,
+        raw_data.len,
+        std.posix.MADV.RANDOM | std.posix.MADV.WILLNEED,
+    );
+
+    var fixed_buffer_steeam = std.io.fixedBufferStream(raw_data[0..]);
+    var reader = fixed_buffer_steeam.reader();
 
     const header = try readHeader(reader);
     if (header.magic != header_magic_v1) {
@@ -315,14 +333,14 @@ pub fn readFile(file: fs.File, segment: *Segment) !void {
     if (header.block_size < min_block_size or header.block_size > max_block_size) {
         return error.InvalidSegment;
     }
-    const blocks_data_size = file_size - reserved_header_size - reserved_footer_size - header.num_docs * @sizeOf(DocInfo);
+
+    const blocks_data_start = reserved_header_size + header.num_docs * @sizeOf(DocInfo);
+    const blocks_data_size = file_size - reserved_footer_size - blocks_data_start;
+    const blocks_data_end = blocks_data_start + blocks_data_size;
     if (blocks_data_size % header.block_size != 0) {
         return error.InvalidSegment;
     }
-    var num_blocks = blocks_data_size / header.block_size;
-
-    var block_data_buffer: [max_block_size]u8 = undefined;
-    const block_data = block_data_buffer[0..header.block_size];
+    const num_blocks = blocks_data_size / header.block_size;
 
     segment.version = header.version;
     segment.block_size = header.block_size;
@@ -335,17 +353,16 @@ pub fn readFile(file: fs.File, segment: *Segment) !void {
     }
 
     try segment.index.ensureTotalCapacity(num_blocks);
-    try segment.blocks.ensureTotalCapacity(blocks_data_size);
+    segment.blocks = raw_data[blocks_data_start..blocks_data_end];
 
-    while (num_blocks > 0) : (num_blocks -= 1) {
-        const n = try reader.readAll(block_data);
-        if (n != block_data.len) {
-            return error.InvalidSegment;
-        }
-        const item = try readFirstItemFromBlock(block_data[0..n]);
+    var i: usize = 0;
+    while (i < num_blocks) : (i += 1) {
+        const block_data = segment.getBlockData(i);
+        const item = try readFirstItemFromBlock(block_data);
         try segment.index.append(item.hash);
-        try segment.blocks.appendSlice(block_data[0..n]);
     }
+
+    try reader.skipBytes(blocks_data_size, .{});
 
     const footer = try readFooter(reader);
     if (footer.magic != footer_magic_v1) {
@@ -390,5 +407,14 @@ test "writeFile/readFile" {
         try testing.expectEqual(1, segment.docs.count());
         try testing.expectEqual(1, segment.index.items.len);
         try testing.expectEqual(1, segment.index.items[0]);
+
+        var items = std.ArrayList(Item).init(testing.allocator);
+        defer items.deinit();
+
+        try readBlock(segment.getBlockData(0), &items);
+        try std.testing.expectEqualSlices(Item, &[_]Item{
+            Item{ .hash = 1, .id = 1 },
+            Item{ .hash = 2, .id = 1 },
+        }, items.items);
     }
 }

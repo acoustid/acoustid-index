@@ -25,6 +25,7 @@ segments: Segments,
 scheduler: zul.Scheduler(Task, *Self),
 last_cleanup_at: i64 = 0,
 cleanup_interval: i64 = 1000,
+run_cleanup: bool = true,
 
 const min_segment_size = 1_000_000;
 
@@ -69,20 +70,21 @@ pub fn deinit(self: *Self) void {
 }
 
 fn cleanup(self: *Self) !void {
+    if (!self.run_cleanup) return;
+
     log.info("running cleanup", .{});
 
     // try self.stage.cleanup();
 
-    if (false) {
-        const segment = self.stage.freezeFirstSegment(min_segment_size);
-        if (segment) |s| {
-            const name = try std.fmt.allocPrint(self.allocator, "segment_{}_{}.dat", .{ s.version - s.merged, s.version });
-            defer self.allocator.free(name);
-            log.info("writing segment {s} to disk", .{name});
-            var file = try self.dir.createFile(name, .{});
-            defer file.close();
-            try s.write(file.writer());
-        }
+    const segment = self.stage.freezeFirstSegment(min_segment_size);
+    if (segment) |s| {
+        const name = try std.fmt.allocPrint(self.allocator, "segment_{}_{}.dat", .{ s.version - s.merged, s.version });
+        defer self.allocator.free(name);
+        log.info("writing segment {s} to disk", .{name});
+        var file = try self.dir.createFile(name, .{});
+        defer file.close();
+        try s.write(file.writer());
+        self.run_cleanup = false;
     }
 }
 
