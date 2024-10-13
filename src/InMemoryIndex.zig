@@ -302,7 +302,7 @@ fn mergeSegments(self: *Self) !void {
     }
 }
 
-pub fn freezeFirstSegment(self: *Self) !?*Self {
+pub fn freezeFirstSegment(self: *Self) ?*Segment {
     self.merge_lock.lock();
     defer self.merge_lock.unlock();
 
@@ -311,9 +311,13 @@ pub fn freezeFirstSegment(self: *Self) !?*Self {
 
     const first = self.segments.first;
     if (first) |node| {
-        const segment = &node.data;
-        segment.frozen = true;
-        return segment;
+        if (node.next != null) { // only continue if there is more than one segment
+            const segment = &node.data;
+            if (!segment.frozen) {
+                segment.frozen = true;
+                return segment;
+            }
+        }
     }
 
     return null;
@@ -476,4 +480,31 @@ test "insert, delete and search" {
 
     const result = results.get(1);
     try std.testing.expect(result == null or result.?.score == 0);
+}
+
+test "freeze segment" {
+    var index = Self.init(std.testing.allocator);
+    defer index.deinit();
+
+    try index.update(&[_]Change{.{ .insert = .{
+        .id = 1,
+        .hashes = &[_]u32{ 1, 2, 3 },
+    } }});
+
+    const segment1 = index.freezeFirstSegment();
+    try std.testing.expect(segment1 == null);
+
+    for (0..100) |_| {
+        try index.update(&[_]Change{.{ .insert = .{
+            .id = 1,
+            .hashes = &[_]u32{ 1, 2, 3 },
+        } }});
+    }
+
+    const segment2 = index.freezeFirstSegment();
+    try std.testing.expect(segment2 != null);
+    try std.testing.expect(segment2.?.frozen);
+
+    const segment3 = index.freezeFirstSegment();
+    try std.testing.expect(segment3 == null);
 }
