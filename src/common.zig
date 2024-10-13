@@ -123,3 +123,17 @@ test "sort search results" {
         SearchResult{ .docId = 1, .score = 1, .version = 1 },
     }, results.values());
 }
+
+pub const Insert = struct {
+    id: u32,
+    hashes: []const u32,
+};
+
+pub const Delete = struct {
+    id: u32,
+};
+
+pub const Change = union(enum) {
+    insert: Insert,
+    delete: Delete,
+};

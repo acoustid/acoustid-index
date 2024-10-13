@@ -8,6 +8,7 @@ const assert = std.debug.assert;
 const common = @import("common.zig");
 const Item = common.Item;
 const SearchResults = common.SearchResults;
+const Change = common.Change;
 
 const Segment = @import("InMemorySegment.zig");
 const Segments = std.DoublyLinkedList(Segment);
@@ -19,20 +20,6 @@ segments: Segments,
 max_segments: usize = 16,
 
 const Self = @This();
-
-pub const Insert = struct {
-    id: u32,
-    hashes: []const u32,
-};
-
-pub const Delete = struct {
-    id: u32,
-};
-
-pub const Change = union(enum) {
-    insert: Insert,
-    delete: Delete,
-};
 
 pub fn init(allocator: std.mem.Allocator) Self {
     return .{
@@ -317,7 +304,6 @@ pub fn freezeFirstSegment(self: *Self) ?*Segment {
             return segment;
         }
     }
-
     return null;
 }
 
@@ -353,8 +339,6 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadlin
             }
         }
     }
-
-    results.sort();
 }
 
 test "insert and search" {

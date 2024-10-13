@@ -3,17 +3,17 @@ const std = @import("std");
 const common = @import("common.zig");
 const SearchResults = common.SearchResults;
 
-const InMemoryIndex = @import("InMemoryIndex.zig");
+const Index = @import("Index.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
     const allocator = gpa.allocator();
-    var index = InMemoryIndex.init(allocator);
+    var index = Index.init(allocator);
     defer index.deinit();
 
-    try index.update(&[_]InMemoryIndex.Change{.{ .insert = .{
+    try index.update(&[_]common.Change{.{ .insert = .{
         .id = 1,
         .hashes = &[_]u32{ 1, 2, 3 },
     } }});
