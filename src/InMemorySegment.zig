@@ -18,7 +18,6 @@ version: u32,
 docs: std.AutoHashMap(u32, bool),
 items: std.ArrayList(Item),
 frozen: bool = false,
-merged: u32 = 0,
 
 pub fn init(allocator: std.mem.Allocator) Self {
     return .{

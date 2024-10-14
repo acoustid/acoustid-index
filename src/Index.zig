@@ -27,8 +27,6 @@ last_cleanup_at: i64 = 0,
 cleanup_interval: i64 = 1000,
 run_cleanup: bool = true,
 
-const min_segment_size = 1_000_000;
-
 const Task = union(enum) {
     cleanup: void,
 
@@ -76,9 +74,9 @@ fn cleanup(self: *Self) !void {
 
     // try self.stage.cleanup();
 
-    const segment = self.stage.freezeFirstSegment(min_segment_size);
+    const segment = self.stage.freezeFirstSegment();
     if (segment) |s| {
-        const name = try std.fmt.allocPrint(self.allocator, "segment_{}_{}.dat", .{ s.version - s.merged, s.version });
+        const name = try std.fmt.allocPrint(self.allocator, "segment_{}.dat", .{s.version});
         defer self.allocator.free(name);
         log.info("writing segment {s} to disk", .{name});
         var file = try self.dir.createFile(name, .{});
