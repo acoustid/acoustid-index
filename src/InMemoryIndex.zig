@@ -10,14 +10,14 @@ const Item = common.Item;
 const SearchResults = common.SearchResults;
 const Change = common.Change;
 
-const Segment = @import("InMemorySegment.zig");
-const Segments = std.DoublyLinkedList(Segment);
+const InMemorySegment = @import("InMemorySegment.zig");
+const InMemorySegments = std.DoublyLinkedList(InMemorySegment);
 
 allocator: std.mem.Allocator,
 write_lock: std.Thread.RwLock,
 merge_lock: std.Thread.Mutex,
-segments: Segments,
-max_items_per_segment: usize = 100000,
+segments: InMemorySegments,
+max_items_per_segment: usize = 1_000_000,
 max_segments: usize = 16,
 auto_cleanup: bool = true,
 
@@ -37,11 +37,17 @@ pub fn deinit(self: *Self) void {
     defer self.write_lock.unlock();
 
     while (self.segments.popFirst()) |node| {
-        self.destroyNode(node);
+        self.destroySegment(node);
     }
 }
 
-fn destroyNode(self: *Self, node: *Segments.Node) void {
+fn createSegment(self: *Self) !*InMemorySegments.Node {
+    const node = try self.allocator.create(InMemorySegments.Node);
+    node.data = InMemorySegment.init(self.allocator);
+    return node;
+}
+
+fn destroySegment(self: *Self, node: *InMemorySegments.Node) void {
     node.data.deinit();
     self.allocator.destroy(node);
 }
@@ -49,16 +55,9 @@ fn destroyNode(self: *Self, node: *Segments.Node) void {
 pub fn update(self: *Self, changes: []const Change) !void {
     var committed = false;
 
-    const node = try self.allocator.create(Segments.Node);
+    const node = try self.createSegment();
     defer {
-        if (!committed) self.allocator.destroy(node);
-    }
-
-    node.data = Segment.init(self.allocator);
-    defer {
-        if (!committed) {
-            node.data.deinit();
-        }
+        if (!committed) self.destroySegment(node);
     }
 
     var num_items: usize = 0;
@@ -134,9 +133,9 @@ fn hasNewerVersion(self: *Self, id: u32, version: u32) bool {
 }
 
 const Merge = struct {
-    first: *Segments.Node,
-    last: *Segments.Node,
-    replacement: *Segments.Node,
+    first: *InMemorySegments.Node,
+    last: *InMemorySegments.Node,
+    replacement: *InMemorySegments.Node,
 };
 
 fn prepareMerge(self: *Self) !?Merge {
@@ -158,7 +157,7 @@ fn prepareMerge(self: *Self) !?Merge {
         return null;
     }
 
-    var best_node: ?*Segments.Node = null;
+    var best_node: ?*InMemorySegments.Node = null;
     var best_score: f64 = std.math.inf(f64);
     segments_iter = self.segments.first;
     var level_size = @as(f64, @floatFromInt(total_size)) / 2;
@@ -187,23 +186,17 @@ fn prepareMerge(self: *Self) !?Merge {
 
     const segment1 = node1.data;
     const segment2 = node2.data;
-    const segments = [2]Segment{ segment1, segment2 };
+    const segments = [2]InMemorySegment{ segment1, segment2 };
 
     var committed = false;
 
-    const node = try self.allocator.create(Segments.Node);
+    const node = try self.createSegment();
     defer {
-        if (!committed) self.allocator.destroy(node);
+        if (!committed) self.destroySegment(node);
     }
 
     const merge = Merge{ .first = node1, .last = node2, .replacement = node };
 
-    node.data = Segment.init(self.allocator);
-    defer {
-        if (!committed) {
-            node.data.deinit();
-        }
-    }
     node.data.version = segment1.version;
 
     var total_docs: usize = 0;
@@ -267,11 +260,11 @@ fn commitMerge(self: *Self, merge: Merge) void {
 
     self.segments.insertAfter(merge.last, merge.replacement);
 
-    var iter: ?*Segments.Node = merge.first;
+    var iter: ?*InMemorySegments.Node = merge.first;
     while (iter) |node| {
         iter = node.next;
         self.segments.remove(node);
-        self.destroyNode(node);
+        self.destroySegment(node);
         if (node == merge.last) break;
     }
 
@@ -288,7 +281,7 @@ fn mergeSegments(self: *Self) !void {
     }
 }
 
-pub fn freezeFirstSegment(self: *Self) ?*Segment {
+pub fn freezeFirstSegment(self: *Self) ?*InMemorySegment {
     self.merge_lock.lock();
     defer self.merge_lock.unlock();
 
@@ -311,7 +304,7 @@ pub fn freezeFirstSegment(self: *Self) ?*Segment {
     return null;
 }
 
-pub fn removeFrozenSegment(self: *Self, segment: *Segment) void {
+pub fn removeSegment(self: *Self, segment: *InMemorySegment) void {
     self.merge_lock.lock();
     defer self.merge_lock.unlock();
 
@@ -323,7 +316,7 @@ pub fn removeFrozenSegment(self: *Self, segment: *Segment) void {
         if (&node.data == segment) {
             if (node.data.frozen) {
                 self.segments.remove(node);
-                self.destroyNode(node);
+                self.destroySegment(node);
                 return;
             }
         }

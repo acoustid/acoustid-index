@@ -342,7 +342,8 @@ pub fn readFile(file: fs.File, segment: *Segment) !void {
     }
     const num_blocks = blocks_data_size / header.block_size;
 
-    segment.version = header.version;
+    segment.version[0] = header.version;
+    segment.version[1] = header.version;
     segment.block_size = header.block_size;
 
     try segment.docs.ensureTotalCapacity(header.num_docs);
@@ -403,7 +404,8 @@ test "writeFile/readFile" {
 
         try readFile(file, &segment);
 
-        try testing.expectEqual(1, segment.version);
+        try testing.expectEqual(1, segment.version[0]);
+        try testing.expectEqual(1, segment.version[1]);
         try testing.expectEqual(1, segment.docs.count());
         try testing.expectEqual(1, segment.index.items.len);
         try testing.expectEqual(1, segment.index.items[0]);

@@ -62,10 +62,35 @@ pub fn start(self: *Self) !void {
 pub fn deinit(self: *Self) void {
     self.stage.deinit();
     while (self.segments.popFirst()) |node| {
-        node.data.deinit();
-        self.allocator.destroy(node);
+        self.destroySegment(node);
     }
     self.scheduler.deinit();
+}
+
+fn createSegment(self: *Self) !*Segments.Node {
+    const node = try self.allocator.create(Segments.Node);
+    node.data = Segment.init(self.allocator);
+    return node;
+}
+
+fn destroySegment(self: *Self, node: *Segments.Node) void {
+    node.data.deinit();
+    self.allocator.destroy(node);
+}
+
+fn write(self: *Self) !void {
+    var file = try self.dir.atomicFile("index.dat", .{});
+    defer file.deinit();
+
+    var writer = file.file.writer();
+    try writer.writeInt(u32, @truncate(self.segments.len), .little);
+    var it = self.segments.first;
+    while (it) |node| : (it = node.next) {
+        try writer.writeInt(u32, node.data.version[0], .little);
+        try writer.writeInt(u32, node.data.version[1], .little);
+    }
+
+    try file.finish();
 }
 
 fn cleanup(self: *Self) !void {
@@ -75,19 +100,23 @@ fn cleanup(self: *Self) !void {
 
     // try self.stage.cleanup();
 
-    const staged_segment_or_null = self.stage.freezeFirstSegment();
-    if (staged_segment_or_null) |staged_segment| {
-        const segment = Segment.init(self.allocator);
-        try segment.convert(self.dir, staged_segment);
+    if (self.stage.freezeFirstSegment()) |segment| {
+        var commited = false;
+        const node = try self.createSegment();
+        defer {
+            if (!commited) self.destroySegment(node);
+        }
+
+        try node.data.convert(self.dir, segment);
 
         self.write_lock.lock();
         defer self.write_lock.unlock();
 
-        var node = try self.allocator.create(Segments.Node);
-        node.data = segment;
+        try self.write();
 
-        self.stage.removeFrozenSegment(staged_segment);
+        self.stage.removeSegment(segment);
         self.segments.append(node);
+        commited = true;
     }
 }
 
