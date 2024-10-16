@@ -311,6 +311,25 @@ pub fn freezeFirstSegment(self: *Self) ?*Segment {
     return null;
 }
 
+pub fn removeFrozenSegment(self: *Self, segment: *Segment) void {
+    self.merge_lock.lock();
+    defer self.merge_lock.unlock();
+
+    self.write_lock.lock();
+    defer self.write_lock.unlock();
+
+    var it = self.segments.first;
+    while (it) |node| : (it = node.next) {
+        if (&node.data == segment) {
+            if (node.data.frozen) {
+                self.segments.remove(node);
+                self.destroyNode(node);
+                return;
+            }
+        }
+    }
+}
+
 pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
     self.write_lock.lockShared();
     defer self.write_lock.unlockShared();

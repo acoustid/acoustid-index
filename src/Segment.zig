@@ -5,6 +5,8 @@ const common = @import("common.zig");
 const Item = common.Item;
 const SearchResults = common.SearchResults;
 
+const InMemorySegment = @import("InMemorySegment.zig");
+
 const filefmt = @import("filefmt.zig");
 
 allocator: std.mem.Allocator,
@@ -70,4 +72,48 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults) !void {
             }
         }
     }
+}
+
+const max_file_name_size = 255;
+const file_name_fmt = "segment-{d}.data";
+
+pub fn convert(self: *Self, dir: std.fs.Dir, source: *InMemorySegment) !void {
+    if (!source.frozen) {
+        return error.SourceSegmentNotFrozen;
+    }
+    if (source.version == 0) {
+        return error.SourceSegmentNoVersion;
+    }
+
+    var file_name_buf: [max_file_name_size]u8 = undefined;
+    const file_name = try std.fmt.bufPrint(&file_name_buf, file_name_fmt, .{source.version});
+
+    const file = try dir.createFile(file_name, .{ .exclusive = true, .read = true });
+    defer file.close();
+
+    try filefmt.writeFile(file.writer(), source);
+    try filefmt.readFile(file, self);
+}
+
+test "convert" {
+    var tmpDir = std.testing.tmpDir(.{});
+    defer tmpDir.cleanup();
+
+    var source = InMemorySegment.init(std.testing.allocator);
+    defer source.deinit();
+
+    source.version = 1;
+    source.frozen = true;
+    try source.docs.put(1, true);
+    try source.items.append(.{ .id = 1, .hash = 1 });
+    try source.items.append(.{ .id = 1, .hash = 2 });
+
+    var segment = Self.init(std.testing.allocator);
+    defer segment.deinit();
+
+    try segment.convert(tmpDir.dir, &source);
+
+    try std.testing.expectEqual(1, segment.version);
+    try std.testing.expectEqual(1, segment.docs.count());
+    try std.testing.expectEqual(1, segment.index.items.len);
 }

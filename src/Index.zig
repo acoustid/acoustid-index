@@ -21,6 +21,7 @@ dir: fs.Dir,
 allocator: std.mem.Allocator,
 stage: InMemoryIndex,
 segments: Segments,
+write_lock: std.Thread.RwLock = .{},
 
 scheduler: zul.Scheduler(Task, *Self),
 last_cleanup_at: i64 = 0,
@@ -74,15 +75,19 @@ fn cleanup(self: *Self) !void {
 
     // try self.stage.cleanup();
 
-    const segment = self.stage.freezeFirstSegment();
-    if (segment) |s| {
-        const name = try std.fmt.allocPrint(self.allocator, "segment_{}.dat", .{s.version});
-        defer self.allocator.free(name);
-        log.info("writing segment {s} to disk", .{name});
-        var file = try self.dir.createFile(name, .{});
-        defer file.close();
-        try s.write(file.writer());
-        self.run_cleanup = false;
+    const staged_segment_or_null = self.stage.freezeFirstSegment();
+    if (staged_segment_or_null) |staged_segment| {
+        const segment = Segment.init(self.allocator);
+        try segment.convert(self.dir, staged_segment);
+
+        self.write_lock.lock();
+        defer self.write_lock.unlock();
+
+        var node = try self.allocator.create(Segments.Node);
+        node.data = segment;
+
+        self.stage.removeFrozenSegment(staged_segment);
+        self.segments.append(node);
     }
 }
 
@@ -92,6 +97,9 @@ pub fn update(self: *Self, changes: []const Change) !void {
 }
 
 pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
+    self.write_lock.lockShared();
+    defer self.write_lock.unlockShared();
+
     const sorted_hashes = try self.allocator.dupe(u32, hashes);
     defer self.allocator.free(sorted_hashes);
     std.sort.pdq(u32, sorted_hashes, {}, std.sort.asc(u32));
