@@ -14,7 +14,8 @@ const filefmt = @import("filefmt.zig");
 const Self = @This();
 
 allocator: std.mem.Allocator,
-version: u32,
+version: u32 = 0,
+max_commit_id: u64 = 0,
 docs: std.AutoHashMap(u32, bool),
 items: std.ArrayList(Item),
 frozen: bool = false,
@@ -24,7 +25,6 @@ pub fn init(allocator: std.mem.Allocator) Self {
         .allocator = allocator,
         .docs = std.AutoHashMap(u32, bool).init(allocator),
         .items = std.ArrayList(Item).init(allocator),
-        .version = 0,
     };
 }
 

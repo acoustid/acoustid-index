@@ -15,6 +15,8 @@ const Deadline = @import("utils/Deadline.zig");
 const Segment = @import("Segment.zig");
 const Segments = std.DoublyLinkedList(Segment);
 
+const Oplog = @import("Oplog.zig");
+
 const filefmt = @import("filefmt.zig");
 
 const Self = @This();
@@ -29,6 +31,8 @@ scheduler: zul.Scheduler(Task, *Self),
 last_cleanup_at: i64 = 0,
 cleanup_interval: i64 = 1000,
 run_cleanup: bool = true,
+
+oplog: Oplog,
 
 const Task = union(enum) {
     cleanup: void,
@@ -52,6 +56,7 @@ pub fn init(allocator: std.mem.Allocator, dir: fs.Dir) Self {
         .stage = InMemoryIndex.init(allocator),
         .segments = .{},
         .scheduler = zul.Scheduler(Task, *Self).init(allocator),
+        .oplog = Oplog.init(allocator, dir),
     };
     self.stage.auto_cleanup = true;
     return self;
@@ -62,6 +67,7 @@ pub fn start(self: *Self) !void {
 }
 
 pub fn deinit(self: *Self) void {
+    self.oplog.deinit();
     self.stage.deinit();
     while (self.segments.popFirst()) |node| {
         self.destroySegment(node);
@@ -135,12 +141,14 @@ fn cleanup(self: *Self) !void {
 
         self.stage.removeSegment(segment);
         self.segments.append(node);
+        self.oplog.truncate(node.data.max_commit_id);
         commited = true;
     }
 }
 
 pub fn update(self: *Self, changes: []const Change) !void {
-    try self.stage.update(changes);
+    const commit_id = try self.oplog.write(changes);
+    try self.stage.update(changes, commit_id);
     try self.scheduler.scheduleIn(.{ .cleanup = {} }, 0);
 }
 

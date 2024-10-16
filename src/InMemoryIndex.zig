@@ -52,13 +52,15 @@ fn destroySegment(self: *Self, node: *InMemorySegments.Node) void {
     self.allocator.destroy(node);
 }
 
-pub fn update(self: *Self, changes: []const Change) !void {
+pub fn update(self: *Self, changes: []const Change, commit_id: u64) !void {
     var committed = false;
 
     const node = try self.createSegment();
     defer {
         if (!committed) self.destroySegment(node);
     }
+
+    node.data.max_commit_id = commit_id;
 
     var num_items: usize = 0;
     for (changes) |change| {
@@ -198,6 +200,7 @@ fn prepareMerge(self: *Self) !?Merge {
     const merge = Merge{ .first = node1, .last = node2, .replacement = node };
 
     node.data.version = segment1.version;
+    node.data.max_commit_id = @max(segment1.max_commit_id, segment2.max_commit_id);
 
     var total_docs: usize = 0;
     var total_items: usize = 0;
@@ -364,7 +367,7 @@ test "insert and search" {
     try index.update(&[_]Change{.{ .insert = .{
         .id = 1,
         .hashes = &[_]u32{ 1, 2, 3 },
-    } }});
+    } }}, 1);
 
     var results = SearchResults.init(std.testing.allocator);
     defer results.deinit();
@@ -387,12 +390,12 @@ test "insert, partial update and search" {
     try index.update(&[_]Change{.{ .insert = .{
         .id = 1,
         .hashes = &[_]u32{ 1, 2, 3 },
-    } }});
+    } }}, 1);
 
     try index.update(&[_]Change{.{ .insert = .{
         .id = 1,
         .hashes = &[_]u32{ 1, 2, 4 },
-    } }});
+    } }}, 2);
 
     var results = SearchResults.init(std.testing.allocator);
     defer results.deinit();
@@ -415,12 +418,12 @@ test "insert, full update and search" {
     try index.update(&[_]Change{.{ .insert = .{
         .id = 1,
         .hashes = &[_]u32{ 1, 2, 3 },
-    } }});
+    } }}, 1);
 
     try index.update(&[_]Change{.{ .insert = .{
         .id = 1,
         .hashes = &[_]u32{ 100, 200, 300 },
-    } }});
+    } }}, 2);
 
     var results = SearchResults.init(std.testing.allocator);
     defer results.deinit();
@@ -435,12 +438,15 @@ test "insert, full update (multiple times) and search" {
     var index = Self.init(std.testing.allocator);
     defer index.deinit();
 
+    var commit_id: u64 = 1;
+
     var i: u32 = 1000;
     while (i > 0) : (i -= 1) {
         try index.update(&[_]Change{.{ .insert = .{
             .id = i % 10,
             .hashes = &[_]u32{ i * 1000 + 1, i * 1000 + 2, i * 1000 + 3 },
-        } }});
+        } }}, commit_id);
+        commit_id += 1;
     }
     i += 1;
 
@@ -465,11 +471,11 @@ test "insert, delete and search" {
     try index.update(&[_]Change{.{ .insert = .{
         .id = 1,
         .hashes = &[_]u32{ 1, 2, 3 },
-    } }});
+    } }}, 1);
 
     try index.update(&[_]Change{.{ .delete = .{
         .id = 1,
-    } }});
+    } }}, 2);
 
     var results = SearchResults.init(std.testing.allocator);
     defer results.deinit();
@@ -489,16 +495,18 @@ test "freeze segment" {
     try index.update(&[_]Change{.{ .insert = .{
         .id = 1,
         .hashes = &[_]u32{ 1, 2, 3 },
-    } }});
+    } }}, 1);
 
     const segment1 = index.freezeFirstSegment();
     try std.testing.expect(segment1 == null);
 
+    var commit_id: u64 = 2;
     for (1..100) |i| {
         try index.update(&[_]Change{.{ .insert = .{
             .id = @intCast(i),
             .hashes = &[_]u32{ 1, 2, 3 },
-        } }});
+        } }}, commit_id);
+        commit_id += 1;
     }
 
     const segment2 = index.freezeFirstSegment();

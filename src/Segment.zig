@@ -13,6 +13,7 @@ pub const Version = std.meta.Tuple(&.{ u32, u32 });
 
 allocator: std.mem.Allocator,
 version: Version = .{ 0, 0 },
+max_commit_id: u64 = 0,
 docs: std.AutoHashMap(u32, bool),
 index: std.ArrayList(u32),
 block_size: usize = 0,
@@ -111,6 +112,8 @@ pub fn merge(self: *Self, dir: std.fs.Dir, sources: [2]*Self) !void {
 
     self.version[0] = sources[0].version[0];
     self.version[1] = sources[1].version[1];
+
+    self.max_commit_id = @max(sources[0].max_commit_id, sources[1].max_commit_id);
 
     var file_name_buf: [max_file_name_size]u8 = undefined;
     const file_name = try std.fmt.bufPrint(&file_name_buf, file_name_fmt, .{ self.version[0], self.version[1] });

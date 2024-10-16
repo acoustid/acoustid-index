@@ -205,8 +205,11 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
     try testing.expectEqual(items.items[0], item);
 }
 
-const header_magic_v1 = 0x21f75da5;
-const footer_magic_v1 = 0x5fb83a32;
+// "SGM1"
+const header_magic_v1 = 0x53474d31;
+
+// "1SGM"
+const footer_magic_v1 = 0x3153474d;
 
 pub const Header = packed struct {
     magic: u32 = header_magic_v1,
@@ -214,6 +217,7 @@ pub const Header = packed struct {
     num_docs: u32,
     num_items: u32,
     block_size: u32,
+    max_commit_id: u64,
 };
 
 pub const Footer = packed struct {
@@ -276,6 +280,7 @@ pub fn writeFile(writer: anytype, segment: *InMemorySegment) !void {
         .num_docs = @intCast(segment.docs.count()),
         .num_items = @intCast(segment.items.items.len),
         .block_size = block_size,
+        .max_commit_id = segment.max_commit_id,
     };
     try writeHeader(writer, header);
 
@@ -345,6 +350,7 @@ pub fn readFile(file: fs.File, segment: *Segment) !void {
     segment.version[0] = header.version;
     segment.version[1] = header.version;
     segment.block_size = header.block_size;
+    segment.max_commit_id = header.max_commit_id;
 
     try segment.docs.ensureTotalCapacity(header.num_docs);
 
@@ -421,7 +427,8 @@ test "writeFile/readFile" {
     }
 }
 
-const index_header_magic_v1: u32 = 0x494e5844;
+// "IDX1"
+const index_header_magic_v1: u32 = 0x49445831;
 
 const IndexHeader = packed struct {
     magic: u32,
