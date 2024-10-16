@@ -15,6 +15,8 @@ const Deadline = @import("utils/Deadline.zig");
 const Segment = @import("Segment.zig");
 const Segments = std.DoublyLinkedList(Segment);
 
+const filefmt = @import("filefmt.zig");
+
 const Self = @This();
 
 dir: fs.Dir,
@@ -78,19 +80,36 @@ fn destroySegment(self: *Self, node: *Segments.Node) void {
     self.allocator.destroy(node);
 }
 
+const index_file_name = "index.dat";
+
 fn write(self: *Self) !void {
-    var file = try self.dir.atomicFile("index.dat", .{});
+    var file = try self.dir.atomicFile(index_file_name, .{});
     defer file.deinit();
 
-    var writer = file.file.writer();
-    try writer.writeInt(u32, @truncate(self.segments.len), .little);
+    var segments = std.ArrayList(Segment.Version).init(self.allocator);
+    defer segments.deinit();
+
+    try segments.ensureTotalCapacity(self.segments.len);
+
     var it = self.segments.first;
     while (it) |node| : (it = node.next) {
-        try writer.writeInt(u32, node.data.version[0], .little);
-        try writer.writeInt(u32, node.data.version[1], .little);
+        try segments.append(node.data.version);
     }
 
+    try filefmt.writeIndexFile(file.file.writer(), segments);
+
     try file.finish();
+}
+
+fn read(self: *Self) !void {
+    var file = try self.dir.openFile(index_file_name, .{});
+    defer file.close();
+
+    var segments = std.ArrayList(Segment.Version).init(self.allocator);
+    defer segments.deinit();
+
+    try filefmt.readIndexFile(file.reader(), segments);
+    return error.TODO;
 }
 
 fn cleanup(self: *Self) !void {

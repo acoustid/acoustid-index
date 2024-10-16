@@ -420,3 +420,71 @@ test "writeFile/readFile" {
         }, items.items);
     }
 }
+
+const index_header_magic_v1: u32 = 0x494e5844;
+
+const IndexHeader = packed struct {
+    magic: u32,
+    version: u32,
+    num_segments: u32,
+};
+
+pub fn writeIndexFile(writer: anytype, segments: std.ArrayList(Segment.Version)) !void {
+    const header = IndexHeader{
+        .magic = index_header_magic_v1,
+        .version = 1,
+        .num_segments = @intCast(segments.items.len),
+    };
+    try writer.writeStructEndian(header, .little);
+    for (segments.items) |segment| {
+        try writer.writeInt(u32, segment[0], .little);
+        try writer.writeInt(u32, segment[1], .little);
+    }
+}
+
+pub fn readIndexfile(reader: anytype, segments: *std.ArrayList(Segment.Version)) !void {
+    const header = try reader.readStructEndian(IndexHeader, .little);
+    if (header.magic != index_header_magic_v1) {
+        return error.InvalidIndexfile;
+    }
+    if (header.version != 1) {
+        return error.InvalidIndexfile;
+    }
+    try segments.ensureTotalCapacity(header.num_segments);
+    for (0..header.num_segments) |_| {
+        const v0 = try reader.readInt(u32, .little);
+        const v1 = try reader.readInt(u32, .little);
+        try segments.append(Segment.Version{ v0, v1 });
+    }
+}
+
+test "readIndexfile/writeIndexfile" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var segments = std.ArrayList(Segment.Version).init(testing.allocator);
+    defer segments.deinit();
+
+    try segments.append(Segment.Version{ 1, 1 });
+    try segments.append(Segment.Version{ 2, 3 });
+    try segments.append(Segment.Version{ 4, 4 });
+
+    {
+        var file = try tmp.dir.createFile("test.idx", .{});
+        defer file.close();
+
+        try writeIndexFile(file.writer(), segments);
+    }
+
+    {
+        var file = try tmp.dir.openFile("test.idx", .{});
+        defer file.close();
+
+        var segments2 = std.ArrayList(Segment.Version).init(testing.allocator);
+        defer segments2.deinit();
+
+        try readIndexfile(file.reader(), &segments2);
+
+        try testing.expectEqualSlices(Segment.Version, segments.items, segments2.items);
+    }
+}
