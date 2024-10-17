@@ -7,7 +7,10 @@ const Self = @This();
 
 pub const Entry = struct {
     id: u64 = 0,
-    change: ?common.Change = null,
+    apply: ?common.Change = null,
+    begin: ?struct {
+        size: u32 = 0,
+    } = null,
     commit: ?bool = null,
 };
 
@@ -49,10 +52,19 @@ pub fn write(self: *Self, changes: []const Change) !u64 {
 
     const commit_id = self.last_commit_id + 1;
 
+    const begin_entry = Entry{
+        .id = commit_id,
+        .begin = .{
+            .size = @truncate(changes.len),
+        },
+    };
+    try std.json.stringify(begin_entry, .{ .emit_null_optional_fields = false }, writer);
+    try writer.writeByte(newline);
+
     for (changes) |change| {
         const entry = Entry{
             .id = commit_id,
-            .change = change,
+            .apply = change,
         };
         try std.json.stringify(entry, .{ .emit_null_optional_fields = false }, writer);
         try writer.writeByte(newline);
@@ -64,6 +76,8 @@ pub fn write(self: *Self, changes: []const Change) !u64 {
     };
     try std.json.stringify(commit_entry, .{ .emit_null_optional_fields = false }, writer);
     try writer.writeByte(newline);
+
+    try file.sync();
 
     self.last_commit_id = commit_id;
     return commit_id;
@@ -91,7 +105,8 @@ test "write entries" {
     defer std.testing.allocator.free(contents);
 
     const expected =
-        \\{"id":1,"change":{"insert":{"id":1,"hashes":[1,2,3]}}}
+        \\{"id":1,"begin":{"size":1}}
+        \\{"id":1,"apply":{"insert":{"id":1,"hashes":[1,2,3]}}}
         \\{"id":1,"commit":true}
         \\
     ;
