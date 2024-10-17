@@ -16,7 +16,11 @@ pub const Entry = struct {
 
 allocator: std.mem.Allocator,
 dir: std.fs.Dir,
-file: ?std.fs.File = null,
+
+current_file: ?std.fs.File = null,
+current_file_size: usize = 0,
+max_file_size: usize = 1_000_000,
+
 last_commit_id: u64 = 0,
 smallest_needed_commit_id: u64 = 0,
 
@@ -31,12 +35,25 @@ pub fn deinit(self: *Self) void {
     _ = self;
 }
 
-fn getFile(self: *Self) !std.fs.File {
-    if (self.file) |file| {
-        return file;
+fn openFile(self: *Self, commit_id: u64) !std.fs.File {
+    var buf: [32]u8 = undefined;
+    const file_name = try std.fmt.bufPrint(&buf, "{d:0>20}.xlog", .{commit_id});
+
+    const file = try self.dir.createFile(file_name, .{ .exclusive = true });
+    return file;
+}
+
+fn getFile(self: *Self, commit_id: u64) !std.fs.File {
+    if (self.current_file) |file| {
+        if (self.current_file_size < self.max_file_size) {
+            return file;
+        }
+        self.current_file = null;
+        file.close();
     }
-    const file = try self.dir.createFile("oplog.jsonl", .{});
-    self.file = file;
+
+    const file = try self.openFile(commit_id);
+    self.current_file = file;
     return file;
 }
 
@@ -47,10 +64,10 @@ pub fn truncate(self: *Self, commit_id: u64) void {
 const newline: u8 = '\n';
 
 pub fn write(self: *Self, changes: []const Change) !u64 {
-    const file = try self.getFile();
-    const writer = file.writer();
-
     const commit_id = self.last_commit_id + 1;
+
+    const file = try self.getFile(commit_id);
+    const writer = file.writer();
 
     const begin_entry = Entry{
         .id = commit_id,
@@ -79,6 +96,7 @@ pub fn write(self: *Self, changes: []const Change) !u64 {
 
     try file.sync();
 
+    self.current_file_size += changes.len;
     self.last_commit_id = commit_id;
     return commit_id;
 }
@@ -98,7 +116,7 @@ test "write entries" {
     const commit_id = try oplog.write(&changes);
     try std.testing.expectEqual(1, commit_id);
 
-    var file = try tmpDir.dir.openFile("oplog.jsonl", .{});
+    var file = try tmpDir.dir.openFile("00000000000000000001.xlog", .{});
     defer file.close();
 
     const contents = try file.reader().readAllAlloc(std.testing.allocator, 1024 * 1024);
