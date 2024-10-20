@@ -63,10 +63,10 @@ fn readVarint32(buf: []const u8) struct { value: u32, size: usize } {
     while (i < @min(maxVarint32Size, buf.len)) : (i += 1) {
         const b = buf[i];
         v |= @as(u32, @intCast(b & 0x7F)) << shift;
-        shift += 7;
         if (b & 0x80 == 0) {
             return .{ .value = v, .size = i + 1 };
         }
+        shift += 7;
     }
     return .{ .value = v, .size = i };
 }
@@ -449,7 +449,7 @@ pub fn writeIndexFile(writer: anytype, segments: std.ArrayList(Segment.Version))
     }
 }
 
-pub fn readIndexfile(reader: anytype, segments: *std.ArrayList(Segment.Version)) !void {
+pub fn readIndexFile(reader: anytype, segments: *std.ArrayList(Segment.Version)) !void {
     const header = try reader.readStructEndian(IndexHeader, .little);
     if (header.magic != index_header_magic_v1) {
         return error.InvalidIndexfile;
@@ -465,7 +465,7 @@ pub fn readIndexfile(reader: anytype, segments: *std.ArrayList(Segment.Version))
     }
 }
 
-test "readIndexfile/writeIndexfile" {
+test "readIndexFile/writeIndexFile" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
 
@@ -490,7 +490,7 @@ test "readIndexfile/writeIndexfile" {
         var segments2 = std.ArrayList(Segment.Version).init(testing.allocator);
         defer segments2.deinit();
 
-        try readIndexfile(file.reader(), &segments2);
+        try readIndexFile(file.reader(), &segments2);
 
         try testing.expectEqualSlices(Segment.Version, segments.items, segments2.items);
     }

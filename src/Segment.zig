@@ -86,6 +86,15 @@ fn read(self: *Self, dir: std.fs.Dir, file_name: []const u8) !void {
     try filefmt.readFile(file, self);
 }
 
+pub fn open(self: *Self, dir: std.fs.Dir, version: Version) !void {
+    var file_name_buf: [max_file_name_size]u8 = undefined;
+    const file_name = try std.fmt.bufPrint(&file_name_buf, file_name_fmt, .{ version[0], version[1] });
+
+    std.debug.print("Reading segment {s}\n", .{file_name});
+
+    try self.read(dir, file_name);
+}
+
 pub fn convert(self: *Self, dir: std.fs.Dir, source: *InMemorySegment) !void {
     if (!source.frozen) {
         return error.SourceSegmentNotFrozen;

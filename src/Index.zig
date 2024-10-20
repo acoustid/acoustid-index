@@ -1,5 +1,4 @@
 const std = @import("std");
-const fs = std.fs;
 const log = std.log.scoped(.index);
 
 const zul = @import("zul");
@@ -21,7 +20,13 @@ const filefmt = @import("filefmt.zig");
 
 const Self = @This();
 
-dir: fs.Dir,
+const Options = struct {
+    min_segment_size: usize = 1000,
+};
+
+options: Options,
+
+dir: std.fs.Dir,
 allocator: std.mem.Allocator,
 stage: InMemoryIndex,
 segments: Segments,
@@ -30,7 +35,6 @@ write_lock: std.Thread.RwLock = .{},
 scheduler: zul.Scheduler(Task, *Self),
 last_cleanup_at: i64 = 0,
 cleanup_interval: i64 = 1000,
-run_cleanup: bool = true,
 
 oplog: Oplog,
 oplog_dir: std.fs.Dir,
@@ -50,7 +54,7 @@ const Task = union(enum) {
     }
 };
 
-pub fn init(allocator: std.mem.Allocator, dir: fs.Dir) !Self {
+pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Self {
     var done: bool = false;
 
     var oplog_dir = try dir.makeOpenPath("oplog", .{ .iterate = true });
@@ -59,9 +63,10 @@ pub fn init(allocator: std.mem.Allocator, dir: fs.Dir) !Self {
     }
 
     const self = Self{
+        .options = options,
         .dir = dir,
         .allocator = allocator,
-        .stage = InMemoryIndex.init(allocator),
+        .stage = InMemoryIndex.init(allocator, .{ .max_segment_size = options.min_segment_size }),
         .segments = .{},
         .scheduler = zul.Scheduler(Task, *Self).init(allocator),
         .oplog = Oplog.init(allocator, oplog_dir),
@@ -73,13 +78,13 @@ pub fn init(allocator: std.mem.Allocator, dir: fs.Dir) !Self {
 }
 
 pub fn deinit(self: *Self) void {
+    self.scheduler.deinit();
     self.oplog.deinit();
     self.oplog_dir.close();
     self.stage.deinit();
     while (self.segments.popFirst()) |node| {
         self.destroySegment(node);
     }
-    self.scheduler.deinit();
 }
 
 fn getMaxCommitId(self: *Self) u64 {
@@ -95,7 +100,7 @@ fn getMaxCommitId(self: *Self) u64 {
 
 pub fn open(self: *Self) !void {
     try self.scheduler.start(self);
-    // TODO load segments
+    try self.read();
     try self.oplog.open(self.getMaxCommitId());
 }
 
@@ -132,22 +137,32 @@ fn write(self: *Self) !void {
 }
 
 fn read(self: *Self) !void {
-    var file = try self.dir.openFile(index_file_name, .{});
+    if (self.segments.len > 0) {
+        return error.AlreadyOpened;
+    }
+
+    var file = self.dir.openFile(index_file_name, .{}) catch |err| {
+        if (err == error.FileNotFound) {
+            return;
+        }
+        return err;
+    };
     defer file.close();
 
     var segments = std.ArrayList(Segment.Version).init(self.allocator);
     defer segments.deinit();
 
-    try filefmt.readIndexFile(file.reader(), segments);
-    return error.TODO;
+    try filefmt.readIndexFile(file.reader(), &segments);
+
+    for (segments.items) |v| {
+        const node = try self.createSegment();
+        try node.data.open(self.dir, v);
+        self.segments.append(node);
+    }
 }
 
 fn cleanup(self: *Self) !void {
-    if (!self.run_cleanup) return;
-
     log.info("running cleanup", .{});
-
-    // try self.stage.cleanup();
 
     var max_commit_id: ?u64 = null;
 
@@ -172,7 +187,9 @@ fn cleanup(self: *Self) !void {
     }
 
     if (max_commit_id) |commit_id| {
-        try self.oplog.truncate(commit_id);
+        self.oplog.truncate(commit_id) catch |err| {
+            log.err("failed to truncate oplog: {}", .{err});
+        };
     }
 }
 
@@ -207,7 +224,7 @@ test "insert and search" {
     var tmpDir = std.testing.tmpDir(.{});
     defer tmpDir.cleanup();
 
-    var index = try Self.init(std.testing.allocator, tmpDir.dir);
+    var index = try Self.init(std.testing.allocator, tmpDir.dir, .{});
     defer index.deinit();
 
     try index.open();
@@ -229,4 +246,37 @@ test "insert and search" {
     try std.testing.expectEqual(1, result.?.id);
     try std.testing.expectEqual(3, result.?.score);
     try std.testing.expect(result.?.version != 0);
+}
+
+test "persistance" {
+    var tmpDir = std.testing.tmpDir(.{});
+    defer tmpDir.cleanup();
+
+    {
+        var index = try Self.init(std.testing.allocator, tmpDir.dir, .{ .min_segment_size = 1000 });
+        defer index.deinit();
+
+        try index.open();
+
+        var hashes_buf: [100]u32 = undefined;
+        const hashes = hashes_buf[0..];
+        var prng = std.rand.DefaultPrng.init(0);
+        const rand = prng.random();
+        for (0..100) |i| {
+            for (hashes) |*h| {
+                h.* = std.rand.int(rand, u32);
+            }
+            try index.update(&[_]Change{.{ .insert = .{
+                .id = @intCast(i),
+                .hashes = hashes,
+            } }});
+        }
+    }
+
+    {
+        var index = try Self.init(std.testing.allocator, tmpDir.dir, .{});
+        defer index.deinit();
+
+        try index.open();
+    }
 }

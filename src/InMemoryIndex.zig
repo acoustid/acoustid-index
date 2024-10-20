@@ -13,18 +13,22 @@ const Change = common.Change;
 const InMemorySegment = @import("InMemorySegment.zig");
 const InMemorySegments = std.DoublyLinkedList(InMemorySegment);
 
+const Options = struct {
+    max_segment_size: usize = 1_000_000,
+};
+
+options: Options,
 allocator: std.mem.Allocator,
 write_lock: std.Thread.RwLock,
 merge_lock: std.Thread.Mutex,
 segments: InMemorySegments,
-max_items_per_segment: usize = 1_000_000,
-max_segments: usize = 16,
 auto_cleanup: bool = true,
 
 const Self = @This();
 
-pub fn init(allocator: std.mem.Allocator) Self {
+pub fn init(allocator: std.mem.Allocator, options: Options) Self {
     return .{
+        .options = options,
         .allocator = allocator,
         .write_lock = .{},
         .merge_lock = .{},
@@ -134,6 +138,17 @@ fn hasNewerVersion(self: *Self, id: u32, version: u32) bool {
     return false;
 }
 
+fn getMaxSegments(self: *Self, total_size: usize) usize {
+    const max_level_size = @min(self.options.max_segment_size, @max(total_size / 2, 10));
+    const min_level_size = @max(max_level_size / 1000, 10);
+    const x = max_level_size / min_level_size;
+    if (x == 0) {
+        return 1;
+    } else {
+        return @max(1, std.math.log2_int(usize, x));
+    }
+}
+
 const Merge = struct {
     first: *InMemorySegments.Node,
     last: *InMemorySegments.Node,
@@ -145,17 +160,26 @@ fn prepareMerge(self: *Self) !?Merge {
     defer self.write_lock.unlockShared();
 
     var total_size: usize = 0;
+    var max_size: usize = 0;
+    var min_size: usize = std.math.maxInt(usize);
     var num_segments: usize = 0;
     var segments_iter = self.segments.first;
     while (segments_iter) |node| : (segments_iter = node.next) {
-        if (node.data.frozen or node.data.items.items.len > self.max_items_per_segment) {
+        if (node.data.frozen or node.data.items.items.len > self.options.max_segment_size) {
             continue;
         }
         num_segments += 1;
         total_size += node.data.items.items.len;
+        max_size = @max(max_size, node.data.items.items.len);
+        min_size = @min(min_size, node.data.items.items.len);
     }
 
-    if (num_segments < self.max_segments) {
+    if (total_size == 0) {
+        return null;
+    }
+
+    const max_segments = self.getMaxSegments(total_size);
+    if (num_segments < max_segments) {
         return null;
     }
 
@@ -164,7 +188,7 @@ fn prepareMerge(self: *Self) !?Merge {
     segments_iter = self.segments.first;
     var level_size = @as(f64, @floatFromInt(total_size)) / 2;
     while (segments_iter) |node| : (segments_iter = node.next) {
-        if (node.data.frozen or node.data.items.items.len > self.max_items_per_segment) {
+        if (node.data.frozen or node.data.items.items.len > self.options.max_segment_size) {
             continue;
         }
         if (node.next) |nextNode| {
@@ -298,7 +322,7 @@ pub fn freezeFirstSegment(self: *Self) ?*InMemorySegment {
             if (segment.frozen) {
                 return segment;
             }
-            if (segment.items.items.len >= self.max_items_per_segment) {
+            if (segment.items.items.len >= self.options.max_segment_size) {
                 segment.frozen = true;
                 return segment;
             }
@@ -361,7 +385,7 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadlin
 }
 
 test "insert and search" {
-    var index = Self.init(std.testing.allocator);
+    var index = Self.init(std.testing.allocator, .{});
     defer index.deinit();
 
     try index.update(&[_]Change{.{ .insert = .{
@@ -384,7 +408,7 @@ test "insert and search" {
 }
 
 test "insert, partial update and search" {
-    var index = Self.init(std.testing.allocator);
+    var index = Self.init(std.testing.allocator, .{});
     defer index.deinit();
 
     try index.update(&[_]Change{.{ .insert = .{
@@ -412,7 +436,7 @@ test "insert, partial update and search" {
 }
 
 test "insert, full update and search" {
-    var index = Self.init(std.testing.allocator);
+    var index = Self.init(std.testing.allocator, .{});
     defer index.deinit();
 
     try index.update(&[_]Change{.{ .insert = .{
@@ -435,7 +459,7 @@ test "insert, full update and search" {
 }
 
 test "insert, full update (multiple times) and search" {
-    var index = Self.init(std.testing.allocator);
+    var index = Self.init(std.testing.allocator, .{});
     defer index.deinit();
 
     var commit_id: u64 = 1;
@@ -465,7 +489,7 @@ test "insert, full update (multiple times) and search" {
 }
 
 test "insert, delete and search" {
-    var index = Self.init(std.testing.allocator);
+    var index = Self.init(std.testing.allocator, .{});
     defer index.deinit();
 
     try index.update(&[_]Change{.{ .insert = .{
@@ -487,10 +511,8 @@ test "insert, delete and search" {
 }
 
 test "freeze segment" {
-    var index = Self.init(std.testing.allocator);
+    var index = Self.init(std.testing.allocator, .{ .max_segment_size = 100 });
     defer index.deinit();
-
-    index.max_items_per_segment = 100;
 
     try index.update(&[_]Change{.{ .insert = .{
         .id = 1,
