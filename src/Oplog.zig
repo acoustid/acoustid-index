@@ -48,11 +48,9 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn open(self: *Self, first_commit_id: u64) !void {
-    try self.dir.makePath(".");
-
     var it = self.dir.iterate();
     while (try it.next()) |entry| {
-        if (entry.kind == .File) {
+        if (entry.kind == .file) {
             const id = try parseFileName(entry.name);
             try self.files.append(.{ .id = id });
         }
@@ -84,23 +82,24 @@ fn scanFile(self: *Self, file_id: u64) !struct { first: u64, last: u64 } {
     var reader = buffered_reader.reader();
 
     var arena = std.heap.ArenaAllocator.init(self.allocator);
-    defer arena;
+    defer arena.deinit();
 
     var allocator = arena.allocator();
 
-    var line_buf = try allocator.alloc(u8, 64 * 1024);
+    const line_buf = try allocator.alloc(u8, 64 * 1024);
+    defer allocator.free(line_buf);
 
     var first_commit_id: ?u64 = null;
     var last_commit_id: ?u64 = null;
 
     while (true) {
-        const line = reader.readUntilDelimiter(&line_buf, '\n') catch |err| {
+        const line = reader.readUntilDelimiter(line_buf, '\n') catch |err| {
             if (err == error.EndOfStream) break;
             return err;
         };
         if (line.len == 0) continue;
 
-        var parsed_entry = try std.json.parseFromSlice(Entry, &allocator, line, .{});
+        var parsed_entry = try std.json.parseFromSlice(Entry, allocator, line, .{});
         defer parsed_entry.deinit();
 
         if (parsed_entry.value.commit != null) {
@@ -181,8 +180,7 @@ fn openFile(self: *Self, commit_id: u64) !std.fs.File {
     var buf: [file_name_size]u8 = undefined;
     const file_name = try generateFileName(&buf, commit_id);
     std.log.info("creating oplog file {s}", .{file_name});
-    const file = try self.dir.createFile(file_name, .{ .exclusive = true });
-    return file;
+    return self.dir.createFile(file_name, .{ .exclusive = true });
 }
 
 fn closeCurrentFile(self: *Self) void {
@@ -211,10 +209,10 @@ fn getFile(self: *Self, commit_id: u64) !std.fs.File {
     return file;
 }
 
-pub fn truncate(self: *Self, commit_id: u64) void {
+pub fn truncate(self: *Self, commit_id: u64) !void {
     assert(std.sort.isSorted(FileInfo, self.files.items, {}, FileInfo.cmp));
 
-    var pos = std.sort.lowerBound(FileInfo, self.files.items, FileInfo{ .id = commit_id }, {}, FileInfo.cmp);
+    var pos = std.sort.lowerBound(FileInfo, FileInfo{ .id = commit_id }, self.files.items, {}, FileInfo.cmp);
     if (pos > 0) {
         pos -= 1;
     }

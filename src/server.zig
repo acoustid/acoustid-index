@@ -144,10 +144,10 @@ pub fn main() !void {
         threads = @intCast(try std.Thread.getCpuCount());
     }
 
-    var index = Index.init(allocator, dir);
+    var index = try Index.init(allocator, dir);
     defer index.deinit();
 
-    try index.start();
+    try index.open();
 
     try run(&index, address, port, threads);
 }

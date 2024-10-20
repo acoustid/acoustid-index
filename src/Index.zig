@@ -33,6 +33,7 @@ cleanup_interval: i64 = 1000,
 run_cleanup: bool = true,
 
 oplog: Oplog,
+oplog_dir: std.fs.Dir,
 
 const Task = union(enum) {
     cleanup: void,
@@ -49,30 +50,53 @@ const Task = union(enum) {
     }
 };
 
-pub fn init(allocator: std.mem.Allocator, dir: fs.Dir) Self {
-    var self = Self{
+pub fn init(allocator: std.mem.Allocator, dir: fs.Dir) !Self {
+    var done: bool = false;
+
+    var oplog_dir = try dir.makeOpenPath("oplog", .{ .iterate = true });
+    defer {
+        if (!done) oplog_dir.close();
+    }
+
+    const self = Self{
         .dir = dir,
         .allocator = allocator,
         .stage = InMemoryIndex.init(allocator),
         .segments = .{},
         .scheduler = zul.Scheduler(Task, *Self).init(allocator),
-        .oplog = Oplog.init(allocator, dir),
+        .oplog = Oplog.init(allocator, oplog_dir),
+        .oplog_dir = oplog_dir,
     };
-    self.stage.auto_cleanup = true;
-    return self;
-}
 
-pub fn start(self: *Self) !void {
-    try self.scheduler.start(self);
+    done = true;
+    return self;
 }
 
 pub fn deinit(self: *Self) void {
     self.oplog.deinit();
+    self.oplog_dir.close();
     self.stage.deinit();
     while (self.segments.popFirst()) |node| {
         self.destroySegment(node);
     }
     self.scheduler.deinit();
+}
+
+fn getMaxCommitId(self: *Self) u64 {
+    var max_commit_id: u64 = 0;
+    var it = self.segments.first;
+    while (it) |node| : (it = node.next) {
+        if (node.data.max_commit_id > max_commit_id) {
+            max_commit_id = node.data.max_commit_id;
+        }
+    }
+    return max_commit_id;
+}
+
+pub fn open(self: *Self) !void {
+    try self.scheduler.start(self);
+    // TODO load segments
+    try self.oplog.open(self.getMaxCommitId());
 }
 
 fn createSegment(self: *Self) !*Segments.Node {
@@ -125,6 +149,8 @@ fn cleanup(self: *Self) !void {
 
     // try self.stage.cleanup();
 
+    var max_commit_id: ?u64 = null;
+
     if (self.stage.freezeFirstSegment()) |segment| {
         var commited = false;
         const node = try self.createSegment();
@@ -141,8 +167,12 @@ fn cleanup(self: *Self) !void {
 
         self.stage.removeSegment(segment);
         self.segments.append(node);
-        self.oplog.truncate(node.data.max_commit_id);
+        max_commit_id = node.data.max_commit_id;
         commited = true;
+    }
+
+    if (max_commit_id) |commit_id| {
+        try self.oplog.truncate(commit_id);
     }
 }
 
@@ -177,10 +207,10 @@ test "insert and search" {
     var tmpDir = std.testing.tmpDir(.{});
     defer tmpDir.cleanup();
 
-    var index = Self.init(std.testing.allocator, tmpDir.dir);
+    var index = try Self.init(std.testing.allocator, tmpDir.dir);
     defer index.deinit();
 
-    try index.start();
+    try index.open();
 
     try index.update(&[_]Change{.{ .insert = .{
         .id = 1,
