@@ -14,6 +14,11 @@ pub const FileInfo = struct {
     }
 };
 
+pub const Transaction = struct {
+    commit_id: u64,
+    changes: []Change,
+};
+
 pub const Entry = struct {
     id: u64 = 0,
     apply: ?common.Change = null,
@@ -60,61 +65,11 @@ pub fn open(self: *Self, first_commit_id: u64) !void {
 
     try self.truncate(first_commit_id);
 
-    for (self.files.items) |file_info| {
-        const commit_ids = self.scanFile(file_info.id) catch |err| {
-            if (err == error.NoCommits) {
-                continue;
-            }
-            return err;
-        };
-        self.last_commit_id = @max(self.last_commit_id, commit_ids.last);
+    var oplog_it = OplogIterator.init(self.allocator, self.dir, self.files, first_commit_id);
+    defer oplog_it.deinit();
+    while (try oplog_it.next()) |txn| {
+        self.last_commit_id = @max(self.last_commit_id, txn.commit_id);
     }
-}
-
-fn scanFile(self: *Self, file_id: u64) !struct { first: u64, last: u64 } {
-    var buf: [file_name_size]u8 = undefined;
-    const file_name = try generateFileName(&buf, file_id);
-
-    var file = try self.dir.openFile(file_name, .{});
-    defer file.close();
-
-    var buffered_reader = std.io.bufferedReader(file.reader());
-    var reader = buffered_reader.reader();
-
-    var arena = std.heap.ArenaAllocator.init(self.allocator);
-    defer arena.deinit();
-
-    var allocator = arena.allocator();
-
-    const line_buf = try allocator.alloc(u8, 64 * 1024);
-    defer allocator.free(line_buf);
-
-    var first_commit_id: ?u64 = null;
-    var last_commit_id: ?u64 = null;
-
-    while (true) {
-        const line = reader.readUntilDelimiter(line_buf, '\n') catch |err| {
-            if (err == error.EndOfStream) break;
-            return err;
-        };
-        if (line.len == 0) continue;
-
-        var parsed_entry = try std.json.parseFromSlice(Entry, allocator, line, .{});
-        defer parsed_entry.deinit();
-
-        if (parsed_entry.value.commit != null) {
-            if (first_commit_id == null) {
-                first_commit_id = parsed_entry.value.id;
-            }
-            last_commit_id = parsed_entry.value.id;
-        }
-    }
-
-    if (first_commit_id == null or last_commit_id == null) {
-        return error.NoCommits;
-    }
-
-    return .{ .first = first_commit_id.?, .last = last_commit_id.? };
 }
 
 fn parseFileName(file_name: []const u8) !u64 {
@@ -207,6 +162,10 @@ fn getFile(self: *Self, commit_id: u64) !std.fs.File {
     self.current_file = file;
     self.current_file_size = 0;
     return file;
+}
+
+pub fn read(self: *Self, commit_id: u64) !OplogFileIterator {
+    return OplogIterator.init(self.allocator, self.dir, self.files, commit_id);
 }
 
 pub fn truncate(self: *Self, commit_id: u64) !void {
@@ -303,3 +262,120 @@ test "write entries" {
     ;
     try std.testing.expectEqualStrings(expected, contents);
 }
+
+pub const OplogIterator = struct {
+    allocator: std.mem.Allocator,
+    dir: std.fs.Dir,
+    files: std.ArrayList(FileInfo),
+    first_commit_id: u64,
+    current_iterator: ?OplogFileIterator = null,
+    current_file_index: usize = 0,
+
+    pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, files: std.ArrayList(FileInfo), first_commit_id: u64) OplogIterator {
+        return OplogIterator{
+            .allocator = allocator,
+            .dir = dir,
+            .files = files,
+            .first_commit_id = first_commit_id,
+        };
+    }
+
+    pub fn deinit(self: *OplogIterator) void {
+        if (self.current_iterator) |*iterator| {
+            iterator.deinit();
+        }
+    }
+
+    pub fn next(self: *OplogIterator) !?Transaction {
+        while (true) {
+            if (self.current_iterator) |*iterator| {
+                if (try iterator.next()) |entry| {
+                    if (entry.commit_id < self.first_commit_id) {
+                        continue;
+                    }
+                    return entry;
+                }
+                iterator.deinit();
+                self.current_iterator = null;
+                self.current_file_index += 1;
+            }
+            if (self.current_file_index >= self.files.items.len) {
+                return null;
+            }
+            var buf: [file_name_size]u8 = undefined;
+            const file_name = try generateFileName(&buf, self.files.items[self.current_file_index].id);
+            const file = try self.dir.openFile(file_name, .{});
+            self.current_iterator = OplogFileIterator.init(self.allocator, file);
+        }
+        unreachable;
+    }
+};
+
+pub const OplogFileIterator = struct {
+    arena: std.heap.ArenaAllocator,
+    file: std.fs.File,
+    buffered_reader: std.io.BufferedReader(4096, std.fs.File.Reader),
+
+    pub fn init(allocator: std.mem.Allocator, file: std.fs.File) OplogFileIterator {
+        return OplogFileIterator{
+            .arena = std.heap.ArenaAllocator.init(allocator),
+            .file = file,
+            .buffered_reader = std.io.bufferedReader(file.reader()),
+        };
+    }
+
+    pub fn deinit(self: *OplogFileIterator) void {
+        self.file.close();
+        self.arena.deinit();
+    }
+
+    pub fn next(self: *OplogFileIterator) !?Transaction {
+        _ = self.arena.reset(.retain_capacity);
+
+        var allocator = self.arena.allocator();
+        var reader = self.buffered_reader.reader();
+
+        var commit_id: u64 = 0;
+        var changes = std.ArrayList(Change).init(allocator);
+
+        const line_buf = try allocator.alloc(u8, 64 * 1024);
+        defer allocator.free(line_buf);
+
+        while (true) {
+            const line = reader.readUntilDelimiter(line_buf, '\n') catch |err| {
+                if (err == error.EndOfStream) {
+                    break;
+                }
+                return err;
+            };
+            if (line.len == 0) {
+                continue;
+            }
+
+            const entry = try std.json.parseFromSliceLeaky(Entry, allocator, line, .{});
+
+            if (entry.begin) |begin| {
+                commit_id = entry.id;
+                changes.clearRetainingCapacity();
+                try changes.ensureTotalCapacity(begin.size);
+            }
+
+            if (entry.apply) |apply| {
+                if (entry.id == commit_id) {
+                    try changes.append(apply);
+                }
+            }
+
+            if (entry.commit) |_| {
+                if (entry.id == commit_id) {
+                    return Transaction{
+                        .commit_id = commit_id,
+                        .changes = changes.items,
+                    };
+                }
+            }
+        }
+
+        return null;
+    }
+};
