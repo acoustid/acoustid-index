@@ -101,7 +101,7 @@ fn getMaxCommitId(self: *Self) u64 {
 pub fn open(self: *Self) !void {
     try self.scheduler.start(self);
     try self.read();
-    try self.oplog.open(self.getMaxCommitId());
+    try self.oplog.open(self.getMaxCommitId(), &self.stage);
 }
 
 fn createSegment(self: *Self) !*Segments.Node {
@@ -194,8 +194,7 @@ fn cleanup(self: *Self) !void {
 }
 
 pub fn update(self: *Self, changes: []const Change) !void {
-    const commit_id = try self.oplog.write(changes);
-    try self.stage.update(changes, commit_id);
+    try self.oplog.write(changes, &self.stage);
     try self.scheduler.scheduleIn(.{ .cleanup = {} }, 0);
 }
 

@@ -3,6 +3,7 @@ const assert = std.debug.assert;
 
 const common = @import("common.zig");
 const Change = common.Change;
+const InMemoryIndex = @import("InMemoryIndex.zig");
 
 const Self = @This();
 
@@ -52,7 +53,7 @@ pub fn deinit(self: *Self) void {
     self.files.deinit();
 }
 
-pub fn open(self: *Self, first_commit_id: u64) !void {
+pub fn open(self: *Self, first_commit_id: u64, index: *InMemoryIndex) !void {
     var it = self.dir.iterate();
     while (try it.next()) |entry| {
         if (entry.kind == .file) {
@@ -68,6 +69,7 @@ pub fn open(self: *Self, first_commit_id: u64) !void {
     var oplog_it = OplogIterator.init(self.allocator, self.dir, self.files, first_commit_id);
     defer oplog_it.deinit();
     while (try oplog_it.next()) |txn| {
+        try index.update(txn.changes, txn.commit_id);
         self.last_commit_id = @max(self.last_commit_id, txn.commit_id);
     }
 }
@@ -164,10 +166,6 @@ fn getFile(self: *Self, commit_id: u64) !std.fs.File {
     return file;
 }
 
-pub fn read(self: *Self, commit_id: u64) !OplogFileIterator {
-    return OplogIterator.init(self.allocator, self.dir, self.files, commit_id);
-}
-
 pub fn truncate(self: *Self, commit_id: u64) !void {
     assert(std.sort.isSorted(FileInfo, self.files.items, {}, FileInfo.cmp));
 
@@ -215,12 +213,19 @@ fn writeEntries(writer: anytype, commit_id: u64, changes: []const Change) !void 
     try std.json.stringify(commit_entry, .{ .emit_null_optional_fields = false }, writer);
 }
 
-pub fn write(self: *Self, changes: []const Change) !u64 {
+pub fn write(self: *Self, changes: []const Change, index: *InMemoryIndex) !void {
     const commit_id = self.last_commit_id + 1;
 
     const file = try self.getFile(commit_id);
     var bufferred_writer = std.io.bufferedWriter(file.writer());
     const writer = bufferred_writer.writer();
+
+    var committed: bool = false;
+
+    try index.prepareUpdate(changes, commit_id);
+    defer {
+        if (!committed) index.cancelUpdate(commit_id);
+    }
 
     try writeEntries(writer, commit_id, changes);
 
@@ -230,7 +235,9 @@ pub fn write(self: *Self, changes: []const Change) !u64 {
 
     self.current_file_size += changes.len;
     self.last_commit_id = commit_id;
-    return commit_id;
+
+    index.commitUpdate(commit_id);
+    committed = true;
 }
 
 test "write entries" {
@@ -240,13 +247,15 @@ test "write entries" {
     var oplog = Self.init(std.testing.allocator, tmpDir.dir);
     defer oplog.deinit();
 
+    var stage = InMemoryIndex.init(std.testing.allocator, .{});
+    defer stage.deinit();
+
     const changes = [_]Change{.{ .insert = .{
         .id = 1,
         .hashes = &[_]u32{ 1, 2, 3 },
     } }};
 
-    const commit_id = try oplog.write(&changes);
-    try std.testing.expectEqual(1, commit_id);
+    try oplog.write(&changes, &stage);
 
     var file = try tmpDir.dir.openFile("0000000000000001.xlog", .{});
     defer file.close();

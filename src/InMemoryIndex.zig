@@ -22,6 +22,7 @@ allocator: std.mem.Allocator,
 write_lock: std.Thread.RwLock,
 merge_lock: std.Thread.Mutex,
 segments: InMemorySegments,
+pending_segments: InMemorySegments,
 auto_cleanup: bool = true,
 
 const Self = @This();
@@ -33,6 +34,7 @@ pub fn init(allocator: std.mem.Allocator, options: Options) Self {
         .write_lock = .{},
         .merge_lock = .{},
         .segments = .{},
+        .pending_segments = .{},
     };
 }
 
@@ -41,6 +43,10 @@ pub fn deinit(self: *Self) void {
     defer self.write_lock.unlock();
 
     while (self.segments.popFirst()) |node| {
+        self.destroySegment(node);
+    }
+
+    while (self.pending_segments.popFirst()) |node| {
         self.destroySegment(node);
     }
 }
@@ -57,11 +63,55 @@ fn destroySegment(self: *Self, node: *InMemorySegments.Node) void {
 }
 
 pub fn update(self: *Self, changes: []const Change, commit_id: u64) !void {
-    var committed = false;
+    try self.prepareUpdate(changes, commit_id);
+    self.commitUpdate(commit_id);
+
+    if (self.auto_cleanup) {
+        self.mergeSegments() catch |err| {
+            std.debug.print("mergeSegments failed: {}\n", .{err});
+        };
+    }
+}
+
+pub fn cancelUpdate(self: *Self, commit_id: u64) void {
+    self.write_lock.lock();
+    defer self.write_lock.unlock();
+
+    var it = self.pending_segments.first;
+    while (it) |node| : (it = node.next) {
+        if (node.data.max_commit_id == commit_id) {
+            self.pending_segments.remove(node);
+            self.destroySegment(node);
+            return;
+        }
+    }
+}
+
+pub fn commitUpdate(self: *Self, commit_id: u64) void {
+    self.write_lock.lock();
+    defer self.write_lock.unlock();
+
+    var it = self.pending_segments.first;
+    while (it) |node| : (it = node.next) {
+        if (node.data.max_commit_id == commit_id) {
+            self.pending_segments.remove(node);
+            self.segments.append(node);
+            if (node.prev) |prev| {
+                node.data.version = prev.data.version + 1;
+            } else {
+                node.data.version = 1;
+            }
+            return;
+        }
+    }
+}
+
+pub fn prepareUpdate(self: *Self, changes: []const Change, commit_id: u64) !void {
+    var saved = false;
 
     const node = try self.createSegment();
     defer {
-        if (!committed) self.destroySegment(node);
+        if (!saved) self.destroySegment(node);
     }
 
     node.data.max_commit_id = commit_id;
@@ -104,20 +154,9 @@ pub fn update(self: *Self, changes: []const Change, commit_id: u64) !void {
     node.data.ensureSorted();
 
     self.write_lock.lock();
-    self.segments.append(node);
-    if (node.prev) |prev| {
-        node.data.version = prev.data.version + 1;
-    } else {
-        node.data.version = 1;
-    }
-    committed = true;
+    self.pending_segments.prepend(node);
+    saved = true;
     self.write_lock.unlock();
-
-    if (self.auto_cleanup) {
-        self.mergeSegments() catch |err| {
-            std.debug.print("mergeSegments failed: {}\n", .{err});
-        };
-    }
 }
 
 pub fn cleanup(self: *Self) !void {
@@ -194,7 +233,6 @@ fn prepareMerge(self: *Self) !?Merge {
         if (node.next) |nextNode| {
             const merge_size = node.data.items.items.len + nextNode.data.items.items.len;
             const score = @as(f64, @floatFromInt(merge_size)) - level_size;
-            // std.debug.print("segment {} {} level_size={}, merge_size={} score={}\n", .{ node.data.version, node.data.items.items.len, level_size, merge_size, score });
             if (score < best_score) {
                 best_node = node;
                 best_score = score;
