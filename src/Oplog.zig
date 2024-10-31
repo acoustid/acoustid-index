@@ -32,6 +32,8 @@ pub const Entry = struct {
 allocator: std.mem.Allocator,
 dir: std.fs.Dir,
 
+lock_file: ?std.fs.File = null,
+
 files: std.ArrayList(FileInfo),
 
 current_file: ?std.fs.File = null,
@@ -48,17 +50,30 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) Self {
     };
 }
 
+const lock_file_name = ".lock";
+
 pub fn deinit(self: *Self) void {
     self.closeCurrentFile();
+
     self.files.deinit();
+
+    if (self.lock_file) |file| {
+        file.close();
+        self.lock_file = null;
+    }
+    self.dir.deleteFile(lock_file_name) catch {};
 }
 
 pub fn open(self: *Self, first_commit_id: u64, index: *InMemoryIndex) !void {
+    self.lock_file = try self.dir.createFile(lock_file_name, .{ .lock = .exclusive });
+
     var it = self.dir.iterate();
     while (try it.next()) |entry| {
         if (entry.kind == .file) {
-            const id = try parseFileName(entry.name);
-            try self.files.append(.{ .id = id });
+            if (std.mem.endsWith(u8, entry.name, ".xlog")) {
+                const id = try parseFileName(entry.name);
+                try self.files.append(.{ .id = id });
+            }
         }
     }
 
