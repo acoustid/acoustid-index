@@ -26,6 +26,8 @@ const Options = struct {
 
 options: Options,
 
+is_open: bool = false,
+
 dir: std.fs.Dir,
 allocator: std.mem.Allocator,
 stage: InMemoryIndex,
@@ -99,9 +101,17 @@ fn getMaxCommitId(self: *Self) u64 {
 }
 
 pub fn open(self: *Self) !void {
+    self.write_lock.lock();
+    defer self.write_lock.unlock();
+
+    if (self.is_open) return;
+
     try self.scheduler.start(self);
     try self.read();
+
     try self.oplog.open(self.getMaxCommitId(), &self.stage);
+
+    self.is_open = true;
 }
 
 fn createSegment(self: *Self) !*Segments.Node {
@@ -194,6 +204,13 @@ fn cleanup(self: *Self) !void {
 }
 
 pub fn update(self: *Self, changes: []const Change) !void {
+    self.write_lock.lockShared();
+    defer self.write_lock.unlockShared();
+
+    if (!self.is_open) {
+        return error.NotOpened;
+    }
+
     try self.oplog.write(changes, &self.stage);
     try self.scheduler.scheduleIn(.{ .cleanup = {} }, 0);
 }
@@ -201,6 +218,10 @@ pub fn update(self: *Self, changes: []const Change) !void {
 pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
     self.write_lock.lockShared();
     defer self.write_lock.unlockShared();
+
+    if (!self.is_open) {
+        return error.NotOpened;
+    }
 
     const sorted_hashes = try self.allocator.dupe(u32, hashes);
     defer self.allocator.free(sorted_hashes);

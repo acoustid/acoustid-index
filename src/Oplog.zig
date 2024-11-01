@@ -74,7 +74,12 @@ pub fn open(self: *Self, first_commit_id: u64, index: *InMemoryIndex) !void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
-    self.lock_file = try self.dir.createFile(lock_file_name, .{ .lock = .exclusive });
+    self.lock_file = self.dir.createFile(lock_file_name, .{ .lock = .exclusive, .lock_nonblocking = true }) catch |err| {
+        if (err == error.WouldBlock) {
+            return error.LockedByAnotherProcess;
+        }
+        return err;
+    };
 
     var it = self.dir.iterate();
     while (try it.next()) |entry| {
