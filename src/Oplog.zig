@@ -1,5 +1,6 @@
 const std = @import("std");
 const assert = std.debug.assert;
+const log = std.log.scoped(.oplog);
 
 const common = @import("common.zig");
 const Change = common.Change;
@@ -22,7 +23,7 @@ pub const Transaction = struct {
 
 pub const Entry = struct {
     id: u64 = 0,
-    apply: ?common.Change = null,
+    change: ?common.Change = null,
     begin: ?struct {
         size: u32 = 0,
     } = null,
@@ -231,7 +232,7 @@ fn writeEntries(writer: anytype, commit_id: u64, changes: []const Change) !void 
     for (changes) |change| {
         const entry = Entry{
             .id = commit_id,
-            .apply = change,
+            .change = change,
         };
         try writer.writeByte(newline);
         try std.json.stringify(entry, .{ .emit_null_optional_fields = false }, writer);
@@ -266,10 +267,16 @@ pub fn write(self: *Self, changes: []const Change, index: *InMemoryIndex) !void 
 
     try bufferred_writer.flush();
 
-    try file.sync();
-
     self.current_file_size += changes.len;
     self.next_commit_id += 1;
+
+    file.sync() catch |err| {
+        if (err == error.InputOutput) {
+            // FIXME: maybe we try to reload the oplog from disk, there is no other way to know what happened
+            std.debug.panic("failed to sync oplog file: {s}", .{@errorName(err)});
+        }
+        return err;
+    };
 
     index.commitUpdate(update_id, commit_id);
     committed = true;
@@ -306,7 +313,7 @@ test "write entries" {
     const expected =
         \\
         \\{"id":1,"begin":{"size":1}}
-        \\{"id":1,"apply":{"insert":{"id":1,"hashes":[1,2,3]}}}
+        \\{"id":1,"change":{"insert":{"id":1,"hashes":[1,2,3]}}}
         \\{"id":1,"commit":true}
     ;
     try std.testing.expectEqualStrings(expected, contents);
@@ -409,7 +416,7 @@ pub const OplogFileIterator = struct {
                 try changes.ensureTotalCapacity(begin.size);
             }
 
-            if (entry.apply) |apply| {
+            if (entry.change) |apply| {
                 if (entry.id == commit_id) {
                     try changes.append(apply);
                 }
