@@ -63,8 +63,8 @@ fn destroySegment(self: *Self, node: *InMemorySegments.Node) void {
 }
 
 pub fn update(self: *Self, changes: []const Change, commit_id: u64) !void {
-    try self.prepareUpdate(changes, commit_id);
-    self.commitUpdate(commit_id);
+    const update_id = try self.prepareUpdate(changes);
+    self.commitUpdate(update_id, commit_id);
 
     if (self.auto_cleanup) {
         self.mergeSegments() catch |err| {
@@ -73,13 +73,13 @@ pub fn update(self: *Self, changes: []const Change, commit_id: u64) !void {
     }
 }
 
-pub fn cancelUpdate(self: *Self, commit_id: u64) void {
+pub fn cancelUpdate(self: *Self, update_id: u64) void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
     var it = self.pending_segments.first;
     while (it) |node| : (it = node.next) {
-        if (node.data.max_commit_id == commit_id) {
+        if (@intFromPtr(node) == update_id) {
             self.pending_segments.remove(node);
             self.destroySegment(node);
             return;
@@ -87,13 +87,13 @@ pub fn cancelUpdate(self: *Self, commit_id: u64) void {
     }
 }
 
-pub fn commitUpdate(self: *Self, commit_id: u64) void {
+pub fn commitUpdate(self: *Self, update_id: u64, commit_id: u64) void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
     var it = self.pending_segments.first;
     while (it) |node| : (it = node.next) {
-        if (node.data.max_commit_id == commit_id) {
+        if (@intFromPtr(node) == update_id) {
             self.pending_segments.remove(node);
             self.segments.append(node);
             if (node.prev) |prev| {
@@ -101,20 +101,19 @@ pub fn commitUpdate(self: *Self, commit_id: u64) void {
             } else {
                 node.data.version = 1;
             }
+            node.data.max_commit_id = commit_id;
             return;
         }
     }
 }
 
-pub fn prepareUpdate(self: *Self, changes: []const Change, commit_id: u64) !void {
+pub fn prepareUpdate(self: *Self, changes: []const Change) !usize {
     var saved = false;
 
     const node = try self.createSegment();
     defer {
         if (!saved) self.destroySegment(node);
     }
-
-    node.data.max_commit_id = commit_id;
 
     var num_items: usize = 0;
     for (changes) |change| {
@@ -157,6 +156,8 @@ pub fn prepareUpdate(self: *Self, changes: []const Change, commit_id: u64) !void
     self.pending_segments.prepend(node);
     saved = true;
     self.write_lock.unlock();
+
+    return @intFromPtr(node);
 }
 
 pub fn cleanup(self: *Self) !void {

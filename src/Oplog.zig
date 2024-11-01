@@ -34,13 +34,15 @@ dir: std.fs.Dir,
 
 lock_file: ?std.fs.File = null,
 
+write_lock: std.Thread.Mutex = .{},
+
 files: std.ArrayList(FileInfo),
 
 current_file: ?std.fs.File = null,
 current_file_size: usize = 0,
 max_file_size: usize = 1_000_000,
 
-last_commit_id: u64 = 0,
+next_commit_id: u64 = 1,
 
 pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) Self {
     return Self{
@@ -53,6 +55,9 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) Self {
 const lock_file_name = ".lock";
 
 pub fn deinit(self: *Self) void {
+    self.write_lock.lock();
+    defer self.write_lock.unlock();
+
     self.closeCurrentFile();
 
     self.files.deinit();
@@ -65,6 +70,9 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn open(self: *Self, first_commit_id: u64, index: *InMemoryIndex) !void {
+    self.write_lock.lock();
+    defer self.write_lock.unlock();
+
     self.lock_file = try self.dir.createFile(lock_file_name, .{ .lock = .exclusive });
 
     var it = self.dir.iterate();
@@ -79,14 +87,16 @@ pub fn open(self: *Self, first_commit_id: u64, index: *InMemoryIndex) !void {
 
     std.sort.pdq(FileInfo, self.files.items, {}, FileInfo.cmp);
 
-    try self.truncate(first_commit_id);
+    try self.truncateNoLock(first_commit_id);
 
+    var max_commit_id: u64 = 0;
     var oplog_it = OplogIterator.init(self.allocator, self.dir, self.files, first_commit_id);
     defer oplog_it.deinit();
     while (try oplog_it.next()) |txn| {
+        max_commit_id = @max(max_commit_id, txn.commit_id);
         try index.update(txn.changes, txn.commit_id);
-        self.last_commit_id = @max(self.last_commit_id, txn.commit_id);
     }
+    self.next_commit_id = max_commit_id + 1;
 }
 
 fn parseFileName(file_name: []const u8) !u64 {
@@ -181,7 +191,7 @@ fn getFile(self: *Self, commit_id: u64) !std.fs.File {
     return file;
 }
 
-pub fn truncate(self: *Self, commit_id: u64) !void {
+fn truncateNoLock(self: *Self, commit_id: u64) !void {
     assert(std.sort.isSorted(FileInfo, self.files.items, {}, FileInfo.cmp));
 
     var pos = std.sort.lowerBound(FileInfo, FileInfo{ .id = commit_id }, self.files.items, {}, FileInfo.cmp);
@@ -197,6 +207,13 @@ pub fn truncate(self: *Self, commit_id: u64) !void {
         std.log.info("deleting oplog file {s}", .{file_name});
         try self.dir.deleteFile(file_name);
     }
+}
+
+pub fn truncate(self: *Self, commit_id: u64) !void {
+    self.write_lock.lock();
+    defer self.write_lock.unlock();
+
+    try self.truncateNoLock(commit_id);
 }
 
 const newline: u8 = '\n';
@@ -229,18 +246,21 @@ fn writeEntries(writer: anytype, commit_id: u64, changes: []const Change) !void 
 }
 
 pub fn write(self: *Self, changes: []const Change, index: *InMemoryIndex) !void {
-    const commit_id = self.last_commit_id + 1;
+    var committed: bool = false;
+
+    const update_id = try index.prepareUpdate(changes);
+    defer {
+        if (!committed) index.cancelUpdate(update_id);
+    }
+
+    self.write_lock.lock();
+    defer self.write_lock.unlock();
+
+    const commit_id = self.next_commit_id;
 
     const file = try self.getFile(commit_id);
     var bufferred_writer = std.io.bufferedWriter(file.writer());
     const writer = bufferred_writer.writer();
-
-    var committed: bool = false;
-
-    try index.prepareUpdate(changes, commit_id);
-    defer {
-        if (!committed) index.cancelUpdate(commit_id);
-    }
 
     try writeEntries(writer, commit_id, changes);
 
@@ -249,9 +269,9 @@ pub fn write(self: *Self, changes: []const Change, index: *InMemoryIndex) !void 
     try file.sync();
 
     self.current_file_size += changes.len;
-    self.last_commit_id = commit_id;
+    self.next_commit_id += 1;
 
-    index.commitUpdate(commit_id);
+    index.commitUpdate(update_id, commit_id);
     committed = true;
 }
 
@@ -259,11 +279,16 @@ test "write entries" {
     var tmpDir = std.testing.tmpDir(.{});
     defer tmpDir.cleanup();
 
-    var oplog = Self.init(std.testing.allocator, tmpDir.dir);
+    var oplogDir = try tmpDir.dir.makeOpenPath("oplog", .{ .iterate = true });
+    defer oplogDir.close();
+
+    var oplog = Self.init(std.testing.allocator, oplogDir);
     defer oplog.deinit();
 
     var stage = InMemoryIndex.init(std.testing.allocator, .{});
     defer stage.deinit();
+
+    try oplog.open(0, &stage);
 
     const changes = [_]Change{.{ .insert = .{
         .id = 1,
@@ -272,7 +297,7 @@ test "write entries" {
 
     try oplog.write(&changes, &stage);
 
-    var file = try tmpDir.dir.openFile("0000000000000001.xlog", .{});
+    var file = try oplogDir.openFile("0000000000000001.xlog", .{});
     defer file.close();
 
     const contents = try file.reader().readAllAlloc(std.testing.allocator, 1024 * 1024);
