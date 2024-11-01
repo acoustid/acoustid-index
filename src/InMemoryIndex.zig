@@ -73,7 +73,7 @@ pub fn update(self: *Self, changes: []const Change, commit_id: u64) !void {
     }
 }
 
-pub fn cancelUpdate(self: *Self, update_id: u64) void {
+pub fn cancelUpdate(self: *Self, update_id: usize) void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
@@ -87,7 +87,7 @@ pub fn cancelUpdate(self: *Self, update_id: u64) void {
     }
 }
 
-pub fn commitUpdate(self: *Self, update_id: u64, commit_id: u64) void {
+pub fn commitUpdate(self: *Self, update_id: usize, commit_id: u64) void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
