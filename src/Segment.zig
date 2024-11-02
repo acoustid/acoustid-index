@@ -115,7 +115,7 @@ pub fn convert(self: *Self, dir: std.fs.Dir, source: *InMemorySegment) !void {
 
     var file = try dir.atomicFile(file_name, .{});
     defer file.deinit();
-    try filefmt.writeFile(file.file.writer(), source);
+    try filefmt.writeFile(file.file, source);
     try file.finish();
 
     try self.read(dir, file_name);
@@ -161,7 +161,7 @@ pub fn merge(self: *Self, dir: std.fs.Dir, sources: [2]*Self) !void {
     var file = try dir.atomicFile(file_name, .{});
     defer file.deinit();
 
-    try filefmt.mergeSegmentsAndWriteFile(file.file, sources);
+    try filefmt.writeFileFromTwoSegments(file.file, sources);
     try file.finish();
 
     try self.read(dir, file_name);

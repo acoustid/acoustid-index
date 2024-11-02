@@ -217,20 +217,13 @@ pub const Header = packed struct {
     version_high: u32,
     num_docs: u32,
     num_items: u32,
+    num_blocks: u32,
     block_size: u32,
     max_commit_id: u64,
 };
 
-pub const Footer = packed struct {
-    magic: u32 = footer_magic_v1,
-    num_blocks: u32,
-};
-
 const reserved_header_size = 256;
 const header_size = @sizeOf(Header);
-
-const reserved_footer_size = 64;
-const footer_size = @sizeOf(Footer);
 
 fn skipPadding(reader: anytype, reserved: comptime_int, used: comptime_int) !void {
     const padding_size = reserved - used;
@@ -255,32 +248,23 @@ pub fn writeHeader(writer: anytype, header: Header) !void {
     try writePadding(writer, reserved_header_size, header_size);
 }
 
-pub fn readFooter(reader: anytype) !Footer {
-    const footer = try reader.readStructEndian(Footer, .little);
-    try skipPadding(reader, reserved_footer_size, footer_size);
-    return footer;
-}
-
-pub fn writeFooter(writer: anytype, footer: Footer) !void {
-    assert(footer.magic == footer_magic_v1);
-    try writer.writeStructEndian(footer, .little);
-    try writePadding(writer, reserved_footer_size, footer_size);
-}
-
 const DocInfo = packed struct(u64) {
     id: u32,
     version: u24,
     deleted: u8,
 };
 
-pub fn writeFile(writer: anytype, segment: *InMemorySegment) !void {
+pub fn writeFile(file: std.fs.File, segment: *InMemorySegment) !void {
     const block_size = default_block_size;
 
-    const header = Header{
+    const writer = file.writer();
+
+    var header = Header{
         .version_low = segment.version,
         .version_high = segment.version,
         .num_docs = @intCast(segment.docs.count()),
         .num_items = @intCast(segment.items.items.len),
+        .num_blocks = 0,
         .block_size = block_size,
         .max_commit_id = segment.max_commit_id,
     };
@@ -296,18 +280,17 @@ pub fn writeFile(writer: anytype, segment: *InMemorySegment) !void {
         try writer.writeStructEndian(info, .little);
     }
 
-    var num_blocks: usize = 0;
     var block_data: [block_size]u8 = undefined;
     var items = segment.items.items[0..];
     while (items.len > 0) {
         const n = try writeBlock(block_data[0..], items);
         items = items[n..];
         try writer.writeAll(block_data[0..]);
-        num_blocks += 1;
+        header.num_blocks += 1;
     }
 
-    const footer = Footer{ .num_blocks = @intCast(num_blocks) };
-    try writeFooter(writer, footer);
+    try file.seekTo(0);
+    try writeHeader(writer, header);
 }
 
 const max_items_per_block = default_block_size;
@@ -391,6 +374,7 @@ pub fn writeFileFromTwoSegments(file: fs.File, segments: [2]*Segment, allocator:
         .version_high = @max(segments[0].version[1], segments[1].version[1]),
         .num_docs = 0,
         .num_items = 0,
+        .num_blocks = 0,
         .block_size = block_size,
         .max_commit_id = @max(segments[0].max_commit_id, segments[1].max_commit_id),
     };
@@ -442,6 +426,7 @@ pub fn writeFileFromTwoSegments(file: fs.File, segments: [2]*Segment, allocator:
         try file.writeAll(block_data[0..]);
         items.items = items.items[n..];
         header.num_items += n;
+        header.num_blocks += 1;
     }
 
     file.seekTo(0);
@@ -474,18 +459,23 @@ pub fn readFile(file: fs.File, segment: *Segment) !void {
     if (header.magic != header_magic_v1) {
         return error.InvalidSegment;
     }
-
+    if (header.num_blocks == 0 or header.num_docs == 0 or header.num_items == 0) {
+        return error.InvalidSegment;
+    }
     if (header.block_size < min_block_size or header.block_size > max_block_size) {
         return error.InvalidSegment;
     }
 
     const blocks_data_start = reserved_header_size + header.num_docs * @sizeOf(DocInfo);
-    const blocks_data_size = file_size - reserved_footer_size - blocks_data_start;
+    const blocks_data_size = file_size - blocks_data_start;
     const blocks_data_end = blocks_data_start + blocks_data_size;
     if (blocks_data_size % header.block_size != 0) {
         return error.InvalidSegment;
     }
     const num_blocks = blocks_data_size / header.block_size;
+    if (num_blocks != header.num_blocks) {
+        return error.InvalidSegment;
+    }
 
     segment.version[0] = header.version_low;
     segment.version[1] = header.version_high;
@@ -502,21 +492,11 @@ pub fn readFile(file: fs.File, segment: *Segment) !void {
     try segment.index.ensureTotalCapacity(num_blocks);
     segment.blocks = raw_data[blocks_data_start..blocks_data_end];
 
-    var i: usize = 0;
-    while (i < num_blocks) : (i += 1) {
+    var i: u32 = 0;
+    while (i < header.num_blocks) : (i += 1) {
         const block_data = segment.getBlockData(i);
         const item = try readFirstItemFromBlock(block_data);
         try segment.index.append(item.hash);
-    }
-
-    try reader.skipBytes(blocks_data_size, .{});
-
-    const footer = try readFooter(reader);
-    if (footer.magic != footer_magic_v1) {
-        return error.InvalidSegment;
-    }
-    if (footer.num_blocks != segment.index.items.len) {
-        return error.InvalidSegment;
     }
 }
 
@@ -538,7 +518,7 @@ test "writeFile/readFile" {
 
         in_memory_segment.ensureSorted();
 
-        try writeFile(file.writer(), &in_memory_segment);
+        try writeFile(file, &in_memory_segment);
     }
 
     {
