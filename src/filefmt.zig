@@ -261,7 +261,7 @@ pub fn writeFile(file: std.fs.File, segment: *InMemorySegment) !void {
 
     var header = Header{
         .version = segment.version,
-        .included_merges = segment.version,
+        .included_merges = 0,
         .num_docs = @intCast(segment.docs.count()),
         .num_items = @intCast(segment.items.items.len),
         .num_blocks = 0,
@@ -388,8 +388,8 @@ pub fn writeFileFromTwoSegments(file: fs.File, segments: [2]*Segment, hasNewerVe
     const writer = file.writer();
 
     const header = Header{
-        .version = @min(segments[0].version[0], segments[1].version[0]),
-        .included_merges = @max(segments[0].version[1], segments[1].version[1]),
+        .version = @min(segments[0].version.version, segments[1].version.version),
+        .included_merges = 1 + segments[0].version.included_merges + segments[1].version.included_merges,
         .num_docs = 0,
         .num_items = 0,
         .num_blocks = 0,
@@ -406,15 +406,15 @@ pub fn writeFileFromTwoSegments(file: fs.File, segments: [2]*Segment, hasNewerVe
     sources[1] = SegmentIter.init(allocator, segments[1]);
     defer sources[1].deinit();
 
-    for (sources, 0..) |*source, i| {
+    for (sources) |*source| {
         var docs_iter = source.segment.docs.iterator();
         while (docs_iter.next()) |entry| {
             const id = entry.key_ptr.*;
             const status = entry.value_ptr.*;
-            if (!hasNewerVersion(id, source.segment.version[0])) {
+            if (!hasNewerVersion(id, source.segment.version.version)) {
                 const info = DocInfo{
                     .id = id,
-                    .version = i,
+                    .version = source.segment.version.version - header.version,
                     .deleted = if (status) 0 else 1,
                 };
                 try writer.writeStructEndian(info, .little);
@@ -499,8 +499,8 @@ pub fn readFile(file: fs.File, segment: *Segment) !void {
         return error.InvalidSegment;
     }
 
-    segment.version[0] = header.version;
-    segment.version[1] = header.included_merges;
+    segment.version.version = header.version;
+    segment.version.included_merges = header.included_merges;
     segment.block_size = header.block_size;
     segment.max_commit_id = header.max_commit_id;
 
@@ -552,8 +552,8 @@ test "writeFile/readFile" {
 
         try readFile(file, &segment);
 
-        try testing.expectEqual(1, segment.version[0]);
-        try testing.expectEqual(1, segment.version[1]);
+        try testing.expectEqual(1, segment.version.version);
+        try testing.expectEqual(0, segment.version.included_merges);
         try testing.expectEqual(1, segment.docs.count());
         try testing.expectEqual(1, segment.index.items.len);
         try testing.expectEqual(1, segment.index.items[0]);
@@ -586,8 +586,8 @@ pub fn writeIndexFile(writer: anytype, segments: std.ArrayList(Segment.Version))
     };
     try writer.writeStructEndian(header, .little);
     for (segments.items) |segment| {
-        try writer.writeInt(u32, segment[0], .little);
-        try writer.writeInt(u32, segment[1], .little);
+        try writer.writeInt(u32, segment.version, .little);
+        try writer.writeInt(u32, segment.included_merges, .little);
     }
 }
 
@@ -601,9 +601,10 @@ pub fn readIndexFile(reader: anytype, segments: *std.ArrayList(Segment.Version))
     }
     try segments.ensureTotalCapacity(header.num_segments);
     for (0..header.num_segments) |_| {
-        const v0 = try reader.readInt(u32, .little);
-        const v1 = try reader.readInt(u32, .little);
-        try segments.append(Segment.Version{ v0, v1 });
+        var version: Segment.Version = undefined;
+        version.version = try reader.readInt(u32, .little);
+        version.included_merges = try reader.readInt(u32, .little);
+        try segments.append(version);
     }
 }
 
@@ -614,9 +615,9 @@ test "readIndexFile/writeIndexFile" {
     var segments = std.ArrayList(Segment.Version).init(testing.allocator);
     defer segments.deinit();
 
-    try segments.append(Segment.Version{ 1, 1 });
-    try segments.append(Segment.Version{ 2, 3 });
-    try segments.append(Segment.Version{ 4, 4 });
+    try segments.append(Segment.Version{ .version = 1, .included_merges = 0 });
+    try segments.append(Segment.Version{ .version = 2, .included_merges = 1 });
+    try segments.append(Segment.Version{ .version = 4, .included_merges = 0 });
 
     {
         var file = try tmp.dir.createFile("test.idx", .{});

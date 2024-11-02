@@ -11,11 +11,11 @@ const filefmt = @import("filefmt.zig");
 
 pub const Version = packed struct(u64) {
     version: u32,
-    included_merges: u32,
+    included_merges: u32 = 0,
 };
 
 allocator: std.mem.Allocator,
-version: Version = .{ 0, 0 },
+version: Version = .{ .version = 0, .included_merges = 0 },
 max_commit_id: u64 = 0,
 docs: std.AutoHashMap(u32, bool),
 index: std.ArrayList(u32),
@@ -74,7 +74,7 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults) !void {
             }
             const matches = std.sort.equalRange(Item, Item{ .hash = hash, .id = 0 }, block_items.items, {}, Item.cmpByHash);
             for (matches[0]..matches[1]) |i| {
-                try results.incr(block_items.items[i].id, self.version[1]);
+                try results.incr(block_items.items[i].id, self.version.version);
             }
         }
     }
@@ -89,9 +89,13 @@ fn read(self: *Self, dir: std.fs.Dir, file_name: []const u8) !void {
     try filefmt.readFile(file, self);
 }
 
+fn generateFileName(buf: []u8, version: Version) ![]u8 {
+    return try std.fmt.bufPrint(buf, file_name_fmt, .{ version.version, version.version + version.included_merges });
+}
+
 pub fn open(self: *Self, dir: std.fs.Dir, version: Version) !void {
     var file_name_buf: [max_file_name_size]u8 = undefined;
-    const file_name = try std.fmt.bufPrint(&file_name_buf, file_name_fmt, .{ version[0], version[1] });
+    const file_name = try generateFileName(&file_name_buf, version);
 
     std.debug.print("Reading segment {s}\n", .{file_name});
 
@@ -100,7 +104,7 @@ pub fn open(self: *Self, dir: std.fs.Dir, version: Version) !void {
 
 pub fn delete(self: *Self, dir: std.fs.Dir) !void {
     var file_name_buf: [max_file_name_size]u8 = undefined;
-    const file_name = try std.fmt.bufPrint(&file_name_buf, file_name_fmt, .{ self.version[0], self.version[1] });
+    const file_name = try generateFileName(&file_name_buf, self.version);
 
     try dir.deleteFile(file_name);
 }
@@ -114,7 +118,7 @@ pub fn convert(self: *Self, dir: std.fs.Dir, source: *InMemorySegment) !void {
     }
 
     var file_name_buf: [max_file_name_size]u8 = undefined;
-    const file_name = try std.fmt.bufPrint(&file_name_buf, file_name_fmt, .{ source.version, source.version });
+    const file_name = try generateFileName(&file_name_buf, .{ .version = source.version });
 
     var file = try dir.atomicFile(file_name, .{});
     defer file.deinit();
@@ -142,8 +146,8 @@ test "convert" {
 
     try segment.convert(tmpDir.dir, &source);
 
-    try std.testing.expectEqual(1, segment.version[0]);
-    try std.testing.expectEqual(1, segment.version[1]);
+    try std.testing.expectEqual(1, segment.version.version);
+    try std.testing.expectEqual(0, segment.version.included_merges);
     try std.testing.expectEqual(1, segment.docs.count());
     try std.testing.expectEqual(1, segment.index.items.len);
 }
