@@ -307,8 +307,8 @@ const SegmentIter = struct {
             .segment = segment,
             .next_block_no = 0,
             .items = std.ArrayList(Item).init(allocator),
-            .ptr = undefined,
-            .skip_docs = std.AutoHashMap(u32, void),
+            .ptr = &.{},
+            .skip_docs = std.AutoHashMap(u32, void).init(allocator),
         };
     }
 
@@ -321,7 +321,7 @@ const SegmentIter = struct {
         var read_idx: usize = 0;
         var write_idx: usize = 0;
         while (read_idx < self.items.items.len) : (read_idx += 1) {
-            if (!self.skip_docs.contains(self.items.items[read_idx].doc_id)) {
+            if (!self.skip_docs.contains(self.items.items[read_idx].id)) {
                 if (write_idx != read_idx) {
                     self.items.items[write_idx] = self.items.items[read_idx];
                 }
@@ -332,9 +332,9 @@ const SegmentIter = struct {
     }
 
     pub fn loadNextBlockIfNeeded(self: *SegmentIter) !void {
-        while (self.ptr.len == 0 and self.next_block_no < self.segment.index.len) {
-            const block_data = try self.segment.readBlock(self.next_block_no);
-            readBlock(block_data[0..], &self.items);
+        while (self.ptr.len == 0 and self.next_block_no < self.segment.index.items.len) {
+            const block_data = self.segment.getBlockData(self.next_block_no);
+            try readBlock(block_data[0..], &self.items);
             self.removeSkippedDocs();
             self.ptr = self.items.items[0..];
             self.next_block_no += 1;
@@ -382,12 +382,12 @@ fn getNextItem(sources: *[2]SegmentIter) !?Item {
     return item;
 }
 
-pub fn writeFileFromTwoSegments(file: fs.File, segments: [2]*Segment, hasNewerVersion: fn (u32, u32) bool, allocator: std.mem.Allocator) !void {
+pub fn mergeAndWriteFile(file: fs.File, segments: [2]*Segment, allocator: std.mem.Allocator, hasNewerVersion: fn (u32, u32) bool) !void {
     const block_size = default_block_size;
 
     const writer = file.writer();
 
-    const header = Header{
+    var header = Header{
         .version = @min(segments[0].version.version, segments[1].version.version),
         .included_merges = 1 + segments[0].version.included_merges + segments[1].version.included_merges,
         .num_docs = 0,
@@ -398,7 +398,7 @@ pub fn writeFileFromTwoSegments(file: fs.File, segments: [2]*Segment, hasNewerVe
     };
     try writeHeader(writer, header);
 
-    const sources: [2]SegmentIter = undefined;
+    var sources: [2]SegmentIter = undefined;
 
     sources[0] = SegmentIter.init(allocator, segments[0]);
     defer sources[0].deinit();
@@ -406,7 +406,7 @@ pub fn writeFileFromTwoSegments(file: fs.File, segments: [2]*Segment, hasNewerVe
     sources[1] = SegmentIter.init(allocator, segments[1]);
     defer sources[1].deinit();
 
-    for (sources) |*source| {
+    for (&sources) |*source| {
         var docs_iter = source.segment.docs.iterator();
         while (docs_iter.next()) |entry| {
             const id = entry.key_ptr.*;
@@ -414,7 +414,7 @@ pub fn writeFileFromTwoSegments(file: fs.File, segments: [2]*Segment, hasNewerVe
             if (!hasNewerVersion(id, source.segment.version.version)) {
                 const info = DocInfo{
                     .id = id,
-                    .version = source.segment.version.version - header.version,
+                    .version = @intCast(source.segment.version.version - header.version),
                     .deleted = if (status) 0 else 1,
                 };
                 try writer.writeStructEndian(info, .little);
@@ -432,14 +432,15 @@ pub fn writeFileFromTwoSegments(file: fs.File, segments: [2]*Segment, hasNewerVe
 
     while (true) {
         // fill up the buffer wirh items from both segments
-        while (items.len < max_items_per_block.len) {
+        while (items.items.len < max_items_per_block) {
             const item = try getNextItem(&sources);
-            if (item == null) {
+            if (item) |i| {
+                try items.append(i);
+            } else {
                 break;
             }
-            try items.append(item);
         }
-        if (items.len == 0) {
+        if (items.items.len == 0) {
             break;
         }
 
@@ -447,12 +448,47 @@ pub fn writeFileFromTwoSegments(file: fs.File, segments: [2]*Segment, hasNewerVe
         const n = try writeBlock(block_data[0..], items.items[0..]);
         try file.writeAll(block_data[0..]);
         items.items = items.items[n..];
-        header.num_items += n;
+        header.num_items += @intCast(n);
         header.num_blocks += 1;
     }
 
-    file.seekTo(0);
+    try file.seekTo(0);
     try writeHeader(writer, header);
+}
+
+test "mergeAndWriteFile" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    var data_dir = try tmp.dir.makeOpenPath("data", .{});
+    defer data_dir.close();
+
+    var in_memory_segment_1 = InMemorySegment.init(std.testing.allocator);
+    defer in_memory_segment_1.deinit();
+
+    in_memory_segment_1.version = 1;
+    in_memory_segment_1.frozen = true;
+
+    var segment_1 = Segment.init(std.testing.allocator);
+    defer segment_1.deinit();
+
+    try segment_1.convert(data_dir, &in_memory_segment_1);
+
+    var in_memory_segment_2 = InMemorySegment.init(std.testing.allocator);
+    defer in_memory_segment_2.deinit();
+
+    in_memory_segment_2.version = 2;
+    in_memory_segment_2.frozen = true;
+
+    var segment_2 = Segment.init(std.testing.allocator);
+    defer segment_2.deinit();
+
+    try segment_2.convert(data_dir, &in_memory_segment_2);
+
+    var segment_3 = Segment.init(std.testing.allocator);
+    defer segment_3.deinit();
+
+    try segment_3.merge(data_dir, .{ &segment_1, &segment_2 });
 }
 
 pub fn readFile(file: fs.File, segment: *Segment) !void {
@@ -479,9 +515,6 @@ pub fn readFile(file: fs.File, segment: *Segment) !void {
 
     const header = try readHeader(reader);
     if (header.magic != header_magic_v1) {
-        return error.InvalidSegment;
-    }
-    if (header.num_blocks == 0 or header.num_docs == 0 or header.num_items == 0) {
         return error.InvalidSegment;
     }
     if (header.block_size < min_block_size or header.block_size > max_block_size) {
