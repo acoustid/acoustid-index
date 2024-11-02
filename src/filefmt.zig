@@ -308,6 +308,110 @@ pub fn writeFile(writer: anytype, segment: *InMemorySegment) !void {
     try writeFooter(writer, footer);
 }
 
+const max_items_per_block = default_block_size;
+
+const SegmentIter = struct {
+    segment: *Segment,
+    next_block_no: usize,
+    items: std.ArrayList(Item),
+    ptr: []Item,
+
+    pub fn init(allocator: std.mem.Allocator, segment: *Segment) SegmentIter {
+        return .{
+            .segment = segment,
+            .next_block_no = 0,
+            .items = std.ArrayList(Item).init(allocator),
+            .ptr = undefined,
+        };
+    }
+
+    pub fn deinit(self: *SegmentIter) void {
+        self.items.deinit();
+    }
+
+    pub fn loadNextBlockIfNeeded(self: *SegmentIter) !void {
+        if (self.ptr.len == 0 and self.next_block_no < self.segment.index.len) {
+            const block_data = try self.segment.readBlock(self.next_block_no);
+            readBlock(block_data[0..], &self.items);
+            self.ptr = source.items.items[0..];
+            self.next_block_no += 1;
+        }
+    }
+};
+
+fn getNextItem(sources: *[2]SegmentIter) !?Item {
+    if (sources[0].ptr.len > 0 and sources[1].ptr.len > 0) {
+        const a = sources[0].ptr[0];
+        const b = sources[1].ptr[0];
+        if (a.id < b.id) {
+            sources[0].ptr = sources[0].ptr[1..];
+            return a;
+        } else {
+            sources[1].ptr = sources[1].ptr[1..];
+            return b;
+        }
+    }
+
+    for (sources) |*source| {
+        try source.loadNextBlockIfNeeded();
+    }
+
+    var item: ?Item = null;
+
+    if (sources[0].ptr.len > 0 and sources[1].ptr.len > 0) {
+        const a = sources[0].ptr[0];
+        const b = sources[1].ptr[0];
+        if (a.id < b.id) {
+            item = a;
+            sources[0].ptr = sources[0].ptr[1..];
+        } else {
+            item = b;
+            sources[1].ptr = sources[1].ptr[1..];
+        }
+    } else if (sources[0].ptr.len > 0) {
+        item = sources[0].ptr[0];
+        sources[0].ptr = sources[0].ptr[1..];
+    } else if (sources[1].ptr.len > 0) {
+        item = sources[1].ptr[0];
+        sources[1].ptr = sources[1].ptr[1..];
+    }
+
+    return item;
+}
+
+pub fn writeFileFromTwoSegments(file: fs.File, segments: [2]*Segment, allocator: std.mem.Allocator) !void {
+    const block_size = default_block_size;
+
+    var items = std.ArrayList(Item).init(allocator);
+    defer items.deinit();
+
+    const sources: [2]SegmentIter = undefined;
+
+    sources[0] = SegmentIter.init(allocator, segments[0]);
+    defer sources[0].deinit();
+
+    sources[1] = SegmentIter.init(allocator, segments[1]);
+    defer sources[1].deinit();
+
+    var block_data: [block_size]u8 = undefined;
+
+    while (true) {
+        // fill up the buffer wirh items from both segments
+        while (items.len < max_items_per_block.len) {
+            const item = try getNextItem(&sources);
+            if (item == null) {
+                break;
+            }
+            try items.append(item);
+        }
+
+        // write the buffer to the file
+        const n = try writeBlock(block_data[0..], items.items[0..]);
+        try file.writeAll(block_data[0..]);
+        items.items = items.items[n..];
+    }
+}
+
 pub fn readFile(file: fs.File, segment: *Segment) !void {
     const file_size = try file.getEndPos();
 

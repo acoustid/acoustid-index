@@ -95,6 +95,13 @@ pub fn open(self: *Self, dir: std.fs.Dir, version: Version) !void {
     try self.read(dir, file_name);
 }
 
+pub fn delete(self: *Self, dir: std.fs.Dir) !void {
+    var file_name_buf: [max_file_name_size]u8 = undefined;
+    const file_name = try std.fmt.bufPrint(&file_name_buf, file_name_fmt, .{ self.version[0], self.version[1] });
+
+    try dir.deleteFile(file_name);
+}
+
 pub fn convert(self: *Self, dir: std.fs.Dir, source: *InMemorySegment) !void {
     if (!source.frozen) {
         return error.SourceSegmentNotFrozen;
@@ -110,32 +117,6 @@ pub fn convert(self: *Self, dir: std.fs.Dir, source: *InMemorySegment) !void {
     defer file.deinit();
     try filefmt.writeFile(file.file.writer(), source);
     try file.finish();
-
-    try self.read(dir, file_name);
-}
-
-pub fn delete(self: *Self, dir: std.fs.Dir) !void {
-    var file_name_buf: [max_file_name_size]u8 = undefined;
-    const file_name = try std.fmt.bufPrint(&file_name_buf, file_name_fmt, .{ self.version[0], self.version[1] });
-
-    try dir.deleteFile(file_name);
-}
-
-pub fn merge(self: *Self, dir: std.fs.Dir, sources: [2]*Self) !void {
-    if (sources[0].version[1] + 1 != sources[1].version[0]) {
-        return error.SourceSegmentVersionMismatch;
-    }
-
-    self.version[0] = sources[0].version[0];
-    self.version[1] = sources[1].version[1];
-
-    self.max_commit_id = @max(sources[0].max_commit_id, sources[1].max_commit_id);
-
-    var file_name_buf: [max_file_name_size]u8 = undefined;
-    const file_name = try std.fmt.bufPrint(&file_name_buf, file_name_fmt, .{ self.version[0], self.version[1] });
-
-    var file = try dir.atomicFile(file_name, .{});
-    defer file.deinit();
 
     try self.read(dir, file_name);
 }
@@ -162,4 +143,26 @@ test "convert" {
     try std.testing.expectEqual(1, segment.version[1]);
     try std.testing.expectEqual(1, segment.docs.count());
     try std.testing.expectEqual(1, segment.index.items.len);
+}
+
+pub fn merge(self: *Self, dir: std.fs.Dir, sources: [2]*Self) !void {
+    if (sources[0].version[1] + 1 != sources[1].version[0]) {
+        return error.SourceSegmentVersionMismatch;
+    }
+
+    self.version[0] = sources[0].version[0];
+    self.version[1] = sources[1].version[1];
+
+    self.max_commit_id = @max(sources[0].max_commit_id, sources[1].max_commit_id);
+
+    var file_name_buf: [max_file_name_size]u8 = undefined;
+    const file_name = try std.fmt.bufPrint(&file_name_buf, file_name_fmt, .{ self.version[0], self.version[1] });
+
+    var file = try dir.atomicFile(file_name, .{});
+    defer file.deinit();
+
+    try filefmt.mergeSegmentsAndWriteFile(file.file, sources);
+    try file.finish();
+
+    try self.read(dir, file_name);
 }
