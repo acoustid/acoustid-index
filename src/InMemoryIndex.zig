@@ -164,11 +164,11 @@ pub fn cleanup(self: *Self) !void {
     try self.mergeSegments();
 }
 
-fn hasNewerVersion(self: *Self, id: u32, version: u32) bool {
+fn hasNewerVersion(self: *Self, doc_id: u32, version: u32) bool {
     var it = self.segments.last;
     while (it) |node| : (it = node.prev) {
         if (node.data.version > version) {
-            if (node.data.docs.contains(id)) {
+            if (node.data.docs.contains(doc_id)) {
                 return true;
             }
         } else {

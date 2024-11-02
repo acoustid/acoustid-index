@@ -300,6 +300,7 @@ const SegmentIter = struct {
     next_block_no: usize,
     items: std.ArrayList(Item),
     ptr: []Item,
+    skip_docs: std.AutoHashMap(u32, void),
 
     pub fn init(allocator: std.mem.Allocator, segment: *Segment) SegmentIter {
         return .{
@@ -307,17 +308,34 @@ const SegmentIter = struct {
             .next_block_no = 0,
             .items = std.ArrayList(Item).init(allocator),
             .ptr = undefined,
+            .skip_docs = std.AutoHashMap(u32, void),
         };
     }
 
     pub fn deinit(self: *SegmentIter) void {
         self.items.deinit();
+        self.skip_docs.deinit();
+    }
+
+    fn removeSkippedDocs(self: *SegmentIter) void {
+        var read_idx: usize = 0;
+        var write_idx: usize = 0;
+        while (read_idx < self.items.items.len) : (read_idx += 1) {
+            if (!self.skip_docs.contains(self.items.items[read_idx].doc_id)) {
+                if (write_idx != read_idx) {
+                    self.items.items[write_idx] = self.items.items[read_idx];
+                }
+                write_idx += 1;
+            }
+        }
+        self.items.shrinkRetainingCapacity(write_idx);
     }
 
     pub fn loadNextBlockIfNeeded(self: *SegmentIter) !void {
-        if (self.ptr.len == 0 and self.next_block_no < self.segment.index.len) {
+        while (self.ptr.len == 0 and self.next_block_no < self.segment.index.len) {
             const block_data = try self.segment.readBlock(self.next_block_no);
             readBlock(block_data[0..], &self.items);
+            self.removeSkippedDocs();
             self.ptr = self.items.items[0..];
             self.next_block_no += 1;
         }
@@ -364,7 +382,7 @@ fn getNextItem(sources: *[2]SegmentIter) !?Item {
     return item;
 }
 
-pub fn writeFileFromTwoSegments(file: fs.File, segments: [2]*Segment, allocator: std.mem.Allocator) !void {
+pub fn writeFileFromTwoSegments(file: fs.File, segments: [2]*Segment, hasNewerVersion: fn (u32, u32) bool, allocator: std.mem.Allocator) !void {
     const block_size = default_block_size;
 
     const writer = file.writer();
@@ -380,24 +398,6 @@ pub fn writeFileFromTwoSegments(file: fs.File, segments: [2]*Segment, allocator:
     };
     try writeHeader(writer, header);
 
-    // TODO filter out docs/items that are deleted in more recent segments
-
-    for (segments, 0..) |*segment, i| {
-        var docs_iter = segment.docs.iterator();
-        while (docs_iter.next()) |entry| {
-            const info = DocInfo{
-                .id = entry.key_ptr.*,
-                .version = i,
-                .deleted = if (entry.value_ptr.*) 0 else 1,
-            };
-            try writer.writeStructEndian(info, .little);
-            header.num_docs += 1;
-        }
-    }
-
-    var items = std.ArrayList(Item).init(allocator);
-    defer items.deinit();
-
     const sources: [2]SegmentIter = undefined;
 
     sources[0] = SegmentIter.init(allocator, segments[0]);
@@ -406,7 +406,29 @@ pub fn writeFileFromTwoSegments(file: fs.File, segments: [2]*Segment, allocator:
     sources[1] = SegmentIter.init(allocator, segments[1]);
     defer sources[1].deinit();
 
+    for (sources, 0..) |*source, i| {
+        var docs_iter = source.segment.docs.iterator();
+        while (docs_iter.next()) |entry| {
+            const id = entry.key_ptr.*;
+            const status = entry.value_ptr.*;
+            if (!hasNewerVersion(id, source.segment.version[0])) {
+                const info = DocInfo{
+                    .id = id,
+                    .version = i,
+                    .deleted = if (status) 0 else 1,
+                };
+                try writer.writeStructEndian(info, .little);
+                header.num_docs += 1;
+            } else {
+                try source.skip_docs.put(id, {});
+            }
+        }
+    }
+
     var block_data: [block_size]u8 = undefined;
+
+    var items = std.ArrayList(Item).init(allocator);
+    defer items.deinit();
 
     while (true) {
         // fill up the buffer wirh items from both segments
