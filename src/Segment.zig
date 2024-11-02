@@ -9,7 +9,10 @@ const InMemorySegment = @import("InMemorySegment.zig");
 
 const filefmt = @import("filefmt.zig");
 
-pub const Version = std.meta.Tuple(&.{ u32, u32 });
+pub const Version = packed struct(u64) {
+    version: u32,
+    included_merges: u32,
+};
 
 allocator: std.mem.Allocator,
 version: Version = .{ 0, 0 },

@@ -213,8 +213,8 @@ const footer_magic_v1 = 0x3153474d;
 
 pub const Header = packed struct {
     magic: u32 = header_magic_v1,
-    version_low: u32,
-    version_high: u32,
+    version: u32,
+    included_merges: u32,
     num_docs: u32,
     num_items: u32,
     num_blocks: u32,
@@ -260,8 +260,8 @@ pub fn writeFile(file: std.fs.File, segment: *InMemorySegment) !void {
     const writer = file.writer();
 
     var header = Header{
-        .version_low = segment.version,
-        .version_high = segment.version,
+        .version = segment.version,
+        .included_merges = segment.version,
         .num_docs = @intCast(segment.docs.count()),
         .num_items = @intCast(segment.items.items.len),
         .num_blocks = 0,
@@ -388,8 +388,8 @@ pub fn writeFileFromTwoSegments(file: fs.File, segments: [2]*Segment, hasNewerVe
     const writer = file.writer();
 
     const header = Header{
-        .version_low = @min(segments[0].version[0], segments[1].version[0]),
-        .version_high = @max(segments[0].version[1], segments[1].version[1]),
+        .version = @min(segments[0].version[0], segments[1].version[0]),
+        .included_merges = @max(segments[0].version[1], segments[1].version[1]),
         .num_docs = 0,
         .num_items = 0,
         .num_blocks = 0,
@@ -499,8 +499,8 @@ pub fn readFile(file: fs.File, segment: *Segment) !void {
         return error.InvalidSegment;
     }
 
-    segment.version[0] = header.version_low;
-    segment.version[1] = header.version_high;
+    segment.version[0] = header.version;
+    segment.version[1] = header.included_merges;
     segment.block_size = header.block_size;
     segment.max_commit_id = header.max_commit_id;
 
