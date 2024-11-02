@@ -213,7 +213,8 @@ const footer_magic_v1 = 0x3153474d;
 
 pub const Header = packed struct {
     magic: u32 = header_magic_v1,
-    version: u32,
+    version_low: u32,
+    version_high: u32,
     num_docs: u32,
     num_items: u32,
     block_size: u32,
@@ -276,7 +277,8 @@ pub fn writeFile(writer: anytype, segment: *InMemorySegment) !void {
     const block_size = default_block_size;
 
     const header = Header{
-        .version = segment.version,
+        .version_low = segment.version,
+        .version_high = segment.version,
         .num_docs = @intCast(segment.docs.count()),
         .num_items = @intCast(segment.items.items.len),
         .block_size = block_size,
@@ -333,7 +335,7 @@ const SegmentIter = struct {
         if (self.ptr.len == 0 and self.next_block_no < self.segment.index.len) {
             const block_data = try self.segment.readBlock(self.next_block_no);
             readBlock(block_data[0..], &self.items);
-            self.ptr = source.items.items[0..];
+            self.ptr = self.items.items[0..];
             self.next_block_no += 1;
         }
     }
@@ -382,6 +384,33 @@ fn getNextItem(sources: *[2]SegmentIter) !?Item {
 pub fn writeFileFromTwoSegments(file: fs.File, segments: [2]*Segment, allocator: std.mem.Allocator) !void {
     const block_size = default_block_size;
 
+    const writer = file.writer();
+
+    const header = Header{
+        .version_low = @min(segments[0].version[0], segments[1].version[0]),
+        .version_high = @max(segments[0].version[1], segments[1].version[1]),
+        .num_docs = 0,
+        .num_items = 0,
+        .block_size = block_size,
+        .max_commit_id = @max(segments[0].max_commit_id, segments[1].max_commit_id),
+    };
+    try writeHeader(writer, header);
+
+    // TODO filter out docs/items that are deleted in more recent segments
+
+    for (segments, 0..) |*segment, i| {
+        var docs_iter = segment.docs.iterator();
+        while (docs_iter.next()) |entry| {
+            const info = DocInfo{
+                .id = entry.key_ptr.*,
+                .version = i,
+                .deleted = if (entry.value_ptr.*) 0 else 1,
+            };
+            try writer.writeStructEndian(info, .little);
+            header.num_docs += 1;
+        }
+    }
+
     var items = std.ArrayList(Item).init(allocator);
     defer items.deinit();
 
@@ -404,12 +433,19 @@ pub fn writeFileFromTwoSegments(file: fs.File, segments: [2]*Segment, allocator:
             }
             try items.append(item);
         }
+        if (items.len == 0) {
+            break;
+        }
 
         // write the buffer to the file
         const n = try writeBlock(block_data[0..], items.items[0..]);
         try file.writeAll(block_data[0..]);
         items.items = items.items[n..];
+        header.num_items += n;
     }
+
+    file.seekTo(0);
+    try writeHeader(writer, header);
 }
 
 pub fn readFile(file: fs.File, segment: *Segment) !void {
@@ -451,8 +487,8 @@ pub fn readFile(file: fs.File, segment: *Segment) !void {
     }
     const num_blocks = blocks_data_size / header.block_size;
 
-    segment.version[0] = header.version;
-    segment.version[1] = header.version;
+    segment.version[0] = header.version_low;
+    segment.version[1] = header.version_high;
     segment.block_size = header.block_size;
     segment.max_commit_id = header.max_commit_id;
 
