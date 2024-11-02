@@ -107,7 +107,7 @@ pub fn open(self: *Self) !void {
     if (self.is_open) return;
 
     try self.scheduler.start(self);
-    try self.read();
+    try self.readIndexFile();
 
     try self.oplog.open(self.getMaxCommitId(), &self.stage);
 
@@ -127,7 +127,7 @@ fn destroySegment(self: *Self, node: *Segments.Node) void {
 
 const index_file_name = "index.dat";
 
-fn write(self: *Self) !void {
+fn writeIndexFile(self: *Self) !void {
     var file = try self.dir.atomicFile(index_file_name, .{});
     defer file.deinit();
 
@@ -146,7 +146,7 @@ fn write(self: *Self) !void {
     try file.finish();
 }
 
-fn read(self: *Self) !void {
+fn readIndexFile(self: *Self) !void {
     if (self.segments.len > 0) {
         return error.AlreadyOpened;
     }
@@ -176,24 +176,30 @@ fn cleanup(self: *Self) !void {
 
     var max_commit_id: ?u64 = null;
 
-    if (self.stage.freezeFirstSegment()) |segment| {
-        var commited = false;
+    if (self.stage.maybeFreezeOldestSegment()) |frozenStageSegment| {
+        var committed = false;
         const node = try self.createSegment();
         defer {
-            if (!commited) self.destroySegment(node);
+            if (!committed) {
+                self.destroySegment(node);
+            }
         }
 
-        try node.data.convert(self.dir, segment);
+        try node.data.convert(self.dir, frozenStageSegment);
 
         self.write_lock.lock();
         defer self.write_lock.unlock();
 
-        try self.write();
-
-        self.stage.removeSegment(segment);
         self.segments.append(node);
+        self.writeIndexFile() catch |err| {
+            self.segments.remove(node);
+            node.data.delete(self.dir) catch {};
+            return err;
+        };
+
+        self.stage.removeFrozenSegment(frozenStageSegment);
         max_commit_id = node.data.max_commit_id;
-        commited = true;
+        committed = true;
     }
 
     if (max_commit_id) |commit_id| {

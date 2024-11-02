@@ -347,7 +347,10 @@ fn mergeSegments(self: *Self) !void {
     }
 }
 
-pub fn freezeFirstSegment(self: *Self) ?*InMemorySegment {
+// Freezes the oldest segment, if the segment is already at its max size.
+// This is called periodically by the cleanup process of the main index.
+// Frozen segments are then persisted to disk and removed from the in-memory index.
+pub fn maybeFreezeOldestSegment(self: *Self) ?*InMemorySegment {
     self.merge_lock.lock();
     defer self.merge_lock.unlock();
 
@@ -370,7 +373,10 @@ pub fn freezeFirstSegment(self: *Self) ?*InMemorySegment {
     return null;
 }
 
-pub fn removeSegment(self: *Self, segment: *InMemorySegment) void {
+// Removes previously frozen segment that is no longer needed.
+// This is called from the cleanup process of the main index, when the
+// segment has already been persisted to disk.
+pub fn removeFrozenSegment(self: *Self, segment: *InMemorySegment) void {
     self.merge_lock.lock();
     defer self.merge_lock.unlock();
 
@@ -558,7 +564,7 @@ test "freeze segment" {
         .hashes = &[_]u32{ 1, 2, 3 },
     } }}, 1);
 
-    const segment1 = index.freezeFirstSegment();
+    const segment1 = index.maybeFreezeOldestSegment();
     try std.testing.expect(segment1 == null);
 
     var commit_id: u64 = 2;
@@ -570,10 +576,10 @@ test "freeze segment" {
         commit_id += 1;
     }
 
-    const segment2 = index.freezeFirstSegment();
+    const segment2 = index.maybeFreezeOldestSegment();
     try std.testing.expect(segment2 != null);
     try std.testing.expect(segment2.?.frozen);
 
-    const segment3 = index.freezeFirstSegment();
+    const segment3 = index.maybeFreezeOldestSegment();
     try std.testing.expect(segment3 == segment2);
 }

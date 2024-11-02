@@ -114,6 +114,13 @@ pub fn convert(self: *Self, dir: std.fs.Dir, source: *InMemorySegment) !void {
     try self.read(dir, file_name);
 }
 
+pub fn delete(self: *Self, dir: std.fs.Dir) !void {
+    var file_name_buf: [max_file_name_size]u8 = undefined;
+    const file_name = try std.fmt.bufPrint(&file_name_buf, file_name_fmt, .{ self.version[0], self.version[1] });
+
+    try dir.deleteFile(file_name);
+}
+
 pub fn merge(self: *Self, dir: std.fs.Dir, sources: [2]*Self) !void {
     if (sources[0].version[1] + 1 != sources[1].version[0]) {
         return error.SourceSegmentVersionMismatch;
