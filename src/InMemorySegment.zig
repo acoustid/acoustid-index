@@ -60,3 +60,7 @@ pub fn ensureSorted(self: *Self) void {
 pub fn canBeMerged(self: Self) bool {
     return !self.frozen;
 }
+
+pub fn getSize(self: Self) usize {
+    return self.items.items.len;
+}

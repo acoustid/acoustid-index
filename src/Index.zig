@@ -40,6 +40,8 @@ scheduler: zul.Scheduler(Task, *Self),
 last_cleanup_at: i64 = 0,
 cleanup_interval: i64 = 1000,
 
+max_segment_size: usize = 4 * 1024 * 1024 * 1024,
+
 oplog: Oplog,
 oplog_dir: std.fs.Dir,
 
@@ -144,6 +146,53 @@ fn readIndexFile(self: *Self) !void {
     }
 }
 
+const PreparedMerge = struct {
+    sources: SegmentList.SegmentsToMerge,
+    target: *SegmentList.List.Node,
+};
+
+fn prepareMerge(self: *Self) !?PreparedMerge {
+    self.write_lock.lockShared();
+    defer self.write_lock.unlockShared();
+
+    const sources_or_null = self.segments.findSegmentsToMerge(.{ .max_segment_size = self.max_segment_size });
+    if (sources_or_null == null) {
+        return null;
+    }
+    const sources = sources_or_null.?;
+
+    var saved = false;
+
+    var target = try self.segments.createSegment();
+    defer {
+        if (!saved) self.segments.destroySegment(target);
+    }
+
+    try target.data.merge(self.dir, .{ &sources.node1.data, &sources.node2.data });
+
+    saved = true;
+    return .{ .sources = sources, .target = target };
+}
+
+fn finnishMerge(self: *Self, merge: PreparedMerge) !void {
+    self.write_lock.lock();
+    defer self.write_lock.unlock();
+
+    self.segments.destroySegment(merge.target);
+    return error.NotImplemented;
+}
+
+fn compact(self: *Self) !void {
+    while (true) {
+        const merge_opt = try self.prepareMerge();
+        if (merge_opt) |merge| {
+            try self.finnishMerge(merge);
+            return error.NotImplemented;
+        }
+        break;
+    }
+}
+
 fn cleanup(self: *Self) !void {
     log.info("running cleanup", .{});
 
@@ -180,6 +229,8 @@ fn cleanup(self: *Self) !void {
             log.err("failed to truncate oplog: {}", .{err});
         };
     }
+
+    try self.compact();
 }
 
 pub fn update(self: *Self, changes: []const Change) !void {

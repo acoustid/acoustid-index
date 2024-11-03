@@ -98,13 +98,15 @@ pub fn SegmentList(Segment: type) type {
             var num_segments: usize = 0;
             var segments_iter = self.segments.first;
             while (segments_iter) |node| : (segments_iter = node.next) {
-                if (node.data.frozen or node.data.items.items.len > options.max_segment_size) {
+                if (!node.data.canBeMerged())
                     continue;
-                }
+                const size = node.data.getSize();
+                if (size >= options.max_segment_size)
+                    continue;
                 num_segments += 1;
-                total_size += node.data.items.items.len;
-                max_size = @max(max_size, node.data.items.items.len);
-                min_size = @min(min_size, node.data.items.items.len);
+                total_size += size;
+                max_size = @max(max_size, size);
+                min_size = @min(min_size, size);
             }
 
             if (total_size == 0) {
@@ -121,11 +123,13 @@ pub fn SegmentList(Segment: type) type {
             segments_iter = self.segments.first;
             var level_size = @as(f64, @floatFromInt(total_size)) / 2;
             while (segments_iter) |node| : (segments_iter = node.next) {
-                if (node.data.frozen or node.data.items.items.len > options.max_segment_size) {
+                if (!node.data.canBeMerged())
                     continue;
-                }
+                const size = node.data.getSize();
+                if (size >= options.max_segment_size)
+                    continue;
                 if (node.next) |next_node| {
-                    const merge_size = node.data.items.items.len + next_node.data.items.items.len;
+                    const merge_size = size + next_node.data.getSize();
                     const score = @as(f64, @floatFromInt(merge_size)) - level_size;
                     if (score < best_score) {
                         best_node = node;

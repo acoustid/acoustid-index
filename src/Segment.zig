@@ -18,10 +18,9 @@ index: std.ArrayList(u32),
 block_size: usize = 0,
 blocks: []const u8,
 merged: u32 = 0,
+num_items: usize = 0,
 
 raw_data: ?[]align(std.mem.page_size) u8 = null,
-
-pub const frozen = false;
 
 const Self = @This();
 
@@ -180,4 +179,13 @@ pub fn merge(self: *Self, dir: std.fs.Dir, sources: [2]*Self) !void {
     try self.read(dir, file_name);
 
     assert(self.id.version == version.version and self.id.included_merges == version.included_merges);
+}
+
+pub fn canBeMerged(self: Self) bool {
+    _ = self;
+    return true;
+}
+
+pub fn getSize(self: Self) usize {
+    return self.num_items;
 }

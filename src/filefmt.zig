@@ -538,6 +538,7 @@ pub fn readFile(file: fs.File, segment: *Segment) !void {
     segment.id.included_merges = header.included_merges;
     segment.block_size = header.block_size;
     segment.max_commit_id = header.max_commit_id;
+    segment.num_items = header.num_items;
 
     try segment.docs.ensureTotalCapacity(header.num_docs);
 
