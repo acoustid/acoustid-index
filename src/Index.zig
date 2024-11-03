@@ -178,8 +178,37 @@ fn finnishMerge(self: *Self, merge: PreparedMerge) !void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
-    self.segments.destroySegment(merge.target);
-    return error.NotImplemented;
+    var committed = false;
+
+    defer {
+        if (!committed) {
+            merge.target.data.delete(self.dir) catch |err| {
+                log.err("failed to delete segment: {}", .{err});
+            };
+            self.segments.destroySegment(merge.target);
+        }
+    }
+
+    self.segments.segments.insertBefore(merge.sources.node1, merge.target);
+    self.segments.segments.remove(merge.sources.node1);
+    self.segments.segments.remove(merge.sources.node2);
+
+    defer {
+        if (!committed) {
+            self.segments.segments.insertBefore(merge.target, merge.sources.node1);
+            self.segments.segments.insertBefore(merge.target, merge.sources.node2);
+            self.segments.segments.remove(merge.target);
+        }
+    }
+
+    try self.writeIndexFile();
+
+    committed = true;
+
+    self.segments.destroySegment(merge.sources.node1);
+    self.segments.destroySegment(merge.sources.node2);
+
+    log.info("committed merge segment {}:{}", .{ merge.target.data.id.version, merge.target.data.id.included_merges });
 }
 
 fn compact(self: *Self) !void {
