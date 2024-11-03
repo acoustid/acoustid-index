@@ -152,23 +152,18 @@ fn getMaxSegments(self: *Self, total_size: usize) usize {
     }
 }
 
-const Merge = struct {
-    first: *InMemorySegmentList.List.Node,
-    last: *InMemorySegmentList.List.Node,
-    replacement: *InMemorySegmentList.List.Node,
-};
-
-fn prepareMerge(self: *Self) !?Merge {
+fn prepareMerge(self: *Self) !?InMemorySegmentList.PreparedMerge {
     self.write_lock.lockShared();
     defer self.write_lock.unlockShared();
 
-    const to_merge = self.segments.findSegmentsToMerge(.{ .max_segment_size = self.options.max_segment_size });
-    if (to_merge == null) {
+    const merge_opt = try self.segments.prepareMerge(.{ .max_segment_size = self.options.max_segment_size });
+    if (merge_opt == null) {
         return null;
     }
+    const merge = merge_opt.?;
 
-    const node1 = to_merge.?.node1;
-    const node2 = to_merge.?.node2;
+    const node1 = merge.?.node1;
+    const node2 = merge.?.node2;
 
     const segment1 = &node1.data;
     const segment2 = &node2.data;
@@ -180,8 +175,6 @@ fn prepareMerge(self: *Self) !?Merge {
     defer {
         if (!committed) self.segments.destroySegment(node);
     }
-
-    const merge = Merge{ .first = node1, .last = node2, .replacement = node };
 
     node.data.id = common.SegmentID.merge(segment1.id, segment2.id);
     node.data.max_commit_id = @max(segment1.max_commit_id, segment2.max_commit_id);
@@ -243,18 +236,12 @@ fn checkSegments(self: *Self) void {
     }
 }
 
-fn commitMerge(self: *Self, merge: Merge) void {
+fn finnishMerge(self: *Self, merge: InMemorySegmentList.PreparedMerge) void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
-    self.segments.segments.insertAfter(merge.last, merge.replacement);
-
-    var iter: ?*InMemorySegmentList.List.Node = merge.first;
-    while (iter) |node| {
-        iter = node.next;
-        self.segments.removeAndDestroy(node);
-        if (node == merge.last) break;
-    }
+    self.segments.applyMerge(merge);
+    self.segments.destroyMergedSegments(merge);
 
     self.checkSegments();
 }
@@ -263,9 +250,9 @@ fn mergeSegments(self: *Self) !void {
     self.merge_lock.lock();
     defer self.merge_lock.unlock();
 
-    const maybeMerge = try self.prepareMerge();
-    if (maybeMerge) |merge| {
-        self.commitMerge(merge);
+    const merge_opt = try self.prepareMerge();
+    if (merge_opt) |merge| {
+        self.finnishMerge(merge);
     }
 }
 

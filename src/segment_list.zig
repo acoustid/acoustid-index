@@ -146,6 +146,37 @@ pub fn SegmentList(Segment: type) type {
             }
             return null;
         }
+
+        pub const PreparedMerge = struct {
+            sources: SegmentsToMerge,
+            target: *List.Node,
+        };
+
+        pub fn prepareMerge(self: *Self, options: SegmentMergeOptions) !?PreparedMerge {
+            const sources_opt = self.findSegmentsToMerge(options);
+            if (sources_opt) |sources| {
+                const target = try self.createSegment();
+                return .{ .sources = sources, .target = target };
+            }
+            return null;
+        }
+
+        pub fn applyMerge(self: *Self, merge: PreparedMerge) void {
+            self.segments.insertBefore(merge.sources.node1, merge.target);
+            self.segments.remove(merge.sources.node1);
+            self.segments.remove(merge.sources.node2);
+        }
+
+        pub fn revertMerge(self: *Self, merge: PreparedMerge) void {
+            self.segments.insertBefore(merge.target, merge.sources.node1);
+            self.segments.insertBefore(merge.target, merge.sources.node2);
+            self.segments.remove(merge.target);
+        }
+
+        pub fn destroyMergedSegments(self: *Self, merge: PreparedMerge) void {
+            self.destroySegment(merge.sources.node1);
+            self.destroySegment(merge.sources.node2);
+        }
     };
 }
 

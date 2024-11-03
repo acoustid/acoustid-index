@@ -146,35 +146,22 @@ fn readIndexFile(self: *Self) !void {
     }
 }
 
-const PreparedMerge = struct {
-    sources: SegmentList.SegmentsToMerge,
-    target: *SegmentList.List.Node,
-};
-
-fn prepareMerge(self: *Self) !?PreparedMerge {
+fn prepareMerge(self: *Self) !?SegmentList.PreparedMerge {
     self.write_lock.lockShared();
     defer self.write_lock.unlockShared();
 
-    const sources_or_null = self.segments.findSegmentsToMerge(.{ .max_segment_size = self.max_segment_size });
-    if (sources_or_null == null) {
-        return null;
+    const merge_opt = try self.segments.prepareMerge(.{ .max_segment_size = self.max_segment_size });
+    if (merge_opt) |merge| {
+        merge.target.data.merge(self.dir, .{ &merge.sources.node1.data, &merge.sources.node2.data }) catch |err| {
+            self.segments.destroySegment(merge.target);
+            return err;
+        };
+        return merge;
     }
-    const sources = sources_or_null.?;
-
-    var saved = false;
-
-    var target = try self.segments.createSegment();
-    defer {
-        if (!saved) self.segments.destroySegment(target);
-    }
-
-    try target.data.merge(self.dir, .{ &sources.node1.data, &sources.node2.data });
-
-    saved = true;
-    return .{ .sources = sources, .target = target };
+    return null;
 }
 
-fn finnishMerge(self: *Self, merge: PreparedMerge) !void {
+fn finnishMerge(self: *Self, merge: SegmentList.PreparedMerge) !void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
@@ -189,15 +176,11 @@ fn finnishMerge(self: *Self, merge: PreparedMerge) !void {
         }
     }
 
-    self.segments.segments.insertBefore(merge.sources.node1, merge.target);
-    self.segments.segments.remove(merge.sources.node1);
-    self.segments.segments.remove(merge.sources.node2);
+    self.segments.applyMerge(merge);
 
     defer {
         if (!committed) {
-            self.segments.segments.insertBefore(merge.target, merge.sources.node1);
-            self.segments.segments.insertBefore(merge.target, merge.sources.node2);
-            self.segments.segments.remove(merge.target);
+            self.segments.revertMerge(merge);
         }
     }
 
@@ -205,8 +188,7 @@ fn finnishMerge(self: *Self, merge: PreparedMerge) !void {
 
     committed = true;
 
-    self.segments.destroySegment(merge.sources.node1);
-    self.segments.destroySegment(merge.sources.node2);
+    self.segments.destroyMergedSegments(merge);
 
     log.info("committed merge segment {}:{}", .{ merge.target.data.id.version, merge.target.data.id.included_merges });
 }
