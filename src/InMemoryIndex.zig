@@ -157,69 +157,14 @@ fn prepareMerge(self: *Self) !?InMemorySegmentList.PreparedMerge {
     defer self.write_lock.unlockShared();
 
     const merge_opt = try self.segments.prepareMerge(.{ .max_segment_size = self.options.max_segment_size });
-    if (merge_opt == null) {
-        return null;
+    if (merge_opt) |merge| {
+        merge.target.data.merge(merge.sources.node1.data, merge.sources.node2.data) catch |err| {
+            self.segments.destroySegment(merge.target);
+            return err;
+        };
+        return merge;
     }
-    const merge = merge_opt.?;
-
-    const node1 = merge.sources.node1;
-    const node2 = merge.sources.node2;
-
-    const segment1 = &node1.data;
-    const segment2 = &node2.data;
-    const segments = [2]*InMemorySegment{ segment1, segment2 };
-
-    var committed = false;
-
-    defer {
-        if (!committed) self.segments.destroySegment(merge.target);
-    }
-
-    merge.target.data.id = common.SegmentID.merge(segment1.id, segment2.id);
-    merge.target.data.max_commit_id = @max(segment1.max_commit_id, segment2.max_commit_id);
-
-    var total_docs: usize = 0;
-    var total_items: usize = 0;
-    for (segments) |segment| {
-        total_docs += segment.docs.count();
-        total_items += segment.items.items.len;
-    }
-
-    try merge.target.data.docs.ensureUnusedCapacity(@truncate(total_docs));
-    try merge.target.data.items.ensureTotalCapacity(total_items);
-
-    {
-        var skip_docs = std.AutoHashMap(u32, void).init(self.allocator);
-        defer skip_docs.deinit();
-
-        try skip_docs.ensureTotalCapacity(@truncate(total_docs / 10));
-
-        for (segments) |segment| {
-            skip_docs.clearRetainingCapacity();
-
-            var docs_iter = segment.docs.iterator();
-            while (docs_iter.next()) |entry| {
-                const id = entry.key_ptr.*;
-                const status = entry.value_ptr.*;
-                if (!self.segments.hasNewerVersion(id, segment.id.version)) {
-                    try merge.target.data.docs.put(id, status);
-                } else {
-                    try skip_docs.put(id, {});
-                }
-            }
-
-            for (segment.items.items) |item| {
-                if (!skip_docs.contains(item.id)) {
-                    try merge.target.data.items.append(item);
-                }
-            }
-        }
-    }
-
-    merge.target.data.ensureSorted();
-
-    committed = true;
-    return merge;
+    return null;
 }
 
 fn checkSegments(self: *Self) void {

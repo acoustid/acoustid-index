@@ -64,3 +64,50 @@ pub fn canBeMerged(self: Self) bool {
 pub fn getSize(self: Self) usize {
     return self.items.items.len;
 }
+
+pub fn merge(self: *Self, source1: *Self, source2: *Self) !void {
+    const sources = .{ source1, source2 };
+
+    self.id = common.SegmentID.merge(source1.id, source2.id);
+    self.max_commit_id = @max(source1.max_commit_id, source2.max_commit_id);
+
+    var total_docs: usize = 0;
+    var total_items: usize = 0;
+    for (sources) |segment| {
+        total_docs += segment.docs.count();
+        total_items += segment.items.items.len;
+    }
+
+    try self.docs.ensureUnusedCapacity(@truncate(total_docs));
+    try self.items.ensureTotalCapacity(total_items);
+
+    {
+        var skip_docs = std.AutoHashMap(u32, void).init(self.allocator);
+        defer skip_docs.deinit();
+
+        try skip_docs.ensureTotalCapacity(@truncate(total_docs / 10));
+
+        for (sources) |segment| {
+            skip_docs.clearRetainingCapacity();
+
+            var docs_iter = segment.docs.iterator();
+            while (docs_iter.next()) |entry| {
+                const id = entry.key_ptr.*;
+                const status = entry.value_ptr.*;
+                if (!self.segments.hasNewerVersion(id, segment.id.version)) {
+                    try self.docs.put(id, status);
+                } else {
+                    try skip_docs.put(id, {});
+                }
+            }
+
+            for (segment.items.items) |item| {
+                if (!skip_docs.contains(item.id)) {
+                    try self.items.append(item);
+                }
+            }
+        }
+    }
+
+    self.ensureSorted();
+}
