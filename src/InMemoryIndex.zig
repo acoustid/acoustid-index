@@ -165,17 +165,7 @@ pub fn cleanup(self: *Self) !void {
 }
 
 fn hasNewerVersion(self: *Self, doc_id: u32, version: u32) bool {
-    var it = self.segments.last;
-    while (it) |node| : (it = node.prev) {
-        if (node.data.id.version > version) {
-            if (node.data.docs.contains(doc_id)) {
-                return true;
-            }
-        } else {
-            break;
-        }
-    }
-    return false;
+    return common.hasNewerVersion(InMemorySegment, self.segments, doc_id, version);
 }
 
 fn getMaxSegments(self: *Self, total_size: usize) usize {
