@@ -10,8 +10,9 @@ const Item = common.Item;
 const SearchResults = common.SearchResults;
 const Change = common.Change;
 
+const segment_list = @import("segment_list.zig");
 const InMemorySegment = @import("InMemorySegment.zig");
-const InMemorySegments = std.DoublyLinkedList(InMemorySegment);
+const InMemorySegmentList = segment_list.SegmentList(InMemorySegment);
 
 const Options = struct {
     max_segment_size: usize = 1_000_000,
@@ -21,8 +22,7 @@ options: Options,
 allocator: std.mem.Allocator,
 write_lock: std.Thread.RwLock,
 merge_lock: std.Thread.Mutex,
-segments: InMemorySegments,
-pending_segments: InMemorySegments,
+segments: InMemorySegmentList,
 auto_cleanup: bool = true,
 
 const Self = @This();
@@ -33,8 +33,7 @@ pub fn init(allocator: std.mem.Allocator, options: Options) Self {
         .allocator = allocator,
         .write_lock = .{},
         .merge_lock = .{},
-        .segments = .{},
-        .pending_segments = .{},
+        .segments = InMemorySegmentList.init(allocator),
     };
 }
 
@@ -42,29 +41,16 @@ pub fn deinit(self: *Self) void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
-    while (self.segments.popFirst()) |node| {
-        self.destroySegment(node);
-    }
-
-    while (self.pending_segments.popFirst()) |node| {
-        self.destroySegment(node);
-    }
+    self.segments.deinit();
 }
 
-fn createSegment(self: *Self) !*InMemorySegments.Node {
-    const node = try self.allocator.create(InMemorySegments.Node);
-    node.data = InMemorySegment.init(self.allocator);
-    return node;
-}
-
-fn destroySegment(self: *Self, node: *InMemorySegments.Node) void {
-    node.data.deinit();
-    self.allocator.destroy(node);
-}
+pub const PendingUpdate = struct {
+    node: *InMemorySegmentList.List.Node,
+};
 
 pub fn update(self: *Self, changes: []const Change, commit_id: u64) !void {
-    const update_id = try self.prepareUpdate(changes);
-    self.commitUpdate(update_id, commit_id);
+    const txn = try self.prepareUpdate(changes);
+    self.commitUpdate(txn, commit_id);
 
     if (self.auto_cleanup) {
         self.mergeSegments() catch |err| {
@@ -73,46 +59,30 @@ pub fn update(self: *Self, changes: []const Change, commit_id: u64) !void {
     }
 }
 
-pub fn cancelUpdate(self: *Self, update_id: usize) void {
-    self.write_lock.lock();
-    defer self.write_lock.unlock();
-
-    var it = self.pending_segments.first;
-    while (it) |node| : (it = node.next) {
-        if (@intFromPtr(node) == update_id) {
-            self.pending_segments.remove(node);
-            self.destroySegment(node);
-            return;
-        }
-    }
+pub fn cancelUpdate(self: *Self, txn: PendingUpdate) void {
+    self.segments.destroySegment(txn.node);
+    self.write_lock.unlock();
 }
 
-pub fn commitUpdate(self: *Self, update_id: usize, commit_id: u64) void {
-    self.write_lock.lock();
-    defer self.write_lock.unlock();
+pub fn commitUpdate(self: *Self, txn: PendingUpdate, commit_id: u64) void {
+    self.segments.segments.append(txn.node);
 
-    var it = self.pending_segments.first;
-    while (it) |node| : (it = node.next) {
-        if (@intFromPtr(node) == update_id) {
-            self.pending_segments.remove(node);
-            self.segments.append(node);
-            if (node.prev) |prev| {
-                node.data.id = prev.data.id.next();
-            } else {
-                node.data.id = common.SegmentID.first();
-            }
-            node.data.max_commit_id = commit_id;
-            return;
-        }
+    txn.node.data.max_commit_id = commit_id;
+    if (txn.node.prev) |prev| {
+        txn.node.data.id = prev.data.id.next();
+    } else {
+        txn.node.data.id = common.SegmentID.first();
     }
+
+    self.write_lock.unlock();
 }
 
-pub fn prepareUpdate(self: *Self, changes: []const Change) !usize {
+pub fn prepareUpdate(self: *Self, changes: []const Change) !PendingUpdate {
     var saved = false;
 
-    const node = try self.createSegment();
+    const node = try self.segments.createSegment();
     defer {
-        if (!saved) self.destroySegment(node);
+        if (!saved) self.segments.destroySegment(node);
     }
 
     var num_items: usize = 0;
@@ -153,19 +123,12 @@ pub fn prepareUpdate(self: *Self, changes: []const Change) !usize {
     node.data.ensureSorted();
 
     self.write_lock.lock();
-    self.pending_segments.prepend(node);
     saved = true;
-    self.write_lock.unlock();
-
-    return @intFromPtr(node);
+    return PendingUpdate{ .node = node };
 }
 
 pub fn cleanup(self: *Self) !void {
     try self.mergeSegments();
-}
-
-fn hasNewerVersion(self: *Self, doc_id: u32, version: u32) bool {
-    return common.hasNewerVersion(InMemorySegment, self.segments, doc_id, version);
 }
 
 fn getMaxSegments(self: *Self, total_size: usize) usize {
@@ -180,9 +143,9 @@ fn getMaxSegments(self: *Self, total_size: usize) usize {
 }
 
 const Merge = struct {
-    first: *InMemorySegments.Node,
-    last: *InMemorySegments.Node,
-    replacement: *InMemorySegments.Node,
+    first: *InMemorySegmentList.List.Node,
+    last: *InMemorySegmentList.List.Node,
+    replacement: *InMemorySegmentList.List.Node,
 };
 
 fn prepareMerge(self: *Self) !?Merge {
@@ -193,7 +156,7 @@ fn prepareMerge(self: *Self) !?Merge {
     var max_size: usize = 0;
     var min_size: usize = std.math.maxInt(usize);
     var num_segments: usize = 0;
-    var segments_iter = self.segments.first;
+    var segments_iter = self.segments.segments.first;
     while (segments_iter) |node| : (segments_iter = node.next) {
         if (node.data.frozen or node.data.items.items.len > self.options.max_segment_size) {
             continue;
@@ -213,9 +176,9 @@ fn prepareMerge(self: *Self) !?Merge {
         return null;
     }
 
-    var best_node: ?*InMemorySegments.Node = null;
+    var best_node: ?*InMemorySegmentList.List.Node = null;
     var best_score: f64 = std.math.inf(f64);
-    segments_iter = self.segments.first;
+    segments_iter = self.segments.segments.first;
     var level_size = @as(f64, @floatFromInt(total_size)) / 2;
     while (segments_iter) |node| : (segments_iter = node.next) {
         if (node.data.frozen or node.data.items.items.len > self.options.max_segment_size) {
@@ -245,9 +208,9 @@ fn prepareMerge(self: *Self) !?Merge {
 
     var committed = false;
 
-    const node = try self.createSegment();
+    const node = try self.segments.createSegment();
     defer {
-        if (!committed) self.destroySegment(node);
+        if (!committed) self.segments.destroySegment(node);
     }
 
     const merge = Merge{ .first = node1, .last = node2, .replacement = node };
@@ -278,7 +241,7 @@ fn prepareMerge(self: *Self) !?Merge {
             while (docs_iter.next()) |entry| {
                 const id = entry.key_ptr.*;
                 const status = entry.value_ptr.*;
-                if (!self.hasNewerVersion(id, segment.id.version)) {
+                if (!self.segments.hasNewerVersion(id, segment.id.version)) {
                     try node.data.docs.put(id, status);
                 } else {
                     try skip_docs.put(id, {});
@@ -300,7 +263,7 @@ fn prepareMerge(self: *Self) !?Merge {
 }
 
 fn checkSegments(self: *Self) void {
-    var iter = self.segments.first;
+    var iter = self.segments.segments.first;
     while (iter) |node| : (iter = node.next) {
         if (!node.data.frozen) {
             if (node.prev) |prev| {
@@ -316,13 +279,12 @@ fn commitMerge(self: *Self, merge: Merge) void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
-    self.segments.insertAfter(merge.last, merge.replacement);
+    self.segments.segments.insertAfter(merge.last, merge.replacement);
 
-    var iter: ?*InMemorySegments.Node = merge.first;
+    var iter: ?*InMemorySegmentList.List.Node = merge.first;
     while (iter) |node| {
         iter = node.next;
-        self.segments.remove(node);
-        self.destroySegment(node);
+        self.segments.removeAndDestroy(node);
         if (node == merge.last) break;
     }
 
@@ -349,7 +311,7 @@ pub fn maybeFreezeOldestSegment(self: *Self) ?*InMemorySegment {
     self.write_lock.lockShared();
     defer self.write_lock.unlockShared();
 
-    const first = self.segments.first;
+    const first = self.segments.segments.first;
     if (first) |node| {
         if (node.next != null) { // only continue if there is more than one segment
             const segment = &node.data;
@@ -375,12 +337,11 @@ pub fn removeFrozenSegment(self: *Self, segment: *InMemorySegment) void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
-    var it = self.segments.first;
+    var it = self.segments.segments.first;
     while (it) |node| : (it = node.next) {
         if (&node.data == segment) {
             if (node.data.frozen) {
-                self.segments.remove(node);
-                self.destroySegment(node);
+                self.segments.removeAndDestroy(node);
                 return;
             }
         }
@@ -391,34 +352,7 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadlin
     self.write_lock.lockShared();
     defer self.write_lock.unlockShared();
 
-    var previousSegmentVersion: u32 = 0;
-    var segmentIter = self.segments.first;
-    while (segmentIter) |node| : (segmentIter = node.next) {
-        const segment = &node.data;
-
-        if (deadline.isExpired()) {
-            return error.Timeout;
-        }
-
-        assert(segment.id.version > previousSegmentVersion);
-        previousSegmentVersion = segment.id.version;
-
-        try segment.search(hashes, results);
-
-        // Remove results for docs that have been updated/deleted in the current segment.
-        // We can do it here, because we know previously processed segments always have
-        // lower version numbers.
-        var results_iter = results.results.iterator();
-        while (results_iter.next()) |result| {
-            const version = result.value_ptr.version;
-            if (version < segment.id.version) {
-                if (segment.docs.contains(result.key_ptr.*)) {
-                    result.value_ptr.score = 0;
-                    result.value_ptr.version = segment.id.version;
-                }
-            }
-        }
-    }
+    try self.segments.search(hashes, results, deadline);
 }
 
 test "insert and search" {

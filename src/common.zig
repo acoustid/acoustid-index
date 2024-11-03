@@ -163,17 +163,3 @@ pub const SegmentID = packed struct(u64) {
         };
     }
 };
-
-pub fn hasNewerVersion(T: type, segments: std.DoublyLinkedList(T), doc_id: u32, version: u32) bool {
-    var it = segments.last;
-    while (it) |node| : (it = node.prev) {
-        if (node.data.id.version > version) {
-            if (node.data.docs.contains(doc_id)) {
-                return true;
-            }
-        } else {
-            break;
-        }
-    }
-    return false;
-}

@@ -8,12 +8,13 @@ const InMemoryIndex = @import("InMemoryIndex.zig");
 const common = @import("common.zig");
 const SearchResults = common.SearchResults;
 const Change = common.Change;
-const SegmentVersion = common.SegmentID;
+const SegmentID = common.SegmentID;
 
 const Deadline = @import("utils/Deadline.zig");
 
+const segment_list = @import("segment_list.zig");
 const Segment = @import("Segment.zig");
-const Segments = std.DoublyLinkedList(Segment);
+const SegmentList = segment_list.SegmentList(Segment);
 
 const Oplog = @import("Oplog.zig");
 
@@ -32,7 +33,7 @@ is_open: bool = false,
 dir: std.fs.Dir,
 allocator: std.mem.Allocator,
 stage: InMemoryIndex,
-segments: Segments,
+segments: SegmentList,
 write_lock: std.Thread.RwLock = .{},
 
 scheduler: zul.Scheduler(Task, *Self),
@@ -70,7 +71,7 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Se
         .dir = dir,
         .allocator = allocator,
         .stage = InMemoryIndex.init(allocator, .{ .max_segment_size = options.min_segment_size }),
-        .segments = .{},
+        .segments = SegmentList.init(allocator),
         .scheduler = zul.Scheduler(Task, *Self).init(allocator),
         .oplog = Oplog.init(allocator, oplog_dir),
         .oplog_dir = oplog_dir,
@@ -85,20 +86,7 @@ pub fn deinit(self: *Self) void {
     self.oplog.deinit();
     self.oplog_dir.close();
     self.stage.deinit();
-    while (self.segments.popFirst()) |node| {
-        self.destroySegment(node);
-    }
-}
-
-fn getMaxCommitId(self: *Self) u64 {
-    var max_commit_id: u64 = 0;
-    var it = self.segments.first;
-    while (it) |node| : (it = node.next) {
-        if (node.data.max_commit_id > max_commit_id) {
-            max_commit_id = node.data.max_commit_id;
-        }
-    }
-    return max_commit_id;
+    self.segments.deinit();
 }
 
 pub fn open(self: *Self) !void {
@@ -110,20 +98,9 @@ pub fn open(self: *Self) !void {
     try self.scheduler.start(self);
     try self.readIndexFile();
 
-    try self.oplog.open(self.getMaxCommitId(), &self.stage);
+    try self.oplog.open(self.segments.getMaxCommitId(), &self.stage);
 
     self.is_open = true;
-}
-
-fn createSegment(self: *Self) !*Segments.Node {
-    const node = try self.allocator.create(Segments.Node);
-    node.data = Segment.init(self.allocator);
-    return node;
-}
-
-fn destroySegment(self: *Self, node: *Segments.Node) void {
-    node.data.deinit();
-    self.allocator.destroy(node);
 }
 
 const index_file_name = "index.dat";
@@ -132,23 +109,18 @@ fn writeIndexFile(self: *Self) !void {
     var file = try self.dir.atomicFile(index_file_name, .{});
     defer file.deinit();
 
-    var segments = std.ArrayList(SegmentVersion).init(self.allocator);
-    defer segments.deinit();
+    var ids = std.ArrayList(SegmentID).init(self.allocator);
+    defer ids.deinit();
 
-    try segments.ensureTotalCapacity(self.segments.len);
+    try self.segments.getIds(&ids);
 
-    var it = self.segments.first;
-    while (it) |node| : (it = node.next) {
-        try segments.append(node.data.id);
-    }
-
-    try filefmt.writeIndexFile(file.file.writer(), segments);
+    try filefmt.writeIndexFile(file.file.writer(), ids);
 
     try file.finish();
 }
 
 fn readIndexFile(self: *Self) !void {
-    if (self.segments.len > 0) {
+    if (self.segments.segments.len > 0) {
         return error.AlreadyOpened;
     }
 
@@ -160,20 +132,16 @@ fn readIndexFile(self: *Self) !void {
     };
     defer file.close();
 
-    var segments = std.ArrayList(SegmentVersion).init(self.allocator);
-    defer segments.deinit();
+    var ids = std.ArrayList(SegmentID).init(self.allocator);
+    defer ids.deinit();
 
-    try filefmt.readIndexFile(file.reader(), &segments);
+    try filefmt.readIndexFile(file.reader(), &ids);
 
-    for (segments.items) |v| {
-        const node = try self.createSegment();
-        try node.data.open(self.dir, v);
-        self.segments.append(node);
+    for (ids.items) |id| {
+        const node = try self.segments.createSegment();
+        try node.data.open(self.dir, id);
+        self.segments.segments.append(node);
     }
-}
-
-fn hasNewerVersion(self: *Self, doc_id: u32, version: u32) bool {
-    return common.hasNewerVersion(Segment, self.segments, doc_id, version);
 }
 
 fn cleanup(self: *Self) !void {
@@ -183,10 +151,10 @@ fn cleanup(self: *Self) !void {
 
     if (self.stage.maybeFreezeOldestSegment()) |frozenStageSegment| {
         var committed = false;
-        const node = try self.createSegment();
+        const node = try self.segments.createSegment();
         defer {
             if (!committed) {
-                self.destroySegment(node);
+                self.segments.destroySegment(node);
             }
         }
 
@@ -195,9 +163,9 @@ fn cleanup(self: *Self) !void {
         self.write_lock.lock();
         defer self.write_lock.unlock();
 
-        self.segments.append(node);
+        self.segments.segments.append(node);
         self.writeIndexFile() catch |err| {
-            self.segments.remove(node);
+            self.segments.segments.remove(node);
             node.data.delete(self.dir) catch {};
             return err;
         };
@@ -238,14 +206,7 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadlin
     defer self.allocator.free(sorted_hashes);
     std.sort.pdq(u32, sorted_hashes, {}, std.sort.asc(u32));
 
-    var it = self.segments.first;
-    while (it) |node| : (it = node.next) {
-        if (deadline.isExpired()) {
-            return error.Timeout;
-        }
-        try node.data.search(sorted_hashes, results);
-    }
-
+    try self.segments.search(sorted_hashes, results, deadline);
     try self.stage.search(sorted_hashes, results, deadline);
 
     results.sort();
