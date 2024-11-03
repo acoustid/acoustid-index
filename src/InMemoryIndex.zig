@@ -162,8 +162,8 @@ fn prepareMerge(self: *Self) !?InMemorySegmentList.PreparedMerge {
     }
     const merge = merge_opt.?;
 
-    const node1 = merge.?.node1;
-    const node2 = merge.?.node2;
+    const node1 = merge.sources.node1;
+    const node2 = merge.sources.node2;
 
     const segment1 = &node1.data;
     const segment2 = &node2.data;
@@ -171,13 +171,12 @@ fn prepareMerge(self: *Self) !?InMemorySegmentList.PreparedMerge {
 
     var committed = false;
 
-    const node = try self.segments.createSegment();
     defer {
-        if (!committed) self.segments.destroySegment(node);
+        if (!committed) self.segments.destroySegment(merge.target);
     }
 
-    node.data.id = common.SegmentID.merge(segment1.id, segment2.id);
-    node.data.max_commit_id = @max(segment1.max_commit_id, segment2.max_commit_id);
+    merge.target.data.id = common.SegmentID.merge(segment1.id, segment2.id);
+    merge.target.data.max_commit_id = @max(segment1.max_commit_id, segment2.max_commit_id);
 
     var total_docs: usize = 0;
     var total_items: usize = 0;
@@ -186,8 +185,8 @@ fn prepareMerge(self: *Self) !?InMemorySegmentList.PreparedMerge {
         total_items += segment.items.items.len;
     }
 
-    try node.data.docs.ensureUnusedCapacity(@truncate(total_docs));
-    try node.data.items.ensureTotalCapacity(total_items);
+    try merge.target.data.docs.ensureUnusedCapacity(@truncate(total_docs));
+    try merge.target.data.items.ensureTotalCapacity(total_items);
 
     {
         var skip_docs = std.AutoHashMap(u32, void).init(self.allocator);
@@ -203,7 +202,7 @@ fn prepareMerge(self: *Self) !?InMemorySegmentList.PreparedMerge {
                 const id = entry.key_ptr.*;
                 const status = entry.value_ptr.*;
                 if (!self.segments.hasNewerVersion(id, segment.id.version)) {
-                    try node.data.docs.put(id, status);
+                    try merge.target.data.docs.put(id, status);
                 } else {
                     try skip_docs.put(id, {});
                 }
@@ -211,13 +210,13 @@ fn prepareMerge(self: *Self) !?InMemorySegmentList.PreparedMerge {
 
             for (segment.items.items) |item| {
                 if (!skip_docs.contains(item.id)) {
-                    try node.data.items.append(item);
+                    try merge.target.data.items.append(item);
                 }
             }
         }
     }
 
-    node.data.ensureSorted();
+    merge.target.data.ensureSorted();
 
     committed = true;
     return merge;
