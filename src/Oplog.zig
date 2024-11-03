@@ -252,12 +252,8 @@ fn writeEntries(writer: anytype, commit_id: u64, changes: []const Change) !void 
 }
 
 pub fn write(self: *Self, changes: []const Change, index: *InMemoryIndex) !void {
-    var committed: bool = false;
-
-    const update = try index.prepareUpdate(changes);
-    defer {
-        if (!committed) index.cancelUpdate(update);
-    }
+    var txn = try index.prepareUpdate(changes);
+    defer index.cancelUpdate(&txn);
 
     self.write_lock.lock();
     defer self.write_lock.unlock();
@@ -283,8 +279,7 @@ pub fn write(self: *Self, changes: []const Change, index: *InMemoryIndex) !void 
         return err;
     };
 
-    index.commitUpdate(update, commit_id);
-    committed = true;
+    index.commitUpdate(&txn, commit_id);
 }
 
 test "write entries" {

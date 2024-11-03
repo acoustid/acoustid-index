@@ -21,6 +21,8 @@ merged: u32 = 0,
 
 raw_data: ?[]align(std.mem.page_size) u8 = null,
 
+pub const frozen = false;
+
 const Self = @This();
 
 pub fn init(allocator: std.mem.Allocator) Self {

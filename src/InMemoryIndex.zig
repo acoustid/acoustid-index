@@ -1,9 +1,8 @@
 const std = @import("std");
+const assert = std.debug.assert;
 const log = std.log;
 
 const Deadline = @import("utils/Deadline.zig");
-
-const assert = std.debug.assert;
 
 const common = @import("common.zig");
 const Item = common.Item;
@@ -46,25 +45,23 @@ pub fn deinit(self: *Self) void {
 
 pub const PendingUpdate = struct {
     node: *InMemorySegmentList.List.Node,
+    finished: bool = false,
 };
 
-pub fn update(self: *Self, changes: []const Change, commit_id: u64) !void {
-    const txn = try self.prepareUpdate(changes);
-    self.commitUpdate(txn, commit_id);
+// Cancels the update, does nothing if it has already been cancelled or committted.
+pub fn cancelUpdate(self: *Self, txn: *PendingUpdate) void {
+    if (txn.finished) return;
 
-    if (self.auto_cleanup) {
-        self.mergeSegments() catch |err| {
-            std.debug.print("mergeSegments failed: {}\n", .{err});
-        };
-    }
-}
-
-pub fn cancelUpdate(self: *Self, txn: PendingUpdate) void {
     self.segments.destroySegment(txn.node);
+
+    txn.finished = true;
     self.write_lock.unlock();
 }
 
-pub fn commitUpdate(self: *Self, txn: PendingUpdate, commit_id: u64) void {
+// Commits the update, does nothing if it has already been cancelled or committted.
+pub fn commitUpdate(self: *Self, txn: *PendingUpdate, commit_id: u64) void {
+    if (txn.finished) return;
+
     self.segments.segments.append(txn.node);
 
     txn.node.data.max_commit_id = commit_id;
@@ -74,9 +71,11 @@ pub fn commitUpdate(self: *Self, txn: PendingUpdate, commit_id: u64) void {
         txn.node.data.id = common.SegmentID.first();
     }
 
+    txn.finished = true;
     self.write_lock.unlock();
 }
 
+// Prepares update for later commit, will block until previous update has been committed.
 pub fn prepareUpdate(self: *Self, changes: []const Change) !PendingUpdate {
     var saved = false;
 
@@ -127,6 +126,17 @@ pub fn prepareUpdate(self: *Self, changes: []const Change) !PendingUpdate {
     return PendingUpdate{ .node = node };
 }
 
+pub fn update(self: *Self, changes: []const Change, commit_id: u64) !void {
+    var txn = try self.prepareUpdate(changes);
+    self.commitUpdate(&txn, commit_id);
+
+    if (self.auto_cleanup) {
+        self.mergeSegments() catch |err| {
+            std.debug.print("mergeSegments failed: {}\n", .{err});
+        };
+    }
+}
+
 pub fn cleanup(self: *Self) !void {
     try self.mergeSegments();
 }
@@ -152,59 +162,17 @@ fn prepareMerge(self: *Self) !?Merge {
     self.write_lock.lockShared();
     defer self.write_lock.unlockShared();
 
-    var total_size: usize = 0;
-    var max_size: usize = 0;
-    var min_size: usize = std.math.maxInt(usize);
-    var num_segments: usize = 0;
-    var segments_iter = self.segments.segments.first;
-    while (segments_iter) |node| : (segments_iter = node.next) {
-        if (node.data.frozen or node.data.items.items.len > self.options.max_segment_size) {
-            continue;
-        }
-        num_segments += 1;
-        total_size += node.data.items.items.len;
-        max_size = @max(max_size, node.data.items.items.len);
-        min_size = @min(min_size, node.data.items.items.len);
-    }
-
-    if (total_size == 0) {
+    const to_merge = self.segments.findSegmentsToMerge(.{ .max_segment_size = self.options.max_segment_size });
+    if (to_merge == null) {
         return null;
     }
 
-    const max_segments = self.getMaxSegments(total_size);
-    if (num_segments < max_segments) {
-        return null;
-    }
+    const node1 = to_merge.?.node1;
+    const node2 = to_merge.?.node2;
 
-    var best_node: ?*InMemorySegmentList.List.Node = null;
-    var best_score: f64 = std.math.inf(f64);
-    segments_iter = self.segments.segments.first;
-    var level_size = @as(f64, @floatFromInt(total_size)) / 2;
-    while (segments_iter) |node| : (segments_iter = node.next) {
-        if (node.data.frozen or node.data.items.items.len > self.options.max_segment_size) {
-            continue;
-        }
-        if (node.next) |nextNode| {
-            const merge_size = node.data.items.items.len + nextNode.data.items.items.len;
-            const score = @as(f64, @floatFromInt(merge_size)) - level_size;
-            if (score < best_score) {
-                best_node = node;
-                best_score = score;
-            }
-        }
-        level_size /= 2;
-    }
-
-    if (best_node == null or best_node.?.next == null) {
-        return null;
-    }
-
-    const node1 = best_node.?;
-    const node2 = best_node.?.next.?;
-
-    const segment1 = node1.data;
-    const segment2 = node2.data;
-    const segments = [2]InMemorySegment{ segment1, segment2 };
+    const segment1 = &node1.data;
+    const segment2 = &node2.data;
+    const segments = [2]*InMemorySegment{ segment1, segment2 };
 
     var committed = false;
 

@@ -56,3 +56,7 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults) !void {
 pub fn ensureSorted(self: *Self) void {
     std.sort.pdq(Item, self.items.items, {}, Item.cmp);
 }
+
+pub fn canBeMerged(self: Self) bool {
+    return !self.frozen;
+}

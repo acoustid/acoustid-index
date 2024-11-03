@@ -85,5 +85,77 @@ pub fn SegmentList(Segment: type) type {
                 try node.data.search(hashes, results);
             }
         }
+
+        pub const SegmentsToMerge = struct {
+            node1: *List.Node,
+            node2: *List.Node,
+        };
+
+        pub fn findSegmentsToMerge(self: *Self, options: SegmentMergeOptions) ?SegmentsToMerge {
+            var total_size: usize = 0;
+            var max_size: usize = 0;
+            var min_size: usize = std.math.maxInt(usize);
+            var num_segments: usize = 0;
+            var segments_iter = self.segments.first;
+            while (segments_iter) |node| : (segments_iter = node.next) {
+                if (node.data.frozen or node.data.items.items.len > options.max_segment_size) {
+                    continue;
+                }
+                num_segments += 1;
+                total_size += node.data.items.items.len;
+                max_size = @max(max_size, node.data.items.items.len);
+                min_size = @min(min_size, node.data.items.items.len);
+            }
+
+            if (total_size == 0) {
+                return null;
+            }
+
+            const max_segments = options.getMaxSegments(total_size);
+            if (num_segments < max_segments) {
+                return null;
+            }
+
+            var best_node: ?*List.Node = null;
+            var best_score: f64 = std.math.inf(f64);
+            segments_iter = self.segments.first;
+            var level_size = @as(f64, @floatFromInt(total_size)) / 2;
+            while (segments_iter) |node| : (segments_iter = node.next) {
+                if (node.data.frozen or node.data.items.items.len > options.max_segment_size) {
+                    continue;
+                }
+                if (node.next) |next_node| {
+                    const merge_size = node.data.items.items.len + next_node.data.items.items.len;
+                    const score = @as(f64, @floatFromInt(merge_size)) - level_size;
+                    if (score < best_score) {
+                        best_node = node;
+                        best_score = score;
+                    }
+                }
+                level_size /= 2;
+            }
+
+            if (best_node) |node| {
+                if (node.next) |next_node| {
+                    return .{ .node1 = node, .node2 = next_node };
+                }
+            }
+            return null;
+        }
     };
 }
+
+pub const SegmentMergeOptions = struct {
+    max_segment_size: usize,
+
+    pub fn getMaxSegments(self: SegmentMergeOptions, total_size: usize) usize {
+        const max_level_size = @min(self.max_segment_size, @max(total_size / 2, 10));
+        const min_level_size = @max(max_level_size / 1000, 10);
+        const x = max_level_size / min_level_size;
+        if (x == 0) {
+            return 1;
+        } else {
+            return @max(1, std.math.log2_int(usize, x));
+        }
+    }
+};
