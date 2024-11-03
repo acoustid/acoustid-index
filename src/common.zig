@@ -137,3 +137,29 @@ pub const Change = union(enum) {
     insert: Insert,
     delete: Delete,
 };
+
+pub const SegmentID = packed struct(u64) {
+    version: u32,
+    included_merges: u32 = 0,
+
+    pub fn first() SegmentID {
+        return .{
+            .version = 1,
+            .included_merges = 0,
+        };
+    }
+
+    pub fn next(a: SegmentID) SegmentID {
+        return .{
+            .version = a.version + a.included_merges + 1,
+            .included_merges = 0,
+        };
+    }
+
+    pub fn merge(a: SegmentID, b: SegmentID) SegmentID {
+        return .{
+            .version = @min(a.version, b.version),
+            .included_merges = 1 + a.included_merges + b.included_merges,
+        };
+    }
+};

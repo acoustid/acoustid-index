@@ -97,9 +97,9 @@ pub fn commitUpdate(self: *Self, update_id: usize, commit_id: u64) void {
             self.pending_segments.remove(node);
             self.segments.append(node);
             if (node.prev) |prev| {
-                node.data.version = prev.data.version + 1;
+                node.data.id = prev.data.id.next();
             } else {
-                node.data.version = 1;
+                node.data.id = common.SegmentID.first();
             }
             node.data.max_commit_id = commit_id;
             return;
@@ -167,7 +167,7 @@ pub fn cleanup(self: *Self) !void {
 fn hasNewerVersion(self: *Self, doc_id: u32, version: u32) bool {
     var it = self.segments.last;
     while (it) |node| : (it = node.prev) {
-        if (node.data.version > version) {
+        if (node.data.id.version > version) {
             if (node.data.docs.contains(doc_id)) {
                 return true;
             }
@@ -262,7 +262,7 @@ fn prepareMerge(self: *Self) !?Merge {
 
     const merge = Merge{ .first = node1, .last = node2, .replacement = node };
 
-    node.data.version = segment1.version;
+    node.data.id = common.SegmentID.merge(segment1.id, segment2.id);
     node.data.max_commit_id = @max(segment1.max_commit_id, segment2.max_commit_id);
 
     var total_docs: usize = 0;
@@ -288,7 +288,7 @@ fn prepareMerge(self: *Self) !?Merge {
             while (docs_iter.next()) |entry| {
                 const id = entry.key_ptr.*;
                 const status = entry.value_ptr.*;
-                if (!self.hasNewerVersion(id, segment.version)) {
+                if (!self.hasNewerVersion(id, segment.id.version)) {
                     try node.data.docs.put(id, status);
                 } else {
                     try skip_docs.put(id, {});
@@ -312,9 +312,11 @@ fn prepareMerge(self: *Self) !?Merge {
 fn checkSegments(self: *Self) void {
     var iter = self.segments.first;
     while (iter) |node| : (iter = node.next) {
-        if (node.prev) |prev| {
-            if (!node.data.frozen) {
-                node.data.version = prev.data.version + 1;
+        if (!node.data.frozen) {
+            if (node.prev) |prev| {
+                node.data.id = prev.data.id.next();
+            } else {
+                node.data.id.included_merges = 0;
             }
         }
     }
@@ -408,8 +410,8 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadlin
             return error.Timeout;
         }
 
-        assert(segment.version > previousSegmentVersion);
-        previousSegmentVersion = segment.version;
+        assert(segment.id.version > previousSegmentVersion);
+        previousSegmentVersion = segment.id.version;
 
         try segment.search(hashes, results);
 
@@ -419,10 +421,10 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadlin
         var results_iter = results.results.iterator();
         while (results_iter.next()) |result| {
             const version = result.value_ptr.version;
-            if (version < segment.version) {
+            if (version < segment.id.version) {
                 if (segment.docs.contains(result.key_ptr.*)) {
                     result.value_ptr.score = 0;
-                    result.value_ptr.version = segment.version;
+                    result.value_ptr.version = segment.id.version;
                 }
             }
         }

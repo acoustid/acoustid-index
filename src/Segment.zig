@@ -4,18 +4,14 @@ const assert = std.debug.assert;
 const common = @import("common.zig");
 const Item = common.Item;
 const SearchResults = common.SearchResults;
+const SegmentID = common.SegmentID;
 
 const InMemorySegment = @import("InMemorySegment.zig");
 
 const filefmt = @import("filefmt.zig");
 
-pub const Version = packed struct(u64) {
-    version: u32,
-    included_merges: u32 = 0,
-};
-
 allocator: std.mem.Allocator,
-version: Version = .{ .version = 0, .included_merges = 0 },
+id: SegmentID = .{ .version = 0, .included_merges = 0 },
 max_commit_id: u64 = 0,
 docs: std.AutoHashMap(u32, bool),
 index: std.ArrayList(u32),
@@ -74,7 +70,7 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults) !void {
             }
             const matches = std.sort.equalRange(Item, Item{ .hash = hash, .id = 0 }, block_items.items, {}, Item.cmpByHash);
             for (matches[0]..matches[1]) |i| {
-                try results.incr(block_items.items[i].id, self.version.version);
+                try results.incr(block_items.items[i].id, self.id.version);
             }
         }
     }
@@ -89,11 +85,11 @@ fn read(self: *Self, dir: std.fs.Dir, file_name: []const u8) !void {
     try filefmt.readFile(file, self);
 }
 
-fn generateFileName(buf: []u8, version: Version) ![]u8 {
+fn generateFileName(buf: []u8, version: SegmentID) ![]u8 {
     return try std.fmt.bufPrint(buf, file_name_fmt, .{ version.version, version.version + version.included_merges });
 }
 
-pub fn open(self: *Self, dir: std.fs.Dir, version: Version) !void {
+pub fn open(self: *Self, dir: std.fs.Dir, version: SegmentID) !void {
     var file_name_buf: [max_file_name_size]u8 = undefined;
     const file_name = try generateFileName(&file_name_buf, version);
 
@@ -104,7 +100,7 @@ pub fn open(self: *Self, dir: std.fs.Dir, version: Version) !void {
 
 pub fn delete(self: *Self, dir: std.fs.Dir) !void {
     var file_name_buf: [max_file_name_size]u8 = undefined;
-    const file_name = try generateFileName(&file_name_buf, self.version);
+    const file_name = try generateFileName(&file_name_buf, self.id);
 
     try dir.deleteFile(file_name);
 }
@@ -113,12 +109,15 @@ pub fn convert(self: *Self, dir: std.fs.Dir, source: *InMemorySegment) !void {
     if (!source.frozen) {
         return error.SourceSegmentNotFrozen;
     }
-    if (source.version == 0) {
+    if (source.id.version == 0) {
         return error.SourceSegmentNoVersion;
+    }
+    if (source.id.included_merges != 0) {
+        return error.SourceSegmentHasMerges;
     }
 
     var file_name_buf: [max_file_name_size]u8 = undefined;
-    const file_name = try generateFileName(&file_name_buf, .{ .version = source.version });
+    const file_name = try generateFileName(&file_name_buf, source.id);
 
     var file = try dir.atomicFile(file_name, .{});
     defer file.deinit();
@@ -135,7 +134,7 @@ test "convert" {
     var source = InMemorySegment.init(std.testing.allocator);
     defer source.deinit();
 
-    source.version = 1;
+    source.id.version = 1;
     source.frozen = true;
     try source.docs.put(1, true);
     try source.items.append(.{ .id = 1, .hash = 1 });
@@ -146,21 +145,18 @@ test "convert" {
 
     try segment.convert(tmpDir.dir, &source);
 
-    try std.testing.expectEqual(1, segment.version.version);
-    try std.testing.expectEqual(0, segment.version.included_merges);
+    try std.testing.expectEqual(1, segment.id.version);
+    try std.testing.expectEqual(0, segment.id.included_merges);
     try std.testing.expectEqual(1, segment.docs.count());
     try std.testing.expectEqual(1, segment.index.items.len);
 }
 
 pub fn merge(self: *Self, dir: std.fs.Dir, sources: [2]*Self) !void {
-    if (sources[0].version.version + sources[0].version.included_merges + 1 != sources[1].version.version) {
+    if (sources[0].id.version + sources[0].id.included_merges + 1 != sources[1].id.version) {
         return error.SourceSegmentVersionMismatch;
     }
 
-    const version = Version{
-        .version = sources[0].version.version,
-        .included_merges = 1 + sources[0].version.included_merges + sources[1].version.included_merges,
-    };
+    const version = SegmentID.merge(sources[0].id, sources[1].id);
 
     var file_name_buf: [max_file_name_size]u8 = undefined;
     const file_name = try generateFileName(&file_name_buf, version);
@@ -181,5 +177,5 @@ pub fn merge(self: *Self, dir: std.fs.Dir, sources: [2]*Self) !void {
 
     try self.read(dir, file_name);
 
-    assert(self.version.version == version.version and self.version.included_merges == version.included_merges);
+    assert(self.id.version == version.version and self.id.included_merges == version.included_merges);
 }

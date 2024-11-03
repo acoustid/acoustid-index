@@ -8,6 +8,7 @@ const InMemoryIndex = @import("InMemoryIndex.zig");
 const common = @import("common.zig");
 const SearchResults = common.SearchResults;
 const Change = common.Change;
+const SegmentVersion = common.SegmentID;
 
 const Deadline = @import("utils/Deadline.zig");
 
@@ -131,14 +132,14 @@ fn writeIndexFile(self: *Self) !void {
     var file = try self.dir.atomicFile(index_file_name, .{});
     defer file.deinit();
 
-    var segments = std.ArrayList(Segment.Version).init(self.allocator);
+    var segments = std.ArrayList(SegmentVersion).init(self.allocator);
     defer segments.deinit();
 
     try segments.ensureTotalCapacity(self.segments.len);
 
     var it = self.segments.first;
     while (it) |node| : (it = node.next) {
-        try segments.append(node.data.version);
+        try segments.append(node.data.id);
     }
 
     try filefmt.writeIndexFile(file.file.writer(), segments);
@@ -159,7 +160,7 @@ fn readIndexFile(self: *Self) !void {
     };
     defer file.close();
 
-    var segments = std.ArrayList(Segment.Version).init(self.allocator);
+    var segments = std.ArrayList(SegmentVersion).init(self.allocator);
     defer segments.deinit();
 
     try filefmt.readIndexFile(file.reader(), &segments);
@@ -174,7 +175,7 @@ fn readIndexFile(self: *Self) !void {
 fn hasNewerVersion(self: *Self, doc_id: u32, version: u32) bool {
     var it = self.segments.last;
     while (it) |node| : (it = node.prev) {
-        if (node.data.version[0] > version) {
+        if (node.data.id[0] > version) {
             if (node.data.docs.contains(doc_id)) {
                 return true;
             }

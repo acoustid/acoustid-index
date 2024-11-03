@@ -6,6 +6,7 @@ const assert = std.debug.assert;
 const common = @import("common.zig");
 const Item = common.Item;
 const SearchResults = common.SearchResults;
+const SegmentID = common.SegmentID;
 
 const Deadline = @import("utils/Deadline.zig");
 
@@ -14,7 +15,7 @@ const filefmt = @import("filefmt.zig");
 const Self = @This();
 
 allocator: std.mem.Allocator,
-version: u32 = 0,
+id: SegmentID = .{ .version = 0, .included_merges = 0 },
 max_commit_id: u64 = 0,
 docs: std.AutoHashMap(u32, bool),
 items: std.ArrayList(Item),
@@ -34,7 +35,7 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn write(self: *Self, writer: anytype) !void {
-    if (self.version == 0) {
+    if (self.id == 0) {
         return error.InvalidSegmentVersion;
     }
     try filefmt.writeFile(writer, self);
@@ -46,7 +47,7 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults) !void {
     for (hashes) |hash| {
         const matches = std.sort.equalRange(Item, Item{ .hash = hash, .id = 0 }, items, {}, Item.cmpByHash);
         for (matches[0]..matches[1]) |i| {
-            try results.incr(items[i].id, self.version);
+            try results.incr(items[i].id, self.id.version);
         }
         items = items[matches[1]..];
     }

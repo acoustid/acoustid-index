@@ -5,7 +5,9 @@ const math = std.math;
 const io = std.io;
 const fs = std.fs;
 
-const Item = @import("common.zig").Item;
+const common = @import("common.zig");
+const Item = common.Item;
+const SegmentVersion = common.SegmentID;
 const InMemorySegment = @import("InMemorySegment.zig");
 const Segment = @import("Segment.zig");
 
@@ -260,8 +262,8 @@ pub fn writeFile(file: std.fs.File, segment: *InMemorySegment) !void {
     const writer = file.writer();
 
     var header = Header{
-        .version = segment.version,
-        .included_merges = 0,
+        .version = segment.id.version,
+        .included_merges = segment.id.included_merges,
         .num_docs = @intCast(segment.docs.count()),
         .num_items = @intCast(segment.items.items.len),
         .num_blocks = 0,
@@ -388,8 +390,8 @@ pub fn mergeAndWriteFile(file: fs.File, segments: [2]*Segment, allocator: std.me
     const writer = file.writer();
 
     var header = Header{
-        .version = @min(segments[0].version.version, segments[1].version.version),
-        .included_merges = 1 + segments[0].version.included_merges + segments[1].version.included_merges,
+        .version = @min(segments[0].id.version, segments[1].id.version),
+        .included_merges = 1 + segments[0].id.included_merges + segments[1].id.included_merges,
         .num_docs = 0,
         .num_items = 0,
         .num_blocks = 0,
@@ -411,10 +413,10 @@ pub fn mergeAndWriteFile(file: fs.File, segments: [2]*Segment, allocator: std.me
         while (docs_iter.next()) |entry| {
             const id = entry.key_ptr.*;
             const status = entry.value_ptr.*;
-            if (!hasNewerVersion(id, source.segment.version.version)) {
+            if (!hasNewerVersion(id, source.segment.id.version)) {
                 const info = DocInfo{
                     .id = id,
-                    .version = @intCast(source.segment.version.version - header.version),
+                    .version = @intCast(source.segment.id.version - header.version),
                     .deleted = if (status) 0 else 1,
                 };
                 try writer.writeStructEndian(info, .little);
@@ -466,7 +468,7 @@ test "mergeAndWriteFile" {
     var in_memory_segment_1 = InMemorySegment.init(std.testing.allocator);
     defer in_memory_segment_1.deinit();
 
-    in_memory_segment_1.version = 1;
+    in_memory_segment_1.id.version = 1;
     in_memory_segment_1.frozen = true;
 
     var segment_1 = Segment.init(std.testing.allocator);
@@ -477,7 +479,7 @@ test "mergeAndWriteFile" {
     var in_memory_segment_2 = InMemorySegment.init(std.testing.allocator);
     defer in_memory_segment_2.deinit();
 
-    in_memory_segment_2.version = 2;
+    in_memory_segment_2.id.version = 2;
     in_memory_segment_2.frozen = true;
 
     var segment_2 = Segment.init(std.testing.allocator);
@@ -532,8 +534,8 @@ pub fn readFile(file: fs.File, segment: *Segment) !void {
         return error.InvalidSegment;
     }
 
-    segment.version.version = header.version;
-    segment.version.included_merges = header.included_merges;
+    segment.id.version = header.version;
+    segment.id.included_merges = header.included_merges;
     segment.block_size = header.block_size;
     segment.max_commit_id = header.max_commit_id;
 
@@ -566,7 +568,7 @@ test "writeFile/readFile" {
         var in_memory_segment = InMemorySegment.init(testing.allocator);
         defer in_memory_segment.deinit();
 
-        in_memory_segment.version = 1;
+        in_memory_segment.id.version = 1;
         try in_memory_segment.docs.put(1, true);
         try in_memory_segment.items.append(Item{ .hash = 1, .id = 1 });
         try in_memory_segment.items.append(Item{ .hash = 2, .id = 1 });
@@ -585,8 +587,8 @@ test "writeFile/readFile" {
 
         try readFile(file, &segment);
 
-        try testing.expectEqual(1, segment.version.version);
-        try testing.expectEqual(0, segment.version.included_merges);
+        try testing.expectEqual(1, segment.id.version);
+        try testing.expectEqual(0, segment.id.included_merges);
         try testing.expectEqual(1, segment.docs.count());
         try testing.expectEqual(1, segment.index.items.len);
         try testing.expectEqual(1, segment.index.items[0]);
@@ -611,7 +613,7 @@ const IndexHeader = packed struct {
     num_segments: u32,
 };
 
-pub fn writeIndexFile(writer: anytype, segments: std.ArrayList(Segment.Version)) !void {
+pub fn writeIndexFile(writer: anytype, segments: std.ArrayList(SegmentVersion)) !void {
     const header = IndexHeader{
         .magic = index_header_magic_v1,
         .version = 1,
@@ -624,7 +626,7 @@ pub fn writeIndexFile(writer: anytype, segments: std.ArrayList(Segment.Version))
     }
 }
 
-pub fn readIndexFile(reader: anytype, segments: *std.ArrayList(Segment.Version)) !void {
+pub fn readIndexFile(reader: anytype, segments: *std.ArrayList(SegmentVersion)) !void {
     const header = try reader.readStructEndian(IndexHeader, .little);
     if (header.magic != index_header_magic_v1) {
         return error.InvalidIndexfile;
@@ -634,7 +636,7 @@ pub fn readIndexFile(reader: anytype, segments: *std.ArrayList(Segment.Version))
     }
     try segments.ensureTotalCapacity(header.num_segments);
     for (0..header.num_segments) |_| {
-        var version: Segment.Version = undefined;
+        var version: SegmentVersion = undefined;
         version.version = try reader.readInt(u32, .little);
         version.included_merges = try reader.readInt(u32, .little);
         try segments.append(version);
@@ -645,12 +647,12 @@ test "readIndexFile/writeIndexFile" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    var segments = std.ArrayList(Segment.Version).init(testing.allocator);
+    var segments = std.ArrayList(SegmentVersion).init(testing.allocator);
     defer segments.deinit();
 
-    try segments.append(Segment.Version{ .version = 1, .included_merges = 0 });
-    try segments.append(Segment.Version{ .version = 2, .included_merges = 1 });
-    try segments.append(Segment.Version{ .version = 4, .included_merges = 0 });
+    try segments.append(.{ .version = 1, .included_merges = 0 });
+    try segments.append(.{ .version = 2, .included_merges = 1 });
+    try segments.append(.{ .version = 4, .included_merges = 0 });
 
     {
         var file = try tmp.dir.createFile("test.idx", .{});
@@ -663,11 +665,11 @@ test "readIndexFile/writeIndexFile" {
         var file = try tmp.dir.openFile("test.idx", .{});
         defer file.close();
 
-        var segments2 = std.ArrayList(Segment.Version).init(testing.allocator);
+        var segments2 = std.ArrayList(SegmentVersion).init(testing.allocator);
         defer segments2.deinit();
 
         try readIndexFile(file.reader(), &segments2);
 
-        try testing.expectEqualSlices(Segment.Version, segments.items, segments2.items);
+        try testing.expectEqualSlices(SegmentVersion, segments.items, segments2.items);
     }
 }
