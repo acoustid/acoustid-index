@@ -10,6 +10,11 @@ const InMemorySegment = @import("InMemorySegment.zig");
 
 const filefmt = @import("filefmt.zig");
 
+const segment_list = @import("segment_list.zig");
+pub const List = segment_list.SegmentList(Self);
+
+const Self = @This();
+
 allocator: std.mem.Allocator,
 id: SegmentID = .{ .version = 0, .included_merges = 0 },
 max_commit_id: u64 = 0,
@@ -21,8 +26,6 @@ merged: u32 = 0,
 num_items: usize = 0,
 
 raw_data: ?[]align(std.mem.page_size) u8 = null,
-
-const Self = @This();
 
 pub fn init(allocator: std.mem.Allocator) Self {
     return Self{

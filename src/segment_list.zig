@@ -50,7 +50,7 @@ pub fn SegmentList(Segment: type) type {
             }
         }
 
-        pub fn getMaxCommitId(self: *Self) u64 {
+        pub fn getMaxCommitId(self: *const Self) u64 {
             var max_commit_id: u64 = 0;
             var it = self.segments.first;
             while (it) |node| : (it = node.next) {
@@ -61,7 +61,7 @@ pub fn SegmentList(Segment: type) type {
             return max_commit_id;
         }
 
-        pub fn hasNewerVersion(self: *Self, doc_id: u32, version: u32) bool {
+        pub fn hasNewerVersion(self: *const Self, doc_id: u32, version: u32) bool {
             var it = self.segments.last;
             while (it) |node| : (it = node.prev) {
                 if (node.data.id.version > version) {

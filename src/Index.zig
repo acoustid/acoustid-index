@@ -12,9 +12,8 @@ const SegmentID = common.SegmentID;
 
 const Deadline = @import("utils/Deadline.zig");
 
-const segment_list = @import("segment_list.zig");
 const Segment = @import("Segment.zig");
-const SegmentList = segment_list.SegmentList(Segment);
+const SegmentList = Segment.List;
 
 const Oplog = @import("Oplog.zig");
 
@@ -61,14 +60,10 @@ const Task = union(enum) {
 };
 
 pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Self {
-    var done: bool = false;
-
     var oplog_dir = try dir.makeOpenPath("oplog", .{ .iterate = true });
-    defer {
-        if (!done) oplog_dir.close();
-    }
+    errdefer oplog_dir.close();
 
-    const self = Self{
+    return .{
         .options = options,
         .dir = dir,
         .allocator = allocator,
@@ -78,9 +73,6 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Se
         .oplog = Oplog.init(allocator, oplog_dir),
         .oplog_dir = oplog_dir,
     };
-
-    done = true;
-    return self;
 }
 
 pub fn deinit(self: *Self) void {
@@ -152,10 +144,8 @@ fn prepareMerge(self: *Self) !?SegmentList.PreparedMerge {
 
     const merge_opt = try self.segments.prepareMerge(.{ .max_segment_size = self.max_segment_size });
     if (merge_opt) |merge| {
-        merge.target.data.merge(self.dir, .{ &merge.sources.node1.data, &merge.sources.node2.data }) catch |err| {
-            self.segments.destroySegment(merge.target);
-            return err;
-        };
+        errdefer self.segments.destroySegment(merge.target);
+        try merge.target.data.merge(self.dir, .{ &merge.sources.node1.data, &merge.sources.node2.data });
         return merge;
     }
     return null;
@@ -165,28 +155,18 @@ fn finnishMerge(self: *Self, merge: SegmentList.PreparedMerge) !void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
-    var committed = false;
+    errdefer self.segments.destroySegment(merge.target);
 
-    defer {
-        if (!committed) {
-            merge.target.data.delete(self.dir) catch |err| {
-                log.err("failed to delete segment: {}", .{err});
-            };
-            self.segments.destroySegment(merge.target);
-        }
+    errdefer {
+        merge.target.data.delete(self.dir) catch |err| {
+            log.err("failed to delete segment: {}", .{err});
+        };
     }
 
     self.segments.applyMerge(merge);
-
-    defer {
-        if (!committed) {
-            self.segments.revertMerge(merge);
-        }
-    }
+    errdefer self.segments.revertMerge(merge);
 
     try self.writeIndexFile();
-
-    committed = true;
 
     self.segments.destroyMergedSegments(merge);
 
@@ -198,9 +178,9 @@ fn compact(self: *Self) !void {
         const merge_opt = try self.prepareMerge();
         if (merge_opt) |merge| {
             try self.finnishMerge(merge);
-            return error.NotImplemented;
+        } else {
+            break;
         }
-        break;
     }
 }
 
@@ -210,29 +190,27 @@ fn cleanup(self: *Self) !void {
     var max_commit_id: ?u64 = null;
 
     if (self.stage.maybeFreezeOldestSegment()) |frozenStageSegment| {
-        var committed = false;
         const node = try self.segments.createSegment();
-        defer {
-            if (!committed) {
-                self.segments.destroySegment(node);
-            }
-        }
+        errdefer self.segments.destroySegment(node);
 
         try node.data.convert(self.dir, frozenStageSegment);
+
+        errdefer {
+            node.data.delete(self.dir) catch |err| {
+                log.err("failed to delete segment: {}", .{err});
+            };
+        }
 
         self.write_lock.lock();
         defer self.write_lock.unlock();
 
         self.segments.segments.append(node);
-        self.writeIndexFile() catch |err| {
-            self.segments.segments.remove(node);
-            node.data.delete(self.dir) catch {};
-            return err;
-        };
+        errdefer self.segments.segments.remove(node);
+
+        try self.writeIndexFile();
 
         self.stage.removeFrozenSegment(frozenStageSegment);
         max_commit_id = node.data.max_commit_id;
-        committed = true;
     }
 
     if (max_commit_id) |commit_id| {

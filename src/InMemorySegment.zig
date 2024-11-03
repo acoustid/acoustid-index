@@ -12,6 +12,9 @@ const Deadline = @import("utils/Deadline.zig");
 
 const filefmt = @import("filefmt.zig");
 
+const segment_list = @import("segment_list.zig");
+pub const List = segment_list.SegmentList(Self);
+
 const Self = @This();
 
 allocator: std.mem.Allocator,
@@ -65,8 +68,8 @@ pub fn getSize(self: Self) usize {
     return self.items.items.len;
 }
 
-pub fn merge(self: *Self, source1: *Self, source2: *Self) !void {
-    const sources = .{ source1, source2 };
+pub fn merge(self: *Self, source1: *Self, source2: *Self, parent: List) !void {
+    const sources = [2]*Self{ source1, source2 };
 
     self.id = common.SegmentID.merge(source1.id, source2.id);
     self.max_commit_id = @max(source1.max_commit_id, source2.max_commit_id);
@@ -94,7 +97,7 @@ pub fn merge(self: *Self, source1: *Self, source2: *Self) !void {
             while (docs_iter.next()) |entry| {
                 const id = entry.key_ptr.*;
                 const status = entry.value_ptr.*;
-                if (!self.segments.hasNewerVersion(id, segment.id.version)) {
+                if (!parent.hasNewerVersion(id, segment.id.version)) {
                     try self.docs.put(id, status);
                 } else {
                     try skip_docs.put(id, {});

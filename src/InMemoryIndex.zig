@@ -9,9 +9,8 @@ const Item = common.Item;
 const SearchResults = common.SearchResults;
 const Change = common.Change;
 
-const segment_list = @import("segment_list.zig");
 const InMemorySegment = @import("InMemorySegment.zig");
-const InMemorySegmentList = segment_list.SegmentList(InMemorySegment);
+const InMemorySegmentList = InMemorySegment.List;
 
 const Options = struct {
     max_segment_size: usize = 1_000_000,
@@ -77,12 +76,8 @@ pub fn commitUpdate(self: *Self, txn: *PendingUpdate, commit_id: u64) void {
 
 // Prepares update for later commit, will block until previous update has been committed.
 pub fn prepareUpdate(self: *Self, changes: []const Change) !PendingUpdate {
-    var saved = false;
-
     const node = try self.segments.createSegment();
-    defer {
-        if (!saved) self.segments.destroySegment(node);
-    }
+    errdefer self.segments.destroySegment(node);
 
     var num_items: usize = 0;
     for (changes) |change| {
@@ -122,7 +117,6 @@ pub fn prepareUpdate(self: *Self, changes: []const Change) !PendingUpdate {
     node.data.ensureSorted();
 
     self.write_lock.lock();
-    saved = true;
     return PendingUpdate{ .node = node };
 }
 
@@ -158,10 +152,8 @@ fn prepareMerge(self: *Self) !?InMemorySegmentList.PreparedMerge {
 
     const merge_opt = try self.segments.prepareMerge(.{ .max_segment_size = self.options.max_segment_size });
     if (merge_opt) |merge| {
-        merge.target.data.merge(merge.sources.node1.data, merge.sources.node2.data) catch |err| {
-            self.segments.destroySegment(merge.target);
-            return err;
-        };
+        errdefer self.segments.destroySegment(merge.target);
+        try merge.target.data.merge(&merge.sources.node1.data, &merge.sources.node2.data, self.segments);
         return merge;
     }
     return null;
