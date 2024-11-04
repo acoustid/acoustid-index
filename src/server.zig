@@ -35,6 +35,8 @@ fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const u8, 
     var router = server.router();
     router.post("/_search", handleSearch);
     router.post("/_update", handleUpdate);
+    router.post("/:index/_search", handleSearch);
+    router.post("/:index/_update", handleUpdate);
 
     log.info("listening on {s}:{d}", .{ address, port });
     try server.listen();
@@ -58,7 +60,14 @@ const SearchResultsJSON = struct {
 };
 
 fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try ctx.indexes.getIndex(0);
+    const index_no_str = req.param("index") orelse "0";
+    const index_no = std.fmt.parseInt(u8, index_no_str, 10) catch {
+        res.status = 400;
+        return res.json(.{ .status = "invalid index number" }, .{});
+    };
+    const index_ref = try ctx.indexes.getIndex(index_no);
+    const index = &index_ref.index;
+    defer ctx.indexes.releaseIndex(index_ref);
 
     const body_or_null = req.json(SearchRequestJSON) catch {
         res.status = 400;
@@ -101,7 +110,14 @@ const UpdateRequestJSON = struct {
 };
 
 fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try ctx.indexes.getIndex(0);
+    const index_no_str = req.param("index") orelse "0";
+    const index_no = std.fmt.parseInt(u8, index_no_str, 10) catch {
+        res.status = 400;
+        return res.json(.{ .status = "invalid index number" }, .{});
+    };
+    const index_ref = try ctx.indexes.getIndex(index_no);
+    const index = &index_ref.index;
+    defer ctx.indexes.releaseIndex(index_ref);
 
     const body_or_null = req.json(UpdateRequestJSON) catch {
         res.status = 400;

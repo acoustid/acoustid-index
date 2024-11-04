@@ -7,6 +7,7 @@ const Self = @This();
 const IndexData = struct {
     index: Index,
     dir: std.fs.Dir,
+    references: usize = 0,
 };
 
 lock: std.Thread.Mutex = .{},
@@ -32,13 +33,21 @@ pub fn deinit(self: *Self) void {
     self.* = undefined;
 }
 
-pub fn getIndex(self: *Self, id: u8) !*Index {
+pub fn releaseIndex(self: *Self, index_data: *IndexData) void {
+    self.lock.lock();
+    defer self.lock.unlock();
+
+    index_data.references -= 1;
+}
+
+pub fn getIndex(self: *Self, id: u8) !*IndexData {
     self.lock.lock();
     defer self.lock.unlock();
 
     var result = try self.indexes.getOrPut(id);
     if (result.found_existing) {
-        return &result.value_ptr.index;
+        result.value_ptr.references += 1;
+        return result.value_ptr;
     }
 
     errdefer self.indexes.removeByPtr(result.key_ptr);
@@ -54,5 +63,6 @@ pub fn getIndex(self: *Self, id: u8) !*Index {
 
     try result.value_ptr.index.open();
 
-    return &result.value_ptr.index;
+    result.value_ptr.references += 1;
+    return result.value_ptr;
 }
