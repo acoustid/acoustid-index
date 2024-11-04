@@ -5,18 +5,18 @@ const log = std.log.scoped(.server);
 
 const zul = @import("zul");
 
-const Index = @import("Index.zig");
+const MultiIndex = @import("MultiIndex.zig");
 const common = @import("common.zig");
 const SearchResults = common.SearchResults;
 const Change = common.Change;
 const Deadline = @import("utils/Deadline.zig");
 
 const Context = struct {
-    index: *Index,
+    indexes: *MultiIndex,
 };
 
-fn run(index: *Index, address: []const u8, port: u16, threads: u16) !void {
-    var ctx = Context{ .index = index };
+fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const u8, port: u16, threads: u16) !void {
+    var ctx = Context{ .indexes = indexes };
 
     const config = httpz.Config{
         .address = address,
@@ -26,7 +26,7 @@ fn run(index: *Index, address: []const u8, port: u16, threads: u16) !void {
         },
     };
 
-    var server = try httpz.ServerApp(*Context).init(index.allocator, config, &ctx);
+    var server = try httpz.ServerApp(*Context).init(allocator, config, &ctx);
     defer {
         server.stop();
         server.deinit();
@@ -58,6 +58,8 @@ const SearchResultsJSON = struct {
 };
 
 fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    const index = try ctx.indexes.getIndex(0);
+
     const body_or_null = req.json(SearchRequestJSON) catch {
         res.status = 400;
         return res.json(.{ .status = "invalid body" }, .{});
@@ -81,7 +83,7 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
     }
     const deadline = Deadline.init(timeout);
 
-    ctx.index.search(body.query, &results, deadline) catch |err| {
+    index.search(body.query, &results, deadline) catch |err| {
         log.err("index search error: {}", .{err});
         res.status = 500;
         return res.json(.{ .status = "internal error" }, .{});
@@ -99,6 +101,8 @@ const UpdateRequestJSON = struct {
 };
 
 fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    const index = try ctx.indexes.getIndex(0);
+
     const body_or_null = req.json(UpdateRequestJSON) catch {
         res.status = 400;
         return res.json(.{ .status = "invalid body" }, .{});
@@ -110,7 +114,7 @@ fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 
     const body = body_or_null.?;
 
-    ctx.index.update(body.changes) catch |err| {
+    index.update(body.changes) catch |err| {
         log.err("index search error: {}", .{err});
         res.status = 500;
         return res.json(.{ .status = "internal error" }, .{});
@@ -136,8 +140,6 @@ pub fn main() !void {
     const port_str = args.get("port") orelse "8080";
     const port = try std.fmt.parseInt(u16, port_str, 10);
 
-    const create = args.contains("create");
-
     _ = try std.net.Address.parseIp(address, port);
 
     const threads_str = args.get("threads") orelse "0";
@@ -146,12 +148,10 @@ pub fn main() !void {
         threads = @intCast(try std.Thread.getCpuCount());
     }
 
-    var index = try Index.init(allocator, dir, .{ .create = create });
-    defer index.deinit();
+    var indexes = MultiIndex.init(allocator, dir);
+    defer indexes.deinit();
 
-    try index.open();
-
-    try run(&index, address, port, threads);
+    try run(allocator, &indexes, address, port, threads);
 }
 
 test {
