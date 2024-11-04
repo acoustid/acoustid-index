@@ -27,10 +27,8 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) Self {
 }
 
 pub fn deinit(self: *Self) void {
-    log.info("multiindex.deinit", .{});
     var iter = self.indexes.iterator();
     while (iter.next()) |entry| {
-        log.info("multiindex.deinit.index", .{});
         entry.value_ptr.index.deinit();
         entry.value_ptr.dir.close();
     }
