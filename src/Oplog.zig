@@ -225,30 +225,32 @@ pub fn truncate(self: *Self, commit_id: u64) !void {
 const newline: u8 = '\n';
 
 fn writeEntries(writer: anytype, commit_id: u64, changes: []const Change) !void {
+    try writer.writeByte(newline);
+
     const begin_entry = Entry{
         .id = commit_id,
         .begin = .{
             .size = @truncate(changes.len),
         },
     };
-    try writer.writeByte(newline);
     try std.json.stringify(begin_entry, .{ .emit_null_optional_fields = false }, writer);
+    try writer.writeByte(newline);
 
     for (changes) |change| {
         const entry = Entry{
             .id = commit_id,
             .change = change,
         };
-        try writer.writeByte(newline);
         try std.json.stringify(entry, .{ .emit_null_optional_fields = false }, writer);
+        try writer.writeByte(newline);
     }
 
     const commit_entry = Entry{
         .id = commit_id,
         .commit = true,
     };
-    try writer.writeByte(newline);
     try std.json.stringify(commit_entry, .{ .emit_null_optional_fields = false }, writer);
+    try writer.writeByte(newline);
 }
 
 pub fn write(self: *Self, changes: []const Change, index: *InMemoryIndex) !void {
@@ -315,6 +317,7 @@ test "write entries" {
         \\{"id":1,"begin":{"size":1}}
         \\{"id":1,"change":{"insert":{"id":1,"hashes":[1,2,3]}}}
         \\{"id":1,"commit":true}
+        \\
     ;
     try std.testing.expectEqualStrings(expected, contents);
 }

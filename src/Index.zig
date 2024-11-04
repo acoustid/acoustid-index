@@ -22,6 +22,7 @@ const filefmt = @import("filefmt.zig");
 const Self = @This();
 
 const Options = struct {
+    create: bool = false,
     min_segment_size: usize = 1000,
 };
 
@@ -83,11 +84,7 @@ pub fn deinit(self: *Self) void {
     self.segments.deinit();
 }
 
-pub const OpenOptions = struct {
-    create: bool = false,
-};
-
-pub fn open(self: *Self, options: OpenOptions) !void {
+pub fn open(self: *Self) !void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
@@ -96,7 +93,7 @@ pub fn open(self: *Self, options: OpenOptions) !void {
     try self.scheduler.start(self);
 
     self.readIndexFile() catch |err| {
-        if (err == error.FileNotFound and options.create) {
+        if (err == error.FileNotFound and self.options.create) {
             try self.writeIndexFile();
         } else {
             return err;
@@ -244,63 +241,6 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadlin
     results.sort();
 }
 
-test "insert and search" {
-    var tmpDir = std.testing.tmpDir(.{});
-    defer tmpDir.cleanup();
-
-    var index = try Self.init(std.testing.allocator, tmpDir.dir, .{});
-    defer index.deinit();
-
-    try index.open(.{ .create = true });
-
-    try index.update(&[_]Change{.{ .insert = .{
-        .id = 1,
-        .hashes = &[_]u32{ 1, 2, 3 },
-    } }});
-
-    var results = SearchResults.init(std.testing.allocator);
-    defer results.deinit();
-
-    try index.search(&[_]u32{ 1, 2, 3 }, &results, .{});
-
-    try std.testing.expectEqual(1, results.count());
-
-    const result = results.get(1);
-    try std.testing.expect(result != null);
-    try std.testing.expectEqual(1, result.?.id);
-    try std.testing.expectEqual(3, result.?.score);
-    try std.testing.expect(result.?.version != 0);
-}
-
-test "persistance" {
-    var tmpDir = std.testing.tmpDir(.{});
-    defer tmpDir.cleanup();
-
-    {
-        var index = try Self.init(std.testing.allocator, tmpDir.dir, .{ .min_segment_size = 1000 });
-        defer index.deinit();
-
-        try index.open(.{ .create = true });
-
-        var hashes_buf: [100]u32 = undefined;
-        const hashes = hashes_buf[0..];
-        var prng = std.rand.DefaultPrng.init(0);
-        const rand = prng.random();
-        for (0..100) |i| {
-            for (hashes) |*h| {
-                h.* = std.rand.int(rand, u32);
-            }
-            try index.update(&[_]Change{.{ .insert = .{
-                .id = @intCast(i),
-                .hashes = hashes,
-            } }});
-        }
-    }
-
-    {
-        var index = try Self.init(std.testing.allocator, tmpDir.dir, .{});
-        defer index.deinit();
-
-        try index.open(.{ .create = false });
-    }
+test {
+    _ = @import("index_tests.zig");
 }

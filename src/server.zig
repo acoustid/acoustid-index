@@ -136,6 +136,8 @@ pub fn main() !void {
     const port_str = args.get("port") orelse "8080";
     const port = try std.fmt.parseInt(u16, port_str, 10);
 
+    const create = args.contains("create");
+
     _ = try std.net.Address.parseIp(address, port);
 
     const threads_str = args.get("threads") orelse "0";
@@ -144,10 +146,10 @@ pub fn main() !void {
         threads = @intCast(try std.Thread.getCpuCount());
     }
 
-    var index = try Index.init(allocator, dir, .{});
+    var index = try Index.init(allocator, dir, .{ .create = create });
     defer index.deinit();
 
-    try index.open(.{ .create = true });
+    try index.open();
 
     try run(&index, address, port, threads);
 }
