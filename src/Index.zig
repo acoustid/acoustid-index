@@ -1,8 +1,6 @@
 const std = @import("std");
 const log = std.log.scoped(.index);
 
-const zul = @import("zul");
-
 const InMemoryIndex = @import("InMemoryIndex.zig");
 
 const common = @import("common.zig");
@@ -34,31 +32,18 @@ dir: std.fs.Dir,
 allocator: std.mem.Allocator,
 stage: InMemoryIndex,
 segments: SegmentList,
+
 write_lock: std.Thread.RwLock = .{},
 
-scheduler: zul.Scheduler(Task, *Self),
-last_cleanup_at: i64 = 0,
+cleanup_stop: std.atomic.Value(bool),
+cleanup_thread: ?std.Thread = null,
+cleanup_last_run_at: i64 = 0,
 cleanup_interval: i64 = 1000,
 
 max_segment_size: usize = 4 * 1024 * 1024 * 1024,
 
 oplog: Oplog,
 oplog_dir: std.fs.Dir,
-
-const Task = union(enum) {
-    cleanup: void,
-
-    pub fn run(task: Task, index: *Self, at: i64) void {
-        _ = at;
-        switch (task) {
-            .cleanup => {
-                index.cleanup() catch |err| {
-                    log.err("cleanup failed: {}", .{err});
-                };
-            },
-        }
-    }
-};
 
 pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Self {
     var oplog_dir = try dir.makeOpenPath("oplog", .{ .iterate = true });
@@ -70,18 +55,42 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Se
         .allocator = allocator,
         .stage = InMemoryIndex.init(allocator, .{ .max_segment_size = options.min_segment_size }),
         .segments = SegmentList.init(allocator),
-        .scheduler = zul.Scheduler(Task, *Self).init(allocator),
         .oplog = Oplog.init(allocator, oplog_dir),
         .oplog_dir = oplog_dir,
+        .cleanup_stop = std.atomic.Value(bool).init(false),
     };
 }
 
 pub fn deinit(self: *Self) void {
-    self.scheduler.deinit();
+    self.write_lock.lock();
+    defer self.write_lock.unlock();
+
+    if (self.cleanup_thread) |thread| {
+        self.cleanup_stop.store(true, .monotonic);
+        log.debug("waiting for cleanup thread to stop", .{});
+        thread.join();
+        self.cleanup_thread = null;
+    }
+
     self.oplog.deinit();
     self.oplog_dir.close();
+
     self.stage.deinit();
     self.segments.deinit();
+}
+
+fn startCleanupThread(self: *Self) void {
+    self.write_lock.lock();
+    defer self.write_lock.unlock();
+
+    if (self.cleanup_thread == null) {
+        log.info("starting cleanup thread", .{});
+        self.cleanup_stop.store(false, .monotonic);
+        self.cleanup_thread = std.Thread.spawn(.{}, cleanup, .{self}) catch |err| {
+            log.err("failed to start cleanup thread: {}", .{err});
+            return;
+        };
+    }
 }
 
 pub fn open(self: *Self) !void {
@@ -89,8 +98,6 @@ pub fn open(self: *Self) !void {
     defer self.write_lock.unlock();
 
     if (self.is_open) return;
-
-    try self.scheduler.start(self);
 
     self.readIndexFile() catch |err| {
         if (err == error.FileNotFound and self.options.create) {
@@ -166,7 +173,7 @@ fn finnishMerge(self: *Self, merge: SegmentList.PreparedMerge) !void {
     log.info("committed merge segment {}:{}", .{ merge.target.data.id.version, merge.target.data.id.included_merges });
 }
 
-fn compact(self: *Self) !void {
+fn maybeMergeSegments(self: *Self) !void {
     while (true) {
         const merge_opt = try self.prepareMerge();
         if (merge_opt) |merge| {
@@ -177,50 +184,70 @@ fn compact(self: *Self) !void {
     }
 }
 
-fn cleanup(self: *Self) !void {
-    log.info("running cleanup", .{});
+fn maybeWriteNewSegment(self: *Self) !void {
+    const source_segment = self.stage.maybeFreezeOldestSegment() orelse return;
 
-    var max_commit_id: ?u64 = null;
+    const node = try self.segments.createSegment();
+    errdefer self.segments.destroySegment(node);
 
-    if (self.stage.maybeFreezeOldestSegment()) |source_segment| {
-        const node = try self.segments.createSegment();
-        errdefer self.segments.destroySegment(node);
+    try node.data.convert(self.dir, source_segment);
 
-        try node.data.convert(self.dir, source_segment);
+    errdefer node.data.delete(self.dir);
 
-        errdefer node.data.delete(self.dir);
+    self.write_lock.lock();
+    defer self.write_lock.unlock();
 
-        self.write_lock.lock();
-        defer self.write_lock.unlock();
+    self.segments.segments.append(node);
+    errdefer self.segments.segments.remove(node);
 
-        self.segments.segments.append(node);
-        errdefer self.segments.segments.remove(node);
+    try self.writeIndexFile();
 
-        try self.writeIndexFile();
-
-        self.stage.removeFrozenSegment(source_segment);
-        max_commit_id = node.data.max_commit_id;
-    }
-
-    if (max_commit_id) |commit_id| {
-        self.oplog.truncate(commit_id) catch |err| {
-            log.err("failed to truncate oplog: {}", .{err});
-        };
-    }
-
-    try self.compact();
+    self.stage.removeFrozenSegment(source_segment);
 }
 
-pub fn update(self: *Self, changes: []const Change) !void {
+fn truncateOplog(self: *Self) !void {
     self.write_lock.lockShared();
     defer self.write_lock.unlockShared();
 
-    if (!self.is_open) {
-        return error.NotOpened;
+    const max_commit_id = self.segments.getMaxCommitId();
+    try self.oplog.truncate(max_commit_id);
+}
+
+fn cleanup(self: *Self) void {
+    while (!self.cleanup_stop.load(.monotonic)) {
+        const now = std.time.milliTimestamp();
+        if (self.cleanup_last_run_at + self.cleanup_interval > now) {
+            std.time.sleep(std.time.ns_per_ms * 100);
+            continue;
+        }
+        self.cleanup_last_run_at = now;
+
+        log.info("running cleanup", .{});
+
+        self.maybeWriteNewSegment() catch |err| {
+            log.warn("failed to write new segment: {}", .{err});
+        };
+
+        self.maybeMergeSegments() catch |err| {
+            log.warn("failed to merge segments: {}", .{err});
+        };
+
+        self.truncateOplog() catch |err| {
+            log.warn("failed to truncate oplog: {}", .{err});
+        };
     }
+}
+
+fn applyChanges(self: *Self, changes: []const Change) !void {
+    self.write_lock.lockShared();
+    defer self.write_lock.unlockShared();
 
     try self.oplog.write(changes, &self.stage);
-    try self.scheduler.scheduleIn(.{ .cleanup = {} }, 0);
+}
+
+pub fn update(self: *Self, changes: []const Change) !void {
+    self.startCleanupThread();
+    try self.applyChanges(changes);
 }
 
 pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {

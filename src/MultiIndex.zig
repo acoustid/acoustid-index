@@ -1,4 +1,5 @@
 const std = @import("std");
+const log = std.log.scoped(.multi_index);
 const assert = std.debug.assert;
 
 const Index = @import("Index.zig");
@@ -26,8 +27,10 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) Self {
 }
 
 pub fn deinit(self: *Self) void {
+    log.info("multiindex.deinit", .{});
     var iter = self.indexes.iterator();
     while (iter.next()) |entry| {
+        log.info("multiindex.deinit.index", .{});
         entry.value_ptr.index.deinit();
         entry.value_ptr.dir.close();
     }
