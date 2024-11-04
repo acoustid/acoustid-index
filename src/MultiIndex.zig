@@ -9,6 +9,7 @@ const IndexData = struct {
     index: Index,
     dir: std.fs.Dir,
     references: usize = 0,
+    last_used_at: i64 = std.math.minInt(i64),
 };
 
 lock: std.Thread.Mutex = .{},
@@ -40,6 +41,7 @@ pub fn releaseIndex(self: *Self, index_data: *IndexData) void {
 
     assert(index_data.references > 0);
     index_data.references -= 1;
+    index_data.last_used_at = std.time.timestamp();
 }
 
 pub fn getIndex(self: *Self, id: u8) !*IndexData {
@@ -49,6 +51,7 @@ pub fn getIndex(self: *Self, id: u8) !*IndexData {
     var result = try self.indexes.getOrPut(id);
     if (result.found_existing) {
         result.value_ptr.references += 1;
+        result.value_ptr.last_used_at = std.time.timestamp();
         return result.value_ptr;
     }
 
@@ -66,5 +69,6 @@ pub fn getIndex(self: *Self, id: u8) !*IndexData {
     try result.value_ptr.index.open();
 
     result.value_ptr.references += 1;
+    result.value_ptr.last_used_at = std.time.timestamp();
     return result.value_ptr;
 }

@@ -69,9 +69,6 @@ pub fn deinit(self: *Self) void {
         file.close();
         self.lock_file = null;
     }
-    self.dir.deleteFile(lock_file_name) catch |err| {
-        log.warn("failed to delete oplog lock file: {}", .{err});
-    };
 }
 
 pub fn open(self: *Self, first_commit_id: u64, index: *InMemoryIndex) !void {
