@@ -147,7 +147,7 @@ pub fn main() !void {
     var index = try Index.init(allocator, dir, .{});
     defer index.deinit();
 
-    try index.open();
+    try index.open(.{ .create = true });
 
     try run(&index, address, port, threads);
 }

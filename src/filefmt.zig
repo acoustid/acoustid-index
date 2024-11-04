@@ -83,6 +83,15 @@ test "check writeVarint32" {
     try std.testing.expectEqualSlices(u8, &[_]u8{ 0xe8, 0x07 }, buf[0..2]);
 }
 
+pub const max_file_name_size = 64;
+const segment_file_name_fmt = "segment-{d}-{d}.dat";
+pub const index_file_name = "index.dat";
+
+pub fn buildSegmentFileName(buf: []u8, version: common.SegmentID) []u8 {
+    assert(buf.len == max_file_name_size);
+    return std.fmt.bufPrint(buf, segment_file_name_fmt, .{ version.version, version.version + version.included_merges }) catch unreachable;
+}
+
 pub fn minItemsPerBlock(blockSize: usize) usize {
     return (blockSize - 4) / 2;
 }

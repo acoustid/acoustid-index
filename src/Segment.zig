@@ -1,4 +1,5 @@
 const std = @import("std");
+const log = std.log.scoped(.segment);
 const assert = std.debug.assert;
 
 const common = @import("common.zig");
@@ -80,33 +81,28 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults) !void {
     }
 }
 
-const max_file_name_size = 255;
-const file_name_fmt = "segment-{d}-{d}.dat";
-
 fn read(self: *Self, dir: std.fs.Dir, file_name: []const u8) !void {
     const file = try dir.openFile(file_name, .{});
     defer file.close();
     try filefmt.readFile(file, self);
 }
 
-fn generateFileName(buf: []u8, version: SegmentID) ![]u8 {
-    return try std.fmt.bufPrint(buf, file_name_fmt, .{ version.version, version.version + version.included_merges });
-}
-
-pub fn open(self: *Self, dir: std.fs.Dir, version: SegmentID) !void {
-    var file_name_buf: [max_file_name_size]u8 = undefined;
-    const file_name = try generateFileName(&file_name_buf, version);
+pub fn open(self: *Self, dir: std.fs.Dir, id: SegmentID) !void {
+    var file_name_buf: [filefmt.max_file_name_size]u8 = undefined;
+    const file_name = filefmt.buildSegmentFileName(&file_name_buf, id);
 
     std.debug.print("Reading segment {s}\n", .{file_name});
 
     try self.read(dir, file_name);
 }
 
-pub fn delete(self: *Self, dir: std.fs.Dir) !void {
-    var file_name_buf: [max_file_name_size]u8 = undefined;
-    const file_name = try generateFileName(&file_name_buf, self.id);
+pub fn delete(self: *Self, dir: std.fs.Dir) void {
+    var file_name_buf: [filefmt.max_file_name_size]u8 = undefined;
+    const file_name = filefmt.buildSegmentFileName(&file_name_buf, self.id);
 
-    try dir.deleteFile(file_name);
+    dir.deleteFile(file_name) catch |err| {
+        log.err("failed to clean up segment file {s}: {}", .{ file_name, err });
+    };
 }
 
 pub fn convert(self: *Self, dir: std.fs.Dir, source: *InMemorySegment) !void {
@@ -120,13 +116,18 @@ pub fn convert(self: *Self, dir: std.fs.Dir, source: *InMemorySegment) !void {
         return error.SourceSegmentHasMerges;
     }
 
-    var file_name_buf: [max_file_name_size]u8 = undefined;
-    const file_name = try generateFileName(&file_name_buf, source.id);
+    var file_name_buf: [filefmt.max_file_name_size]u8 = undefined;
+    const file_name = filefmt.buildSegmentFileName(&file_name_buf, source.id);
 
     var file = try dir.atomicFile(file_name, .{});
     defer file.deinit();
+
     try filefmt.writeFile(file.file, source);
     try file.finish();
+
+    errdefer dir.deleteFile(file_name) catch |err| {
+        log.err("failed to clean up segment file {s}: {}", .{ file_name, err });
+    };
 
     try self.read(dir, file_name);
 }
@@ -158,14 +159,18 @@ test "convert" {
 pub fn merge(self: *Self, dir: std.fs.Dir, segments_to_merge: List.SegmentsToMerge, collection: List) !void {
     const version = SegmentID.merge(segments_to_merge.node1.data.id, segments_to_merge.node2.data.id);
 
-    var file_name_buf: [max_file_name_size]u8 = undefined;
-    const file_name = try generateFileName(&file_name_buf, version);
+    var file_name_buf: [filefmt.max_file_name_size]u8 = undefined;
+    const file_name = filefmt.buildSegmentFileName(&file_name_buf, version);
 
     var file = try dir.atomicFile(file_name, .{});
     defer file.deinit();
 
     try filefmt.mergeAndWriteFile(file.file, segments_to_merge, collection, self.allocator);
     try file.finish();
+
+    errdefer dir.deleteFile(file_name) catch |err| {
+        log.err("failed to clean up segment file {s}: {}", .{ file_name, err });
+    };
 
     try self.read(dir, file_name);
 }

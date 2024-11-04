@@ -83,24 +83,33 @@ pub fn deinit(self: *Self) void {
     self.segments.deinit();
 }
 
-pub fn open(self: *Self) !void {
+pub const OpenOptions = struct {
+    create: bool = false,
+};
+
+pub fn open(self: *Self, options: OpenOptions) !void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
     if (self.is_open) return;
 
     try self.scheduler.start(self);
-    try self.readIndexFile();
+
+    self.readIndexFile() catch |err| {
+        if (err == error.FileNotFound and options.create) {
+            try self.writeIndexFile();
+        } else {
+            return err;
+        }
+    };
 
     try self.oplog.open(self.segments.getMaxCommitId(), &self.stage);
 
     self.is_open = true;
 }
 
-const index_file_name = "index.dat";
-
 fn writeIndexFile(self: *Self) !void {
-    var file = try self.dir.atomicFile(index_file_name, .{});
+    var file = try self.dir.atomicFile(filefmt.index_file_name, .{});
     defer file.deinit();
 
     var ids = std.ArrayList(SegmentID).init(self.allocator);
@@ -114,16 +123,7 @@ fn writeIndexFile(self: *Self) !void {
 }
 
 fn readIndexFile(self: *Self) !void {
-    if (self.segments.segments.len > 0) {
-        return error.AlreadyOpened;
-    }
-
-    var file = self.dir.openFile(index_file_name, .{}) catch |err| {
-        if (err == error.FileNotFound) {
-            return;
-        }
-        return err;
-    };
+    var file = try self.dir.openFile(filefmt.index_file_name, .{});
     defer file.close();
 
     var ids = std.ArrayList(SegmentID).init(self.allocator);
@@ -157,11 +157,7 @@ fn finnishMerge(self: *Self, merge: SegmentList.PreparedMerge) !void {
 
     errdefer self.segments.destroySegment(merge.target);
 
-    errdefer {
-        merge.target.data.delete(self.dir) catch |err| {
-            log.err("failed to delete segment: {}", .{err});
-        };
-    }
+    errdefer merge.target.data.delete(self.dir);
 
     self.segments.applyMerge(merge);
     errdefer self.segments.revertMerge(merge);
@@ -189,17 +185,13 @@ fn cleanup(self: *Self) !void {
 
     var max_commit_id: ?u64 = null;
 
-    if (self.stage.maybeFreezeOldestSegment()) |frozenStageSegment| {
+    if (self.stage.maybeFreezeOldestSegment()) |source_segment| {
         const node = try self.segments.createSegment();
         errdefer self.segments.destroySegment(node);
 
-        try node.data.convert(self.dir, frozenStageSegment);
+        try node.data.convert(self.dir, source_segment);
 
-        errdefer {
-            node.data.delete(self.dir) catch |err| {
-                log.err("failed to delete segment: {}", .{err});
-            };
-        }
+        errdefer node.data.delete(self.dir);
 
         self.write_lock.lock();
         defer self.write_lock.unlock();
@@ -209,7 +201,7 @@ fn cleanup(self: *Self) !void {
 
         try self.writeIndexFile();
 
-        self.stage.removeFrozenSegment(frozenStageSegment);
+        self.stage.removeFrozenSegment(source_segment);
         max_commit_id = node.data.max_commit_id;
     }
 
@@ -259,7 +251,7 @@ test "insert and search" {
     var index = try Self.init(std.testing.allocator, tmpDir.dir, .{});
     defer index.deinit();
 
-    try index.open();
+    try index.open(.{ .create = true });
 
     try index.update(&[_]Change{.{ .insert = .{
         .id = 1,
@@ -288,7 +280,7 @@ test "persistance" {
         var index = try Self.init(std.testing.allocator, tmpDir.dir, .{ .min_segment_size = 1000 });
         defer index.deinit();
 
-        try index.open();
+        try index.open(.{ .create = true });
 
         var hashes_buf: [100]u32 = undefined;
         const hashes = hashes_buf[0..];
@@ -309,6 +301,6 @@ test "persistance" {
         var index = try Self.init(std.testing.allocator, tmpDir.dir, .{});
         defer index.deinit();
 
-        try index.open();
+        try index.open(.{ .create = false });
     }
 }
