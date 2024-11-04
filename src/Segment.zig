@@ -155,12 +155,8 @@ test "convert" {
     try std.testing.expectEqual(1, segment.index.items.len);
 }
 
-pub fn merge(self: *Self, dir: std.fs.Dir, sources: [2]*Self) !void {
-    if (sources[0].id.version + sources[0].id.included_merges + 1 != sources[1].id.version) {
-        return error.SourceSegmentVersionMismatch;
-    }
-
-    const version = SegmentID.merge(sources[0].id, sources[1].id);
+pub fn merge(self: *Self, dir: std.fs.Dir, segments_to_merge: List.SegmentsToMerge, collection: List) !void {
+    const version = SegmentID.merge(segments_to_merge.node1.data.id, segments_to_merge.node2.data.id);
 
     var file_name_buf: [max_file_name_size]u8 = undefined;
     const file_name = try generateFileName(&file_name_buf, version);
@@ -168,20 +164,10 @@ pub fn merge(self: *Self, dir: std.fs.Dir, sources: [2]*Self) !void {
     var file = try dir.atomicFile(file_name, .{});
     defer file.deinit();
 
-    const hasNewerVersion = struct {
-        pub fn inner(i: u32, v: u32) bool {
-            _ = i;
-            _ = v;
-            return false;
-        }
-    }.inner;
-
-    try filefmt.mergeAndWriteFile(file.file, sources, self.allocator, hasNewerVersion);
+    try filefmt.mergeAndWriteFile(file.file, segments_to_merge, collection, self.allocator);
     try file.finish();
 
     try self.read(dir, file_name);
-
-    assert(self.id.version == version.version and self.id.included_merges == version.included_merges);
 }
 
 pub fn canBeMerged(self: Self) bool {

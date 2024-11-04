@@ -384,28 +384,31 @@ fn getNextItem(sources: *[2]SegmentIter) !?Item {
     return item;
 }
 
-pub fn mergeAndWriteFile(file: fs.File, segments: [2]*Segment, allocator: std.mem.Allocator, hasNewerVersion: fn (u32, u32) bool) !void {
+pub fn mergeAndWriteFile(file: fs.File, segments_to_merge: Segment.List.SegmentsToMerge, collection: Segment.List, allocator: std.mem.Allocator) !void {
+    const segment1 = &segments_to_merge.node1.data;
+    const segment2 = &segments_to_merge.node2.data;
+
     const block_size = default_block_size;
 
     const writer = file.writer();
 
     var header = Header{
-        .version = @min(segments[0].id.version, segments[1].id.version),
-        .included_merges = 1 + segments[0].id.included_merges + segments[1].id.included_merges,
+        .version = @min(segment1.id.version, segment2.id.version),
+        .included_merges = 1 + segment1.id.included_merges + segment2.id.included_merges,
         .num_docs = 0,
         .num_items = 0,
         .num_blocks = 0,
         .block_size = block_size,
-        .max_commit_id = @max(segments[0].max_commit_id, segments[1].max_commit_id),
+        .max_commit_id = @max(segment1.max_commit_id, segment2.max_commit_id),
     };
     try writeHeader(writer, header);
 
     var sources: [2]SegmentIter = undefined;
 
-    sources[0] = SegmentIter.init(allocator, segments[0]);
+    sources[0] = SegmentIter.init(allocator, segment1);
     defer sources[0].deinit();
 
-    sources[1] = SegmentIter.init(allocator, segments[1]);
+    sources[1] = SegmentIter.init(allocator, segment2);
     defer sources[1].deinit();
 
     for (&sources) |*source| {
@@ -413,7 +416,7 @@ pub fn mergeAndWriteFile(file: fs.File, segments: [2]*Segment, allocator: std.me
         while (docs_iter.next()) |entry| {
             const id = entry.key_ptr.*;
             const status = entry.value_ptr.*;
-            if (!hasNewerVersion(id, source.segment.id.version)) {
+            if (!collection.hasNewerVersion(id, source.segment.id.version)) {
                 const info = DocInfo{
                     .id = id,
                     .version = @intCast(source.segment.id.version - header.version),
@@ -465,16 +468,18 @@ test "mergeAndWriteFile" {
     var data_dir = try tmp.dir.makeOpenPath("data", .{});
     defer data_dir.close();
 
+    var segments = Segment.List.init(std.testing.allocator);
+    defer segments.deinit();
+
     var in_memory_segment_1 = InMemorySegment.init(std.testing.allocator);
     defer in_memory_segment_1.deinit();
 
     in_memory_segment_1.id.version = 1;
     in_memory_segment_1.frozen = true;
 
-    var segment_1 = Segment.init(std.testing.allocator);
-    defer segment_1.deinit();
-
-    try segment_1.convert(data_dir, &in_memory_segment_1);
+    var segment_1 = try segments.createSegment();
+    try segment_1.data.convert(data_dir, &in_memory_segment_1);
+    segments.segments.append(segment_1);
 
     var in_memory_segment_2 = InMemorySegment.init(std.testing.allocator);
     defer in_memory_segment_2.deinit();
@@ -482,15 +487,14 @@ test "mergeAndWriteFile" {
     in_memory_segment_2.id.version = 2;
     in_memory_segment_2.frozen = true;
 
-    var segment_2 = Segment.init(std.testing.allocator);
-    defer segment_2.deinit();
-
-    try segment_2.convert(data_dir, &in_memory_segment_2);
+    var segment_2 = try segments.createSegment();
+    try segment_2.data.convert(data_dir, &in_memory_segment_2);
+    segments.segments.append(segment_2);
 
     var segment_3 = Segment.init(std.testing.allocator);
     defer segment_3.deinit();
 
-    try segment_3.merge(data_dir, .{ &segment_1, &segment_2 });
+    try segment_3.merge(data_dir, .{ .node1 = segment_1, .node2 = segment_2 }, segments);
 }
 
 pub fn readFile(file: fs.File, segment: *Segment) !void {
