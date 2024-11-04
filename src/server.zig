@@ -15,6 +15,34 @@ const Context = struct {
     indexes: *MultiIndex,
 };
 
+const Server = httpz.ServerApp(*Context);
+
+var global_server: ?*Server = null;
+
+fn shutdown(_: c_int) callconv(.C) void {
+    if (global_server) |server| {
+        log.info("stopping", .{});
+        global_server = null;
+        server.stop();
+    }
+}
+
+fn install_signal_handlers(server: *Server) !void {
+    global_server = server;
+
+    try std.posix.sigaction(std.posix.SIG.INT, &.{
+        .handler = .{ .handler = shutdown },
+        .mask = std.posix.empty_sigset,
+        .flags = 0,
+    }, null);
+
+    try std.posix.sigaction(std.posix.SIG.TERM, &.{
+        .handler = .{ .handler = shutdown },
+        .mask = std.posix.empty_sigset,
+        .flags = 0,
+    }, null);
+}
+
 fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const u8, port: u16, threads: u16) !void {
     var ctx = Context{ .indexes = indexes };
 
@@ -26,11 +54,10 @@ fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const u8, 
         },
     };
 
-    var server = try httpz.ServerApp(*Context).init(allocator, config, &ctx);
-    defer {
-        server.stop();
-        server.deinit();
-    }
+    var server = try Server.init(allocator, config, &ctx);
+    defer server.deinit();
+
+    try install_signal_handlers(&server);
 
     var router = server.router();
     router.post("/_search", handleSearch);

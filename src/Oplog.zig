@@ -56,6 +56,8 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) Self {
 const lock_file_name = ".lock";
 
 pub fn deinit(self: *Self) void {
+    log.info("closing oplog", .{});
+
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
@@ -67,7 +69,9 @@ pub fn deinit(self: *Self) void {
         file.close();
         self.lock_file = null;
     }
-    self.dir.deleteFile(lock_file_name) catch {};
+    self.dir.deleteFile(lock_file_name) catch |err| {
+        log.warn("failed to delete oplog lock file: {}", .{err});
+    };
 }
 
 pub fn open(self: *Self, first_commit_id: u64, index: *InMemoryIndex) !void {

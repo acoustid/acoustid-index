@@ -1,4 +1,5 @@
 const std = @import("std");
+const assert = std.debug.assert;
 
 const Index = @import("Index.zig");
 
@@ -37,6 +38,7 @@ pub fn releaseIndex(self: *Self, index_data: *IndexData) void {
     self.lock.lock();
     defer self.lock.unlock();
 
+    assert(index_data.references > 0);
     index_data.references -= 1;
 }
 
