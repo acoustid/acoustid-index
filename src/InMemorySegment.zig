@@ -114,3 +114,35 @@ pub fn merge(self: *Self, source1: *Self, source2: *Self, collection: List) !voi
 
     self.ensureSorted();
 }
+
+pub fn reader(self: *Self) Reader {
+    return Reader.init(self);
+}
+
+pub const Reader = struct {
+    segment: *Self,
+    index: usize,
+    chunk_size: usize = 4096,
+
+    pub fn init(segment: *Self) Reader {
+        return .{
+            .segment = segment,
+            .index = 0,
+        };
+    }
+
+    pub fn read(self: *Reader, items: *std.ArrayList(Item)) !bool {
+        if (self.index >= self.segment.items.items.len) {
+            return null;
+        }
+
+        const chunk_start = self.index;
+        const chunk_end = std.math.min(self.index + self.chunk_size, self.segment.items.items.len);
+
+        items.clearRetainingCapacity();
+        try items.appendSlice(self.segment.items.items[chunk_start..chunk_end]);
+
+        self.index += chunk_end - chunk_start;
+        return true;
+    }
+};

@@ -198,6 +198,9 @@ pub fn main() !void {
     var indexes = MultiIndex.init(allocator, dir, &scheduler);
     defer indexes.deinit();
 
+    try scheduler.start(4);
+    defer scheduler.stop();
+
     try run(allocator, &indexes, address, port, threads);
 }
 

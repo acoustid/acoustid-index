@@ -183,3 +183,29 @@ pub fn canBeMerged(self: Self) bool {
 pub fn getSize(self: Self) usize {
     return self.num_items;
 }
+
+pub fn reader(self: *Self) Reader {
+    return Reader.init(self);
+}
+
+pub const Reader = struct {
+    segment: *Self,
+    block_no: usize,
+
+    pub fn init(segment: *Self) Reader {
+        return Reader{
+            .segment = segment,
+            .block_no = 0,
+        };
+    }
+
+    pub fn read(self: *Reader, items: *std.ArrayList(Item)) !bool {
+        if (self.block_no >= self.segment.index.items.len) {
+            return false;
+        }
+        const block_data = self.segment.getBlockData(self.block_no);
+        try filefmt.readBlock(block_data, items);
+        self.block_no += 1;
+        return true;
+    }
+};

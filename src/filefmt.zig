@@ -307,16 +307,16 @@ pub fn writeFile(file: std.fs.File, segment: *InMemorySegment) !void {
 const max_items_per_block = default_block_size;
 
 const SegmentIter = struct {
-    segment: *Segment,
-    next_block_no: usize,
+    reader: Segment.Reader,
+    has_more: bool,
     items: std.ArrayList(Item),
     ptr: []Item,
     skip_docs: std.AutoHashMap(u32, void),
 
     pub fn init(allocator: std.mem.Allocator, segment: *Segment) SegmentIter {
         return .{
-            .segment = segment,
-            .next_block_no = 0,
+            .reader = segment.reader(),
+            .has_more = true,
             .items = std.ArrayList(Item).init(allocator),
             .ptr = &.{},
             .skip_docs = std.AutoHashMap(u32, void).init(allocator),
@@ -343,12 +343,13 @@ const SegmentIter = struct {
     }
 
     pub fn loadNextBlockIfNeeded(self: *SegmentIter) !void {
-        while (self.ptr.len == 0 and self.next_block_no < self.segment.index.items.len) {
-            const block_data = self.segment.getBlockData(self.next_block_no);
-            try readBlock(block_data[0..], &self.items);
-            self.removeSkippedDocs();
-            self.ptr = self.items.items[0..];
-            self.next_block_no += 1;
+        if (self.ptr.len == 0 and self.has_more) {
+            if (try self.reader.read(&self.items)) {
+                self.removeSkippedDocs();
+                self.ptr = self.items.items[0..];
+            } else {
+                self.has_more = false;
+            }
         }
     }
 };
@@ -421,14 +422,14 @@ pub fn mergeAndWriteFile(file: fs.File, segments_to_merge: Segment.List.Segments
     defer sources[1].deinit();
 
     for (&sources) |*source| {
-        var docs_iter = source.segment.docs.iterator();
+        var docs_iter = source.reader.segment.docs.iterator();
         while (docs_iter.next()) |entry| {
             const id = entry.key_ptr.*;
             const status = entry.value_ptr.*;
-            if (!collection.hasNewerVersion(id, source.segment.id.version)) {
+            if (!collection.hasNewerVersion(id, source.reader.segment.id.version)) {
                 const info = DocInfo{
                     .id = id,
-                    .version = @intCast(source.segment.id.version - header.version),
+                    .version = @intCast(source.reader.segment.id.version - header.version),
                     .deleted = if (status) 0 else 1,
                 };
                 try writer.writeStructEndian(info, .little);

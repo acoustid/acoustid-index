@@ -37,10 +37,9 @@ segments: SegmentList,
 
 write_lock: std.Thread.RwLock = .{},
 
-cleanup_stop: std.atomic.Value(bool),
-cleanup_thread: ?std.Thread = null,
-cleanup_last_run_at: i64 = 0,
-cleanup_interval: i64 = 1000,
+cleanup_strand: Scheduler.Strand,
+cleanup_delay: i64 = 1000,
+cleanup_scheduled: std.atomic.Value(bool),
 
 max_segment_size: usize = 4 * 1024 * 1024 * 1024,
 
@@ -60,7 +59,8 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, scheduler: *Scheduler
         .segments = SegmentList.init(allocator),
         .oplog = Oplog.init(allocator, oplog_dir),
         .oplog_dir = oplog_dir,
-        .cleanup_stop = std.atomic.Value(bool).init(false),
+        .cleanup_strand = scheduler.createStrand(),
+        .cleanup_scheduled = std.atomic.Value(bool).init(false),
     };
 }
 
@@ -68,32 +68,13 @@ pub fn deinit(self: *Self) void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
-    if (self.cleanup_thread) |thread| {
-        self.cleanup_stop.store(true, .monotonic);
-        log.debug("waiting for cleanup thread to stop", .{});
-        thread.join();
-        self.cleanup_thread = null;
-    }
+    self.scheduler.cancelByContext(self);
 
     self.oplog.deinit();
     self.oplog_dir.close();
 
     self.stage.deinit();
     self.segments.deinit();
-}
-
-fn startCleanupThread(self: *Self) void {
-    self.write_lock.lock();
-    defer self.write_lock.unlock();
-
-    if (self.cleanup_thread == null) {
-        log.info("starting cleanup thread", .{});
-        self.cleanup_stop.store(false, .monotonic);
-        self.cleanup_thread = std.Thread.spawn(.{}, cleanup, .{self}) catch |err| {
-            log.err("failed to start cleanup thread: {}", .{err});
-            return;
-        };
-    }
 }
 
 pub fn open(self: *Self) !void {
@@ -187,8 +168,8 @@ fn maybeMergeSegments(self: *Self) !void {
     }
 }
 
-fn maybeWriteNewSegment(self: *Self) !void {
-    const source_segment = self.stage.maybeFreezeOldestSegment() orelse return;
+fn maybeWriteNewSegment(self: *Self) !bool {
+    const source_segment = self.stage.maybeFreezeOldestSegment() orelse return false;
 
     const node = try self.segments.createSegment();
     errdefer self.segments.destroySegment(node);
@@ -206,6 +187,8 @@ fn maybeWriteNewSegment(self: *Self) !void {
     try self.writeIndexFile();
 
     self.stage.removeFrozenSegment(source_segment);
+
+    return true;
 }
 
 fn truncateOplog(self: *Self) !void {
@@ -216,29 +199,43 @@ fn truncateOplog(self: *Self) !void {
     try self.oplog.truncate(max_commit_id);
 }
 
-fn cleanup(self: *Self) void {
-    while (!self.cleanup_stop.load(.monotonic)) {
-        const now = std.time.milliTimestamp();
-        if (self.cleanup_last_run_at + self.cleanup_interval > now) {
-            std.time.sleep(std.time.ns_per_ms * 100);
-            continue;
-        }
-        self.cleanup_last_run_at = now;
+fn resetCleanupJobId(self: *Self) void {
+    self.write_lock.lock();
+    defer self.write_lock.unlock();
 
-        log.info("running cleanup", .{});
+    self.cleanup_job_id = null;
+}
 
-        self.maybeWriteNewSegment() catch |err| {
-            log.warn("failed to write new segment: {}", .{err});
-        };
+fn scheduleCleanup(self: *Self) !void {
+    self.write_lock.lock();
+    defer self.write_lock.unlock();
 
-        self.maybeMergeSegments() catch |err| {
-            log.warn("failed to merge segments: {}", .{err});
-        };
-
-        self.truncateOplog() catch |err| {
-            log.warn("failed to truncate oplog: {}", .{err});
-        };
+    if (self.cleanup_scheduled.load(.acquire)) {
+        try self.scheduler.schedule(cleanup, self, .{ .in = self.cleanup_delay, .strand = self.cleanup_strand });
+        self.cleanup_scheduled.store(true, .monotonic);
     }
+}
+
+fn cleanup(self: *Self) void {
+    log.info("running cleanup", .{});
+
+    self.cleanup_scheduled.store(false, .monotonic);
+
+    const writtenNewSegment = self.maybeWriteNewSegment() catch |err| {
+        log.warn("failed to write new segment: {}", .{err});
+        return;
+    };
+    if (!writtenNewSegment) {
+        return;
+    }
+
+    self.maybeMergeSegments() catch |err| {
+        log.warn("failed to merge segments: {}", .{err});
+    };
+
+    self.truncateOplog() catch |err| {
+        log.warn("failed to truncate oplog: {}", .{err});
+    };
 }
 
 fn applyChanges(self: *Self, changes: []const Change) !void {
@@ -249,7 +246,7 @@ fn applyChanges(self: *Self, changes: []const Change) !void {
 }
 
 pub fn update(self: *Self, changes: []const Change) !void {
-    self.startCleanupThread();
+    // try self.scheduleCleanup();
     try self.applyChanges(changes);
 }
 

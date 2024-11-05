@@ -3,16 +3,11 @@ const log = std.log.scoped(.scheduler);
 
 const Deadline = @import("Deadline.zig");
 
-const Job = struct {
-    id: u64,
-
+const Closure = struct {
     ctx: *anyopaque,
     func: *const fn (*anyopaque) void,
 
-    at: i64 = 0,
-    repeat: ?i64 = null,
-
-    pub fn init(id: u64, comptime func: anytype, ctx: anytype) Job {
+    pub fn init(comptime func: anytype, ctx: anytype) Closure {
         const Ctx = @TypeOf(ctx);
         const ctx_type_info = @typeInfo(Ctx);
 
@@ -26,15 +21,22 @@ const Job = struct {
         };
 
         return .{
-            .id = id,
             .ctx = ctx,
             .func = wrapper.innerFunc,
         };
     }
 
-    pub fn run(self: Job) void {
+    pub fn run(self: Closure) void {
         self.func(self.ctx);
     }
+};
+
+const Job = struct {
+    id: u64,
+    func: ?Closure,
+
+    at: i64,
+    repeat: ?i64 = null,
 };
 
 fn compareJobs(_: void, a: Job, b: Job) std.math.Order {
@@ -75,6 +77,30 @@ const Worker = struct {
         defer self.mutex.unlock();
 
         return self.queue.items.len == 0;
+    }
+
+    pub fn cancel(self: *Worker, job_id: u64) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        for (self.queue.items) |*job| {
+            if (job.id == job_id) {
+                job.func = null;
+            }
+        }
+    }
+
+    pub fn cancelByContext(self: *Worker, ctx: anytype) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        for (self.queue.items) |*job| {
+            if (job.func) |func| {
+                if (func.ctx == @as(*anyopaque, ctx)) {
+                    job.func = null;
+                }
+            }
+        }
     }
 
     pub fn schedule(self: *Worker, job: Job) !void {
@@ -170,23 +196,29 @@ const Worker = struct {
 
             var job: Job = undefined;
             if (next_job.repeat) |interval| {
-                job = next_job;
-                next_job.at = std.time.milliTimestamp() + interval;
-                self.queue.update(job, next_job) catch unreachable;
+                if (next_job.func != null) {
+                    job = next_job;
+                    next_job.at = std.time.milliTimestamp() + interval;
+                    self.queue.update(job, next_job) catch unreachable;
+                } else {
+                    job = self.queue.remove();
+                }
             } else {
                 job = self.queue.remove();
             }
 
-            self.mutex.unlock();
-            job.run();
-            self.mutex.lock();
+            if (job.func) |func| {
+                self.mutex.unlock();
+                func.run();
+                self.mutex.lock();
+            }
         }
     }
 };
 
 const WorkerList = std.ArrayList(Worker);
 
-const Strand = struct {
+pub const Strand = struct {
     id: u64,
 };
 
@@ -264,13 +296,34 @@ pub const ScheduleOptions = struct {
     strand: ?Strand = null,
 };
 
-pub fn schedule(self: *Self, task: anytype, ctx: anytype, opts: ScheduleOptions) !void {
+pub fn cancel(self: *Self, job_id: u64) void {
     self.mutex.lock();
     defer self.mutex.unlock();
 
-    var job = Job.init(self.next_job_id, task, ctx);
-    job.at = std.time.milliTimestamp() + opts.in;
-    job.repeat = opts.repeat;
+    for (self.workers.items) |*worker| {
+        worker.cancel(job_id);
+    }
+}
+
+pub fn cancelByContext(self: *Self, ctx: anytype) void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
+    for (self.workers.items) |*worker| {
+        worker.cancelByContext(ctx);
+    }
+}
+
+pub fn schedule(self: *Self, task: anytype, ctx: anytype, opts: ScheduleOptions) !u64 {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
+    const job = Job{
+        .id = self.next_job_id,
+        .func = Closure.init(task, ctx),
+        .at = std.time.milliTimestamp() + opts.in,
+        .repeat = opts.repeat,
+    };
 
     const strand_id = if (opts.strand) |strand| strand.id else job.id;
 
@@ -281,6 +334,7 @@ pub fn schedule(self: *Self, task: anytype, ctx: anytype, opts: ScheduleOptions)
     try self.workers.items[worker_idx].schedule(job);
 
     self.next_job_id += 1;
+    return job.id;
 }
 
 const TestTask = struct {
@@ -299,13 +353,9 @@ test "scheduler" {
     defer scheduler.stop();
 
     var task: TestTask = .{};
-    try scheduler.schedule(TestTask.incr, &task, .{});
+    const job_id = try scheduler.schedule(TestTask.incr, &task, .{ .repeat = 10 });
+    std.time.sleep(std.time.us_per_ms * 100);
+    scheduler.cancel(job_id);
 
-    const deadline = Deadline.init(std.time.ms_per_s);
-    while (!scheduler.isEmpty()) {
-        try std.testing.expect(!deadline.isExpired());
-        std.time.sleep(std.time.us_per_ms * 100);
-    }
-
-    try std.testing.expect(task.value == 1);
+    try std.testing.expect(task.value > 0);
 }
