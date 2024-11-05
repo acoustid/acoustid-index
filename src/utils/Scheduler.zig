@@ -1,4 +1,5 @@
 const std = @import("std");
+const log = std.log.scoped(.scheduler);
 
 const Deadline = @import("Deadline.zig");
 
@@ -185,12 +186,17 @@ const Worker = struct {
 
 const WorkerList = std.ArrayList(Worker);
 
+const Strand = struct {
+    id: u64,
+};
+
 const Self = @This();
 
 allocator: std.mem.Allocator,
 workers: WorkerList,
 mutex: std.Thread.Mutex = .{},
-last_job_id: u64 = 0,
+next_job_id: u64 = 0,
+next_strand_id: u64 = 0,
 
 pub fn init(allocator: std.mem.Allocator) Self {
     return .{
@@ -231,6 +237,15 @@ pub fn start(self: *Self, num_workers: usize) !void {
     }
 }
 
+pub fn createStrand(self: *Self) Strand {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
+    const strand = Strand{ .id = self.next_strand_id };
+    self.next_strand_id += 1;
+    return strand;
+}
+
 pub fn isEmpty(self: *Self) bool {
     self.mutex.lock();
     defer self.mutex.unlock();
@@ -243,36 +258,29 @@ pub fn isEmpty(self: *Self) bool {
     return true;
 }
 
-pub fn scheduleNow(self: *Self, task: anytype, ctx: anytype) !void {
-    try self.schedule(task, ctx, std.math.minInt(i64), 0);
-}
+pub const ScheduleOptions = struct {
+    in: i64 = 0,
+    repeat: ?i64 = null,
+    strand: ?Strand = null,
+};
 
-pub fn scheduleIn(self: *Self, task: anytype, ctx: anytype, delay_ms: i64) !void {
-    try self.schedule(task, ctx, std.time.milliTimestamp() + delay_ms, 0);
-}
-
-pub fn scheduleRepeated(self: *Self, task: anytype, ctx: anytype, interval_ms: i64) !void {
-    try self.schedule(task, ctx, std.time.milliTimestamp(), interval_ms);
-}
-
-pub fn schedule(self: *Self, task: anytype, ctx: anytype, at: i64, repeat: i64) !void {
+pub fn schedule(self: *Self, task: anytype, ctx: anytype, opts: ScheduleOptions) !void {
     self.mutex.lock();
     defer self.mutex.unlock();
 
-    self.last_job_id += 1;
+    var job = Job.init(self.next_job_id, task, ctx);
+    job.at = std.time.milliTimestamp() + opts.in;
+    job.repeat = opts.repeat;
 
-    var job = Job.init(self.last_job_id, task, ctx);
-    job.at = at;
-    job.repeat = repeat;
-
-    const hash = std.hash.CityHash64.hash(std.mem.asBytes(ctx));
+    const strand_id = if (opts.strand) |strand| strand.id else job.id;
 
     if (self.workers.items.len == 0) {
         return error.NoWorkers;
     }
+    const worker_idx = strand_id % self.workers.items.len;
+    try self.workers.items[worker_idx].schedule(job);
 
-    const i = hash % self.workers.items.len;
-    try self.workers.items[i].schedule(job);
+    self.next_job_id += 1;
 }
 
 const TestTask = struct {
@@ -291,13 +299,13 @@ test "scheduler" {
     defer scheduler.stop();
 
     var task: TestTask = .{};
-    try scheduler.schedule(TestTask.incr, &task, 0, 0);
+    try scheduler.schedule(TestTask.incr, &task, .{});
 
-    //const deadline = Deadline.init(std.time.ms_per_s);
-    //while (!scheduler.isEmpty()) {
-    //    try std.testing.expect(!deadline.isExpired());
-    //    std.time.sleep(std.time.us_per_ms * 100);
-    //}
+    const deadline = Deadline.init(std.time.ms_per_s);
+    while (!scheduler.isEmpty()) {
+        try std.testing.expect(!deadline.isExpired());
+        std.time.sleep(std.time.us_per_ms * 100);
+    }
 
-    //try std.testing.expect(task.value == 1);
+    try std.testing.expect(task.value == 1);
 }
