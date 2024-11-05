@@ -3,6 +3,7 @@ const log = std.log.scoped(.multi_index);
 const assert = std.debug.assert;
 
 const Index = @import("Index.zig");
+const Scheduler = @import("utils/Scheduler.zig");
 
 const Self = @This();
 
@@ -16,12 +17,14 @@ const IndexData = struct {
 lock: std.Thread.Mutex = .{},
 allocator: std.mem.Allocator,
 dir: std.fs.Dir,
+scheduler: *Scheduler,
 indexes: std.AutoHashMap(u8, IndexData),
 
-pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) Self {
+pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, scheduler: *Scheduler) Self {
     return .{
         .allocator = allocator,
         .dir = dir,
+        .scheduler = scheduler,
         .indexes = std.AutoHashMap(u8, IndexData).init(allocator),
     };
 }
@@ -64,7 +67,7 @@ pub fn getIndex(self: *Self, id: u8) !*IndexData {
     result.value_ptr.dir = try self.dir.makeOpenPath(file_name, .{ .iterate = true });
     errdefer result.value_ptr.dir.close();
 
-    result.value_ptr.index = try Index.init(self.allocator, result.value_ptr.dir, .{ .create = true });
+    result.value_ptr.index = try Index.init(self.allocator, result.value_ptr.dir, self.scheduler, .{ .create = true });
     errdefer result.value_ptr.index.deinit();
 
     try result.value_ptr.index.open();

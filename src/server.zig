@@ -10,6 +10,7 @@ const common = @import("common.zig");
 const SearchResults = common.SearchResults;
 const Change = common.Change;
 const Deadline = @import("utils/Deadline.zig");
+const Scheduler = @import("utils/Scheduler.zig");
 
 const Context = struct {
     indexes: *MultiIndex,
@@ -191,7 +192,10 @@ pub fn main() !void {
         threads = @intCast(try std.Thread.getCpuCount());
     }
 
-    var indexes = MultiIndex.init(allocator, dir);
+    var scheduler = Scheduler.init(allocator);
+    defer scheduler.deinit();
+
+    var indexes = MultiIndex.init(allocator, dir, &scheduler);
     defer indexes.deinit();
 
     try run(allocator, &indexes, address, port, threads);

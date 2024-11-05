@@ -4,6 +4,8 @@ const common = @import("common.zig");
 const Change = common.Change;
 const SearchResults = common.SearchResults;
 
+const Scheduler = @import("utils/Scheduler.zig");
+
 const Index = @import("Index.zig");
 
 fn generateRandomHashes(buf: []u32, seed: u64) []u32 {
@@ -22,7 +24,11 @@ test "index does not exist" {
     var data_dir = try tmp_dir.dir.makeOpenPath("data", .{});
     defer data_dir.close();
 
-    var index = try Index.init(std.testing.allocator, data_dir, .{});
+    var scheduler = Scheduler.init(std.testing.allocator);
+    defer scheduler.deinit();
+    try scheduler.start(1);
+
+    var index = try Index.init(std.testing.allocator, data_dir, &scheduler, .{});
     defer index.deinit();
 
     const result = index.open();
@@ -36,7 +42,11 @@ test "index create, update and search" {
     var data_dir = try tmp_dir.dir.makeOpenPath("data", .{});
     defer data_dir.close();
 
-    var index = try Index.init(std.testing.allocator, data_dir, .{ .create = true });
+    var scheduler = Scheduler.init(std.testing.allocator);
+    defer scheduler.deinit();
+    try scheduler.start(1);
+
+    var index = try Index.init(std.testing.allocator, data_dir, &scheduler, .{ .create = true });
     defer index.deinit();
 
     try index.open();
@@ -79,10 +89,14 @@ test "index create, update, reopen and search" {
     var data_dir = try tmp_dir.dir.makeOpenPath("data", .{});
     defer data_dir.close();
 
+    var scheduler = Scheduler.init(std.testing.allocator);
+    defer scheduler.deinit();
+    try scheduler.start(1);
+
     var hashes: [100]u32 = undefined;
 
     {
-        var index = try Index.init(std.testing.allocator, data_dir, .{ .create = true });
+        var index = try Index.init(std.testing.allocator, data_dir, &scheduler, .{ .create = true });
         defer index.deinit();
 
         try index.open();
@@ -94,7 +108,7 @@ test "index create, update, reopen and search" {
     }
 
     {
-        var index = try Index.init(std.testing.allocator, data_dir, .{ .create = false });
+        var index = try Index.init(std.testing.allocator, data_dir, &scheduler, .{ .create = false });
         defer index.deinit();
 
         try index.open();
@@ -120,10 +134,14 @@ test "index many updates" {
     var data_dir = try tmp_dir.dir.makeOpenPath("data", .{});
     defer data_dir.close();
 
+    var scheduler = Scheduler.init(std.testing.allocator);
+    defer scheduler.deinit();
+    try scheduler.start(1);
+
     var hashes: [100]u32 = undefined;
 
     {
-        var index = try Index.init(std.testing.allocator, data_dir, .{ .create = true });
+        var index = try Index.init(std.testing.allocator, data_dir, &scheduler, .{ .create = true });
         defer index.deinit();
 
         try index.open();
@@ -137,7 +155,7 @@ test "index many updates" {
     }
 
     {
-        var index = try Index.init(std.testing.allocator, data_dir, .{ .create = false });
+        var index = try Index.init(std.testing.allocator, data_dir, &scheduler, .{ .create = false });
         defer index.deinit();
 
         try index.open();
@@ -163,7 +181,11 @@ test "index, multiple fingerprints with the same hashes" {
     var data_dir = try tmp_dir.dir.makeOpenPath("data", .{});
     defer data_dir.close();
 
-    var index = try Index.init(std.testing.allocator, data_dir, .{ .create = true });
+    var scheduler = Scheduler.init(std.testing.allocator);
+    defer scheduler.deinit();
+    try scheduler.start(1);
+
+    var index = try Index.init(std.testing.allocator, data_dir, &scheduler, .{ .create = true });
     defer index.deinit();
 
     try index.open();

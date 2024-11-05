@@ -9,6 +9,7 @@ const Change = common.Change;
 const SegmentID = common.SegmentID;
 
 const Deadline = @import("utils/Deadline.zig");
+const Scheduler = @import("utils/Scheduler.zig");
 
 const Segment = @import("Segment.zig");
 const SegmentList = Segment.List;
@@ -28,8 +29,9 @@ options: Options,
 
 is_open: bool = false,
 
-dir: std.fs.Dir,
 allocator: std.mem.Allocator,
+dir: std.fs.Dir,
+scheduler: *Scheduler,
 stage: InMemoryIndex,
 segments: SegmentList,
 
@@ -45,14 +47,15 @@ max_segment_size: usize = 4 * 1024 * 1024 * 1024,
 oplog: Oplog,
 oplog_dir: std.fs.Dir,
 
-pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Self {
+pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, scheduler: *Scheduler, options: Options) !Self {
     var oplog_dir = try dir.makeOpenPath("oplog", .{ .iterate = true });
     errdefer oplog_dir.close();
 
     return .{
         .options = options,
-        .dir = dir,
         .allocator = allocator,
+        .dir = dir,
+        .scheduler = scheduler,
         .stage = InMemoryIndex.init(allocator, .{ .max_segment_size = options.min_segment_size }),
         .segments = SegmentList.init(allocator),
         .oplog = Oplog.init(allocator, oplog_dir),
