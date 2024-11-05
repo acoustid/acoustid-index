@@ -106,6 +106,16 @@ pub const SearchResults = struct {
     pub fn values(self: *SearchResults) []SearchResult {
         return self.results.values();
     }
+
+    pub fn removeOutdatedResults(self: *SearchResults, collection: anytype) void {
+        var iter = self.results.iterator();
+        while (iter.next()) |*entry| {
+            var result = entry.value_ptr;
+            if (collection.hasNewerVersion(result.id, result.version)) {
+                result.score = 0;
+            }
+        }
+    }
 };
 
 test "sort search results" {

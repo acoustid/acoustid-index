@@ -21,7 +21,6 @@ allocator: std.mem.Allocator,
 write_lock: std.Thread.RwLock,
 merge_lock: std.Thread.Mutex,
 segments: InMemorySegmentList,
-auto_cleanup: bool = true,
 
 const Self = @This();
 
@@ -76,6 +75,8 @@ pub fn commitUpdate(self: *Self, txn: *PendingUpdate, commit_id: u64) void {
 
 // Prepares update for later commit, will block until previous update has been committed.
 pub fn prepareUpdate(self: *Self, changes: []const Change) !PendingUpdate {
+    try self.compact();
+
     const node = try self.segments.createSegment();
     errdefer self.segments.destroySegment(node);
 
@@ -123,26 +124,18 @@ pub fn prepareUpdate(self: *Self, changes: []const Change) !PendingUpdate {
 pub fn update(self: *Self, changes: []const Change, commit_id: u64) !void {
     var txn = try self.prepareUpdate(changes);
     self.commitUpdate(&txn, commit_id);
-
-    if (self.auto_cleanup) {
-        self.mergeSegments() catch |err| {
-            std.debug.print("mergeSegments failed: {}\n", .{err});
-        };
-    }
 }
 
-pub fn cleanup(self: *Self) !void {
-    try self.mergeSegments();
-}
-
-fn getMaxSegments(self: *Self, total_size: usize) usize {
-    const max_level_size = @min(self.options.max_segment_size, @max(total_size / 2, 10));
-    const min_level_size = @max(max_level_size / 1000, 10);
-    const x = max_level_size / min_level_size;
-    if (x == 0) {
-        return 1;
-    } else {
-        return @max(1, std.math.log2_int(usize, x));
+fn checkSegments(self: *Self) void {
+    var iter = self.segments.segments.first;
+    while (iter) |node| : (iter = node.next) {
+        if (!node.data.frozen) {
+            if (node.prev) |prev| {
+                node.data.id = prev.data.id.next();
+            } else {
+                node.data.id.included_merges = 0;
+            }
+        }
     }
 }
 
@@ -159,19 +152,6 @@ fn prepareMerge(self: *Self) !?InMemorySegmentList.PreparedMerge {
     return null;
 }
 
-fn checkSegments(self: *Self) void {
-    var iter = self.segments.segments.first;
-    while (iter) |node| : (iter = node.next) {
-        if (!node.data.frozen) {
-            if (node.prev) |prev| {
-                node.data.id = prev.data.id.next();
-            } else {
-                node.data.id.included_merges = 0;
-            }
-        }
-    }
-}
-
 fn finnishMerge(self: *Self, merge: InMemorySegmentList.PreparedMerge) void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
@@ -182,7 +162,8 @@ fn finnishMerge(self: *Self, merge: InMemorySegmentList.PreparedMerge) void {
     self.checkSegments();
 }
 
-fn mergeSegments(self: *Self) !void {
+// Perform partial compaction on the in-memory segments.
+fn compact(self: *Self) !void {
     self.merge_lock.lock();
     defer self.merge_lock.unlock();
 

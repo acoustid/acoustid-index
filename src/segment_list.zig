@@ -77,8 +77,9 @@ pub fn SegmentList(Segment: type) type {
 
         pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
             std.debug.assert(std.sort.isSorted(u32, hashes, {}, std.sort.asc(u32)));
-            var it = self.segments.first;
-            while (it) |node| : (it = node.next) {
+            defer results.removeOutdatedResults(self);
+            var iter = self.segments.first;
+            while (iter) |node| : (iter = node.next) {
                 if (deadline.isExpired()) {
                     return error.Timeout;
                 }
