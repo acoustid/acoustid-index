@@ -126,7 +126,7 @@ pub const Reader = struct {
     segment: *Self,
     index: usize,
 
-    pub fn close(self: *Self) void {
+    pub fn close(self: *Reader) void {
         _ = self;
     }
 

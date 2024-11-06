@@ -219,3 +219,7 @@ pub const Reader = struct {
         return item;
     }
 };
+
+test {
+    _ = @import("segment_merger.zig");
+}
