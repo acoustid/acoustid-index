@@ -115,7 +115,7 @@ pub fn merge(self: *Self, source1: *Self, source2: *Self, collection: List) !voi
     self.ensureSorted();
 }
 
-pub fn reader(self: *Self) Reader {
+pub fn reader(self: *const Self) Reader {
     return .{
         .segment = self,
         .index = 0,
@@ -123,21 +123,24 @@ pub fn reader(self: *Self) Reader {
 }
 
 pub const Reader = struct {
-    segment: *Self,
+    segment: *const Self,
     index: usize,
-
-    item: ?Item = null,
 
     pub fn close(self: *Reader) void {
         _ = self;
     }
 
-    pub fn load(self: *Reader) !void {
-        if (self.item == null) {
-            if (self.index < self.segment.items.items.len) {
-                self.item = self.segment.items.items[self.index];
-                self.index += 1;
-            }
+    pub fn read(self: *Reader) !?Item {
+        if (self.index < self.segment.items.items.len) {
+            return self.segment.items.items[self.index];
+        } else {
+            return null;
+        }
+    }
+
+    pub fn advance(self: *Reader) void {
+        if (self.index < self.segment.items.items.len) {
+            self.index += 1;
         }
     }
 };

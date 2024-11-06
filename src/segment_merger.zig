@@ -17,26 +17,20 @@ pub fn SegmentMerger(comptime Segment: type) type {
         const Source = struct {
             reader: Segment.Reader,
             skip_docs: std.AutoHashMap(u32, void),
-            item: ?Item = null,
-            has_more: bool = true,
 
-            pub fn load(self: *Source) !void {
-                while (self.item == null and self.has_more) {
-                    try self.reader.load();
-                    if (self.reader.item) |item| {
-                        if (self.skip_docs.contains(item.id)) {
-                            self.reader.item = null;
-                            continue;
-                        } else {
-                            self.reader.item = null;
-                            self.item = item;
-                            return;
-                        }
-                    } else {
-                        self.has_more = false;
-                        return;
+            pub fn read(self: *Source) !?Item {
+                while (true) {
+                    const item = try self.reader.read() orelse return null;
+                    if (self.skip_docs.contains(item.id)) {
+                        self.reader.advance();
+                        continue;
                     }
+                    return item;
                 }
+            }
+
+            pub fn advance(self: *Source) void {
+                self.reader.advance();
             }
         };
 
@@ -108,20 +102,15 @@ pub fn SegmentMerger(comptime Segment: type) type {
         }
 
         pub fn read(self: *Self) !?Item {
+            var result: ?Item = null;
             for (self.sources.items) |*source| {
-                try source.load();
-            }
-
-            var next_item: ?Item = null;
-            for (self.sources.items) |*source| {
-                if (source.item) |item| {
-                    if (next_item == null or Item.cmp({}, item, next_item.?)) {
-                        next_item = item;
-                        source.item = null;
-                    }
+                const item = try source.read() orelse continue;
+                if (result == null or Item.cmp({}, item, result.?)) {
+                    source.advance();
+                    result = item;
                 }
             }
-            return next_item;
+            return result;
         }
     };
 }

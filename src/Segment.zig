@@ -47,7 +47,7 @@ pub fn deinit(self: *Self) void {
     }
 }
 
-pub fn getBlockData(self: *Self, block: usize) []const u8 {
+pub fn getBlockData(self: *const Self, block: usize) []const u8 {
     return self.blocks[block * self.block_size .. (block + 1) * self.block_size];
 }
 
@@ -122,7 +122,7 @@ pub fn convert(self: *Self, dir: std.fs.Dir, source: *InMemorySegment) !void {
     var file = try dir.atomicFile(file_name, .{});
     defer file.deinit();
 
-    try filefmt.writeFile(file.file, source);
+    try filefmt.writeFile(InMemorySegment, file.file, source);
     try file.finish();
 
     errdefer dir.deleteFile(file_name) catch |err| {
@@ -184,40 +184,39 @@ pub fn getSize(self: Self) usize {
     return self.num_items;
 }
 
-pub fn reader(self: *Self) Reader {
+pub fn reader(self: *const Self) Reader {
     return .{
         .segment = self,
         .items = std.ArrayList(Item).init(self.allocator),
-        .index = 0,
-        .block_no = 0,
     };
 }
 
 pub const Reader = struct {
-    segment: *Self,
+    segment: *const Self,
     items: std.ArrayList(Item),
-    index: usize,
-    block_no: usize,
-
-    item: ?Item = null,
+    index: usize = 0,
+    block_no: usize = 0,
 
     pub fn close(self: *Reader) void {
         self.items.deinit();
     }
 
-    pub fn load(self: *Reader) !void {
-        if (self.item == null) {
-            while (self.index >= self.items.items.len) {
-                if (self.block_no >= self.segment.index.items.len) {
-                    return;
-                }
-                self.items.clearRetainingCapacity();
-                self.index = 0;
-                self.block_no += 1;
-                const block_data = self.segment.getBlockData(self.block_no);
-                try filefmt.readBlock(block_data, &self.items);
+    pub fn read(self: *Reader) !?Item {
+        while (self.index >= self.items.items.len) {
+            if (self.block_no >= self.segment.index.items.len) {
+                return null;
             }
-            self.item = self.items.items[self.index];
+            self.items.clearRetainingCapacity();
+            self.index = 0;
+            self.block_no += 1;
+            const block_data = self.segment.getBlockData(self.block_no);
+            try filefmt.readBlock(block_data, &self.items);
+        }
+        return self.items.items[self.index];
+    }
+
+    pub fn advance(self: *Reader) void {
+        if (self.index < self.items.items.len) {
             self.index += 1;
         }
     }

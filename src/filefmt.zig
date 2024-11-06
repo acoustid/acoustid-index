@@ -150,7 +150,7 @@ pub fn readBlock(data: []const u8, items: *std.ArrayList(Item)) !void {
     }
 }
 
-pub fn writeBlock(data: []u8, items: []const Item) !usize {
+pub fn writeBlock(data: []u8, reader: anytype) !u16 {
     assert(data.len >= 2);
 
     var ptr: usize = 2;
@@ -158,7 +158,8 @@ pub fn writeBlock(data: []u8, items: []const Item) !usize {
     var last_hash: u32 = 0;
     var last_doc_id: u32 = 0;
 
-    for (items) |item| {
+    while (true) {
+        const item = try reader.read() orelse break;
         assert(item.hash > last_hash or (item.hash == last_hash and item.id >= last_doc_id));
 
         const diff_hash = item.hash - last_hash;
@@ -170,10 +171,12 @@ pub fn writeBlock(data: []u8, items: []const Item) !usize {
 
         ptr += writeVarint32(data[ptr..], diff_hash);
         ptr += writeVarint32(data[ptr..], diff_doc_id);
-        num_items += 1;
 
         last_hash = item.hash;
         last_doc_id = item.id;
+
+        num_items += 1;
+        reader.advance();
     }
 
     std.mem.writeInt(u16, data[0..2], num_items, .little);
@@ -183,23 +186,26 @@ pub fn writeBlock(data: []u8, items: []const Item) !usize {
 }
 
 test "writeBlock/readBlock/readFirstItemFromBlock" {
+    var segment = InMemorySegment.init(std.testing.allocator);
+    defer segment.deinit();
+
+    try segment.items.append(.{ .hash = 1, .id = 1 });
+    try segment.items.append(.{ .hash = 2, .id = 1 });
+    try segment.items.append(.{ .hash = 3, .id = 1 });
+    try segment.items.append(.{ .hash = 3, .id = 2 });
+    try segment.items.append(.{ .hash = 4, .id = 1 });
+
+    const block_size = 1024;
+    var block_data: [block_size]u8 = undefined;
+
+    var reader = segment.reader();
+    const num_items = try writeBlock(block_data[0..], &reader);
+    try testing.expectEqual(segment.items.items.len, num_items);
+
     var items = std.ArrayList(Item).init(std.testing.allocator);
     defer items.deinit();
 
-    try items.append(.{ .hash = 1, .id = 1 });
-    try items.append(.{ .hash = 2, .id = 1 });
-    try items.append(.{ .hash = 3, .id = 1 });
-    try items.append(.{ .hash = 3, .id = 2 });
-    try items.append(.{ .hash = 4, .id = 1 });
-
-    const blockSize = 1024;
-    var blockData: [blockSize]u8 = undefined;
-
-    const numItems = try writeBlock(blockData[0..], items.items);
-    try testing.expectEqual(items.items.len, numItems);
-
-    items.clearRetainingCapacity();
-    try readBlock(blockData[0..], &items);
+    try readBlock(block_data[0..], &items);
     try testing.expectEqualSlices(
         Item,
         &[_]Item{
@@ -212,7 +218,7 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
         items.items,
     );
 
-    const item = try readFirstItemFromBlock(blockData[0..]);
+    const item = try readFirstItemFromBlock(block_data[0..]);
     try testing.expectEqual(items.items[0], item);
 }
 
@@ -265,7 +271,7 @@ const DocInfo = packed struct(u64) {
     deleted: u8,
 };
 
-pub fn writeFile(file: std.fs.File, segment: *InMemorySegment) !void {
+pub fn writeFile(comptime T: type, file: std.fs.File, segment: *const T) !void {
     const block_size = default_block_size;
 
     const writer = file.writer();
@@ -273,11 +279,11 @@ pub fn writeFile(file: std.fs.File, segment: *InMemorySegment) !void {
     var header = Header{
         .version = segment.id.version,
         .included_merges = segment.id.included_merges,
-        .num_docs = @intCast(segment.docs.count()),
-        .num_items = @intCast(segment.items.items.len),
-        .num_blocks = 0,
-        .block_size = block_size,
         .max_commit_id = segment.max_commit_id,
+        .block_size = block_size,
+        .num_docs = 0,
+        .num_items = 0,
+        .num_blocks = 0,
     };
     try writeHeader(writer, header);
 
@@ -289,14 +295,20 @@ pub fn writeFile(file: std.fs.File, segment: *InMemorySegment) !void {
             .deleted = if (entry.value_ptr.*) 0 else 1,
         };
         try writer.writeStructEndian(info, .little);
+        header.num_docs += 1;
     }
 
+    var reader = segment.reader();
+    defer reader.close();
+
     var block_data: [block_size]u8 = undefined;
-    var items = segment.items.items[0..];
-    while (items.len > 0) {
-        const n = try writeBlock(block_data[0..], items);
-        items = items[n..];
+    while (true) {
+        const n = try writeBlock(block_data[0..], &reader);
+        if (n == 0) {
+            break;
+        }
         try writer.writeAll(block_data[0..]);
+        header.num_items += n;
         header.num_blocks += 1;
     }
 
@@ -306,8 +318,6 @@ pub fn writeFile(file: std.fs.File, segment: *InMemorySegment) !void {
 
 const SegmentIter = struct {
     reader: Segment.Reader,
-    has_more: bool = true,
-    item: ?Item = null,
     skip_docs: std.AutoHashMap(u32, void),
 
     pub fn init(allocator: std.mem.Allocator, segment: *Segment) SegmentIter {
@@ -322,45 +332,34 @@ const SegmentIter = struct {
         self.skip_docs.deinit();
     }
 
-    pub fn load(self: *SegmentIter) !void {
-        while (self.item == null and self.has_more) {
-            try self.reader.load();
-            if (self.reader.item) |item| {
-                if (self.skip_docs.contains(item.id)) {
-                    self.reader.item = null;
-                    continue;
-                } else {
-                    self.reader.item = null;
-                    self.item = item;
-                    return;
-                }
-            } else {
-                self.has_more = false;
-                return;
+    pub fn read(self: *SegmentIter) !?Item {
+        while (true) {
+            const item = try self.reader.read() orelse break;
+            if (self.skip_docs.contains(item.id)) {
+                self.reader.advance();
+                continue;
             }
+            return item;
         }
+        return null;
     }
 
     pub fn advance(self: *SegmentIter) void {
-        self.item = null;
+        self.reader.advance();
     }
 };
 
 fn getNextItem(sources: *[2]SegmentIter) !?Item {
+    var result: ?Item = null;
     inline for (sources) |*source| {
-        try source.load();
-    }
-
-    var next_item: ?Item = null;
-    inline for (sources) |*source| {
-        if (source.item) |item| {
-            if (next_item == null or Item.cmp({}, item, next_item.?)) {
-                next_item = item;
+        if (try source.read()) |item| {
+            if (result == null or Item.cmp({}, item, result.?)) {
                 source.advance();
+                result = item;
             }
         }
     }
-    return next_item;
+    return result;
 }
 
 pub fn mergeAndWriteFile(file: fs.File, segments_to_merge: Segment.List.SegmentsToMerge, collection: Segment.List, allocator: std.mem.Allocator) !void {
@@ -414,25 +413,29 @@ pub fn mergeAndWriteFile(file: fs.File, segments_to_merge: Segment.List.Segments
     var items = std.ArrayList(Item).init(allocator);
     defer items.deinit();
 
-    const max_items_per_block = maxItemsPerBlock(block_size);
-    while (true) {
-        // fill up the buffer wirh items from both segments
-        while (items.items.len < max_items_per_block) {
-            const item = try getNextItem(&sources);
-            if (item) |i| {
-                try items.append(i);
-            } else {
-                break;
+    const Reader = struct {
+        sources: *[2]SegmentIter,
+        item: ?Item = null,
+
+        pub fn read(self: *@This()) !?Item {
+            if (self.item == null) {
+                self.item = try getNextItem(self.sources);
             }
-        }
-        if (items.items.len == 0) {
-            break;
+            return self.item;
         }
 
-        // write the buffer to the file
-        const n = try writeBlock(block_data[0..], items.items[0..]);
+        pub fn advance(self: *@This()) void {
+            self.item = null;
+        }
+    };
+
+    var reader = Reader{ .sources = &sources };
+    while (true) {
+        const n = try writeBlock(block_data[0..], &reader);
+        if (n == 0) {
+            break;
+        }
         try file.writeAll(block_data[0..]);
-        items.items = items.items[n..];
         header.num_items += @intCast(n);
         header.num_blocks += 1;
     }
@@ -560,7 +563,7 @@ test "writeFile/readFile" {
 
         in_memory_segment.ensureSorted();
 
-        try writeFile(file, &in_memory_segment);
+        try writeFile(InMemorySegment, file, &in_memory_segment);
     }
 
     {
