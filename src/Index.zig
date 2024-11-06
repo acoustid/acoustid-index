@@ -178,7 +178,7 @@ fn maybeMergeSegments(self: *Self) !void {
 fn maybeWriteNewSegment(self: *Self) !bool {
     const source_segment = self.stage.maybeFreezeOldestSegment() orelse return false;
 
-    const source_reader = source_segment.reader();
+    var source_reader = source_segment.reader();
     defer source_reader.close();
 
     const node = try self.segments.createSegment();
@@ -221,7 +221,7 @@ fn scheduleCleanup(self: *Self) !void {
     defer self.write_lock.unlock();
 
     if (self.cleanup_scheduled.load(.acquire)) {
-        try self.scheduler.schedule(cleanup, self, .{ .in = self.cleanup_delay, .strand = self.cleanup_strand });
+        _ = try self.scheduler.schedule(cleanup, self, .{ .in = self.cleanup_delay, .strand = self.cleanup_strand });
         self.cleanup_scheduled.store(true, .monotonic);
     }
 }
@@ -256,7 +256,7 @@ fn applyChanges(self: *Self, changes: []const Change) !void {
 }
 
 pub fn update(self: *Self, changes: []const Change) !void {
-    // try self.scheduleCleanup();
+    try self.scheduleCleanup();
     try self.applyChanges(changes);
 }
 
