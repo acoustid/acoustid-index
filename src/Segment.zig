@@ -199,24 +199,27 @@ pub const Reader = struct {
     index: usize,
     block_no: usize,
 
+    item: ?Item = null,
+
     pub fn close(self: *Reader) void {
         self.items.deinit();
     }
 
-    pub fn read(self: *Reader) !?Item {
-        while (self.index >= self.items.items.len) {
-            if (self.block_no >= self.segment.index.items.len) {
-                return null;
+    pub fn load(self: *Reader) !void {
+        if (self.item == null) {
+            while (self.index >= self.items.items.len) {
+                if (self.block_no >= self.segment.index.items.len) {
+                    return;
+                }
+                self.items.clearRetainingCapacity();
+                self.index = 0;
+                self.block_no += 1;
+                const block_data = self.segment.getBlockData(self.block_no);
+                try filefmt.readBlock(block_data, &self.items);
             }
-            self.items.clearRetainingCapacity();
-            self.index = 0;
-            self.block_no += 1;
-            const block_data = self.segment.getBlockData(self.block_no);
-            try filefmt.readBlock(block_data, &self.items);
+            self.item = self.items.items[self.index];
+            self.index += 1;
         }
-        const item = self.items.items[self.index];
-        self.index += 1;
-        return item;
     }
 };
 

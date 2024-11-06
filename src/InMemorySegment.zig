@@ -126,17 +126,18 @@ pub const Reader = struct {
     segment: *Self,
     index: usize,
 
+    item: ?Item = null,
+
     pub fn close(self: *Reader) void {
         _ = self;
     }
 
-    pub fn read(self: *Reader) !?Item {
-        if (self.index >= self.segment.items.items.len) {
-            return null;
+    pub fn load(self: *Reader) !void {
+        if (self.item == null) {
+            if (self.index < self.segment.items.items.len) {
+                self.item = self.segment.items.items[self.index];
+                self.index += 1;
+            }
         }
-
-        const item = self.segment.items.items[self.index];
-        self.index += 1;
-        return item;
     }
 };

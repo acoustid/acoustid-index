@@ -22,21 +22,21 @@ pub fn SegmentMerger(comptime Segment: type) type {
 
             pub fn load(self: *Source) !void {
                 while (self.item == null and self.has_more) {
-                    self.item = try self.reader.read();
-                    if (self.item) |item| {
+                    try self.reader.load();
+                    if (self.reader.item) |item| {
                         if (self.skip_docs.contains(item.id)) {
-                            self.item = null;
+                            self.reader.item = null;
                             continue;
+                        } else {
+                            self.reader.item = null;
+                            self.item = item;
+                            return;
                         }
                     } else {
                         self.has_more = false;
                         return;
                     }
                 }
-            }
-
-            pub fn advance(self: *Source) void {
-                self.item = null;
             }
         };
 
@@ -117,7 +117,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
                 if (source.item) |item| {
                     if (next_item == null or Item.cmp({}, item, next_item.?)) {
                         next_item = item;
-                        source.advance();
+                        source.item = null;
                     }
                 }
             }

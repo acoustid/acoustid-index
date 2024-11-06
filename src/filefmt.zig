@@ -324,11 +324,15 @@ const SegmentIter = struct {
 
     pub fn load(self: *SegmentIter) !void {
         while (self.item == null and self.has_more) {
-            self.item = try self.reader.read();
-            if (self.item) |item| {
+            try self.reader.load();
+            if (self.reader.item) |item| {
                 if (self.skip_docs.contains(item.id)) {
-                    self.item = null;
+                    self.reader.item = null;
                     continue;
+                } else {
+                    self.reader.item = null;
+                    self.item = item;
+                    return;
                 }
             } else {
                 self.has_more = false;
