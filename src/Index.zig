@@ -167,8 +167,7 @@ fn finnishMerge(self: *Self, merge: SegmentList.PreparedMerge) !void {
 
 fn maybeMergeSegments(self: *Self) !void {
     while (true) {
-        const merge_opt = try self.prepareMerge();
-        if (merge_opt) |merge| {
+        if (try self.prepareMerge()) |merge| {
             try self.finnishMerge(merge);
         } else {
             break;

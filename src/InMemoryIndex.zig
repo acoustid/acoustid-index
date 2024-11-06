@@ -75,7 +75,7 @@ pub fn commitUpdate(self: *Self, txn: *PendingUpdate, commit_id: u64) void {
 
 // Prepares update for later commit, will block until previous update has been committed.
 pub fn prepareUpdate(self: *Self, changes: []const Change) !PendingUpdate {
-    try self.compact();
+    try self.maybeMergeSegments();
 
     const node = try self.segments.createSegment();
     errdefer self.segments.destroySegment(node);
@@ -143,13 +143,12 @@ fn prepareMerge(self: *Self) !?InMemorySegmentList.PreparedMerge {
     self.write_lock.lockShared();
     defer self.write_lock.unlockShared();
 
-    const merge_opt = try self.segments.prepareMerge(.{ .max_segment_size = self.options.max_segment_size });
-    if (merge_opt) |merge| {
-        errdefer self.segments.destroySegment(merge.target);
-        try merge.target.data.merge(&merge.sources.node1.data, &merge.sources.node2.data, self.segments);
-        return merge;
-    }
-    return null;
+    const merge = try self.segments.prepareMerge(.{ .max_segment_size = self.options.max_segment_size }) orelse return null;
+    errdefer self.segments.destroySegment(merge.target);
+
+    try merge.target.data.merge(&merge.sources.node1.data, &merge.sources.node2.data, self.segments);
+
+    return merge;
 }
 
 fn finnishMerge(self: *Self, merge: InMemorySegmentList.PreparedMerge) void {
@@ -163,12 +162,11 @@ fn finnishMerge(self: *Self, merge: InMemorySegmentList.PreparedMerge) void {
 }
 
 // Perform partial compaction on the in-memory segments.
-fn compact(self: *Self) !void {
+fn maybeMergeSegments(self: *Self) !void {
     self.merge_lock.lock();
     defer self.merge_lock.unlock();
 
-    const merge_opt = try self.prepareMerge();
-    if (merge_opt) |merge| {
+    if (try self.prepareMerge()) |merge| {
         self.finnishMerge(merge);
     }
 }

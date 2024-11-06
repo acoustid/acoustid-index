@@ -26,12 +26,16 @@ pub fn SegmentList(Segment: type) type {
             }
         }
 
+        // Creates a new segment and returns a pointer to the list node owning it.
+        // This function is safe to call from any thread.
         pub fn createSegment(self: *Self) !*List.Node {
             const node = try self.allocator.create(List.Node);
             node.data = Segment.init(self.allocator);
             return node;
         }
 
+        // Destroys a segment and frees the memory.
+        // This function is safe to call from any thread, but only if the segment is not in the list.
         pub fn destroySegment(self: *Self, node: *List.Node) void {
             node.data.deinit();
             self.allocator.destroy(node);
@@ -154,12 +158,9 @@ pub fn SegmentList(Segment: type) type {
         };
 
         pub fn prepareMerge(self: *Self, options: SegmentMergeOptions) !?PreparedMerge {
-            const sources_opt = self.findSegmentsToMerge(options);
-            if (sources_opt) |sources| {
-                const target = try self.createSegment();
-                return .{ .sources = sources, .target = target };
-            }
-            return null;
+            const sources = self.findSegmentsToMerge(options) orelse return null;
+            const target = try self.createSegment();
+            return .{ .sources = sources, .target = target };
         }
 
         pub fn applyMerge(self: *Self, merge: PreparedMerge) void {
