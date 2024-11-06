@@ -185,27 +185,37 @@ pub fn getSize(self: Self) usize {
 }
 
 pub fn reader(self: *Self) Reader {
-    return Reader.init(self);
+    return .{
+        .segment = self,
+        .items = std.ArrayList(Item).init(self.allocator),
+        .index = 0,
+        .block_no = 0,
+    };
 }
 
 pub const Reader = struct {
     segment: *Self,
+    items: std.ArrayList(Item),
+    index: usize,
     block_no: usize,
 
-    pub fn init(segment: *Self) Reader {
-        return Reader{
-            .segment = segment,
-            .block_no = 0,
-        };
+    pub fn close(self: *Reader) void {
+        self.items.deinit();
     }
 
-    pub fn read(self: *Reader, items: *std.ArrayList(Item)) !bool {
-        if (self.block_no >= self.segment.index.items.len) {
-            return false;
+    pub fn read(self: *Reader) !?Item {
+        while (self.index >= self.items.items.len) {
+            if (self.block_no >= self.segment.index.items.len) {
+                return null;
+            }
+            self.items.clearRetainingCapacity();
+            self.index = 0;
+            self.block_no += 1;
+            const block_data = self.segment.getBlockData(self.block_no);
+            try filefmt.readBlock(block_data, &self.items);
         }
-        const block_data = self.segment.getBlockData(self.block_no);
-        try filefmt.readBlock(block_data, items);
-        self.block_no += 1;
-        return true;
+        const item = self.items.items[self.index];
+        self.index += 1;
+        return item;
     }
 };

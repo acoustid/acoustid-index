@@ -116,33 +116,27 @@ pub fn merge(self: *Self, source1: *Self, source2: *Self, collection: List) !voi
 }
 
 pub fn reader(self: *Self) Reader {
-    return Reader.init(self);
+    return .{
+        .segment = self,
+        .index = 0,
+    };
 }
 
 pub const Reader = struct {
     segment: *Self,
     index: usize,
-    chunk_size: usize = 4096,
 
-    pub fn init(segment: *Self) Reader {
-        return .{
-            .segment = segment,
-            .index = 0,
-        };
+    pub fn close(self: *Self) void {
+        _ = self;
     }
 
-    pub fn read(self: *Reader, items: *std.ArrayList(Item)) !bool {
+    pub fn read(self: *Reader) !?Item {
         if (self.index >= self.segment.items.items.len) {
             return null;
         }
 
-        const chunk_start = self.index;
-        const chunk_end = std.math.min(self.index + self.chunk_size, self.segment.items.items.len);
-
-        items.clearRetainingCapacity();
-        try items.appendSlice(self.segment.items.items[chunk_start..chunk_end]);
-
-        self.index += chunk_end - chunk_start;
-        return true;
+        const item = self.segment.items.items[self.index];
+        self.index += 1;
+        return item;
     }
 };

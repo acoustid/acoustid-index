@@ -306,91 +306,57 @@ pub fn writeFile(file: std.fs.File, segment: *InMemorySegment) !void {
 
 const SegmentIter = struct {
     reader: Segment.Reader,
-    has_more: bool,
-    items: std.ArrayList(Item),
-    ptr: []Item,
+    has_more: bool = true,
+    item: ?Item = null,
     skip_docs: std.AutoHashMap(u32, void),
 
     pub fn init(allocator: std.mem.Allocator, segment: *Segment) SegmentIter {
         return .{
             .reader = segment.reader(),
-            .has_more = true,
-            .items = std.ArrayList(Item).init(allocator),
-            .ptr = &.{},
             .skip_docs = std.AutoHashMap(u32, void).init(allocator),
         };
     }
 
     pub fn deinit(self: *SegmentIter) void {
-        self.items.deinit();
+        self.reader.close();
         self.skip_docs.deinit();
     }
 
-    fn removeSkippedDocs(self: *SegmentIter) void {
-        var read_idx: usize = 0;
-        var write_idx: usize = 0;
-        while (read_idx < self.items.items.len) : (read_idx += 1) {
-            if (!self.skip_docs.contains(self.items.items[read_idx].id)) {
-                if (write_idx != read_idx) {
-                    self.items.items[write_idx] = self.items.items[read_idx];
+    pub fn load(self: *SegmentIter) !void {
+        while (self.item == null and self.has_more) {
+            self.item = try self.reader.read();
+            if (self.item) |item| {
+                if (self.skip_docs.contains(item.id)) {
+                    self.item = null;
+                    continue;
                 }
-                write_idx += 1;
-            }
-        }
-        self.items.shrinkRetainingCapacity(write_idx);
-    }
-
-    pub fn loadNextBlockIfNeeded(self: *SegmentIter) !void {
-        if (self.ptr.len == 0 and self.has_more) {
-            self.items.clearRetainingCapacity();
-            if (try self.reader.read(&self.items)) {
-                self.removeSkippedDocs();
-                self.ptr = self.items.items[0..];
             } else {
                 self.has_more = false;
+                return;
             }
         }
+    }
+
+    pub fn advance(self: *SegmentIter) void {
+        self.item = null;
     }
 };
 
 fn getNextItem(sources: *[2]SegmentIter) !?Item {
-    if (sources[0].ptr.len > 0 and sources[1].ptr.len > 0) {
-        const a = sources[0].ptr[0];
-        const b = sources[1].ptr[0];
-        if (a.id < b.id) {
-            sources[0].ptr = sources[0].ptr[1..];
-            return a;
-        } else {
-            sources[1].ptr = sources[1].ptr[1..];
-            return b;
+    inline for (sources) |*source| {
+        try source.load();
+    }
+
+    var next_item: ?Item = null;
+    inline for (sources) |*source| {
+        if (source.item) |item| {
+            if (next_item == null or Item.cmp({}, item, next_item.?)) {
+                next_item = item;
+                source.advance();
+            }
         }
     }
-
-    for (sources) |*source| {
-        try source.loadNextBlockIfNeeded();
-    }
-
-    var item: ?Item = null;
-
-    if (sources[0].ptr.len > 0 and sources[1].ptr.len > 0) {
-        const a = sources[0].ptr[0];
-        const b = sources[1].ptr[0];
-        if (a.id < b.id) {
-            item = a;
-            sources[0].ptr = sources[0].ptr[1..];
-        } else {
-            item = b;
-            sources[1].ptr = sources[1].ptr[1..];
-        }
-    } else if (sources[0].ptr.len > 0) {
-        item = sources[0].ptr[0];
-        sources[0].ptr = sources[0].ptr[1..];
-    } else if (sources[1].ptr.len > 0) {
-        item = sources[1].ptr[0];
-        sources[1].ptr = sources[1].ptr[1..];
-    }
-
-    return item;
+    return next_item;
 }
 
 pub fn mergeAndWriteFile(file: fs.File, segments_to_merge: Segment.List.SegmentsToMerge, collection: Segment.List, allocator: std.mem.Allocator) !void {
