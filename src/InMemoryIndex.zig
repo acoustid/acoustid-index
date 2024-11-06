@@ -146,7 +146,7 @@ fn prepareMerge(self: *Self) !?InMemorySegmentList.PreparedMerge {
     const merge = try self.segments.prepareMerge(.{ .max_segment_size = self.options.max_segment_size }) orelse return null;
     errdefer self.segments.destroySegment(merge.target);
 
-    try merge.target.data.merge(&merge.sources.node1.data, &merge.sources.node2.data, self.segments);
+    try merge.target.data.merge(&merge.sources.node1.data, &merge.sources.node2.data, &self.segments);
 
     return merge;
 }

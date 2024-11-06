@@ -6,8 +6,8 @@ const SegmentID = common.SegmentID;
 
 pub const MergedSegmentInfo = struct {
     id: SegmentID,
-    docs: std.AutoHashMap(u32, bool),
     max_commit_id: u64,
+    docs: std.AutoHashMap(u32, bool),
 };
 
 pub fn SegmentMerger(comptime Segment: type) type {
@@ -38,6 +38,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
         sources: std.ArrayList(Source),
         collection: *Segment.List,
         segment: MergedSegmentInfo,
+        estimated_size: usize = 0,
 
         current_item: ?Item = null,
 
@@ -90,15 +91,24 @@ pub fn SegmentMerger(comptime Segment: type) type {
 
             try self.segment.docs.ensureTotalCapacity(total_docs);
             for (sources) |*source| {
-                var docs_iter = source.reader.segment.docs.iterator();
-                while (docs_iter.next()) |entry| {
+                const segment = source.reader.segment;
+                var docs_added: usize = 0;
+                var docs_found: usize = 0;
+                var iter = segment.docs.iterator();
+                while (iter.next()) |entry| {
+                    docs_found += 1;
                     const doc_id = entry.key_ptr.*;
                     const doc_status = entry.value_ptr.*;
-                    if (!self.collection.hasNewerVersion(doc_id, source.reader.segment.id.version)) {
+                    if (!self.collection.hasNewerVersion(doc_id, segment.id.version)) {
                         try self.segment.docs.put(doc_id, doc_status);
+                        docs_added += 1;
                     } else {
                         try source.skip_docs.put(doc_id, {});
                     }
+                }
+                if (docs_found > 0) {
+                    const ratio = (100 * docs_added) / docs_found;
+                    self.estimated_size += segment.getSize() * @min(100, ratio + 10) / 100;
                 }
             }
         }
