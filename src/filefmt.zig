@@ -15,8 +15,12 @@ pub const default_block_size = 1024;
 pub const min_block_size = 256;
 pub const max_block_size = 4096;
 
-const minVarint32Size = 1;
-const maxVarint32Size = 5;
+pub fn maxItemsPerBlock(block_size: usize) usize {
+    return (block_size - 2) / (2 * min_varint32_size);
+}
+
+const min_varint32_size = 1;
+const max_varint32_size = 5;
 
 fn varint32Size(value: u32) usize {
     if (value < (1 << 7)) {
@@ -31,7 +35,7 @@ fn varint32Size(value: u32) usize {
     if (value < (1 << 28)) {
         return 4;
     }
-    return maxVarint32Size;
+    return max_varint32_size;
 }
 
 test "check varint32Size" {
@@ -47,7 +51,7 @@ fn writeVarint32(buf: []u8, value: u32) usize {
     assert(buf.len >= varint32Size(value));
     var v = value;
     var i: usize = 0;
-    while (i < maxVarint32Size) : (i += 1) {
+    while (i < max_varint32_size) : (i += 1) {
         buf[i] = @intCast(v & 0x7F);
         v >>= 7;
         if (v == 0) {
@@ -62,7 +66,7 @@ fn readVarint32(buf: []const u8) struct { value: u32, size: usize } {
     var v: u32 = 0;
     var shift: u5 = 0;
     var i: usize = 0;
-    while (i < @min(maxVarint32Size, buf.len)) : (i += 1) {
+    while (i < @min(max_varint32_size, buf.len)) : (i += 1) {
         const b = buf[i];
         v |= @as(u32, @intCast(b & 0x7F)) << shift;
         if (b & 0x80 == 0) {
@@ -74,7 +78,7 @@ fn readVarint32(buf: []const u8) struct { value: u32, size: usize } {
 }
 
 test "check writeVarint32" {
-    var buf: [maxVarint32Size]u8 = undefined;
+    var buf: [max_varint32_size]u8 = undefined;
 
     try std.testing.expectEqual(1, writeVarint32(&buf, 1));
     try std.testing.expectEqualSlices(u8, &[_]u8{0x01}, buf[0..1]);
@@ -92,12 +96,8 @@ pub fn buildSegmentFileName(buf: []u8, version: common.SegmentID) []u8 {
     return std.fmt.bufPrint(buf, segment_file_name_fmt, .{ version.version, version.version + version.included_merges }) catch unreachable;
 }
 
-pub fn minItemsPerBlock(blockSize: usize) usize {
-    return (blockSize - 4) / 2;
-}
-
 pub fn readFirstItemFromBlock(data: []const u8) !Item {
-    if (data.len < 2 + minVarint32Size * 2) {
+    if (data.len < 2 + min_varint32_size * 2) {
         return error.InvalidBlock;
     }
     const num_items = std.mem.readInt(u16, data[0..2], .little);
@@ -119,32 +119,33 @@ pub fn readBlock(data: []const u8, items: *std.ArrayList(Item)) !void {
         return error.InvalidBlock;
     }
 
-    const numItems = std.mem.readInt(u16, data[0..2], .little);
+    const total_items = std.mem.readInt(u16, data[0..2], .little);
     ptr += 2;
 
-    items.clearRetainingCapacity();
-    try items.ensureTotalCapacity(numItems);
+    try items.ensureUnusedCapacity(total_items);
 
-    var lastHash: u32 = 0;
-    var lastDocId: u32 = 0;
+    var last_hash: u32 = 0;
+    var last_doc_id: u32 = 0;
 
-    while (ptr + 2 * minVarint32Size < data.len) {
-        const diffHash = readVarint32(data[ptr..]);
-        ptr += diffHash.size;
-        const diffDocId = readVarint32(data[ptr..]);
-        ptr += diffDocId.size;
-
-        lastHash += diffHash.value;
-        lastDocId = if (diffHash.value > 0) diffDocId.value else lastDocId + diffDocId.value;
-
-        try items.append(.{ .hash = lastHash, .id = lastDocId });
-
-        if (items.items.len >= numItems) {
-            break;
+    var num_items: u16 = 0;
+    while (num_items < total_items) {
+        if (ptr + 2 * min_varint32_size > data.len) {
+            return error.InvalidBlock;
         }
+        const diff_hash = readVarint32(data[ptr..]);
+        ptr += diff_hash.size;
+        const diff_doc_id = readVarint32(data[ptr..]);
+        ptr += diff_doc_id.size;
+
+        last_hash += diff_hash.value;
+        last_doc_id = if (diff_hash.value > 0) diff_doc_id.value else last_doc_id + diff_doc_id.value;
+
+        const item = items.addOneAssumeCapacity();
+        item.* = .{ .hash = last_hash, .id = last_doc_id };
+        num_items += 1;
     }
 
-    if (items.items.len < numItems) {
+    if (num_items < total_items) {
         return error.InvalidBlock;
     }
 }
@@ -153,32 +154,32 @@ pub fn writeBlock(data: []u8, items: []const Item) !usize {
     assert(data.len >= 2);
 
     var ptr: usize = 2;
-    var numItems: u16 = 0;
-    var lastHash: u32 = 0;
-    var lastDocId: u32 = 0;
+    var num_items: u16 = 0;
+    var last_hash: u32 = 0;
+    var last_doc_id: u32 = 0;
 
     for (items) |item| {
-        assert(item.hash > lastHash or (item.hash == lastHash and item.id >= lastDocId));
+        assert(item.hash > last_hash or (item.hash == last_hash and item.id >= last_doc_id));
 
-        const diffHash = item.hash - lastHash;
-        const diffDocId = if (diffHash > 0) item.id else item.id - lastDocId;
+        const diff_hash = item.hash - last_hash;
+        const diff_doc_id = if (diff_hash > 0) item.id else item.id - last_doc_id;
 
-        if (ptr + varint32Size(diffHash) + varint32Size(diffDocId) > data.len) {
+        if (ptr + varint32Size(diff_hash) + varint32Size(diff_doc_id) > data.len) {
             break;
         }
 
-        ptr += writeVarint32(data[ptr..], diffHash);
-        ptr += writeVarint32(data[ptr..], diffDocId);
-        numItems += 1;
+        ptr += writeVarint32(data[ptr..], diff_hash);
+        ptr += writeVarint32(data[ptr..], diff_doc_id);
+        num_items += 1;
 
-        lastHash = item.hash;
-        lastDocId = item.id;
+        last_hash = item.hash;
+        last_doc_id = item.id;
     }
 
-    std.mem.writeInt(u16, data[0..2], numItems, .little);
+    std.mem.writeInt(u16, data[0..2], num_items, .little);
     @memset(data[ptr..], 0);
 
-    return numItems;
+    return num_items;
 }
 
 test "writeBlock/readBlock/readFirstItemFromBlock" {
@@ -198,7 +199,6 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
     try testing.expectEqual(items.items.len, numItems);
 
     items.clearRetainingCapacity();
-
     try readBlock(blockData[0..], &items);
     try testing.expectEqualSlices(
         Item,
@@ -304,8 +304,6 @@ pub fn writeFile(file: std.fs.File, segment: *InMemorySegment) !void {
     try writeHeader(writer, header);
 }
 
-const max_items_per_block = default_block_size;
-
 const SegmentIter = struct {
     reader: Segment.Reader,
     has_more: bool,
@@ -344,6 +342,7 @@ const SegmentIter = struct {
 
     pub fn loadNextBlockIfNeeded(self: *SegmentIter) !void {
         if (self.ptr.len == 0 and self.has_more) {
+            self.items.clearRetainingCapacity();
             if (try self.reader.read(&self.items)) {
                 self.removeSkippedDocs();
                 self.ptr = self.items.items[0..];
@@ -445,6 +444,7 @@ pub fn mergeAndWriteFile(file: fs.File, segments_to_merge: Segment.List.Segments
     var items = std.ArrayList(Item).init(allocator);
     defer items.deinit();
 
+    const max_items_per_block = maxItemsPerBlock(block_size);
     while (true) {
         // fill up the buffer wirh items from both segments
         while (items.items.len < max_items_per_block) {
