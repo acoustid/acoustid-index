@@ -271,11 +271,12 @@ const DocInfo = packed struct(u64) {
     deleted: u8,
 };
 
-pub fn writeFile(comptime T: type, file: std.fs.File, segment: *const T) !void {
+pub fn writeFile(file: std.fs.File, reader: anytype) !void {
     const block_size = default_block_size;
 
     const writer = file.writer();
 
+    const segment = reader.segment;
     var header = Header{
         .version = segment.id.version,
         .included_merges = segment.id.included_merges,
@@ -298,12 +299,9 @@ pub fn writeFile(comptime T: type, file: std.fs.File, segment: *const T) !void {
         header.num_docs += 1;
     }
 
-    var reader = segment.reader();
-    defer reader.close();
-
     var block_data: [block_size]u8 = undefined;
     while (true) {
-        const n = try writeBlock(block_data[0..], &reader);
+        const n = try writeBlock(block_data[0..], reader);
         if (n == 0) {
             break;
         }
@@ -314,170 +312,6 @@ pub fn writeFile(comptime T: type, file: std.fs.File, segment: *const T) !void {
 
     try file.seekTo(0);
     try writeHeader(writer, header);
-}
-
-const SegmentIter = struct {
-    reader: Segment.Reader,
-    skip_docs: std.AutoHashMap(u32, void),
-
-    pub fn init(allocator: std.mem.Allocator, segment: *Segment) SegmentIter {
-        return .{
-            .reader = segment.reader(),
-            .skip_docs = std.AutoHashMap(u32, void).init(allocator),
-        };
-    }
-
-    pub fn deinit(self: *SegmentIter) void {
-        self.reader.close();
-        self.skip_docs.deinit();
-    }
-
-    pub fn read(self: *SegmentIter) !?Item {
-        while (true) {
-            const item = try self.reader.read() orelse break;
-            if (self.skip_docs.contains(item.id)) {
-                self.reader.advance();
-                continue;
-            }
-            return item;
-        }
-        return null;
-    }
-
-    pub fn advance(self: *SegmentIter) void {
-        self.reader.advance();
-    }
-};
-
-fn getNextItem(sources: *[2]SegmentIter) !?Item {
-    var result: ?Item = null;
-    inline for (sources) |*source| {
-        if (try source.read()) |item| {
-            if (result == null or Item.cmp({}, item, result.?)) {
-                source.advance();
-                result = item;
-            }
-        }
-    }
-    return result;
-}
-
-pub fn mergeAndWriteFile(file: fs.File, segments_to_merge: Segment.List.SegmentsToMerge, collection: Segment.List, allocator: std.mem.Allocator) !void {
-    const segment1 = &segments_to_merge.node1.data;
-    const segment2 = &segments_to_merge.node2.data;
-
-    const block_size = default_block_size;
-
-    const writer = file.writer();
-
-    var header = Header{
-        .version = @min(segment1.id.version, segment2.id.version),
-        .included_merges = 1 + segment1.id.included_merges + segment2.id.included_merges,
-        .num_docs = 0,
-        .num_items = 0,
-        .num_blocks = 0,
-        .block_size = block_size,
-        .max_commit_id = @max(segment1.max_commit_id, segment2.max_commit_id),
-    };
-    try writeHeader(writer, header);
-
-    var sources: [2]SegmentIter = undefined;
-
-    sources[0] = SegmentIter.init(allocator, segment1);
-    defer sources[0].deinit();
-
-    sources[1] = SegmentIter.init(allocator, segment2);
-    defer sources[1].deinit();
-
-    for (&sources) |*source| {
-        var docs_iter = source.reader.segment.docs.iterator();
-        while (docs_iter.next()) |entry| {
-            const id = entry.key_ptr.*;
-            const status = entry.value_ptr.*;
-            if (!collection.hasNewerVersion(id, source.reader.segment.id.version)) {
-                const info = DocInfo{
-                    .id = id,
-                    .version = @intCast(source.reader.segment.id.version - header.version),
-                    .deleted = if (status) 0 else 1,
-                };
-                try writer.writeStructEndian(info, .little);
-                header.num_docs += 1;
-            } else {
-                try source.skip_docs.put(id, {});
-            }
-        }
-    }
-
-    var block_data: [block_size]u8 = undefined;
-
-    var items = std.ArrayList(Item).init(allocator);
-    defer items.deinit();
-
-    const Reader = struct {
-        sources: *[2]SegmentIter,
-        item: ?Item = null,
-
-        pub fn read(self: *@This()) !?Item {
-            if (self.item == null) {
-                self.item = try getNextItem(self.sources);
-            }
-            return self.item;
-        }
-
-        pub fn advance(self: *@This()) void {
-            self.item = null;
-        }
-    };
-
-    var reader = Reader{ .sources = &sources };
-    while (true) {
-        const n = try writeBlock(block_data[0..], &reader);
-        if (n == 0) {
-            break;
-        }
-        try file.writeAll(block_data[0..]);
-        header.num_items += @intCast(n);
-        header.num_blocks += 1;
-    }
-
-    try file.seekTo(0);
-    try writeHeader(writer, header);
-}
-
-test "mergeAndWriteFile" {
-    var tmp = testing.tmpDir(.{});
-    defer tmp.cleanup();
-
-    var data_dir = try tmp.dir.makeOpenPath("data", .{});
-    defer data_dir.close();
-
-    var segments = Segment.List.init(std.testing.allocator);
-    defer segments.deinit();
-
-    var in_memory_segment_1 = InMemorySegment.init(std.testing.allocator);
-    defer in_memory_segment_1.deinit();
-
-    in_memory_segment_1.id.version = 1;
-    in_memory_segment_1.frozen = true;
-
-    var segment_1 = try segments.createSegment();
-    try segment_1.data.convert(data_dir, &in_memory_segment_1);
-    segments.segments.append(segment_1);
-
-    var in_memory_segment_2 = InMemorySegment.init(std.testing.allocator);
-    defer in_memory_segment_2.deinit();
-
-    in_memory_segment_2.id.version = 2;
-    in_memory_segment_2.frozen = true;
-
-    var segment_2 = try segments.createSegment();
-    try segment_2.data.convert(data_dir, &in_memory_segment_2);
-    segments.segments.append(segment_2);
-
-    var segment_3 = Segment.init(std.testing.allocator);
-    defer segment_3.deinit();
-
-    try segment_3.merge(data_dir, .{ .node1 = segment_1, .node2 = segment_2 }, segments);
 }
 
 pub fn readFile(file: fs.File, segment: *Segment) !void {
@@ -563,7 +397,10 @@ test "writeFile/readFile" {
 
         in_memory_segment.ensureSorted();
 
-        try writeFile(InMemorySegment, file, &in_memory_segment);
+        var reader = in_memory_segment.reader();
+        defer reader.close();
+
+        try writeFile(file, &reader);
     }
 
     {

@@ -14,6 +14,8 @@ const filefmt = @import("filefmt.zig");
 const segment_list = @import("segment_list.zig");
 pub const List = segment_list.SegmentList(Self);
 
+const segment_merger = @import("segment_merger.zig");
+
 const Self = @This();
 
 allocator: std.mem.Allocator,
@@ -81,17 +83,9 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults) !void {
     }
 }
 
-fn read(self: *Self, dir: std.fs.Dir, file_name: []const u8) !void {
-    const file = try dir.openFile(file_name, .{});
-    defer file.close();
-    try filefmt.readFile(file, self);
-}
-
 pub fn open(self: *Self, dir: std.fs.Dir, id: SegmentID) !void {
     var file_name_buf: [filefmt.max_file_name_size]u8 = undefined;
     const file_name = filefmt.buildSegmentFileName(&file_name_buf, id);
-
-    std.debug.print("Reading segment {s}\n", .{file_name});
 
     try self.read(dir, file_name);
 }
@@ -105,25 +99,11 @@ pub fn delete(self: *Self, dir: std.fs.Dir) void {
     };
 }
 
-pub fn convert(self: *Self, dir: std.fs.Dir, source: *InMemorySegment) !void {
-    if (!source.frozen) {
-        return error.SourceSegmentNotFrozen;
-    }
-    if (source.id.version == 0) {
-        return error.SourceSegmentNoVersion;
-    }
-    if (source.id.included_merges != 0) {
-        return error.SourceSegmentHasMerges;
-    }
-
+pub fn build(self: *Self, dir: std.fs.Dir, source: anytype) !void {
     var file_name_buf: [filefmt.max_file_name_size]u8 = undefined;
-    const file_name = filefmt.buildSegmentFileName(&file_name_buf, source.id);
+    const file_name = filefmt.buildSegmentFileName(&file_name_buf, source.segment.id);
 
-    var file = try dir.atomicFile(file_name, .{});
-    defer file.deinit();
-
-    try filefmt.writeFile(InMemorySegment, file.file, source);
-    try file.finish();
+    try write(dir, file_name, source);
 
     errdefer dir.deleteFile(file_name) catch |err| {
         log.err("failed to clean up segment file {s}: {}", .{ file_name, err });
@@ -132,9 +112,12 @@ pub fn convert(self: *Self, dir: std.fs.Dir, source: *InMemorySegment) !void {
     try self.read(dir, file_name);
 }
 
-test "convert" {
-    var tmpDir = std.testing.tmpDir(.{});
-    defer tmpDir.cleanup();
+test "build" {
+    var tmp_dir = std.testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    var data_dir = try tmp_dir.dir.makeOpenPath("data", .{});
+    defer data_dir.close();
 
     var source = InMemorySegment.init(std.testing.allocator);
     defer source.deinit();
@@ -145,10 +128,13 @@ test "convert" {
     try source.items.append(.{ .id = 1, .hash = 1 });
     try source.items.append(.{ .id = 1, .hash = 2 });
 
+    var source_reader = source.reader();
+    defer source_reader.close();
+
     var segment = Self.init(std.testing.allocator);
     defer segment.deinit();
 
-    try segment.convert(tmpDir.dir, &source);
+    try segment.build(tmp_dir.dir, &source_reader);
 
     try std.testing.expectEqual(1, segment.id.version);
     try std.testing.expectEqual(0, segment.id.included_merges);
@@ -156,23 +142,19 @@ test "convert" {
     try std.testing.expectEqual(1, segment.index.items.len);
 }
 
-pub fn merge(self: *Self, dir: std.fs.Dir, segments_to_merge: List.SegmentsToMerge, collection: List) !void {
-    const version = SegmentID.merge(segments_to_merge.node1.data.id, segments_to_merge.node2.data.id);
+fn read(self: *Self, dir: std.fs.Dir, file_name: []const u8) !void {
+    const file = try dir.openFile(file_name, .{});
+    defer file.close();
 
-    var file_name_buf: [filefmt.max_file_name_size]u8 = undefined;
-    const file_name = filefmt.buildSegmentFileName(&file_name_buf, version);
+    try filefmt.readFile(file, self);
+}
 
+fn write(dir: std.fs.Dir, file_name: []u8, source: anytype) !void {
     var file = try dir.atomicFile(file_name, .{});
     defer file.deinit();
 
-    try filefmt.mergeAndWriteFile(file.file, segments_to_merge, collection, self.allocator);
+    try filefmt.writeFile(file.file, source);
     try file.finish();
-
-    errdefer dir.deleteFile(file_name) catch |err| {
-        log.err("failed to clean up segment file {s}: {}", .{ file_name, err });
-    };
-
-    try self.read(dir, file_name);
 }
 
 pub fn canBeMerged(self: Self) bool {
@@ -221,7 +203,3 @@ pub const Reader = struct {
         }
     }
 };
-
-test {
-    _ = @import("segment_merger.zig");
-}

@@ -14,6 +14,8 @@ const Scheduler = @import("utils/Scheduler.zig");
 const Segment = @import("Segment.zig");
 const SegmentList = Segment.List;
 
+const SegmentMerger = @import("segment_merger.zig").SegmentMerger;
+
 const Oplog = @import("Oplog.zig");
 
 const filefmt = @import("filefmt.zig");
@@ -130,13 +132,19 @@ fn prepareMerge(self: *Self) !?SegmentList.PreparedMerge {
     self.write_lock.lockShared();
     defer self.write_lock.unlockShared();
 
-    const merge_opt = try self.segments.prepareMerge(.{ .max_segment_size = self.max_segment_size });
-    if (merge_opt) |merge| {
-        errdefer self.segments.destroySegment(merge.target);
-        try merge.target.data.merge(self.dir, merge.sources, self.segments);
-        return merge;
-    }
-    return null;
+    const merge = try self.segments.prepareMerge(.{ .max_segment_size = self.max_segment_size }) orelse return null;
+    errdefer self.segments.destroySegment(merge.target);
+
+    var merger = SegmentMerger(Segment).init(self.allocator, &self.segments);
+    defer merger.deinit();
+
+    try merger.addSource(&merge.sources.node1.data);
+    try merger.addSource(&merge.sources.node2.data);
+    try merger.prepare();
+
+    try merge.target.data.build(self.dir, &merger);
+
+    return merge;
 }
 
 fn finnishMerge(self: *Self, merge: SegmentList.PreparedMerge) !void {
@@ -171,10 +179,13 @@ fn maybeMergeSegments(self: *Self) !void {
 fn maybeWriteNewSegment(self: *Self) !bool {
     const source_segment = self.stage.maybeFreezeOldestSegment() orelse return false;
 
+    const source_reader = source_segment.reader();
+    defer source_reader.close();
+
     const node = try self.segments.createSegment();
     errdefer self.segments.destroySegment(node);
 
-    try node.data.convert(self.dir, source_segment);
+    try node.data.build(self.dir, &source_reader);
 
     errdefer node.data.delete(self.dir);
 

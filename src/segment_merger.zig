@@ -39,6 +39,8 @@ pub fn SegmentMerger(comptime Segment: type) type {
         collection: *Segment.List,
         segment: MergedSegmentInfo,
 
+        current_item: ?Item = null,
+
         pub fn init(allocator: std.mem.Allocator, collection: *Segment.List) Self {
             return .{
                 .allocator = allocator,
@@ -102,15 +104,29 @@ pub fn SegmentMerger(comptime Segment: type) type {
         }
 
         pub fn read(self: *Self) !?Item {
-            var result: ?Item = null;
-            for (self.sources.items) |*source| {
-                const item = try source.read() orelse continue;
-                if (result == null or Item.cmp({}, item, result.?)) {
-                    source.advance();
-                    result = item;
+            if (self.current_item == null) {
+                var min_item: ?Item = null;
+                var min_item_index: usize = 0;
+
+                for (self.sources.items, 0..) |*source, i| {
+                    if (try source.read()) |item| {
+                        if (min_item == null or Item.cmp({}, item, min_item.?)) {
+                            min_item = item;
+                            min_item_index = i;
+                        }
+                    }
+                }
+
+                if (min_item) |item| {
+                    self.sources.items[min_item_index].advance();
+                    self.current_item = item;
                 }
             }
-            return result;
+            return self.current_item;
+        }
+
+        pub fn advance(self: *Self) void {
+            self.current_item = null;
         }
     };
 }
