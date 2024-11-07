@@ -65,6 +65,8 @@ fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const u8, 
     router.post("/_update", handleUpdate);
     router.post("/:index/_search", handleSearch);
     router.post("/:index/_update", handleUpdate);
+    router.put("/:index", handleCreateIndex);
+    router.delete("/:index", handleDeleteIndex);
 
     log.info("listening on {s}:{d}", .{ address, port });
     try server.listen();
@@ -94,8 +96,10 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
         return res.json(.{ .status = "invalid index number" }, .{});
     };
     const index_ref = try ctx.indexes.getIndex(index_no);
-    const index = &index_ref.index;
     defer ctx.indexes.releaseIndex(index_ref);
+
+    const index = &index_ref.index;
+    try index.open();
 
     const body_or_null = req.json(SearchRequestJSON) catch {
         res.status = 400;
@@ -144,8 +148,10 @@ fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
         return res.json(.{ .status = "invalid index number" }, .{});
     };
     const index_ref = try ctx.indexes.getIndex(index_no);
-    const index = &index_ref.index;
     defer ctx.indexes.releaseIndex(index_ref);
+
+    const index = &index_ref.index;
+    try index.open();
 
     const body_or_null = req.json(UpdateRequestJSON) catch {
         res.status = 400;
@@ -160,6 +166,38 @@ fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 
     index.update(body.changes) catch |err| {
         log.err("index search error: {}", .{err});
+        res.status = 500;
+        return res.json(.{ .status = "internal error" }, .{});
+    };
+
+    return res.json(.{ .status = "ok" }, .{});
+}
+
+pub fn handleCreateIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    const index_no_str = req.param("index") orelse "0";
+    const index_no = std.fmt.parseInt(u8, index_no_str, 10) catch {
+        res.status = 400;
+        return res.json(.{ .status = "invalid index number" }, .{});
+    };
+
+    ctx.indexes.createIndex(index_no) catch |err| {
+        log.err("index create error: {}", .{err});
+        res.status = 500;
+        return res.json(.{ .status = "internal error" }, .{});
+    };
+
+    return res.json(.{ .status = "ok" }, .{});
+}
+
+pub fn handleDeleteIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    const index_no_str = req.param("index") orelse "0";
+    const index_no = std.fmt.parseInt(u8, index_no_str, 10) catch {
+        res.status = 400;
+        return res.json(.{ .status = "invalid index number" }, .{});
+    };
+
+    ctx.indexes.deleteIndex(index_no) catch |err| {
+        log.err("index delete error: {}", .{err});
         res.status = 500;
         return res.json(.{ .status = "internal error" }, .{});
     };

@@ -20,6 +20,9 @@ dir: std.fs.Dir,
 scheduler: *Scheduler,
 indexes: std.AutoHashMap(u8, IndexData),
 
+const max_sub_dir_name_size = 10;
+const sub_dir_name_fmt = "{x:0>2}";
+
 pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, scheduler: *Scheduler) Self {
     return .{
         .allocator = allocator,
@@ -48,7 +51,7 @@ pub fn releaseIndex(self: *Self, index_data: *IndexData) void {
     index_data.last_used_at = std.time.timestamp();
 }
 
-pub fn getIndex(self: *Self, id: u8) !*IndexData {
+pub fn acquireIndex(self: *Self, id: u8, create: bool) !*IndexData {
     self.lock.lock();
     defer self.lock.unlock();
 
@@ -61,18 +64,43 @@ pub fn getIndex(self: *Self, id: u8) !*IndexData {
 
     errdefer self.indexes.removeByPtr(result.key_ptr);
 
-    var file_name_buf: [8]u8 = undefined;
-    const file_name = try std.fmt.bufPrint(&file_name_buf, "{x:0>2}", .{id});
+    var sub_dir_name_buf: [max_sub_dir_name_size]u8 = undefined;
+    const sub_dir_name = try std.fmt.bufPrint(&sub_dir_name_buf, sub_dir_name_fmt, .{id});
 
-    result.value_ptr.dir = try self.dir.makeOpenPath(file_name, .{ .iterate = true });
+    result.value_ptr.dir = try self.dir.makeOpenPath(sub_dir_name, .{ .iterate = true });
     errdefer result.value_ptr.dir.close();
 
-    result.value_ptr.index = try Index.init(self.allocator, result.value_ptr.dir, self.scheduler, .{ .create = true });
+    result.value_ptr.index = try Index.init(self.allocator, result.value_ptr.dir, self.scheduler, .{ .create = create });
     errdefer result.value_ptr.index.deinit();
-
-    try result.value_ptr.index.open();
 
     result.value_ptr.references += 1;
     result.value_ptr.last_used_at = std.time.timestamp();
     return result.value_ptr;
+}
+
+pub fn getIndex(self: *Self, id: u8) !*IndexData {
+    return try self.acquireIndex(id, false);
+}
+
+pub fn createIndex(self: *Self, id: u8) !void {
+    var index_ref = try self.acquireIndex(id, true);
+    defer self.releaseIndex(index_ref);
+
+    try index_ref.index.open();
+}
+
+pub fn deleteIndex(self: *Self, id: u8) !void {
+    self.lock.lock();
+    defer self.lock.unlock();
+
+    if (self.indexes.getEntry(id)) |entry| {
+        entry.value_ptr.index.deinit();
+        entry.value_ptr.dir.close();
+        self.indexes.removeByPtr(entry.key_ptr);
+    }
+
+    var sub_dir_name_buf: [max_sub_dir_name_size]u8 = undefined;
+    const sub_dir_name = try std.fmt.bufPrint(&sub_dir_name_buf, sub_dir_name_fmt, .{id});
+
+    try self.dir.deleteTree(sub_dir_name);
 }

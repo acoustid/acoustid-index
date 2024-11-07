@@ -29,7 +29,7 @@ const Options = struct {
 
 options: Options,
 
-is_open: bool = false,
+is_open: std.atomic.Value(bool),
 
 allocator: std.mem.Allocator,
 dir: std.fs.Dir,
@@ -54,6 +54,7 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, scheduler: *Scheduler
 
     return .{
         .options = options,
+        .is_open = std.atomic.Value(bool).init(false),
         .allocator = allocator,
         .dir = dir,
         .scheduler = scheduler,
@@ -80,10 +81,16 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn open(self: *Self) !void {
+    if (self.is_open.load(.monotonic)) {
+        return;
+    }
+
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
-    if (self.is_open) return;
+    if (self.is_open.load(.monotonic)) {
+        return;
+    }
 
     self.readIndexFile() catch |err| {
         if (err == error.FileNotFound and self.options.create) {
@@ -95,7 +102,7 @@ pub fn open(self: *Self) !void {
 
     try self.oplog.open(self.segments.getMaxCommitId(), &self.stage);
 
-    self.is_open = true;
+    self.is_open.store(true, .monotonic);
 }
 
 fn writeIndexFile(self: *Self) !void {
@@ -256,17 +263,21 @@ fn applyChanges(self: *Self, changes: []const Change) !void {
 }
 
 pub fn update(self: *Self, changes: []const Change) !void {
+    if (self.is_open.load(.monotonic)) {
+        return error.NotOpened;
+    }
+
     try self.scheduleCleanup();
     try self.applyChanges(changes);
 }
 
 pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
-    self.write_lock.lockShared();
-    defer self.write_lock.unlockShared();
-
-    if (!self.is_open) {
+    if (self.is_open.load(.monotonic)) {
         return error.NotOpened;
     }
+
+    self.write_lock.lockShared();
+    defer self.write_lock.unlockShared();
 
     const sorted_hashes = try self.allocator.dupe(u32, hashes);
     defer self.allocator.free(sorted_hashes);
