@@ -171,7 +171,9 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 
     var results_json = SearchResultsJSON{ .results = try req.arena.alloc(SearchResultJSON, results.count()) };
     for (results.values(), 0..) |r, i| {
-        results_json.results[i] = SearchResultJSON{ .id = r.id, .score = r.score };
+        if (r.score > 0) {
+            results_json.results[i] = SearchResultJSON{ .id = r.id, .score = r.score };
+        }
     }
     return res.json(results_json, .{});
 }
