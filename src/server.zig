@@ -11,7 +11,7 @@ const Change = common.Change;
 const Deadline = @import("utils/Deadline.zig");
 const Scheduler = @import("utils/Scheduler.zig");
 
-const m = @import("metrics.zig");
+const metrics = @import("metrics.zig");
 
 const Context = struct {
     indexes: *MultiIndex,
@@ -53,6 +53,10 @@ pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const 
         .port = port,
         .thread_pool = .{
             .count = threads,
+        },
+        .timeout = .{
+            .request = 60,
+            .keepalive = 300,
         },
     };
 
@@ -165,7 +169,7 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
     }
     const deadline = Deadline.init(timeout);
 
-    m.metrics.searches.incr();
+    metrics.search();
 
     index.search(body.query, &results, deadline) catch |err| {
         log.err("index search error: {}", .{err});
@@ -192,6 +196,8 @@ fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
     const index_ref = try getIndex(ctx, req, res, true) orelse return;
     const index = &index_ref.index;
     defer releaseIndex(ctx, index_ref);
+
+    metrics.update(body.changes.len);
 
     index.update(body.changes) catch |err| {
         log.err("index search error: {}", .{err});
@@ -262,5 +268,8 @@ fn handleMetrics(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void
     _ = ctx;
     _ = req;
 
-    try m.writeMetrics(res.writer());
+    const writer = res.writer();
+
+    try metrics.writeMetrics(writer);
+    try httpz.writeMetrics(writer);
 }
