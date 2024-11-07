@@ -146,30 +146,38 @@ test "index many updates" {
 
         try index.open();
 
-        for (1..1000) |i| {
+        for (0..100) |i| {
             try index.update(&[_]Change{.{ .insert = .{
-                .id = @intCast(i),
+                .id = @as(u32, @intCast(i % 20)) + 1,
                 .hashes = generateRandomHashes(&hashes, i),
             } }});
         }
     }
 
+    var index = try Index.init(std.testing.allocator, data_dir, &scheduler, .{ .create = false });
+    defer index.deinit();
+
+    try index.open();
+
     {
-        var index = try Index.init(std.testing.allocator, data_dir, &scheduler, .{ .create = false });
-        defer index.deinit();
-
-        try index.open();
-
         var results = SearchResults.init(std.testing.allocator);
         defer results.deinit();
 
-        try index.search(generateRandomHashes(&hashes, 10), &results, .{});
+        try index.search(generateRandomHashes(&hashes, 0), &results, .{});
 
-        try std.testing.expectEqual(1, results.count());
+        const result = results.get(1);
+        try std.testing.expect(result == null or result.?.score == 0);
+    }
 
-        const result = results.get(10);
+    {
+        var results = SearchResults.init(std.testing.allocator);
+        defer results.deinit();
+
+        try index.search(generateRandomHashes(&hashes, 80), &results, .{});
+
+        const result = results.get(1);
         try std.testing.expect(result != null);
-        try std.testing.expectEqual(10, result.?.id);
+        try std.testing.expectEqual(1, result.?.id);
         try std.testing.expectEqual(hashes.len, result.?.score);
     }
 }
