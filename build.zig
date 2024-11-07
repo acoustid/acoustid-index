@@ -25,76 +25,40 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const server_exe = b.addExecutable(.{
+    const main_exe = b.addExecutable(.{
         .name = "fpindex",
-        .root_source_file = b.path("src/server.zig"),
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    server_exe.root_module.addImport("httpz", httpz.module("httpz"));
-    server_exe.root_module.addImport("zul", zul.module("zul"));
+    main_exe.root_module.addImport("httpz", httpz.module("httpz"));
+    main_exe.root_module.addImport("zul", zul.module("zul"));
 
-    b.installArtifact(server_exe);
+    b.installArtifact(main_exe);
 
-    const client_exe = b.addExecutable(.{
-        .name = "fpindex-client",
-        .root_source_file = b.path("src/client.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    client_exe.root_module.addImport("zul", zul.module("zul"));
-
-    b.installArtifact(client_exe);
-
-    // This *creates* a Run step in the build graph, to be executed when another
-    // step is evaluated that depends on it. The next line below will establish
-    // such a dependency.
-    const run_cmd = b.addRunArtifact(server_exe);
-
-    // By making the run step depend on the install step, it will be run from the
-    // installation directory rather than directly from within the cache directory.
-    // This is not necessary, however, if the application depends on other installed
-    // files, this ensures they will be present and in the expected location.
+    const run_cmd = b.addRunArtifact(main_exe);
     run_cmd.step.dependOn(b.getInstallStep());
 
-    // This allows the user to pass arguments to the application in the build
-    // command itself, like this: `zig build run -- arg1 arg2 etc`
     if (b.args) |args| {
         run_cmd.addArgs(args);
     }
 
-    // This creates a build step. It will be visible in the `zig build --help` menu,
-    // and can be selected like this: `zig build run`
-    // This will evaluate the `run` step rather than the default, which is "install".
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    const server_exe_unit_tests = b.addTest(.{
-        .name = "server_tests",
-        .root_source_file = b.path("src/server.zig"),
+    const main_tests = b.addTest(.{
+        .name = "aindex-tests",
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    server_exe_unit_tests.root_module.addImport("httpz", httpz.module("httpz"));
-    server_exe_unit_tests.root_module.addImport("zul", zul.module("zul"));
+    main_tests.root_module.addImport("httpz", httpz.module("httpz"));
+    main_tests.root_module.addImport("zul", zul.module("zul"));
 
-    const run_server_exe_unit_tests = b.addRunArtifact(server_exe_unit_tests);
-
-    const client_exe_unit_tests = b.addTest(.{
-        .name = "client_tests",
-        .root_source_file = b.path("src/client.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    client_exe_unit_tests.root_module.addImport("zul", zul.module("zul"));
-
-    const run_client_exe_unit_tests = b.addRunArtifact(client_exe_unit_tests);
+    const run_main_tests = b.addRunArtifact(main_tests);
 
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_server_exe_unit_tests.step);
-    test_step.dependOn(&run_client_exe_unit_tests.step);
+    test_step.dependOn(&run_main_tests.step);
 }
