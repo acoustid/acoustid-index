@@ -190,8 +190,8 @@ pub const Reader = struct {
             }
             self.items.clearRetainingCapacity();
             self.index = 0;
-            self.block_no += 1;
             const block_data = self.segment.getBlockData(self.block_no);
+            self.block_no += 1;
             try filefmt.readBlock(block_data, &self.items);
         }
         return self.items.items[self.index];
