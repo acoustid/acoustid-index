@@ -145,7 +145,7 @@ fn getJsonBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !?T 
 }
 
 fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const body = getJsonBody(SearchRequestJSON, req, res) orelse return;
+    const body = try getJsonBody(SearchRequestJSON, req, res) orelse return;
 
     const index_ref = try getIndex(ctx, req, res, true) orelse return;
     const index = &index_ref.index;
@@ -181,7 +181,7 @@ const UpdateRequestJSON = struct {
 };
 
 fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const body = getJsonBody(UpdateRequestJSON, req, res) orelse return;
+    const body = try getJsonBody(UpdateRequestJSON, req, res) orelse return;
 
     const index_ref = try getIndex(ctx, req, res, true) orelse return;
     const index = &index_ref.index;
@@ -204,14 +204,24 @@ fn handleHeadIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !vo
     return;
 }
 
+const GetIndexResponse = struct {
+    status: []const u8,
+    max_commit_id: u64,
+};
+
 fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index_ref = try getIndex(ctx, req, res, true) orelse return;
+    const index = &index_ref.index;
     defer releaseIndex(ctx, index_ref);
 
-    return res.json(.{ .status = "ok" }, .{});
+    const response = GetIndexResponse{
+        .status = "ok",
+        .max_commit_id = index.getMaxCommitId(),
+    };
+    return res.json(&response, .{});
 }
 
-pub fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index_no = try getIndexNo(ctx, req, res, true) orelse return;
 
     ctx.indexes.createIndex(index_no) catch |err| {
@@ -223,7 +233,7 @@ pub fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) 
     return res.json(.{ .status = "ok" }, .{});
 }
 
-pub fn handleDeleteIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn handleDeleteIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index_no = try getIndexNo(ctx, req, res, true) orelse return;
 
     ctx.indexes.deleteIndex(index_no) catch |err| {

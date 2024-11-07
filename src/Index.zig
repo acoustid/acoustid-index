@@ -271,6 +271,13 @@ pub fn update(self: *Self, changes: []const Change) !void {
     try self.applyChanges(changes);
 }
 
+pub fn getMaxCommitId(self: *Self) u64 {
+    self.write_lock.lockShared();
+    defer self.write_lock.unlockShared();
+
+    return @max(self.segments.getMaxCommitId(), self.stage.segments.getMaxCommitId());
+}
+
 pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
     if (self.is_open.load(.monotonic)) {
         return error.NotOpened;
