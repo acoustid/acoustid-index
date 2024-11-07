@@ -203,7 +203,7 @@ static HttpResponse handlePutDocumentRequest(const HttpRequest &request, const Q
     if (body.isEmpty()) {
         return errInvalidTerms();
     }
-    auto terms = parseTerms(body.value("terms"));
+    auto terms = parseTerms(body.value("hashes"));
 
     index->insertOrUpdateDocument(docId, terms);
 
@@ -252,7 +252,7 @@ static HttpResponse handleSearchRequest(const HttpRequest &request, const QShare
 }
 
 // Handle bulk requests.
-static HttpResponse handleBulkRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
+static HttpResponse handleUpdateRequest(const HttpRequest &request, const QSharedPointer<MultiIndex> &indexes) {
     auto index = getIndex(request, indexes);
 
     OpBatch batch;
@@ -262,19 +262,19 @@ static HttpResponse handleBulkRequest(const HttpRequest &request, const QSharedP
     auto doc = request.json();
     if (doc.isObject()) {
         auto obj = doc.object();
-        if (obj.contains("operations")) {
-            auto value = obj.value("operations");
+        if (obj.contains("changes")) {
+            auto value = obj.value("changes");
             if (value.isArray()) {
                 opsJsonArray = value.toArray();
             } else {
-                return errBadRequest("invalid_bulk_operation", "'operations' must be an array");
+                return errBadRequest("invalid_bulk_operation", "'changes' must be an array");
             }
         }
     } else if (doc.isArray()) {
         opsJsonArray = doc.array();
     } else {
         return errBadRequest("invalid_bulk_operation",
-                             "request body must be either an array or an object with 'operations' key in it");
+                             "request body must be either an array or an object with 'changes' key in it");
     }
 
     for (auto opJson : opsJsonArray) {
@@ -337,9 +337,9 @@ HttpRequestHandler::HttpRequestHandler(QSharedPointer<MultiIndex> indexes, QShar
         return handleDeleteDocumentRequest(req, m_indexes);
     });
 
-    // Bulk API
-    m_router.route(HTTP_POST, "/:index/_bulk", [=](auto req) {
-        return handleBulkRequest(req, m_indexes);
+    // Update API
+    m_router.route(HTTP_POST, "/:index/_update", [=](auto req) {
+        return handleUpdateRequest(req, m_indexes);
     });
 
     m_router.route(HTTP_POST, "/:index/_flush", [=](auto req) {

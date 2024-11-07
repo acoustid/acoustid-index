@@ -36,7 +36,7 @@ void fromJsonArray(const QJsonArray &array, std::vector<uint32_t> &output) {
 QJsonObject InsertOrUpdateDocument::toJson() const {
     QJsonObject json{
         {"id", toJsonValue(docId)},
-        {"terms", toJsonArray(terms.begin(), terms.end())},
+        {"hashes", toJsonArray(terms.begin(), terms.end())},
     };
     return json;
 }
@@ -44,7 +44,7 @@ QJsonObject InsertOrUpdateDocument::toJson() const {
 InsertOrUpdateDocument InsertOrUpdateDocument::fromJson(const QJsonObject &json) {
     InsertOrUpdateDocument op;
     fromJsonValue(json["id"], op.docId);
-    fromJsonArray(json["terms"].toArray(), op.terms);
+    fromJsonArray(json["hashes"].toArray(), op.terms);
     return op;
 }
 
@@ -94,7 +94,7 @@ QJsonObject Op::toJson() const {
 
 Op Op::fromJson(const QJsonObject &json) {
     for (auto it = json.begin(); it != json.end(); ++it) {
-        if (it.key() == "upsert") {
+        if (it.key() == "insert") {
             return Op(InsertOrUpdateDocument::fromJson(it.value().toObject()));
         } else if (it.key() == "delete") {
             return Op(DeleteDocument::fromJson(it.value().toObject()));
