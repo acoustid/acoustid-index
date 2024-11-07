@@ -80,7 +80,7 @@ pub fn acquireIndex(self: *Self, id: u8, create: bool) !*IndexRef {
         return err;
     };
 
-    result.value_ptr.references += 1;
+    result.value_ptr.references = 1;
     result.value_ptr.last_used_at = std.time.timestamp();
     return result.value_ptr;
 }

@@ -16,7 +16,7 @@ pub fn main() !void {
     defer args.deinit();
 
     const dir_path = args.get("dir") orelse ".";
-    const dir = try std.fs.cwd().openDir(dir_path, .{});
+    const dir = try std.fs.cwd().makeOpenPath(dir_path, .{ .iterate = true });
 
     const address = args.get("address") orelse "127.0.0.1";
 
