@@ -11,6 +11,8 @@ const Change = common.Change;
 const Deadline = @import("utils/Deadline.zig");
 const Scheduler = @import("utils/Scheduler.zig");
 
+const m = @import("metrics.zig");
+
 const Context = struct {
     indexes: *MultiIndex,
 };
@@ -60,6 +62,10 @@ pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const 
     try installSignalHandlers(&server);
 
     var router = server.router();
+
+    // Monitoring API
+    router.get("/_ping", handlePing);
+    router.get("/_metrics", handleMetrics);
 
     // Search API
     router.post("/:index/_search", handleSearch);
@@ -159,6 +165,8 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
     }
     const deadline = Deadline.init(timeout);
 
+    m.metrics.searches.incr();
+
     index.search(body.query, &results, deadline) catch |err| {
         log.err("index search error: {}", .{err});
         res.status = 500;
@@ -241,4 +249,18 @@ fn handleDeleteIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !
     };
 
     return res.json(.{ .status = "ok" }, .{});
+}
+
+fn handlePing(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    _ = ctx;
+    _ = req;
+
+    try res.writer().writeAll("pong\n");
+}
+
+fn handleMetrics(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    _ = ctx;
+    _ = req;
+
+    try m.writeMetrics(res.writer());
 }

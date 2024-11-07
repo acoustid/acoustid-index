@@ -4,6 +4,7 @@ const zul = @import("zul");
 const MultiIndex = @import("MultiIndex.zig");
 const Scheduler = @import("utils/Scheduler.zig");
 const server = @import("server.zig");
+const metrics = @import("metrics.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -29,6 +30,8 @@ pub fn main() !void {
     if (threads == 0) {
         threads = @intCast(try std.Thread.getCpuCount());
     }
+
+    try metrics.initializeMetrics(.{ .prefix = "aindex_" });
 
     var scheduler = Scheduler.init(allocator);
     defer scheduler.deinit();

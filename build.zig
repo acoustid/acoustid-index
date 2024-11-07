@@ -20,6 +20,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const metrics = b.dependency("metrics", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const zul = b.dependency("zul", .{
         .target = target,
         .optimize = optimize,
@@ -33,6 +38,7 @@ pub fn build(b: *std.Build) void {
     });
 
     main_exe.root_module.addImport("httpz", httpz.module("httpz"));
+    main_exe.root_module.addImport("metrics", metrics.module("metrics"));
     main_exe.root_module.addImport("zul", zul.module("zul"));
 
     b.installArtifact(main_exe);
@@ -55,6 +61,7 @@ pub fn build(b: *std.Build) void {
     });
 
     main_tests.root_module.addImport("httpz", httpz.module("httpz"));
+    main_tests.root_module.addImport("metrics", metrics.module("metrics"));
     main_tests.root_module.addImport("zul", zul.module("zul"));
 
     const run_main_tests = b.addRunArtifact(main_tests);
