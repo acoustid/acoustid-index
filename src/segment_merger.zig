@@ -61,6 +61,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
                 source.skip_docs.deinit();
             }
             self.sources.deinit();
+            self.segment.docs.deinit();
             self.* = undefined;
         }
 
