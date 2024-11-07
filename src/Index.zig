@@ -167,6 +167,9 @@ fn finnishMerge(self: *Self, merge: SegmentList.PreparedMerge) !void {
 
     try self.writeIndexFile();
 
+    merge.sources.node1.data.delete(self.dir);
+    merge.sources.node2.data.delete(self.dir);
+
     self.segments.destroyMergedSegments(merge);
 
     log.info("committed merge segment {}:{}", .{ merge.target.data.id.version, merge.target.data.id.included_merges });
