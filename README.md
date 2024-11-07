@@ -1,5 +1,7 @@
 # Experimental version of AcoustID index
 
+## Building
+
 Building from source code:
 
     zig build
@@ -8,10 +10,20 @@ Running tests:
 
     zig build test --summary all
 
-Adding document:
+## Using via HTTP API
 
-    curl -XPOST -d '{"changes": [{"insert": {"id": 1, "hashes": [1,2,3]}}]}' -v http://localhost:8080/_update
+Create index:
 
-Searching:
+    curl -XPUT -v http://localhost:8080/1/_update
+
+Add a fingerprint:
+
+    curl -XPOST -d '{"changes": [{"insert": {"id": 1, "hashes": [1,2,3]}}]}' -v http://localhost:8080/1/_update
+
+Delete a fingerprint:
+
+    curl -XPOST -d '{"changes": [{"delete": {"id": 2}}]}' -v http://localhost:8080/1/_update
+
+Search for a fingerprint:
 
     curl -XPOST -d '{"query": [1,2,3], "timeout": 10}' -v http://localhost:8080/_search
