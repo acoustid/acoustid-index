@@ -56,6 +56,19 @@ pub fn cancelUpdate(self: *Self, txn: *PendingUpdate) void {
     self.write_lock.unlock();
 }
 
+// Prepares update for later commit, will block until previous update has been committed.
+pub fn prepareUpdate(self: *Self, changes: []const Change) !PendingUpdate {
+    try self.maybeMergeSegments();
+
+    const node = try self.segments.createSegment();
+    errdefer self.segments.destroySegment(node);
+
+    try node.data.build(changes);
+
+    self.write_lock.lock();
+    return PendingUpdate{ .node = node };
+}
+
 // Commits the update, does nothing if it has already been cancelled or committted.
 pub fn commitUpdate(self: *Self, txn: *PendingUpdate, commit_id: u64) void {
     if (txn.finished) return;
@@ -71,54 +84,6 @@ pub fn commitUpdate(self: *Self, txn: *PendingUpdate, commit_id: u64) void {
 
     txn.finished = true;
     self.write_lock.unlock();
-}
-
-// Prepares update for later commit, will block until previous update has been committed.
-pub fn prepareUpdate(self: *Self, changes: []const Change) !PendingUpdate {
-    try self.maybeMergeSegments();
-
-    const node = try self.segments.createSegment();
-    errdefer self.segments.destroySegment(node);
-
-    var num_items: usize = 0;
-    for (changes) |change| {
-        switch (change) {
-            .insert => |op| {
-                num_items += op.hashes.len;
-            },
-            .delete => {},
-        }
-    }
-    try node.data.items.ensureTotalCapacity(num_items);
-
-    var i = changes.len;
-    while (i > 0) {
-        i -= 1;
-        const change = changes[i];
-        switch (change) {
-            .insert => |op| {
-                const result = try node.data.docs.getOrPut(op.id);
-                if (!result.found_existing) {
-                    result.value_ptr.* = true;
-                    var items = try node.data.items.addManyAsSlice(op.hashes.len);
-                    for (op.hashes, 0..) |hash, j| {
-                        items[j] = .{ .hash = hash, .id = op.id };
-                    }
-                }
-            },
-            .delete => |op| {
-                const result = try node.data.docs.getOrPut(op.id);
-                if (!result.found_existing) {
-                    result.value_ptr.* = false;
-                }
-            },
-        }
-    }
-
-    node.data.ensureSorted();
-
-    self.write_lock.lock();
-    return PendingUpdate{ .node = node };
 }
 
 pub fn update(self: *Self, changes: []const Change, commit_id: u64) !void {

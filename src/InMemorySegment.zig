@@ -4,6 +4,7 @@ const io = std.io;
 const assert = std.debug.assert;
 
 const common = @import("common.zig");
+const Change = common.Change;
 const Item = common.Item;
 const SearchResults = common.SearchResults;
 const SegmentID = common.SegmentID;
@@ -58,16 +59,57 @@ pub fn search(self: *Self, hashes: []const u32, results: *SearchResults) !void {
     }
 }
 
-pub fn ensureSorted(self: *Self) void {
-    std.sort.pdq(Item, self.items.items, {}, Item.cmp);
-}
-
 pub fn canBeMerged(self: Self) bool {
     return !self.frozen;
 }
 
 pub fn getSize(self: Self) usize {
     return self.items.items.len;
+}
+
+pub fn build(self: *Self, changes: []const Change) !void {
+    var num_docs: u32 = 0;
+    var num_items: usize = 0;
+    for (changes) |change| {
+        switch (change) {
+            .insert => |op| {
+                num_docs += 1;
+                num_items += op.hashes.len;
+            },
+            .delete => {
+                num_docs += 1;
+            },
+        }
+    }
+
+    try self.docs.ensureTotalCapacity(num_docs);
+    try self.items.ensureTotalCapacity(num_items);
+
+    var i = changes.len;
+    while (i > 0) {
+        i -= 1;
+        const change = changes[i];
+        switch (change) {
+            .insert => |op| {
+                const result = self.docs.getOrPutAssumeCapacity(op.id);
+                if (!result.found_existing) {
+                    result.value_ptr.* = true;
+                    var items = self.items.addManyAsSliceAssumeCapacity(op.hashes.len);
+                    for (op.hashes, 0..) |hash, j| {
+                        items[j] = .{ .hash = hash, .id = op.id };
+                    }
+                }
+            },
+            .delete => |op| {
+                const result = self.docs.getOrPutAssumeCapacity(op.id);
+                if (!result.found_existing) {
+                    result.value_ptr.* = false;
+                }
+            },
+        }
+    }
+
+    std.sort.pdq(Item, self.items.items, {}, Item.cmp);
 }
 
 pub fn merge(self: *Self, source1: *Self, source2: *Self, collection: *List) !void {

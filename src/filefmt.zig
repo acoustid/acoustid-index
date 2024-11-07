@@ -391,11 +391,10 @@ test "writeFile/readFile" {
         defer in_memory_segment.deinit();
 
         in_memory_segment.id.version = 1;
-        try in_memory_segment.docs.put(1, true);
-        try in_memory_segment.items.append(Item{ .hash = 1, .id = 1 });
-        try in_memory_segment.items.append(Item{ .hash = 2, .id = 1 });
 
-        in_memory_segment.ensureSorted();
+        try in_memory_segment.build(&.{
+            .{ .insert = .{ .id = 1, .hashes = &[_]u32{ 1, 2 } } },
+        });
 
         var reader = in_memory_segment.reader();
         defer reader.close();
