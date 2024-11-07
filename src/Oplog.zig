@@ -170,7 +170,7 @@ const file_name_size = 16 + 1 + 4;
 fn openFile(self: *Self, commit_id: u64) !std.fs.File {
     var buf: [file_name_size]u8 = undefined;
     const file_name = try generateFileName(&buf, commit_id);
-    std.log.info("creating oplog file {s}", .{file_name});
+    log.info("creating oplog file {s}", .{file_name});
     return self.dir.createFile(file_name, .{ .exclusive = true });
 }
 
@@ -213,7 +213,7 @@ fn truncateNoLock(self: *Self, commit_id: u64) !void {
         pos -= 1;
         const file_info = self.files.orderedRemove(pos);
         const file_name = try generateFileName(&buf, file_info.id);
-        std.log.info("deleting oplog file {s}", .{file_name});
+        log.info("deleting oplog file {s}", .{file_name});
         try self.dir.deleteFile(file_name);
     }
 }

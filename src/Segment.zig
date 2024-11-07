@@ -94,6 +94,8 @@ pub fn delete(self: *Self, dir: std.fs.Dir) void {
     var file_name_buf: [filefmt.max_file_name_size]u8 = undefined;
     const file_name = filefmt.buildSegmentFileName(&file_name_buf, self.id);
 
+    log.info("deleting segment file {s}", .{file_name});
+
     dir.deleteFile(file_name) catch |err| {
         log.err("failed to clean up segment file {s}: {}", .{ file_name, err });
     };

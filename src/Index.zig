@@ -230,7 +230,7 @@ fn scheduleCleanup(self: *Self) !void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
-    if (self.cleanup_scheduled.load(.acquire)) {
+    if (!self.cleanup_scheduled.load(.acquire)) {
         _ = try self.scheduler.schedule(cleanup, self, .{ .in = self.cleanup_delay, .strand = self.cleanup_strand });
         self.cleanup_scheduled.store(true, .monotonic);
     }
