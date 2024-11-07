@@ -6,6 +6,7 @@ const log = std.log.scoped(.server);
 const zul = @import("zul");
 
 const MultiIndex = @import("MultiIndex.zig");
+const IndexData = MultiIndex.IndexRef;
 const common = @import("common.zig");
 const SearchResults = common.SearchResults;
 const Change = common.Change;
@@ -63,9 +64,17 @@ fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const u8, 
     var router = server.router();
     router.post("/_search", handleSearch);
     router.post("/_update", handleUpdate);
+
+    // Search API
     router.post("/:index/_search", handleSearch);
+
+    // Bulk API
     router.post("/:index/_update", handleUpdate);
-    router.put("/:index", handleCreateIndex);
+
+    // Index API
+    router.head("/:index", handleHeadIndex);
+    router.get("/:index", handleGetIndex);
+    router.put("/:index", handlePutIndex);
     router.delete("/:index", handleDeleteIndex);
 
     log.info("listening on {s}:{d}", .{ address, port });
@@ -89,28 +98,58 @@ const SearchResultsJSON = struct {
     results: []SearchResultJSON,
 };
 
-fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn getIndexNo(ctx: *Context, req: *httpz.Request, res: *httpz.Response, send_body: bool) !?u8 {
+    _ = ctx;
     const index_no_str = req.param("index") orelse "0";
     const index_no = std.fmt.parseInt(u8, index_no_str, 10) catch {
         res.status = 400;
-        return res.json(.{ .status = "invalid index number" }, .{});
+        if (send_body) {
+            try res.json(.{ .status = "invalid index number" }, .{});
+        }
+        return null;
     };
-    const index_ref = try ctx.indexes.getIndex(index_no);
-    defer ctx.indexes.releaseIndex(index_ref);
+    return index_no;
+}
 
-    const index = &index_ref.index;
-    try index.open();
+fn getIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response, send_body: bool) !?*IndexData {
+    const index_no = try getIndexNo(ctx, req, res, send_body) orelse return null;
+    const index = ctx.indexes.getIndex(index_no) catch |err| {
+        if (err == error.IndexNotFound) {
+            res.status = 404;
+            if (send_body) {
+                try res.json(.{ .status = "index not found" }, .{});
+            }
+            return null;
+        }
+        return err;
+    };
+    return index;
+}
 
-    const body_or_null = req.json(SearchRequestJSON) catch {
+fn releaseIndex(ctx: *Context, index: *IndexData) void {
+    ctx.indexes.releaseIndex(index);
+}
+
+fn getJsonBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !?T {
+    const body_or_null = req.json(T) catch {
         res.status = 400;
-        return res.json(.{ .status = "invalid body" }, .{});
+        try res.json(.{ .status = "invalid body" }, .{});
+        return null;
     };
     if (body_or_null == null) {
         res.status = 400;
-        return res.json(.{ .status = "invalid body" }, .{});
+        try res.json(.{ .status = "invalid body" }, .{});
+        return null;
     }
+    return body_or_null.?;
+}
 
-    const body = body_or_null.?;
+fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    const body = getJsonBody(SearchRequestJSON, req, res) orelse return;
+
+    const index_ref = try getIndex(ctx, req, res, true) orelse return;
+    const index = &index_ref.index;
+    defer releaseIndex(ctx, index_ref);
 
     var results = SearchResults.init(req.arena);
     defer results.deinit();
@@ -142,27 +181,11 @@ const UpdateRequestJSON = struct {
 };
 
 fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_no_str = req.param("index") orelse "0";
-    const index_no = std.fmt.parseInt(u8, index_no_str, 10) catch {
-        res.status = 400;
-        return res.json(.{ .status = "invalid index number" }, .{});
-    };
-    const index_ref = try ctx.indexes.getIndex(index_no);
-    defer ctx.indexes.releaseIndex(index_ref);
+    const body = getJsonBody(UpdateRequestJSON, req, res) orelse return;
 
+    const index_ref = try getIndex(ctx, req, res, true) orelse return;
     const index = &index_ref.index;
-    try index.open();
-
-    const body_or_null = req.json(UpdateRequestJSON) catch {
-        res.status = 400;
-        return res.json(.{ .status = "invalid body" }, .{});
-    };
-    if (body_or_null == null) {
-        res.status = 400;
-        return res.json(.{ .status = "invalid body" }, .{});
-    }
-
-    const body = body_or_null.?;
+    defer releaseIndex(ctx, index_ref);
 
     index.update(body.changes) catch |err| {
         log.err("index search error: {}", .{err});
@@ -173,12 +196,23 @@ fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
     return res.json(.{ .status = "ok" }, .{});
 }
 
-pub fn handleCreateIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_no_str = req.param("index") orelse "0";
-    const index_no = std.fmt.parseInt(u8, index_no_str, 10) catch {
-        res.status = 400;
-        return res.json(.{ .status = "invalid index number" }, .{});
-    };
+fn handleHeadIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    const index_ref = try getIndex(ctx, req, res, false) orelse return;
+    defer releaseIndex(ctx, index_ref);
+
+    res.status = 200;
+    return;
+}
+
+fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    const index_ref = try getIndex(ctx, req, res, true) orelse return;
+    defer releaseIndex(ctx, index_ref);
+
+    return res.json(.{ .status = "ok" }, .{});
+}
+
+pub fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    const index_no = try getIndexNo(ctx, req, res, true) orelse return;
 
     ctx.indexes.createIndex(index_no) catch |err| {
         log.err("index create error: {}", .{err});
@@ -190,11 +224,7 @@ pub fn handleCreateIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Respons
 }
 
 pub fn handleDeleteIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_no_str = req.param("index") orelse "0";
-    const index_no = std.fmt.parseInt(u8, index_no_str, 10) catch {
-        res.status = 400;
-        return res.json(.{ .status = "invalid index number" }, .{});
-    };
+    const index_no = try getIndexNo(ctx, req, res, true) orelse return;
 
     ctx.indexes.deleteIndex(index_no) catch |err| {
         log.err("index delete error: {}", .{err});

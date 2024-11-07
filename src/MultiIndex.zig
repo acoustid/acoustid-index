@@ -7,7 +7,7 @@ const Scheduler = @import("utils/Scheduler.zig");
 
 const Self = @This();
 
-const IndexData = struct {
+pub const IndexRef = struct {
     index: Index,
     dir: std.fs.Dir,
     references: usize = 0,
@@ -18,7 +18,7 @@ lock: std.Thread.Mutex = .{},
 allocator: std.mem.Allocator,
 dir: std.fs.Dir,
 scheduler: *Scheduler,
-indexes: std.AutoHashMap(u8, IndexData),
+indexes: std.AutoHashMap(u8, IndexRef),
 
 const max_sub_dir_name_size = 10;
 const sub_dir_name_fmt = "{x:0>2}";
@@ -28,7 +28,7 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, scheduler: *Scheduler
         .allocator = allocator,
         .dir = dir,
         .scheduler = scheduler,
-        .indexes = std.AutoHashMap(u8, IndexData).init(allocator),
+        .indexes = std.AutoHashMap(u8, IndexRef).init(allocator),
     };
 }
 
@@ -42,7 +42,7 @@ pub fn deinit(self: *Self) void {
     self.* = undefined;
 }
 
-pub fn releaseIndex(self: *Self, index_data: *IndexData) void {
+pub fn releaseIndex(self: *Self, index_data: *IndexRef) void {
     self.lock.lock();
     defer self.lock.unlock();
 
@@ -51,7 +51,7 @@ pub fn releaseIndex(self: *Self, index_data: *IndexData) void {
     index_data.last_used_at = std.time.timestamp();
 }
 
-pub fn acquireIndex(self: *Self, id: u8, create: bool) !*IndexData {
+pub fn acquireIndex(self: *Self, id: u8, create: bool) !*IndexRef {
     self.lock.lock();
     defer self.lock.unlock();
 
@@ -73,12 +73,19 @@ pub fn acquireIndex(self: *Self, id: u8, create: bool) !*IndexData {
     result.value_ptr.index = try Index.init(self.allocator, result.value_ptr.dir, self.scheduler, .{ .create = create });
     errdefer result.value_ptr.index.deinit();
 
+    result.value_ptr.index.open() catch |err| {
+        if (err == error.FileNotFound) {
+            return error.IndexNotFound;
+        }
+        return err;
+    };
+
     result.value_ptr.references += 1;
     result.value_ptr.last_used_at = std.time.timestamp();
     return result.value_ptr;
 }
 
-pub fn getIndex(self: *Self, id: u8) !*IndexData {
+pub fn getIndex(self: *Self, id: u8) !*IndexRef {
     return try self.acquireIndex(id, false);
 }
 

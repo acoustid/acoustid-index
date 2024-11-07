@@ -56,10 +56,10 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) Self {
 const lock_file_name = ".lock";
 
 pub fn deinit(self: *Self) void {
-    log.info("closing oplog", .{});
-
     self.write_lock.lock();
     defer self.write_lock.unlock();
+
+    log.info("closing oplog", .{});
 
     self.closeCurrentFile();
 
@@ -74,6 +74,8 @@ pub fn deinit(self: *Self) void {
 pub fn open(self: *Self, first_commit_id: u64, index: *InMemoryIndex) !void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
+
+    log.info("opening oplog", .{});
 
     self.lock_file = self.dir.createFile(lock_file_name, .{ .lock = .exclusive, .lock_nonblocking = true }) catch |err| {
         if (err == error.WouldBlock) {
