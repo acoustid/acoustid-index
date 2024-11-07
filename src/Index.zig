@@ -263,7 +263,7 @@ fn applyChanges(self: *Self, changes: []const Change) !void {
 }
 
 pub fn update(self: *Self, changes: []const Change) !void {
-    if (self.is_open.load(.monotonic)) {
+    if (!self.is_open.load(.monotonic)) {
         return error.NotOpened;
     }
 
@@ -279,7 +279,7 @@ pub fn getMaxCommitId(self: *Self) u64 {
 }
 
 pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
-    if (self.is_open.load(.monotonic)) {
+    if (!self.is_open.load(.monotonic)) {
         return error.NotOpened;
     }
 
