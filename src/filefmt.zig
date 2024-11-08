@@ -222,10 +222,9 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
     try testing.expectEqual(items.items[0], item);
 }
 
-// "SGM1"
-const header_magic_v1 = 0x31474d53;
+const header_magic_v1 = 0x314D4753; // "SGM1" in little endian
 
-pub const Header = packed struct {
+pub const Header = extern struct {
     magic: u32 = header_magic_v1,
     version: u32,
     included_merges: u32,
@@ -425,13 +424,12 @@ test "writeFile/readFile" {
     }
 }
 
-const index_header_magic_v1: u32 = 0x31584449; // "IDX1"
+const index_header_magic_v1: u32 = 0x31584449; // "IDX1" in little endian
 
-const IndexHeader = packed struct {
+const IndexHeader = extern struct {
     magic: u32,
     version: u32,
     num_segments: u32,
-    reserved: u32,
 };
 
 pub fn writeIndexFile(writer: anytype, segments: std.ArrayList(SegmentVersion)) !void {
@@ -439,7 +437,6 @@ pub fn writeIndexFile(writer: anytype, segments: std.ArrayList(SegmentVersion)) 
         .magic = index_header_magic_v1,
         .version = 1,
         .num_segments = @intCast(segments.items.len),
-        .reserved = 0,
     };
     try writer.writeStructEndian(header, .little);
     for (segments.items) |segment| {
