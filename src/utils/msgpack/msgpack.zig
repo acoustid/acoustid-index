@@ -552,17 +552,65 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             }
         }
 
-        pub fn readString(self: *Self) ![]const u8 {
+        pub fn readStringHeader(self: *Self, comptime nullable: Nullable) !NullableType(usize, nullable) {
+            const byte = try self.reader.readByte();
+            switch (byte) {
+                MSG_NIL => return if (nullable == .optional) null else error.InvalidFormat,
+                MSG_STR8 => return try self.readIntValue(u8, usize),
+                MSG_STR16 => return try self.readIntValue(u16, usize),
+                MSG_STR32 => return try self.readIntValue(u32, usize),
+                else => {
+                    if (byte & 0xe0 == MSG_FIXSTR) {
+                        return byte & 0x1f;
+                    } else {
+                        return error.InvalidFormat;
+                    }
+                },
+            }
+        }
+
+        pub fn readString(self: *Self, comptime nullable: Nullable) !NullableType([]u8, nullable) {
             if (AllocatorType == NoAllocator) {
                 @compileError("No allocator provided");
             }
-            const size = try self.readStringHeader();
+
+            const size = if (nullable == .optional)
+                try self.readStringHeader(nullable) orelse return null
+            else
+                try self.readStringHeader(nullable);
+
             const buf = try self.allocator.alloc(u8, size);
             errdefer self.allocator.free(buf);
+
             const actual_size = try self.reader.readAll(buf);
             if (actual_size != size) {
                 return error.InvalidFormat;
             }
+
+            return buf;
+        }
+
+        pub fn readStringInto(self: *Self, buffer: []u8, comptime nullable: Nullable) !NullableType([]u8, nullable) {
+            if (AllocatorType == NoAllocator) {
+                @compileError("No allocator provided");
+            }
+
+            const size = if (nullable == .optional)
+                try self.readStringHeader(nullable) orelse return null
+            else
+                try self.readStringHeader(nullable);
+
+            if (buffer.len < size) {
+                return error.NoSpaceLeft;
+            }
+
+            const buf = buffer[0..size];
+
+            const actual_size = try self.reader.readAll(buf);
+            if (actual_size != size) {
+                return error.InvalidFormat;
+            }
+
             return buf;
         }
 
@@ -602,7 +650,23 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             return result;
         }
 
-        pub fn readStruct(self: *Self, comptime T: type) !T {
+        fn readMapHeader(self: *Self, comptime optional: Nullable) !NullableType(usize, optional) {
+            const byte = try self.reader.readByte();
+            switch (byte) {
+                MSG_NIL => if (optional == .optional) return null else return error.InvalidFormat,
+                MSG_MAP16 => return try self.readIntValue(u16, usize),
+                MSG_MAP32 => return try self.readIntValue(u32, usize),
+                else => {
+                    if (byte & 0xf0 == MSG_FIXMAP) {
+                        return byte & 0xf;
+                    } else {
+                        return error.InvalidFormat;
+                    }
+                },
+            }
+        }
+
+        pub fn readStruct(self: *Self, comptime T: type, comptime optional: Nullable) !NullableType(T, optional) {
             const type_info = @typeInfo(T);
             if (type_info != .Struct) {
                 @compileError("Expected struct type");
@@ -613,21 +677,19 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
 
             var fields_set = std.bit_set.StaticBitSet(fields.len).initEmpty();
 
-            inline for (fields, 0..) |field, i| {
-                if (field.default_value) |default_field_value_ptr| {
-                    const default_field_value = @as(*field.type, @ptrCast(@alignCast(@constCast(default_field_value_ptr)))).*;
-                    @field(result, field.name) = default_field_value;
-                    fields_set.set(i);
-                }
-                if (@typeInfo(field.type) == .Optional) {
-                    @field(result, field.name) = null;
-                    fields_set.set(i);
-                }
+            comptime var max_field_name_len = 0;
+            inline for (fields) |field| {
+                max_field_name_len = @max(max_field_name_len, field.name.len);
             }
+            var field_name_buffer: [max_field_name_len]u8 = undefined;
 
             switch (options.struct_format) {
                 .map_by_index => {
-                    const size = try self.readMapHeader();
+                    const size = if (optional == .optional)
+                        try self.readMapHeader(.optional) orelse return null
+                    else
+                        try self.readMapHeader(.required);
+
                     if (size > fields.len) return error.InvalidFormat;
 
                     var j: usize = 0;
@@ -645,12 +707,16 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
                     }
                 },
                 .map_by_name => {
-                    const size = try self.readMapHeader();
+                    const size = if (optional == .optional)
+                        try self.readMapHeader(.optional) orelse return null
+                    else
+                        try self.readMapHeader(.required);
+
                     if (size > fields.len) return error.InvalidFormat;
 
                     var j: usize = 0;
                     while (j < size) : (j += 1) {
-                        const name = try self.readString();
+                        const name = try self.readStringInto(&field_name_buffer, .required);
                         inline for (fields, 0..) |field, i| {
                             if (std.mem.eql(u8, name, field.name)) {
                                 fields_set.set(i);
@@ -663,7 +729,11 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
                     }
                 },
                 .array => {
-                    const size = try self.readArrayHeader(.required);
+                    const size = if (optional == .optional)
+                        try self.readArrayHeader(.optional) orelse return null
+                    else
+                        try self.readArrayHeader(.required);
+
                     if (size < fields.len) return error.InvalidFormat;
 
                     inline for (fields, 0..) |field, i| {
@@ -671,6 +741,19 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
                         @field(result, field.name) = try self.read(field.type);
                     }
                 },
+            }
+
+            inline for (fields, 0..) |field, i| {
+                if (!fields_set.isSet(i)) {
+                    if (field.default_value) |default_field_value_ptr| {
+                        const default_field_value = @as(*field.type, @ptrCast(@alignCast(@constCast(default_field_value_ptr)))).*;
+                        @field(result, field.name) = default_field_value;
+                        fields_set.set(i);
+                    } else if (@typeInfo(field.type) == .Optional) {
+                        @field(result, field.name) = null;
+                        fields_set.set(i);
+                    }
+                }
             }
 
             if (fields_set.count() != fields.len) return error.InvalidFormat;
@@ -688,7 +771,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
                 @compileError("Expected tagged union type, not " + @typeName(T));
             }
 
-            const size = try self.readMapHeaderOrNull() orelse return null;
+            const size = try self.readMapHeader(.optional) orelse return null;
             if (size != 1) {
                 return error.InvalidFormat;
             }
@@ -744,7 +827,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
                     }
                 },
                 .Union => return try self.readUnion(T),
-                .Struct => return try self.readStruct(T),
+                .Struct => return try self.readStruct(T, .required),
                 .Optional => {
                     const child_type_info = @typeInfo(type_info.Optional.child);
                     switch (child_type_info) {
@@ -756,48 +839,13 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
                                 return try self.readArray(type_info.Pointer.child, .optional);
                             }
                         },
+                        .Struct => return try self.readStruct(T, .optional),
                         else => {},
                     }
                 },
                 else => {},
             }
             @compileError("Unsupported type " ++ @typeName(T));
-        }
-
-        fn readMapHeaderOrNull(self: *Self) !?usize {
-            const byte = try self.reader.readByte();
-            switch (byte) {
-                MSG_NIL => return null,
-                MSG_MAP16 => return try self.readIntValue(u16, usize),
-                MSG_MAP32 => return try self.readIntValue(u32, usize),
-                else => {
-                    if (byte & 0xf0 == MSG_FIXMAP) {
-                        return byte & 0xf;
-                    } else {
-                        return error.InvalidFormat;
-                    }
-                },
-            }
-        }
-
-        fn readMapHeader(self: *Self) !usize {
-            return try self.readMapHeaderOrNull() orelse return error.InvalidFormat;
-        }
-
-        fn readStringHeader(self: *Self) !usize {
-            const byte = try self.reader.readByte();
-            switch (byte) {
-                MSG_STR8 => return try self.readIntValue(u8, usize),
-                MSG_STR16 => return try self.readIntValue(u16, usize),
-                MSG_STR32 => return try self.readIntValue(u32, usize),
-                else => {
-                    if (byte & 0xe0 == MSG_FIXSTR) {
-                        return byte & 0x1f;
-                    } else {
-                        return error.InvalidFormat;
-                    }
-                },
-            }
         }
     };
 }

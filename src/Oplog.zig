@@ -19,17 +19,8 @@ pub const FileInfo = struct {
 };
 
 pub const Transaction = struct {
-    commit_id: u64,
+    id: u64,
     changes: []const Change,
-};
-
-pub const Entry = struct {
-    id: u64 = 0,
-    change: ?common.Change = null,
-    begin: ?struct {
-        size: u32 = 0,
-    } = null,
-    commit: ?bool = null,
 };
 
 allocator: std.mem.Allocator,
@@ -104,8 +95,8 @@ pub fn open(self: *Self, first_commit_id: u64, index: *InMemoryIndex) !void {
     var oplog_it = OplogIterator.init(self.allocator, self.dir, self.files, first_commit_id);
     defer oplog_it.deinit();
     while (try oplog_it.next()) |txn| {
-        max_commit_id = @max(max_commit_id, txn.commit_id);
-        try index.update(txn.changes, txn.commit_id);
+        max_commit_id = @max(max_commit_id, txn.id);
+        try index.update(txn.changes, txn.id);
     }
     self.next_commit_id = max_commit_id + 1;
 }
@@ -235,7 +226,7 @@ fn writeEntries(writer: anytype, commit_id: u64, changes: []const Change) !void 
     });
 
     const txn = Transaction{
-        .commit_id = commit_id,
+        .id = commit_id,
         .changes = changes,
     };
 
@@ -302,9 +293,9 @@ test "write entries" {
     defer arena.deinit();
 
     var unpacker = msgpack.unpacker(file.reader(), arena.allocator(), .{ .struct_format = .map_by_index });
-    const txn = try unpacker.readStruct(Transaction);
+    const txn = try unpacker.read(Transaction);
 
-    try std.testing.expectEqual(1, txn.commit_id);
+    try std.testing.expectEqual(1, txn.id);
     try std.testing.expectEqualDeep(&changes, txn.changes);
 }
 
@@ -335,7 +326,7 @@ pub const OplogIterator = struct {
         while (true) {
             if (self.current_iterator) |*iterator| {
                 if (try iterator.next()) |entry| {
-                    if (entry.commit_id < self.first_commit_id) {
+                    if (entry.id < self.first_commit_id) {
                         continue;
                     }
                     return entry;
