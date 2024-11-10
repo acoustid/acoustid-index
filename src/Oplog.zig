@@ -383,6 +383,11 @@ pub const OplogFileIterator = struct {
             .{ .struct_format = .map_by_index },
         );
 
-        return try unpacker.read(Transaction);
+        return unpacker.read(Transaction) catch |err| {
+            if (err == error.EndOfStream) {
+                return null;
+            }
+            return err;
+        };
     }
 };

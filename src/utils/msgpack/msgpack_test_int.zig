@@ -3,12 +3,21 @@ const msgpack = @import("msgpack.zig");
 
 const int_types = [_]type{ i8, i16, i32, i64, u8, u16, u32, u64 };
 
+test "readInt: null" {
+    const buffer = [_]u8{0xc0};
+    inline for (int_types) |T| {
+        var stream = std.io.fixedBufferStream(&buffer);
+        var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
+        try std.testing.expectEqual(null, try unpacker.read(?T));
+    }
+}
+
 test "readInt: positive fixint" {
     const buffer = [_]u8{0x7f};
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
         var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
-        try std.testing.expectEqual(127, try unpacker.readInt(T));
+        try std.testing.expectEqual(127, try unpacker.read(T));
     }
 }
 
@@ -19,9 +28,9 @@ test "readInt: negative fixint" {
         var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.signedness == .unsigned) {
-            try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
+            try std.testing.expectError(error.IntegerOverflow, unpacker.read(T));
         } else {
-            try std.testing.expectEqual(-32, try unpacker.readInt(T));
+            try std.testing.expectEqual(-32, try unpacker.read(T));
         }
     }
 }
@@ -33,9 +42,9 @@ test "readInt: uint8" {
         var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.bits < 8 or (info.bits == 8 and info.signedness == .signed)) {
-            try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
+            try std.testing.expectError(error.IntegerOverflow, unpacker.read(T));
         } else {
-            try std.testing.expectEqual(0xff, try unpacker.readInt(T));
+            try std.testing.expectEqual(0xff, try unpacker.read(T));
         }
     }
 }
@@ -47,9 +56,9 @@ test "readInt: uint16" {
         var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.bits < 16 or (info.bits == 16 and info.signedness == .signed)) {
-            try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
+            try std.testing.expectError(error.IntegerOverflow, unpacker.read(T));
         } else {
-            try std.testing.expectEqual(0xffff, try unpacker.readInt(T));
+            try std.testing.expectEqual(0xffff, try unpacker.read(T));
         }
     }
 }
@@ -61,9 +70,9 @@ test "readInt: uint32" {
         var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.bits < 32 or (info.bits == 32 and info.signedness == .signed)) {
-            try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
+            try std.testing.expectError(error.IntegerOverflow, unpacker.read(T));
         } else {
-            try std.testing.expectEqual(0xffffffff, try unpacker.readInt(T));
+            try std.testing.expectEqual(0xffffffff, try unpacker.read(T));
         }
     }
 }
@@ -75,9 +84,9 @@ test "readInt: uint64" {
         var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.bits < 64 or (info.bits == 64 and info.signedness == .signed)) {
-            try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
+            try std.testing.expectError(error.IntegerOverflow, unpacker.read(T));
         } else {
-            try std.testing.expectEqual(0xffffffffffffffff, try unpacker.readInt(T));
+            try std.testing.expectEqual(0xffffffffffffffff, try unpacker.read(T));
         }
     }
 }
@@ -89,9 +98,9 @@ test "readInt: negative int8" {
         var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.signedness == .unsigned or info.bits < 8) {
-            try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
+            try std.testing.expectError(error.IntegerOverflow, unpacker.read(T));
         } else {
-            try std.testing.expectEqual(-128, try unpacker.readInt(T));
+            try std.testing.expectEqual(-128, try unpacker.read(T));
         }
     }
 }
@@ -103,9 +112,9 @@ test "readInt: positive int8" {
         var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.bits < 7) {
-            try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
+            try std.testing.expectError(error.IntegerOverflow, unpacker.read(T));
         } else {
-            try std.testing.expectEqual(127, try unpacker.readInt(T));
+            try std.testing.expectEqual(127, try unpacker.read(T));
         }
     }
 }
@@ -117,9 +126,9 @@ test "readInt: negative int16" {
         var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.signedness == .unsigned or info.bits < 16) {
-            try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
+            try std.testing.expectError(error.IntegerOverflow, unpacker.read(T));
         } else {
-            try std.testing.expectEqual(-32768, try unpacker.readInt(T));
+            try std.testing.expectEqual(-32768, try unpacker.read(T));
         }
     }
 }
@@ -131,9 +140,9 @@ test "readInt: positive int16" {
         var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.bits < 15) {
-            try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
+            try std.testing.expectError(error.IntegerOverflow, unpacker.read(T));
         } else {
-            try std.testing.expectEqual(32767, try unpacker.readInt(T));
+            try std.testing.expectEqual(32767, try unpacker.read(T));
         }
     }
 }
@@ -145,9 +154,9 @@ test "readInt: negative int32" {
         var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.signedness == .unsigned or info.bits < 32) {
-            try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
+            try std.testing.expectError(error.IntegerOverflow, unpacker.read(T));
         } else {
-            try std.testing.expectEqual(-2147483648, try unpacker.readInt(T));
+            try std.testing.expectEqual(-2147483648, try unpacker.read(T));
         }
     }
 }
@@ -159,9 +168,9 @@ test "readInt: positive int32" {
         var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.bits < 31) {
-            try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
+            try std.testing.expectError(error.IntegerOverflow, unpacker.read(T));
         } else {
-            try std.testing.expectEqual(2147483647, try unpacker.readInt(T));
+            try std.testing.expectEqual(2147483647, try unpacker.read(T));
         }
     }
 }
@@ -173,9 +182,9 @@ test "readInt: negative int64" {
         var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.signedness == .unsigned or info.bits < 64) {
-            try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
+            try std.testing.expectError(error.IntegerOverflow, unpacker.read(T));
         } else {
-            try std.testing.expectEqual(-9223372036854775808, try unpacker.readInt(T));
+            try std.testing.expectEqual(-9223372036854775808, try unpacker.read(T));
         }
     }
 }
@@ -187,9 +196,9 @@ test "readInt: positive int64" {
         var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.bits < 63) {
-            try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
+            try std.testing.expectError(error.IntegerOverflow, unpacker.read(T));
         } else {
-            try std.testing.expectEqual(9223372036854775807, try unpacker.readInt(T));
+            try std.testing.expectEqual(9223372036854775807, try unpacker.read(T));
         }
     }
 }

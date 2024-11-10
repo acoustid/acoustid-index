@@ -1,6 +1,18 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+const Nullable = enum {
+    optional,
+    required,
+};
+
+fn NullableType(comptime T: type, comptime nullable: Nullable) type {
+    switch (nullable) {
+        .optional => return ?T,
+        .required => return T,
+    }
+}
+
 const MSG_POSITIVE_FIXINT_MIN = 0x00;
 const MSG_POSITIVE_FIXINT_MAX = 0x7f;
 const MSG_FIXMAP = 0x80;
@@ -76,34 +88,38 @@ pub fn Packer(comptime Writer: type) type {
             try self.writer.writeByte(if (value) MSG_TRUE else MSG_FALSE);
         }
 
-        fn writeFixedSizeIntValue(self: *Self, comptime T: type, value: T) !void {
+        inline fn writeFixedSizeIntValue(self: *Self, comptime T: type, value: T) !void {
             var buf: [@sizeOf(T)]u8 = undefined;
             std.mem.writeInt(T, buf[0..], value, .big);
             try self.writer.writeAll(buf[0..]);
         }
 
-        fn writeFixedSizeInt(self: *Self, comptime T: type, value: T) !void {
+        inline fn resolveFixedSizeIntHeader(comptime T: type) u8 {
             const type_info = @typeInfo(T);
             switch (type_info.Int.signedness) {
                 .signed => {
                     switch (type_info.Int.bits) {
-                        8 => try self.writer.writeByte(MSG_INT8),
-                        16 => try self.writer.writeByte(MSG_INT16),
-                        32 => try self.writer.writeByte(MSG_INT32),
-                        64 => try self.writer.writeByte(MSG_INT64),
+                        8 => return MSG_INT8,
+                        16 => return MSG_INT16,
+                        32 => return MSG_INT32,
+                        64 => return MSG_INT64,
                         else => @compileError("Unsupported signed int with " ++ type_info.Int.bits ++ "bits"),
                     }
                 },
                 .unsigned => {
                     switch (type_info.Int.bits) {
-                        8 => try self.writer.writeByte(MSG_UINT8),
-                        16 => try self.writer.writeByte(MSG_UINT16),
-                        32 => try self.writer.writeByte(MSG_UINT32),
-                        64 => try self.writer.writeByte(MSG_UINT64),
+                        8 => return MSG_UINT8,
+                        16 => return MSG_UINT16,
+                        32 => return MSG_UINT32,
+                        64 => return MSG_UINT64,
                         else => @compileError("Unsupported unsigned int with " ++ type_info.Int.bits ++ "bits"),
                     }
                 },
             }
+        }
+
+        fn writeFixedSizeInt(self: *Self, comptime T: type, value: T) !void {
+            try self.writer.writeByte(resolveFixedSizeIntHeader(T));
             try self.writeFixedSizeIntValue(T, value);
         }
 
@@ -410,42 +426,63 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             }
         }
 
-        pub fn readBoolOrNull(self: *Self) !?bool {
+        pub fn readBool(self: *Self, comptime T: type) !T {
+            comptime var type_info: std.builtin.Type = @typeInfo(T);
+            comptime var is_optional: bool = false;
+
+            if (type_info == .Optional) {
+                type_info = @typeInfo(type_info.Optional.child);
+                is_optional = true;
+            }
+
+            if (type_info != .Bool) {
+                @compileError("Expected boolean type, not " ++ @typeName(T));
+            }
+
             const byte = try self.reader.readByte();
+
             switch (byte) {
-                MSG_NIL => return null,
+                MSG_NIL => return if (is_optional) null else error.InvalidFormat,
                 MSG_TRUE => return true,
                 MSG_FALSE => return false,
                 else => return error.InvalidFormat,
             }
         }
 
-        pub fn readBool(self: *Self) !bool {
-            return try self.readBoolOrNull() orelse return error.InvalidFormat;
-        }
-
-        pub fn readIntValue(self: *Self, comptime SourceInt: type, comptime TargetInt: type) !TargetInt {
-            const size = @divExact(@bitSizeOf(SourceInt), 8);
+        inline fn readIntValue(self: *Self, comptime SourceType: type, comptime TargetType: type) !TargetType {
+            const size = @divExact(@bitSizeOf(SourceType), 8);
             var buf: [size]u8 = undefined;
-            try self.reader.readNoEof(&buf);
-            const value = std.mem.readInt(SourceInt, &buf, .big);
+            const actual_size = try self.reader.readAll(&buf);
+            if (actual_size != size) {
+                return error.InvalidFormat;
+            }
+            const value = std.mem.readInt(SourceType, &buf, .big);
 
-            const source_type_info = @typeInfo(SourceInt).Int;
-            const target_type_info = @typeInfo(TargetInt).Int;
+            const source_type_info = @typeInfo(SourceType).Int;
+            const target_type_info = @typeInfo(TargetType).Int;
 
             if (source_type_info.signedness == target_type_info.signedness and source_type_info.bits <= target_type_info.bits) {
                 return @intCast(value);
             }
-            if (value >= std.math.minInt(TargetInt) and value <= std.math.maxInt(TargetInt)) {
+            if (value >= std.math.minInt(TargetType) and value <= std.math.maxInt(TargetType)) {
                 return @intCast(value);
             }
             return error.IntegerOverflow;
         }
 
-        pub fn readIntOrNull(self: *Self, comptime T: type) !?T {
-            const type_info = @typeInfo(T);
+        pub fn readInt(self: *Self, comptime T: type) !T {
+            comptime var Type: type = T;
+            comptime var type_info: std.builtin.Type = @typeInfo(T);
+            comptime var is_optional: bool = false;
+
+            if (type_info == .Optional) {
+                Type = type_info.Optional.child;
+                type_info = @typeInfo(type_info.Optional.child);
+                is_optional = true;
+            }
+
             if (type_info != .Int) {
-                @compileError("Expected integer type");
+                @compileError("Expected integer type, not " ++ @typeName(T));
             }
 
             const byte = try self.reader.readByte();
@@ -465,21 +502,17 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             }
 
             switch (byte) {
-                MSG_NIL => return null,
-                MSG_INT8 => return try self.readIntValue(i8, T),
-                MSG_INT16 => return try self.readIntValue(i16, T),
-                MSG_INT32 => return try self.readIntValue(i32, T),
-                MSG_INT64 => return try self.readIntValue(i64, T),
-                MSG_UINT8 => return try self.readIntValue(u8, T),
-                MSG_UINT16 => return try self.readIntValue(u16, T),
-                MSG_UINT32 => return try self.readIntValue(u32, T),
-                MSG_UINT64 => return try self.readIntValue(u64, T),
+                MSG_NIL => return if (is_optional) null else error.InvalidFormat,
+                MSG_INT8 => return try self.readIntValue(i8, Type),
+                MSG_INT16 => return try self.readIntValue(i16, Type),
+                MSG_INT32 => return try self.readIntValue(i32, Type),
+                MSG_INT64 => return try self.readIntValue(i64, Type),
+                MSG_UINT8 => return try self.readIntValue(u8, Type),
+                MSG_UINT16 => return try self.readIntValue(u16, Type),
+                MSG_UINT32 => return try self.readIntValue(u32, Type),
+                MSG_UINT64 => return try self.readIntValue(u64, Type),
                 else => return error.InvalidFormat,
             }
-        }
-
-        pub fn readInt(self: *Self, comptime T: type) !T {
-            return try self.readIntOrNull(T) orelse return error.InvalidFormat;
         }
 
         pub fn readFloatValue(self: *Self, comptime SourceFloat: type, comptime TargetFloat: type) !TargetFloat {
@@ -498,18 +531,25 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             return @floatCast(value);
         }
 
-        pub fn readFloatOrNull(self: *Self, comptime T: type) !?T {
+        pub fn readFloat(self: *Self, comptime T: type) !T {
+            comptime var Type: type = T;
+            comptime var type_info: std.builtin.Type = @typeInfo(T);
+            comptime var is_optional: bool = false;
+
+            if (type_info == .Optional) {
+                Type = type_info.Optional.child;
+                type_info = @typeInfo(type_info.Optional.child);
+                is_optional = true;
+            }
+
             const byte = try self.reader.readByte();
+
             switch (byte) {
-                MSG_NIL => return null,
-                MSG_FLOAT32 => return try self.readFloatValue(f32, T),
-                MSG_FLOAT64 => return try self.readFloatValue(f64, T),
+                MSG_NIL => return if (is_optional) null else error.InvalidFormat,
+                MSG_FLOAT32 => return try self.readFloatValue(f32, Type),
+                MSG_FLOAT64 => return try self.readFloatValue(f64, Type),
                 else => return error.InvalidFormat,
             }
-        }
-
-        pub fn readFloat(self: *Self, comptime T: type) !T {
-            return try self.readFloatOrNull(T) orelse return error.InvalidFormat;
         }
 
         pub fn readString(self: *Self) ![]const u8 {
@@ -519,14 +559,17 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             const size = try self.readStringHeader();
             const buf = try self.allocator.alloc(u8, size);
             errdefer self.allocator.free(buf);
-            try self.reader.readNoEof(buf);
+            const actual_size = try self.reader.readAll(buf);
+            if (actual_size != size) {
+                return error.InvalidFormat;
+            }
             return buf;
         }
 
-        pub fn readArrayHeaderOrNull(self: *Self) !?usize {
+        pub fn readArrayHeader(self: *Self, comptime opt: Nullable) !NullableType(usize, opt) {
             const byte = try self.reader.readByte();
             switch (byte) {
-                MSG_NIL => return null,
+                MSG_NIL => return if (opt == .optional) null else error.InvalidFormat,
                 MSG_ARRAY16 => return try self.readIntValue(u16, usize),
                 MSG_ARRAY32 => return try self.readIntValue(u32, usize),
                 else => {
@@ -539,29 +582,24 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             }
         }
 
-        pub fn readArrayHeader(self: *Self) !usize {
-            return try self.readArrayHeaderOrNull() orelse error.InvalidFormat;
-        }
-
-        pub fn readArrayOrNull(self: *Self, comptime T: type, allocator: std.mem.Allocator) !?[]T {
+        pub fn readArray(self: *Self, comptime T: type, comptime opt: Nullable) !NullableType([]T, opt) {
             if (AllocatorType == NoAllocator) {
                 @compileError("No allocator provided");
             }
 
-            const size = try self.readArrayHeaderOrNull() orelse return null;
+            const size = if (opt == .optional)
+                try self.readArrayHeader(opt) orelse return null
+            else
+                try self.readArrayHeader(opt);
 
-            const result = try allocator.alloc(T, size);
-            errdefer allocator.free(result);
+            const result = try self.allocator.alloc(T, size);
+            errdefer self.allocator.free(result);
 
             for (result) |*item| {
                 item.* = try self.read(T);
             }
 
             return result;
-        }
-
-        pub fn readArray(self: *Self, comptime T: type) ![]T {
-            return try self.readArrayOrNull(T, self.allocator) orelse return error.InvalidFormat;
         }
 
         pub fn readStruct(self: *Self, comptime T: type) !T {
@@ -625,7 +663,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
                     }
                 },
                 .array => {
-                    const size = try self.readArrayHeader();
+                    const size = try self.readArrayHeader(.required);
                     if (size < fields.len) return error.InvalidFormat;
 
                     inline for (fields, 0..) |field, i| {
@@ -697,13 +735,12 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
         pub fn read(self: *Self, comptime T: type) !T {
             const type_info = @typeInfo(T);
             switch (type_info) {
-                .Bool => return try self.readBool(),
+                .Bool => return try self.readBool(T),
                 .Int => return try self.readInt(T),
                 .Float => return try self.readFloat(T),
-                .Array => return try self.readArray(type_info.Array.child),
                 .Pointer => {
                     if (type_info.Pointer.size == .Slice) {
-                        return try self.readArray(type_info.Pointer.child);
+                        return try self.readArray(type_info.Pointer.child, .required);
                     }
                 },
                 .Union => return try self.readUnion(T),
@@ -711,10 +748,14 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
                 .Optional => {
                     const child_type_info = @typeInfo(type_info.Optional.child);
                     switch (child_type_info) {
-                        .Bool => return try self.readBoolOrNull(),
-                        .Int => return try self.readIntOrNull(type_info.Optional.child),
-                        .Float => return try self.readFloatOrNull(type_info.Optional.child),
-                        .Array => return try self.readArrayOrNull(type_info.Array.child),
+                        .Bool => return try self.readBool(T),
+                        .Int => return try self.readInt(T),
+                        .Float => return try self.readFloat(T),
+                        .Pointer => {
+                            if (type_info.Pointer.size == .Slice) {
+                                return try self.readArray(type_info.Pointer.child, .optional);
+                            }
+                        },
                         else => {},
                     }
                 },
