@@ -7,7 +7,7 @@ test "readInt: positive fixint" {
     const buffer = [_]u8{0x7f};
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        var unpacker = msgpack.unpacker(stream.reader(), .{});
+        var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         try std.testing.expectEqual(127, try unpacker.readInt(T));
     }
 }
@@ -16,7 +16,7 @@ test "readInt: negative fixint" {
     const buffer = [_]u8{0xe0};
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        var unpacker = msgpack.unpacker(stream.reader(), .{});
+        var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.signedness == .unsigned) {
             try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
@@ -30,7 +30,7 @@ test "readInt: uint8" {
     const buffer = [_]u8{ 0xcc, 0xff };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        var unpacker = msgpack.unpacker(stream.reader(), .{});
+        var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.bits < 8 or (info.bits == 8 and info.signedness == .signed)) {
             try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
@@ -44,7 +44,7 @@ test "readInt: uint16" {
     const buffer = [_]u8{ 0xcd, 0xff, 0xff };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        var unpacker = msgpack.unpacker(stream.reader(), .{});
+        var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.bits < 16 or (info.bits == 16 and info.signedness == .signed)) {
             try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
@@ -58,7 +58,7 @@ test "readInt: uint32" {
     const buffer = [_]u8{ 0xce, 0xff, 0xff, 0xff, 0xff };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        var unpacker = msgpack.unpacker(stream.reader(), .{});
+        var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.bits < 32 or (info.bits == 32 and info.signedness == .signed)) {
             try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
@@ -72,7 +72,7 @@ test "readInt: uint64" {
     const buffer = [_]u8{ 0xcf, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        var unpacker = msgpack.unpacker(stream.reader(), .{});
+        var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.bits < 64 or (info.bits == 64 and info.signedness == .signed)) {
             try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
@@ -86,7 +86,7 @@ test "readInt: negative int8" {
     const buffer = [_]u8{ 0xd0, 0x80 };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        var unpacker = msgpack.unpacker(stream.reader(), .{});
+        var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.signedness == .unsigned or info.bits < 8) {
             try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
@@ -100,7 +100,7 @@ test "readInt: positive int8" {
     const buffer = [_]u8{ 0xd0, 0x7f };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        var unpacker = msgpack.unpacker(stream.reader(), .{});
+        var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.bits < 7) {
             try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
@@ -114,7 +114,7 @@ test "readInt: negative int16" {
     const buffer = [_]u8{ 0xd1, 0x80, 0x00 };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        var unpacker = msgpack.unpacker(stream.reader(), .{});
+        var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.signedness == .unsigned or info.bits < 16) {
             try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
@@ -128,7 +128,7 @@ test "readInt: positive int16" {
     const buffer = [_]u8{ 0xd1, 0x7f, 0xff };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        var unpacker = msgpack.unpacker(stream.reader(), .{});
+        var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.bits < 15) {
             try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
@@ -142,7 +142,7 @@ test "readInt: negative int32" {
     const buffer = [_]u8{ 0xd2, 0x80, 0x00, 0x00, 0x00 };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        var unpacker = msgpack.unpacker(stream.reader(), .{});
+        var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.signedness == .unsigned or info.bits < 32) {
             try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
@@ -156,7 +156,7 @@ test "readInt: positive int32" {
     const buffer = [_]u8{ 0xd2, 0x7f, 0xff, 0xff, 0xff };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        var unpacker = msgpack.unpacker(stream.reader(), .{});
+        var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.bits < 31) {
             try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
@@ -170,7 +170,7 @@ test "readInt: negative int64" {
     const buffer = [_]u8{ 0xd3, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        var unpacker = msgpack.unpacker(stream.reader(), .{});
+        var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.signedness == .unsigned or info.bits < 64) {
             try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));
@@ -184,7 +184,7 @@ test "readInt: positive int64" {
     const buffer = [_]u8{ 0xd3, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
     inline for (int_types) |T| {
         var stream = std.io.fixedBufferStream(&buffer);
-        var unpacker = msgpack.unpacker(stream.reader(), .{});
+        var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
         const info = @typeInfo(T).Int;
         if (info.bits < 63) {
             try std.testing.expectError(error.IntegerOverflow, unpacker.readInt(T));

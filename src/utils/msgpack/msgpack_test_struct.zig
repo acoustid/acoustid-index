@@ -114,7 +114,7 @@ test "readStruct: map_by_index" {
         0x02, // value: i32(2)
     };
     var stream = std.io.fixedBufferStream(&buffer);
-    var unpacker = msgpack.unpacker(stream.reader(), .{ .struct_format = .map_by_index });
+    var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{ .struct_format = .map_by_index });
     try std.testing.expectEqual(Msg{ .a = 1, .b = 2 }, try unpacker.readStruct(Msg));
 }
 
@@ -135,7 +135,7 @@ test "readStruct: map_by_name" {
         0x02, // value: i32(2)
     };
     var stream = std.io.fixedBufferStream(&buffer);
-    var unpacker = msgpack.unpackerWithAllocator(stream.reader(), arena.allocator(), .{ .struct_format = .map_by_name });
+    var unpacker = msgpack.unpacker(stream.reader(), arena.allocator(), .{ .struct_format = .map_by_name });
     try std.testing.expectEqual(Msg{ .a = 1, .b = 2 }, try unpacker.readStruct(Msg));
 }
 
@@ -151,7 +151,7 @@ test "readStruct: array" {
         0x02, // value: i32(2)
     };
     var stream = std.io.fixedBufferStream(&buffer);
-    var unpacker = msgpack.unpacker(stream.reader(), .{ .struct_format = .array });
+    var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{ .struct_format = .array });
     try std.testing.expectEqual(Msg{ .a = 1, .b = 2 }, try unpacker.readStruct(Msg));
 }
 
@@ -167,7 +167,7 @@ test "readStruct: omit nulls" {
         0x01, // value: u32(1)
     };
     var stream = std.io.fixedBufferStream(&buffer);
-    var unpacker = msgpack.unpacker(stream.reader(), .{ .struct_format = .map_by_index });
+    var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{ .struct_format = .map_by_index });
     try std.testing.expectEqual(Msg{ .a = 1, .b = null }, try unpacker.readStruct(Msg));
 }
 
@@ -183,7 +183,7 @@ test "readStruct: omit defaults" {
         0x01, // value: u32(1)
     };
     var stream = std.io.fixedBufferStream(&buffer);
-    var unpacker = msgpack.unpacker(stream.reader(), .{ .struct_format = .map_by_index });
+    var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{ .struct_format = .map_by_index });
     try std.testing.expectEqual(Msg{ .a = 1, .b = 100 }, try unpacker.readStruct(Msg));
 }
 
@@ -199,6 +199,6 @@ test "readStruct: missing field" {
         0x01, // value: u32(1)
     };
     var stream = std.io.fixedBufferStream(&buffer);
-    var unpacker = msgpack.unpacker(stream.reader(), .{ .struct_format = .map_by_index });
+    var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{ .struct_format = .map_by_index });
     try std.testing.expectError(error.InvalidFormat, unpacker.readStruct(Msg));
 }

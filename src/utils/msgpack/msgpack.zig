@@ -523,24 +523,45 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             return buf;
         }
 
-        pub fn readArray(self: *Self, comptime T: type, allocator: std.mem.Allocator) ![]T {
+        pub fn readArrayHeaderOrNull(self: *Self) !?usize {
             const byte = try self.reader.readByte();
-            const len = switch (byte) {
-                0xdc => try self.reader.readIntBig(u16),
-                0xdd => try self.reader.readIntBig(u32),
-                else => if (byte < 0x90 or byte > 0x9f) {
-                    return error.InvalidFormat;
-                } else {
-                    byte & 0xf;
+            switch (byte) {
+                MSG_NIL => return null,
+                MSG_ARRAY16 => return try self.readIntValue(u16, usize),
+                MSG_ARRAY32 => return try self.readIntValue(u32, usize),
+                else => {
+                    if (byte & 0xf0 == MSG_FIXARRAY) {
+                        return byte & 0xf;
+                    } else {
+                        return error.InvalidFormat;
+                    }
                 },
-            };
+            }
+        }
 
-            const array = try allocator.alloc(T, len);
-            errdefer allocator.free(array);
-            for (array) |*item| {
+        pub fn readArrayHeader(self: *Self) !usize {
+            return try self.readArrayHeaderOrNull() orelse error.InvalidFormat;
+        }
+
+        pub fn readArrayOrNull(self: *Self, comptime T: type, allocator: std.mem.Allocator) !?[]T {
+            if (AllocatorType == NoAllocator) {
+                @compileError("No allocator provided");
+            }
+
+            const size = try self.readArrayHeaderOrNull() orelse return null;
+
+            const result = try allocator.alloc(T, size);
+            errdefer allocator.free(result);
+
+            for (result) |*item| {
                 item.* = try self.read(T);
             }
-            return array;
+
+            return result;
+        }
+
+        pub fn readArray(self: *Self, comptime T: type) ![]T {
+            return try self.readArrayOrNull(T, self.allocator) orelse return error.InvalidFormat;
         }
 
         pub fn readStruct(self: *Self, comptime T: type) !T {
@@ -619,6 +640,52 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             return result;
         }
 
+        pub fn readUnionOrNull(self: *Self, comptime T: type) !?T {
+            const type_info = @typeInfo(T);
+            if (type_info != .Union) {
+                @compileError("Expected union type, not " ++ @typeName(T));
+            }
+
+            if (type_info.Union.tag_type == null) {
+                @compileError("Expected tagged union type, not " + @typeName(T));
+            }
+
+            const size = try self.readMapHeaderOrNull() orelse return null;
+            if (size != 1) {
+                return error.InvalidFormat;
+            }
+
+            const fields = type_info.Union.fields;
+
+            const field_no = try self.readInt(u8);
+            if (field_no >= fields.len) {
+                return error.InvalidFormat;
+            }
+
+            var result: T = undefined;
+
+            inline for (fields, 0..) |field, i| {
+                if (field_no == i) {
+                    if (field.type == void) {
+                        try self.readNil();
+                        result = @unionInit(T, field.name, {});
+                    } else {
+                        const value = try self.read(field.type);
+                        result = @unionInit(T, field.name, value);
+                    }
+                    break;
+                }
+            } else {
+                return error.InvalidFormat;
+            }
+
+            return result;
+        }
+
+        pub fn readUnion(self: *Self, comptime T: type) !T {
+            return try self.readUnionOrNull(T) orelse return error.InvalidFormat;
+        }
+
         fn resolveValueType(comptime T: type) type {
             const type_info = @typeInfo(T);
             if (type_info == .Optional) {
@@ -634,6 +701,12 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
                 .Int => return try self.readInt(T),
                 .Float => return try self.readFloat(T),
                 .Array => return try self.readArray(type_info.Array.child),
+                .Pointer => {
+                    if (type_info.Pointer.size == .Slice) {
+                        return try self.readArray(type_info.Pointer.child);
+                    }
+                },
+                .Union => return try self.readUnion(T),
                 .Struct => return try self.readStruct(T),
                 .Optional => {
                     const child_type_info = @typeInfo(type_info.Optional.child);
@@ -641,16 +714,19 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
                         .Bool => return try self.readBoolOrNull(),
                         .Int => return try self.readIntOrNull(type_info.Optional.child),
                         .Float => return try self.readFloatOrNull(type_info.Optional.child),
-                        else => @compileError("Unsupported type " ++ @typeName(T)),
+                        .Array => return try self.readArrayOrNull(type_info.Array.child),
+                        else => {},
                     }
                 },
-                else => @compileError("Unsupported type"),
+                else => {},
             }
+            @compileError("Unsupported type " ++ @typeName(T));
         }
 
-        fn readMapHeader(self: *Self) !usize {
+        fn readMapHeaderOrNull(self: *Self) !?usize {
             const byte = try self.reader.readByte();
             switch (byte) {
+                MSG_NIL => return null,
                 MSG_MAP16 => return try self.readIntValue(u16, usize),
                 MSG_MAP32 => return try self.readIntValue(u32, usize),
                 else => {
@@ -663,19 +739,8 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             }
         }
 
-        fn readArrayHeader(self: *Self) !usize {
-            const byte = try self.reader.readByte();
-            switch (byte) {
-                MSG_ARRAY16 => return try self.readIntValue(u16, usize),
-                MSG_ARRAY32 => return try self.readIntValue(u32, usize),
-                else => {
-                    if (byte & 0xf0 == MSG_FIXARRAY) {
-                        return byte & 0xf;
-                    } else {
-                        return error.InvalidFormat;
-                    }
-                },
-            }
+        fn readMapHeader(self: *Self) !usize {
+            return try self.readMapHeaderOrNull() orelse return error.InvalidFormat;
         }
 
         fn readStringHeader(self: *Self) !usize {
@@ -700,11 +765,11 @@ pub fn packer(writer: anytype, options: Options) Packer(@TypeOf(writer)) {
     return Packer(@TypeOf(writer)).init(writer, options);
 }
 
-pub fn unpackerWithAllocator(reader: anytype, allocator: std.mem.Allocator, comptime options: Options) Unpacker(@TypeOf(reader), std.mem.Allocator, options) {
+pub fn unpacker(reader: anytype, allocator: std.mem.Allocator, comptime options: Options) Unpacker(@TypeOf(reader), std.mem.Allocator, options) {
     return Unpacker(@TypeOf(reader), std.mem.Allocator, options).init(reader, allocator);
 }
 
-pub fn unpacker(reader: anytype, comptime options: Options) Unpacker(@TypeOf(reader), NoAllocator, options) {
+pub fn unpackerNoAlloc(reader: anytype, comptime options: Options) Unpacker(@TypeOf(reader), NoAllocator, options) {
     return Unpacker(@TypeOf(reader), NoAllocator, options).init(reader, .{});
 }
 

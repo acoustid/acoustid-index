@@ -4,14 +4,14 @@ const msgpack = @import("msgpack.zig");
 test "readNil" {
     const buffer = [_]u8{0xc0};
     var stream = std.io.fixedBufferStream(&buffer);
-    var unpacker = msgpack.unpacker(stream.reader(), .{});
+    var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
     try unpacker.readNil();
 }
 
 test "readNil: wrong data" {
     const buffer = [_]u8{0x00};
     var stream = std.io.fixedBufferStream(&buffer);
-    var unpacker = msgpack.unpacker(stream.reader(), .{});
+    var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{});
     try std.testing.expectError(error.InvalidFormat, unpacker.readNil());
 }
 

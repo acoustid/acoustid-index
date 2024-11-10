@@ -2,6 +2,8 @@ const std = @import("std");
 const assert = std.debug.assert;
 const log = std.log.scoped(.oplog);
 
+const msgpack = @import("utils/msgpack.zig");
+
 const common = @import("common.zig");
 const Change = common.Change;
 const InMemoryIndex = @import("InMemoryIndex.zig");
@@ -18,7 +20,7 @@ pub const FileInfo = struct {
 
 pub const Transaction = struct {
     commit_id: u64,
-    changes: []Change,
+    changes: []const Change,
 };
 
 pub const Entry = struct {
@@ -228,32 +230,16 @@ pub fn truncate(self: *Self, commit_id: u64) !void {
 const newline: u8 = '\n';
 
 fn writeEntries(writer: anytype, commit_id: u64, changes: []const Change) !void {
-    try writer.writeByte(newline);
+    var packer = msgpack.packer(writer, .{
+        .struct_format = .map_by_index,
+    });
 
-    const begin_entry = Entry{
-        .id = commit_id,
-        .begin = .{
-            .size = @truncate(changes.len),
-        },
+    const txn = Transaction{
+        .commit_id = commit_id,
+        .changes = changes,
     };
-    try std.json.stringify(begin_entry, .{ .emit_null_optional_fields = false }, writer);
-    try writer.writeByte(newline);
 
-    for (changes) |change| {
-        const entry = Entry{
-            .id = commit_id,
-            .change = change,
-        };
-        try std.json.stringify(entry, .{ .emit_null_optional_fields = false }, writer);
-        try writer.writeByte(newline);
-    }
-
-    const commit_entry = Entry{
-        .id = commit_id,
-        .commit = true,
-    };
-    try std.json.stringify(commit_entry, .{ .emit_null_optional_fields = false }, writer);
-    try writer.writeByte(newline);
+    try packer.writeStruct(Transaction, txn);
 }
 
 pub fn write(self: *Self, changes: []const Change, index: *InMemoryIndex) !void {
@@ -312,17 +298,14 @@ test "write entries" {
     var file = try oplogDir.openFile("0000000000000001.xlog", .{});
     defer file.close();
 
-    const contents = try file.reader().readAllAlloc(std.testing.allocator, 1024 * 1024);
-    defer std.testing.allocator.free(contents);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
 
-    const expected =
-        \\
-        \\{"id":1,"begin":{"size":1}}
-        \\{"id":1,"change":{"insert":{"id":1,"hashes":[1,2,3]}}}
-        \\{"id":1,"commit":true}
-        \\
-    ;
-    try std.testing.expectEqualStrings(expected, contents);
+    var unpacker = msgpack.unpacker(file.reader(), arena.allocator(), .{ .struct_format = .map_by_index });
+    const txn = try unpacker.readStruct(Transaction);
+
+    try std.testing.expectEqual(1, txn.commit_id);
+    try std.testing.expectEqualDeep(&changes, txn.changes);
 }
 
 pub const OplogIterator = struct {
@@ -394,50 +377,12 @@ pub const OplogFileIterator = struct {
     pub fn next(self: *OplogFileIterator) !?Transaction {
         _ = self.arena.reset(.retain_capacity);
 
-        var allocator = self.arena.allocator();
-        var reader = self.buffered_reader.reader();
+        var unpacker = msgpack.unpacker(
+            self.buffered_reader.reader(),
+            self.arena.allocator(),
+            .{ .struct_format = .map_by_index },
+        );
 
-        var commit_id: u64 = 0;
-        var changes = std.ArrayList(Change).init(allocator);
-
-        const line_buf = try allocator.alloc(u8, 64 * 1024);
-        defer allocator.free(line_buf);
-
-        while (true) {
-            const line = reader.readUntilDelimiter(line_buf, '\n') catch |err| {
-                if (err == error.EndOfStream) {
-                    break;
-                }
-                return err;
-            };
-            if (line.len == 0) {
-                continue;
-            }
-
-            const entry = try std.json.parseFromSliceLeaky(Entry, allocator, line, .{});
-
-            if (entry.begin) |begin| {
-                commit_id = entry.id;
-                changes.clearRetainingCapacity();
-                try changes.ensureTotalCapacity(begin.size);
-            }
-
-            if (entry.change) |apply| {
-                if (entry.id == commit_id) {
-                    try changes.append(apply);
-                }
-            }
-
-            if (entry.commit) |_| {
-                if (entry.id == commit_id) {
-                    return Transaction{
-                        .commit_id = commit_id,
-                        .changes = changes.items,
-                    };
-                }
-            }
-        }
-
-        return null;
+        return try unpacker.read(Transaction);
     }
 };
