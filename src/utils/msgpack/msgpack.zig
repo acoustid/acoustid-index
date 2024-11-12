@@ -880,6 +880,27 @@ pub fn unpackerNoAlloc(reader: anytype) Unpacker(@TypeOf(reader), NoAllocator) {
     return Unpacker(@TypeOf(reader), NoAllocator).init(reader, .{});
 }
 
+const UnpackOptions = struct {
+    allocator: ?std.mem.Allocator = null,
+};
+
+pub fn unpack(comptime T: type, reader: anytype, options: UnpackOptions) !T {
+    if (options.allocator) |allocator| {
+        return try unpacker(reader, allocator).read(T);
+    } else {
+        return try unpackerNoAlloc(reader).read(T);
+    }
+}
+
+pub fn unpackFromBytes(comptime T: type, bytes: []const u8, options: UnpackOptions) !T {
+    var stream = std.io.fixedBufferStream(bytes);
+    return try unpack(T, stream.reader(), options);
+}
+
+pub fn pack(comptime T: type, writer: anytype, value: anytype) !void {
+    return try packer(writer).write(T, value);
+}
+
 test {
     _ = @import("msgpack_test.zig");
 }

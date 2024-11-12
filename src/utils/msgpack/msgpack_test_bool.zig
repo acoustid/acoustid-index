@@ -1,46 +1,44 @@
 const std = @import("std");
 const msgpack = @import("msgpack.zig");
 
-test "readBool: null" {
-    const buffer = [_]u8{0xc0};
-    var stream = std.io.fixedBufferStream(&buffer);
-    var unpacker = msgpack.unpackerNoAlloc(stream.reader());
-    try std.testing.expectEqual(null, try unpacker.read(?bool));
-}
+const packed_null = [_]u8{0xc0};
+const packed_true = [_]u8{0xc3};
+const packed_false = [_]u8{0xc2};
+const packed_zero = [_]u8{0x00};
 
 test "readBool: false" {
-    const buffer = [_]u8{0xc2};
-    var stream = std.io.fixedBufferStream(&buffer);
-    var unpacker = msgpack.unpackerNoAlloc(stream.reader());
-    try std.testing.expectEqual(false, try unpacker.read(bool));
+    try std.testing.expectEqual(false, try msgpack.unpackFromBytes(bool, &packed_false, .{}));
 }
 
 test "readBool: true" {
-    const buffer = [_]u8{0xc3};
-    var stream = std.io.fixedBufferStream(&buffer);
-    var unpacker = msgpack.unpackerNoAlloc(stream.reader());
-    try std.testing.expectEqual(true, try unpacker.read(bool));
+    try std.testing.expectEqual(true, try msgpack.unpackFromBytes(bool, &packed_true, .{}));
 }
 
-test "readBool: wrong data" {
-    const buffer = [_]u8{0x00};
-    var stream = std.io.fixedBufferStream(&buffer);
-    var unpacker = msgpack.unpackerNoAlloc(stream.reader());
-    try std.testing.expectError(error.InvalidFormat, unpacker.read(bool));
+test "readBool: null" {
+    try std.testing.expectEqual(null, try msgpack.unpackFromBytes(?bool, &packed_null, .{}));
+}
+
+test "readBool: wrong type" {
+    try std.testing.expectError(error.InvalidFormat, msgpack.unpackFromBytes(bool, &packed_zero, .{}));
 }
 
 test "writeBool: false" {
-    var buffer: [100]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    var packer = msgpack.packer(stream.writer());
-    try packer.writeBool(false);
-    try std.testing.expectEqualSlices(u8, &.{0xc2}, stream.getWritten());
+    var output = std.ArrayList(u8).init(std.testing.allocator);
+    defer output.deinit();
+    try msgpack.pack(bool, output.writer(), false);
+    try std.testing.expectEqualSlices(u8, &packed_false, output.items);
 }
 
 test "writeBool: true" {
-    var buffer: [100]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
-    var packer = msgpack.packer(stream.writer());
-    try packer.writeBool(true);
-    try std.testing.expectEqualSlices(u8, &.{0xc3}, stream.getWritten());
+    var output = std.ArrayList(u8).init(std.testing.allocator);
+    defer output.deinit();
+    try msgpack.pack(bool, output.writer(), true);
+    try std.testing.expectEqualSlices(u8, &packed_true, output.items);
+}
+
+test "writeBool: null" {
+    var output = std.ArrayList(u8).init(std.testing.allocator);
+    defer output.deinit();
+    try msgpack.pack(?bool, output.writer(), null);
+    try std.testing.expectEqualSlices(u8, &packed_null, output.items);
 }

@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const common = @import("common.zig");
-const Change = common.Change;
+const Change = @import("change.zig").Change;
 const SearchResults = common.SearchResults;
 
 const Scheduler = @import("utils/Scheduler.zig");
