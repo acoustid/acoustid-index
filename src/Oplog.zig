@@ -23,7 +23,7 @@ pub const Transaction = struct {
     changes: []const Change,
 
     pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_array = .{} };
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
     }
 };
 
