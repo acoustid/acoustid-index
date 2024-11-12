@@ -21,7 +21,7 @@ pub const Change = union(enum) {
     insert: Insert,
     delete: Delete,
 
-    pub fn msgpackFormat() msgpack.StructFormat {
+    pub fn msgpackFormat() msgpack.UnionFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
     }
 };

@@ -376,23 +376,36 @@ pub fn Packer(comptime Writer: type) type {
                 @compileError("Expected union type , not " ++ @typeName(T));
             }
 
-            if (type_info.Union.tag_type) |TagType| {
-                try self.writeMapHeader(1);
-                inline for (type_info.Union.fields, 0..) |field, i| {
-                    if (value == @field(TagType, field.name)) {
-                        try self.writeInt(u8, @intCast(i));
-                        if (field.type == void) {
-                            try self.writeNil();
-                        } else {
-                            try self.write(field.type, @field(value, field.name));
+            const TagType = type_info.Union.tag_type orelse @compileError("Unable to write untagged union '" ++ @typeName(T) ++ "'");
+
+            const format: UnionFormat = if (std.meta.hasFn(T, "msgpackFormat")) T.msgpackFormat() else default_union_format;
+            switch (format) {
+                .as_map => |opts| {
+                    try self.writeMapHeader(1);
+                    inline for (type_info.Union.fields, 0..) |field, i| {
+                        if (value == @field(TagType, field.name)) {
+                            switch (opts.key) {
+                                .field_index => {
+                                    try self.writeInt(u8, @intCast(i));
+                                },
+                                .field_name => {
+                                    try self.writeString(field.name);
+                                },
+                                .field_name_prefix => |prefix| {
+                                    try self.writeString(strPrefix(field.name, prefix));
+                                },
+                            }
+                            if (field.type == void) {
+                                try self.writeNil();
+                            } else {
+                                try self.write(field.type, @field(value, field.name));
+                            }
+                            break;
                         }
-                        break;
+                    } else {
+                        unreachable;
                     }
-                } else {
-                    unreachable;
-                }
-            } else {
-                @compileError("Unable to write untagged union '" ++ @typeName(T) ++ "'");
+                },
             }
         }
 
@@ -706,34 +719,34 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type) type {
                     var j: usize = 0;
                     while (j < size - extra_fields) : (j += 1) {
                         switch (opts.key) {
-                            .field_name => {
-                                const name = try self.readStringInto(&field_name_buffer, .required);
-                                inline for (fields, 0..) |field, i| {
-                                    if (std.mem.eql(u8, name, field.name)) {
-                                        fields_set.set(i);
-                                        @field(result, field.name) = try self.read(field.type);
-                                        break;
-                                    }
-                                } else {
-                                    return error.InvalidFormat;
-                                }
-                            },
-                            .field_name_prefix => |prefix| {
-                                const name = try self.readStringInto(&field_name_buffer, .required);
-                                inline for (fields, 0..) |field, i| {
-                                    if (std.mem.eql(u8, strPrefix(name, prefix), strPrefix(field.name, prefix))) {
-                                        fields_set.set(i);
-                                        @field(result, field.name) = try self.read(field.type);
-                                        break;
-                                    }
-                                } else {
-                                    return error.InvalidFormat;
-                                }
-                            },
                             .field_index => {
-                                const index = try self.readInt(u8);
+                                const field_no = try self.readInt(u8);
                                 inline for (fields, 0..) |field, i| {
-                                    if (index == i) {
+                                    if (field_no == i) {
+                                        fields_set.set(i);
+                                        @field(result, field.name) = try self.read(field.type);
+                                        break;
+                                    }
+                                } else {
+                                    return error.InvalidFormat;
+                                }
+                            },
+                            .field_name => {
+                                const field_name = try self.readStringInto(&field_name_buffer, .required);
+                                inline for (fields, 0..) |field, i| {
+                                    if (std.mem.eql(u8, field.name, field_name)) {
+                                        fields_set.set(i);
+                                        @field(result, field.name) = try self.read(field.type);
+                                        break;
+                                    }
+                                } else {
+                                    return error.InvalidFormat;
+                                }
+                            },
+                            .field_name_prefix => {
+                                const field_name = try self.readStringInto(&field_name_buffer, .required);
+                                inline for (fields, 0..) |field, i| {
+                                    if (std.mem.startsWith(u8, field.name, field_name)) {
                                         fields_set.set(i);
                                         @field(result, field.name) = try self.read(field.type);
                                         break;
@@ -789,33 +802,78 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type) type {
                 @compileError("Expected tagged union type, not " + @typeName(T));
             }
 
-            const size = try self.readMapHeader(.optional) orelse return null;
-            if (size != 1) {
-                return error.InvalidFormat;
-            }
-
             const fields = type_info.Union.fields;
 
-            const field_no = try self.readInt(u8);
-            if (field_no >= fields.len) {
-                return error.InvalidFormat;
+            comptime var max_field_name_len = 0;
+            inline for (fields) |field| {
+                max_field_name_len = @max(max_field_name_len, field.name.len);
             }
+            var field_name_buffer: [max_field_name_len]u8 = undefined;
 
             var result: T = undefined;
 
-            inline for (fields, 0..) |field, i| {
-                if (field_no == i) {
-                    if (field.type == void) {
-                        try self.readNil();
-                        result = @unionInit(T, field.name, {});
-                    } else {
-                        const value = try self.read(field.type);
-                        result = @unionInit(T, field.name, value);
+            const format: UnionFormat = if (std.meta.hasFn(T, "msgpackFormat")) T.msgpackFormat() else default_union_format;
+            switch (format) {
+                .as_map => |opts| {
+                    const size = try self.readMapHeader(.optional) orelse return null;
+                    if (size != 1) {
+                        return error.InvalidFormat;
                     }
-                    break;
-                }
-            } else {
-                return error.InvalidFormat;
+
+                    switch (opts.key) {
+                        .field_index => {
+                            const field_no = try self.readInt(u8);
+                            inline for (fields, 0..) |field, i| {
+                                if (field_no == i) {
+                                    if (field.type == void) {
+                                        try self.readNil();
+                                        result = @unionInit(T, field.name, {});
+                                    } else {
+                                        const value = try self.read(field.type);
+                                        result = @unionInit(T, field.name, value);
+                                    }
+                                    break;
+                                }
+                            } else {
+                                return error.InvalidFormat;
+                            }
+                        },
+                        .field_name => {
+                            const field_name = try self.readStringInto(&field_name_buffer, .required);
+                            inline for (fields) |field| {
+                                if (std.mem.eql(u8, field.name, field_name)) {
+                                    if (field.type == void) {
+                                        try self.readNil();
+                                        result = @unionInit(T, field.name, {});
+                                    } else {
+                                        const value = try self.read(field.type);
+                                        result = @unionInit(T, field.name, value);
+                                    }
+                                    break;
+                                }
+                            } else {
+                                return error.InvalidFormat;
+                            }
+                        },
+                        .field_name_prefix => {
+                            const field_name = try self.readStringInto(&field_name_buffer, .required);
+                            inline for (fields) |field| {
+                                if (std.mem.startsWith(u8, field.name, field_name)) {
+                                    if (field.type == void) {
+                                        try self.readNil();
+                                        result = @unionInit(T, field.name, {});
+                                    } else {
+                                        const value = try self.read(field.type);
+                                        result = @unionInit(T, field.name, value);
+                                    }
+                                }
+                                break;
+                            } else {
+                                return error.InvalidFormat;
+                            }
+                        },
+                    }
+                },
             }
 
             return result;

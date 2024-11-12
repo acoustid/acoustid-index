@@ -4,6 +4,10 @@ const msgpack = @import("msgpack.zig");
 const Msg1 = union(enum) {
     a: u32,
     b: u64,
+
+    pub fn msgpackFormat() msgpack.UnionFormat {
+        return .{ .as_map = .{ .key = .field_index } };
+    }
 };
 const msg1 = Msg1{ .a = 1 };
 const msg1_packed = [_]u8{
@@ -15,6 +19,10 @@ const msg1_packed = [_]u8{
 const Msg2 = union(enum) {
     a,
     b: u64,
+
+    pub fn msgpackFormat() msgpack.UnionFormat {
+        return .{ .as_map = .{ .key = .field_index } };
+    }
 };
 const msg2 = Msg2{ .a = {} };
 const msg2_packed = [_]u8{
