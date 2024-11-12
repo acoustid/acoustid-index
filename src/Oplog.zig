@@ -2,7 +2,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 const log = std.log.scoped(.oplog);
 
-const msgpack = @import("utils/msgpack.zig");
+const msgpack = @import("utils/msgpack/msgpack.zig");
 
 const common = @import("common.zig");
 const Change = common.Change;
@@ -21,6 +21,10 @@ pub const FileInfo = struct {
 pub const Transaction = struct {
     id: u64,
     changes: []const Change,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_array = .{} };
+    }
 };
 
 allocator: std.mem.Allocator,
@@ -221,9 +225,7 @@ pub fn truncate(self: *Self, commit_id: u64) !void {
 const newline: u8 = '\n';
 
 fn writeEntries(writer: anytype, commit_id: u64, changes: []const Change) !void {
-    var packer = msgpack.packer(writer, .{
-        .struct_format = .map_by_index,
-    });
+    var packer = msgpack.packer(writer);
 
     const txn = Transaction{
         .id = commit_id,
@@ -291,7 +293,7 @@ test "write entries" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
-    var unpacker = msgpack.unpacker(file.reader(), arena.allocator(), .{ .struct_format = .map_by_index });
+    var unpacker = msgpack.unpacker(file.reader(), arena.allocator());
     const txn = try unpacker.read(Transaction);
 
     try std.testing.expectEqual(1, txn.id);
@@ -370,7 +372,6 @@ pub const OplogFileIterator = struct {
         var unpacker = msgpack.unpacker(
             self.buffered_reader.reader(),
             self.arena.allocator(),
-            .{ .struct_format = .map_by_index },
         );
 
         return unpacker.read(Transaction) catch |err| {

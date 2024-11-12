@@ -5,12 +5,16 @@ test "writeStruct: map_by_index" {
     const Msg = struct {
         a: u32,
         b: u64,
+
+        pub fn msgpackFormat() msgpack.StructFormat {
+            return .{ .as_map = .{ .key = .field_index } };
+        }
     };
     const msg = Msg{ .a = 1, .b = 2 };
 
     var buffer: [100]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buffer);
-    var packer = msgpack.packer(stream.writer(), .{ .struct_format = .map_by_index });
+    var packer = msgpack.packer(stream.writer());
     try packer.writeStruct(Msg, msg, 0);
 
     try std.testing.expectEqualSlices(u8, &.{
@@ -26,12 +30,16 @@ test "writeStruct: map_by_name" {
     const Msg = struct {
         a: u32,
         b: u64,
+
+        pub fn msgpackFormat() msgpack.StructFormat {
+            return .{ .as_map = .{ .key = .field_name } };
+        }
     };
     const msg = Msg{ .a = 1, .b = 2 };
 
     var buffer: [100]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buffer);
-    var packer = msgpack.packer(stream.writer(), .{ .struct_format = .map_by_name });
+    var packer = msgpack.packer(stream.writer());
     try packer.writeStruct(Msg, msg, 0);
 
     try std.testing.expectEqualSlices(u8, &.{
@@ -47,12 +55,16 @@ test "writeStruct: array" {
     const Msg = struct {
         a: u32,
         b: u64,
+
+        pub fn msgpackFormat() msgpack.StructFormat {
+            return .{ .as_array = .{} };
+        }
     };
     const msg = Msg{ .a = 1, .b = 2 };
 
     var buffer: [100]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buffer);
-    var packer = msgpack.packer(stream.writer(), .{ .struct_format = .array });
+    var packer = msgpack.packer(stream.writer());
     try packer.writeStruct(Msg, msg, 0);
 
     try std.testing.expectEqualSlices(u8, &.{
@@ -66,12 +78,16 @@ test "writeStruct: omit defaults" {
     const Msg = struct {
         a: u32 = 1,
         b: u64,
+
+        pub fn msgpackFormat() msgpack.StructFormat {
+            return .{ .as_map = .{ .key = .field_index, .omit_defaults = true } };
+        }
     };
     const msg = Msg{ .a = 1, .b = 2 };
 
     var buffer: [100]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buffer);
-    var packer = msgpack.packer(stream.writer(), .{ .struct_format = .map_by_index, .omit_defaults = true });
+    var packer = msgpack.packer(stream.writer());
     try packer.writeStruct(Msg, msg, 0);
 
     try std.testing.expectEqualSlices(u8, &.{
@@ -85,12 +101,16 @@ test "writeStruct: omit nulls" {
     const Msg = struct {
         a: ?u32,
         b: u64,
+
+        pub fn msgpackFormat() msgpack.StructFormat {
+            return .{ .as_map = .{ .key = .field_index, .omit_nulls = true } };
+        }
     };
     const msg = Msg{ .a = null, .b = 2 };
 
     var buffer: [100]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buffer);
-    var packer = msgpack.packer(stream.writer(), .{ .struct_format = .map_by_index, .omit_nulls = true });
+    var packer = msgpack.packer(stream.writer());
     try packer.writeStruct(Msg, msg, 0);
 
     try std.testing.expectEqualSlices(u8, &.{
@@ -104,6 +124,10 @@ test "readStruct: map_by_index" {
     const Msg = struct {
         a: u32,
         b: u64,
+
+        pub fn msgpackFormat() msgpack.StructFormat {
+            return .{ .as_map = .{ .key = .field_index } };
+        }
     };
 
     const buffer = [_]u8{
@@ -114,7 +138,7 @@ test "readStruct: map_by_index" {
         0x02, // value: i32(2)
     };
     var stream = std.io.fixedBufferStream(&buffer);
-    var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{ .struct_format = .map_by_index });
+    var unpacker = msgpack.unpackerNoAlloc(stream.reader());
     try std.testing.expectEqual(Msg{ .a = 1, .b = 2 }, try unpacker.read(Msg));
 }
 
@@ -125,6 +149,10 @@ test "readStruct: map_by_name" {
     const Msg = struct {
         a: u32,
         b: u64,
+
+        pub fn msgpackFormat() msgpack.StructFormat {
+            return .{ .as_map = .{ .key = .field_name } };
+        }
     };
 
     const buffer = [_]u8{
@@ -135,7 +163,7 @@ test "readStruct: map_by_name" {
         0x02, // value: i32(2)
     };
     var stream = std.io.fixedBufferStream(&buffer);
-    var unpacker = msgpack.unpacker(stream.reader(), arena.allocator(), .{ .struct_format = .map_by_name });
+    var unpacker = msgpack.unpacker(stream.reader(), arena.allocator());
     try std.testing.expectEqual(Msg{ .a = 1, .b = 2 }, try unpacker.read(Msg));
 }
 
@@ -143,6 +171,10 @@ test "readStruct: array" {
     const Msg = struct {
         a: u32,
         b: u64,
+
+        pub fn msgpackFormat() msgpack.StructFormat {
+            return .{ .as_array = .{} };
+        }
     };
 
     const buffer = [_]u8{
@@ -151,7 +183,7 @@ test "readStruct: array" {
         0x02, // value: i32(2)
     };
     var stream = std.io.fixedBufferStream(&buffer);
-    var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{ .struct_format = .array });
+    var unpacker = msgpack.unpackerNoAlloc(stream.reader());
     try std.testing.expectEqual(Msg{ .a = 1, .b = 2 }, try unpacker.read(Msg));
 }
 
@@ -159,6 +191,13 @@ test "readStruct: omit nulls" {
     const Msg = struct {
         a: ?u32,
         b: ?u64,
+
+        pub fn msgpackFormat() msgpack.StructFormat {
+            return .{ .as_map = .{
+                .key = .field_index,
+                .omit_nulls = true,
+            } };
+        }
     };
 
     const buffer = [_]u8{
@@ -167,7 +206,7 @@ test "readStruct: omit nulls" {
         0x01, // value: u32(1)
     };
     var stream = std.io.fixedBufferStream(&buffer);
-    var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{ .struct_format = .map_by_index });
+    var unpacker = msgpack.unpackerNoAlloc(stream.reader());
     try std.testing.expectEqual(Msg{ .a = 1, .b = null }, try unpacker.read(Msg));
 }
 
@@ -175,6 +214,13 @@ test "readStruct: omit defaults" {
     const Msg = struct {
         a: u32,
         b: u64 = 100,
+
+        pub fn msgpackFormat() msgpack.StructFormat {
+            return .{ .as_map = .{
+                .key = .field_index,
+                .omit_defaults = true,
+            } };
+        }
     };
 
     const buffer = [_]u8{
@@ -183,7 +229,7 @@ test "readStruct: omit defaults" {
         0x01, // value: u32(1)
     };
     var stream = std.io.fixedBufferStream(&buffer);
-    var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{ .struct_format = .map_by_index });
+    var unpacker = msgpack.unpackerNoAlloc(stream.reader());
     try std.testing.expectEqual(Msg{ .a = 1, .b = 100 }, try unpacker.read(Msg));
 }
 
@@ -191,6 +237,10 @@ test "readStruct: missing field" {
     const Msg = struct {
         a: u32,
         b: u64,
+
+        pub fn msgpackFormat() msgpack.StructFormat {
+            return .{ .as_map = .{ .key = .field_index } };
+        }
     };
 
     const buffer = [_]u8{
@@ -199,6 +249,6 @@ test "readStruct: missing field" {
         0x01, // value: u32(1)
     };
     var stream = std.io.fixedBufferStream(&buffer);
-    var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{ .struct_format = .map_by_index });
+    var unpacker = msgpack.unpackerNoAlloc(stream.reader());
     try std.testing.expectError(error.InvalidFormat, unpacker.read(Msg));
 }

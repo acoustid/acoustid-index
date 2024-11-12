@@ -1,6 +1,8 @@
 const std = @import("std");
 const testing = std.testing;
 
+const msgpack = @import("utils/msgpack/msgpack.zig");
+
 pub const Item = packed struct(u64) {
     id: u32,
     hash: u32,
@@ -146,6 +148,10 @@ pub const Delete = struct {
 pub const Change = union(enum) {
     insert: Insert,
     delete: Delete,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
 };
 
 pub const SegmentID = packed struct(u64) {
@@ -171,5 +177,9 @@ pub const SegmentID = packed struct(u64) {
             .version = @min(a.version, b.version),
             .included_merges = 1 + a.included_merges + b.included_merges,
         };
+    }
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_array = .{} };
     }
 };

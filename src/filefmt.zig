@@ -243,6 +243,16 @@ pub const Header = extern struct {
     included_merges: u32,
     max_commit_id: u64,
     block_size: u32,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{
+            .as_map = .{
+                .key = .field_index,
+                .omit_defaults = false,
+                .omit_nulls = true,
+            },
+        };
+    }
 };
 
 pub const Footer = struct {
@@ -250,6 +260,16 @@ pub const Footer = struct {
     num_items: u32,
     num_blocks: u32,
     checksum: u64,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{
+            .as_map = .{
+                .key = .field_index,
+                .omit_defaults = false,
+                .omit_nulls = true,
+            },
+        };
+    }
 };
 
 const reserved_header_size = 256;
@@ -291,7 +311,7 @@ pub fn writeFile(file: std.fs.File, reader: anytype) !void {
     var counting_writer = std.io.countingWriter(buffered_writer.writer());
     const writer = counting_writer.writer();
 
-    const packer = msgpack.packer(writer, .{});
+    const packer = msgpack.packer(writer);
 
     const segment = reader.segment;
 
@@ -366,7 +386,7 @@ pub fn readFile(file: fs.File, segment: *Segment) !void {
     var fixed_buffer_stream = std.io.fixedBufferStream(raw_data[0..]);
     const reader = fixed_buffer_stream.reader();
 
-    const unpacker = msgpack.unpackerNoAlloc(reader, .{});
+    const unpacker = msgpack.unpackerNoAlloc(reader);
 
     const header = try unpacker.read(Header);
 
@@ -486,12 +506,16 @@ test "writeFile/readFile" {
 
 const index_header_magic_v1: u32 = 0x31584449; // "IDX1" in little endian
 
-const IndexHeader = extern struct {
+const IndexHeader = struct {
     magic: u32,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .field_index } };
+    }
 };
 
 pub fn writeIndexFile(writer: anytype, segments: std.ArrayList(SegmentVersion)) !void {
-    const packer = msgpack.packer(writer, .{});
+    const packer = msgpack.packer(writer);
 
     const header = IndexHeader{
         .magic = index_header_magic_v1,
@@ -507,7 +531,7 @@ pub fn writeIndexFile(writer: anytype, segments: std.ArrayList(SegmentVersion)) 
 }
 
 pub fn readIndexFile(reader: anytype, segments: *std.ArrayList(SegmentVersion)) !void {
-    const unpacker = msgpack.unpackerNoAlloc(reader, .{});
+    const unpacker = msgpack.unpackerNoAlloc(reader);
 
     const header = try unpacker.readStruct(IndexHeader, .required, 1);
     if (header.magic != index_header_magic_v1) {

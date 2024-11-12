@@ -9,7 +9,7 @@ test "writeString" {
     var stream = std.io.fixedBufferStream(&buffer);
     const writer = stream.writer();
 
-    var packer = Packer(@TypeOf(writer)).init(writer, .{});
+    var packer = Packer(@TypeOf(writer)).init(writer);
 
     {
         stream.reset();
@@ -79,7 +79,7 @@ test "writeBinary/writeBinaryHeader" {
     var stream = std.io.fixedBufferStream(&buffer);
     const writer = stream.writer();
 
-    var packer = Packer(@TypeOf(writer)).init(writer, .{});
+    var packer = Packer(@TypeOf(writer)).init(writer);
 
     {
         stream.reset();
@@ -129,7 +129,7 @@ test "writeArray/writeArrayHeader" {
     var stream = std.io.fixedBufferStream(&buffer);
     const writer = stream.writer();
 
-    var packer = Packer(@TypeOf(writer)).init(writer, .{});
+    var packer = Packer(@TypeOf(writer)).init(writer);
 
     {
         stream.reset();

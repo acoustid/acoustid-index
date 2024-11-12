@@ -13,6 +13,10 @@ fn NullableType(comptime T: type, comptime nullable: Nullable) type {
     }
 }
 
+fn strPrefix(src: []const u8, len: usize) []const u8 {
+    return src[0..@min(src.len, len)];
+}
+
 const MSG_POSITIVE_FIXINT_MIN = 0x00;
 const MSG_POSITIVE_FIXINT_MAX = 0x7f;
 const MSG_FIXMAP_MIN = 0x80;
@@ -55,16 +59,37 @@ const MSG_MAP32 = 0xdf;
 const MSG_NEGATIVE_FIXINT_MIN = 0xe0;
 const MSG_NEGATIVE_FIXINT_MAX = 0xff;
 
-pub const StructFormat = enum {
-    map_by_name,
-    map_by_index,
-    array,
-};
-
-pub const Options = struct {
-    struct_format: StructFormat = .map_by_name,
+pub const StructAsMapOptions = struct {
+    key: union(enum) {
+        field_name,
+        field_name_prefix: u8,
+        field_index,
+    },
     omit_nulls: bool = true,
     omit_defaults: bool = false,
+};
+
+pub const StructAsArrayOptions = struct {};
+
+pub const StructFormat = union(enum) {
+    as_map: StructAsMapOptions,
+    as_array: StructAsArrayOptions,
+};
+
+pub const default_struct_format = StructFormat{
+    .as_map = .{
+        .key = .field_name,
+    },
+};
+
+pub const UnionFormat = union(enum) {
+    as_map: StructAsMapOptions,
+};
+
+pub const default_union_format = UnionFormat{
+    .as_map = .{
+        .key = .field_name,
+    },
 };
 
 const NoAllocator = struct {};
@@ -72,14 +97,12 @@ const NoAllocator = struct {};
 pub fn Packer(comptime Writer: type) type {
     return struct {
         writer: Writer,
-        options: Options,
 
         const Self = @This();
 
-        pub fn init(writer: Writer, options: Options) Self {
+        pub fn init(writer: Writer) Self {
             return Self{
                 .writer = writer,
-                .options = options,
             };
         }
 
@@ -272,11 +295,11 @@ pub fn Packer(comptime Writer: type) type {
             }
         }
 
-        fn isStructFieldUsed(self: Self, field: std.builtin.Type.StructField, value: anytype) bool {
+        fn isStructFieldUsed(opts: StructAsMapOptions, field: std.builtin.Type.StructField, value: anytype) bool {
             const field_type_info = @typeInfo(field.type);
             const field_value = @field(value, field.name);
 
-            if (self.options.omit_defaults) {
+            if (opts.omit_defaults) {
                 if (field.default_value) |default_field_value_ptr| {
                     const default_field_value = @as(*field.type, @ptrCast(@alignCast(@constCast(default_field_value_ptr)))).*;
                     if (field_value == default_field_value) {
@@ -285,7 +308,7 @@ pub fn Packer(comptime Writer: type) type {
                 }
             }
 
-            if (self.options.omit_nulls) {
+            if (opts.omit_nulls) {
                 if (field_type_info == .Optional) {
                     if (field_value == null) {
                         return false;
@@ -296,10 +319,10 @@ pub fn Packer(comptime Writer: type) type {
             return true;
         }
 
-        fn countUsedStructFields(self: Self, fields: []const std.builtin.Type.StructField, value: anytype) u16 {
+        fn countUsedStructFields(opts: StructAsMapOptions, fields: []const std.builtin.Type.StructField, value: anytype) u16 {
             var used_field_count: u16 = 0;
             inline for (fields) |field| {
-                if (self.isStructFieldUsed(field, value)) {
+                if (isStructFieldUsed(opts, field, value)) {
                     used_field_count += 1;
                 }
             }
@@ -317,26 +340,28 @@ pub fn Packer(comptime Writer: type) type {
                 @compileError("Too many fields");
             }
 
-            switch (self.options.struct_format) {
-                .map_by_index => {
-                    try self.writeMapHeader(self.countUsedStructFields(fields, value) + extra_fields);
+            const format = if (std.meta.hasFn(T, "msgpackFormat")) T.msgpackFormat() else default_struct_format;
+            switch (format) {
+                .as_map => |opts| {
+                    try self.writeMapHeader(countUsedStructFields(opts, fields, value) + extra_fields);
                     inline for (fields, 0..) |field, i| {
-                        if (self.isStructFieldUsed(field, value)) {
-                            try self.writeInt(u8, @intCast(i));
+                        if (isStructFieldUsed(opts, field, value)) {
+                            switch (opts.key) {
+                                .field_index => {
+                                    try self.writeInt(u8, @intCast(i));
+                                },
+                                .field_name => {
+                                    try self.writeString(field.name);
+                                },
+                                .field_name_prefix => |prefix| {
+                                    try self.writeString(strPrefix(field.name, prefix));
+                                },
+                            }
                             try self.write(field.type, @field(value, field.name));
                         }
                     }
                 },
-                .map_by_name => {
-                    try self.writeMapHeader(self.countUsedStructFields(fields, value) + extra_fields);
-                    inline for (fields) |field| {
-                        if (self.isStructFieldUsed(field, value)) {
-                            try self.writeString(field.name);
-                            try self.write(field.type, @field(value, field.name));
-                        }
-                    }
-                },
-                .array => {
+                .as_array => {
                     try self.writeArrayHeader(fields.len + extra_fields);
                     inline for (fields) |field| {
                         try self.write(field.type, @field(value, field.name));
@@ -407,7 +432,7 @@ pub fn Packer(comptime Writer: type) type {
     };
 }
 
-pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime options: Options) type {
+pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type) type {
     return struct {
         reader: Reader,
         allocator: AllocatorType,
@@ -667,8 +692,9 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             }
             var field_name_buffer: [max_field_name_len]u8 = undefined;
 
-            switch (options.struct_format) {
-                .map_by_index => {
+            const format = if (std.meta.hasFn(T, "msgpackFormat")) T.msgpackFormat() else default_struct_format;
+            switch (format) {
+                .as_map => |opts| {
                     const size = if (optional == .optional)
                         try self.readMapHeader(.optional) orelse return null
                     else
@@ -679,42 +705,47 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
 
                     var j: usize = 0;
                     while (j < size - extra_fields) : (j += 1) {
-                        const index = try self.readInt(u8);
-                        inline for (fields, 0..) |field, i| {
-                            if (index == i) {
-                                fields_set.set(i);
-                                @field(result, field.name) = try self.read(field.type);
-                                break;
-                            }
-                        } else {
-                            return error.InvalidFormat;
+                        switch (opts.key) {
+                            .field_name => {
+                                const name = try self.readStringInto(&field_name_buffer, .required);
+                                inline for (fields, 0..) |field, i| {
+                                    if (std.mem.eql(u8, name, field.name)) {
+                                        fields_set.set(i);
+                                        @field(result, field.name) = try self.read(field.type);
+                                        break;
+                                    }
+                                } else {
+                                    return error.InvalidFormat;
+                                }
+                            },
+                            .field_name_prefix => |prefix| {
+                                const name = try self.readStringInto(&field_name_buffer, .required);
+                                inline for (fields, 0..) |field, i| {
+                                    if (std.mem.eql(u8, strPrefix(name, prefix), strPrefix(field.name, prefix))) {
+                                        fields_set.set(i);
+                                        @field(result, field.name) = try self.read(field.type);
+                                        break;
+                                    }
+                                } else {
+                                    return error.InvalidFormat;
+                                }
+                            },
+                            .field_index => {
+                                const index = try self.readInt(u8);
+                                inline for (fields, 0..) |field, i| {
+                                    if (index == i) {
+                                        fields_set.set(i);
+                                        @field(result, field.name) = try self.read(field.type);
+                                        break;
+                                    }
+                                } else {
+                                    return error.InvalidFormat;
+                                }
+                            },
                         }
                     }
                 },
-                .map_by_name => {
-                    const size = if (optional == .optional)
-                        try self.readMapHeader(.optional) orelse return null
-                    else
-                        try self.readMapHeader(.required);
-
-                    if (size < extra_fields) return error.InvalidFormat;
-                    if (size > fields.len + extra_fields) return error.InvalidFormat;
-
-                    var j: usize = 0;
-                    while (j < size - extra_fields) : (j += 1) {
-                        const name = try self.readStringInto(&field_name_buffer, .required);
-                        inline for (fields, 0..) |field, i| {
-                            if (std.mem.eql(u8, name, field.name)) {
-                                fields_set.set(i);
-                                @field(result, field.name) = try self.read(field.type);
-                                break;
-                            }
-                        } else {
-                            return error.InvalidFormat;
-                        }
-                    }
-                },
-                .array => {
+                .as_array => {
                     const size = if (optional == .optional)
                         try self.readArrayHeader(.optional) orelse return null
                     else
@@ -837,16 +868,16 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
     };
 }
 
-pub fn packer(writer: anytype, options: Options) Packer(@TypeOf(writer)) {
-    return Packer(@TypeOf(writer)).init(writer, options);
+pub fn packer(writer: anytype) Packer(@TypeOf(writer)) {
+    return Packer(@TypeOf(writer)).init(writer);
 }
 
-pub fn unpacker(reader: anytype, allocator: std.mem.Allocator, comptime options: Options) Unpacker(@TypeOf(reader), std.mem.Allocator, options) {
-    return Unpacker(@TypeOf(reader), std.mem.Allocator, options).init(reader, allocator);
+pub fn unpacker(reader: anytype, allocator: std.mem.Allocator) Unpacker(@TypeOf(reader), std.mem.Allocator) {
+    return Unpacker(@TypeOf(reader), std.mem.Allocator).init(reader, allocator);
 }
 
-pub fn unpackerNoAlloc(reader: anytype, comptime options: Options) Unpacker(@TypeOf(reader), NoAllocator, options) {
-    return Unpacker(@TypeOf(reader), NoAllocator, options).init(reader, .{});
+pub fn unpackerNoAlloc(reader: anytype) Unpacker(@TypeOf(reader), NoAllocator) {
+    return Unpacker(@TypeOf(reader), NoAllocator).init(reader, .{});
 }
 
 test {
