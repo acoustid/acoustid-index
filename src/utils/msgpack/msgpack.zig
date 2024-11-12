@@ -15,9 +15,12 @@ fn NullableType(comptime T: type, comptime nullable: Nullable) type {
 
 const MSG_POSITIVE_FIXINT_MIN = 0x00;
 const MSG_POSITIVE_FIXINT_MAX = 0x7f;
-const MSG_FIXMAP = 0x80;
-const MSG_FIXARRAY = 0x90;
-const MSG_FIXSTR = 0xa0;
+const MSG_FIXMAP_MIN = 0x80;
+const MSG_FIXMAP_MAX = 0x8f;
+const MSG_FIXARRAY_MIN = 0x90;
+const MSG_FIXARRAY_MAX = 0x9f;
+const MSG_FIXSTR_MIN = 0xa0;
+const MSG_FIXSTR_MAX = 0xbf;
 const MSG_NIL = 0xc0;
 const MSG_FALSE = 0xc2;
 const MSG_TRUE = 0xc3;
@@ -193,8 +196,8 @@ pub fn Packer(comptime Writer: type) type {
         }
 
         pub fn writeStringHeader(self: Self, len: usize) !void {
-            if (len <= 31) {
-                try self.writer.writeByte(MSG_FIXSTR | @as(u8, @intCast(len)));
+            if (len <= MSG_FIXSTR_MAX - MSG_FIXARRAY_MIN) {
+                try self.writer.writeByte(MSG_FIXSTR_MIN + @as(u8, @intCast(len)));
             } else if (len <= std.math.maxInt(u8)) {
                 try self.writer.writeByte(MSG_STR8);
                 try self.writer.writeByte(@as(u8, @intCast(len)));
@@ -235,8 +238,8 @@ pub fn Packer(comptime Writer: type) type {
         }
 
         pub fn writeArrayHeader(self: Self, len: usize) !void {
-            if (len <= 15) {
-                try self.writer.writeByte(MSG_FIXARRAY | @as(u8, @intCast(len)));
+            if (len <= MSG_FIXARRAY_MAX - MSG_FIXARRAY_MIN) {
+                try self.writer.writeByte(MSG_FIXARRAY_MIN + @as(u8, @intCast(len)));
             } else if (len <= std.math.maxInt(u16)) {
                 try self.writer.writeByte(MSG_ARRAY16);
                 try self.writeFixedSizeIntValue(u16, @intCast(len));
@@ -256,8 +259,8 @@ pub fn Packer(comptime Writer: type) type {
         }
 
         pub fn writeMapHeader(self: Self, len: usize) !void {
-            if (len <= 15) {
-                try self.writer.writeByte(MSG_FIXMAP | @as(u8, @intCast(len)));
+            if (len <= MSG_FIXMAP_MAX - MSG_FIXMAP_MIN) {
+                try self.writer.writeByte(MSG_FIXMAP_MIN + @as(u8, @intCast(len)));
             } else if (len <= std.math.maxInt(u16)) {
                 try self.writer.writeByte(MSG_MAP16);
                 try self.writeFixedSizeIntValue(u16, @intCast(len));
@@ -555,17 +558,12 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
         pub fn readStringHeader(self: Self, comptime nullable: Nullable) !NullableType(usize, nullable) {
             const byte = try self.reader.readByte();
             switch (byte) {
-                MSG_NIL => return if (nullable == .optional) null else error.InvalidFormat,
+                MSG_FIXARRAY_MIN...MSG_FIXSTR_MAX => return byte - MSG_FIXSTR_MIN,
                 MSG_STR8 => return try self.readIntValue(u8, usize),
                 MSG_STR16 => return try self.readIntValue(u16, usize),
                 MSG_STR32 => return try self.readIntValue(u32, usize),
-                else => {
-                    if (byte & 0xe0 == MSG_FIXSTR) {
-                        return byte & 0x1f;
-                    } else {
-                        return error.InvalidFormat;
-                    }
-                },
+                MSG_NIL => return if (nullable == .optional) null else error.InvalidFormat,
+                else => return error.InvalidFormat,
             }
         }
 
@@ -613,16 +611,11 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
         pub fn readArrayHeader(self: Self, comptime opt: Nullable) !NullableType(usize, opt) {
             const byte = try self.reader.readByte();
             switch (byte) {
-                MSG_NIL => return if (opt == .optional) null else error.InvalidFormat,
+                MSG_FIXARRAY_MIN...MSG_FIXARRAY_MAX => return byte - MSG_FIXARRAY_MIN,
                 MSG_ARRAY16 => return try self.readIntValue(u16, usize),
                 MSG_ARRAY32 => return try self.readIntValue(u32, usize),
-                else => {
-                    if (byte & 0xf0 == MSG_FIXARRAY) {
-                        return byte & 0xf;
-                    } else {
-                        return error.InvalidFormat;
-                    }
-                },
+                MSG_NIL => return if (opt == .optional) null else error.InvalidFormat,
+                else => return error.InvalidFormat,
             }
         }
 
@@ -649,16 +642,11 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
         pub fn readMapHeader(self: Self, comptime optional: Nullable) !NullableType(u32, optional) {
             const byte = try self.reader.readByte();
             switch (byte) {
-                MSG_NIL => if (optional == .optional) return null else return error.InvalidFormat,
+                MSG_FIXMAP_MIN...MSG_FIXMAP_MAX => return byte - MSG_FIXMAP_MIN,
                 MSG_MAP16 => return try self.readIntValue(u16, u32),
                 MSG_MAP32 => return try self.readIntValue(u32, u32),
-                else => {
-                    if (byte & 0xf0 == MSG_FIXMAP) {
-                        return byte & 0xf;
-                    } else {
-                        return error.InvalidFormat;
-                    }
-                },
+                MSG_NIL => if (optional == .optional) return null else return error.InvalidFormat,
+                else => return error.InvalidFormat,
             }
         }
 
