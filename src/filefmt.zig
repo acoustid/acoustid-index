@@ -11,6 +11,8 @@ const SegmentVersion = common.SegmentID;
 const InMemorySegment = @import("InMemorySegment.zig");
 const Segment = @import("Segment.zig");
 
+const msgpack = @import("utils/msgpack/msgpack.zig");
+
 pub const default_block_size = 1024;
 pub const min_block_size = 256;
 pub const max_block_size = 4096;
@@ -96,20 +98,29 @@ pub fn buildSegmentFileName(buf: []u8, version: common.SegmentID) []u8 {
     return std.fmt.bufPrint(buf, segment_file_name_fmt, .{ version.version, version.version + version.included_merges }) catch unreachable;
 }
 
-pub fn readFirstItemFromBlock(data: []const u8) !Item {
-    if (data.len < 2 + min_varint32_size * 2) {
-        return error.InvalidBlock;
-    }
+const BlockHeader = struct {
+    num_items: u16,
+    first_item: Item,
+};
+
+pub fn decodeBlockHeader(data: []const u8) !BlockHeader {
+    assert(data.len >= min_block_size);
+
     const num_items = std.mem.readInt(u16, data[0..2], .little);
     if (num_items == 0) {
-        return error.InvalidBlock;
+        return .{ .num_items = 0, .first_item = .{ .hash = 0, .id = 0 } };
     }
+
     var ptr: usize = 2;
     const hash = readVarint32(data[ptr..]);
     ptr += hash.size;
     const id = readVarint32(data[ptr..]);
     ptr += id.size;
-    return Item{ .hash = hash.value, .id = id.value };
+
+    return .{
+        .num_items = num_items,
+        .first_item = Item{ .hash = hash.value, .id = id.value },
+    };
 }
 
 pub fn readBlock(data: []const u8, items: *std.ArrayList(Item)) !void {
@@ -150,7 +161,7 @@ pub fn readBlock(data: []const u8, items: *std.ArrayList(Item)) !void {
     }
 }
 
-pub fn writeBlock(data: []u8, reader: anytype) !u16 {
+pub fn encodeBlock(data: []u8, reader: anytype) !u16 {
     assert(data.len >= 2);
 
     var ptr: usize = 2;
@@ -199,7 +210,7 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
     var block_data: [block_size]u8 = undefined;
 
     var reader = segment.reader();
-    const num_items = try writeBlock(block_data[0..], &reader);
+    const num_items = try encodeBlock(block_data[0..], &reader);
     try testing.expectEqual(segment.items.items.len, num_items);
 
     var items = std.ArrayList(Item).init(std.testing.allocator);
@@ -218,21 +229,27 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
         items.items,
     );
 
-    const item = try readFirstItemFromBlock(block_data[0..]);
-    try testing.expectEqual(items.items[0], item);
+    const header = try decodeBlockHeader(block_data[0..]);
+    try testing.expectEqual(items.items.len, header.num_items);
+    try testing.expectEqual(items.items[0], header.first_item);
 }
 
-const header_magic_v1 = 0x314D4753; // "SGM1" in little endian
+const header_magic_v1: u32 = 0x314D4753; // "SGM1" in little endian
+const footer_magic_v1: u32 = @byteSwap(header_magic_v1);
 
 pub const Header = extern struct {
     magic: u32 = header_magic_v1,
     version: u32,
     included_merges: u32,
-    num_docs: u32,
+    max_commit_id: u64,
+    block_size: u32,
+};
+
+pub const Footer = struct {
+    magic: u32,
     num_items: u32,
     num_blocks: u32,
-    block_size: u32,
-    max_commit_id: u64,
+    checksum: u64,
 };
 
 const reserved_header_size = 256;
@@ -270,44 +287,61 @@ const DocInfo = packed struct(u64) {
 pub fn writeFile(file: std.fs.File, reader: anytype) !void {
     const block_size = default_block_size;
 
-    const writer = file.writer();
+    var buffered_writer = std.io.bufferedWriter(file.writer());
+    var counting_writer = std.io.countingWriter(buffered_writer.writer());
+    const writer = counting_writer.writer();
+
+    const packer = msgpack.packer(writer, .{});
 
     const segment = reader.segment;
-    var header = Header{
+
+    const header = Header{
         .version = segment.id.version,
         .included_merges = segment.id.included_merges,
         .max_commit_id = segment.max_commit_id,
         .block_size = block_size,
-        .num_docs = 0,
-        .num_items = 0,
-        .num_blocks = 0,
     };
-    try writeHeader(writer, header);
+    try packer.write(Header, header);
 
+    try packer.writeMapHeader(segment.docs.count());
     var docs_iter = segment.docs.iterator();
     while (docs_iter.next()) |entry| {
-        const info = DocInfo{
-            .id = entry.key_ptr.*,
-            .version = 0,
-            .deleted = if (entry.value_ptr.*) 0 else 1,
-        };
-        try writer.writeStructEndian(info, .little);
-        header.num_docs += 1;
+        try packer.write(u32, entry.key_ptr.*);
+        try packer.write(bool, entry.value_ptr.*);
     }
+
+    try buffered_writer.flush();
+
+    const padding_size = block_size - counting_writer.bytes_written % block_size;
+    try writer.writeByteNTimes(0, padding_size);
+
+    var num_items: u32 = 0;
+    var num_blocks: u32 = 0;
+    var crc = std.hash.crc.Crc64Xz.init();
 
     var block_data: [block_size]u8 = undefined;
     while (true) {
-        const n = try writeBlock(block_data[0..], reader);
+        const n = try encodeBlock(block_data[0..], reader);
+        try writer.writeAll(block_data[0..]);
         if (n == 0) {
             break;
         }
-        try writer.writeAll(block_data[0..]);
-        header.num_items += n;
-        header.num_blocks += 1;
+        num_items += n;
+        num_blocks += 1;
+        crc.update(block_data[0..]);
     }
 
-    try file.seekTo(0);
-    try writeHeader(writer, header);
+    const footer = Footer{
+        .magic = footer_magic_v1,
+        .num_items = num_items,
+        .num_blocks = num_blocks,
+        .checksum = crc.final(),
+    };
+    try packer.write(Footer, footer);
+
+    try buffered_writer.flush();
+
+    try file.sync();
 }
 
 pub fn readFile(file: fs.File, segment: *Segment) !void {
@@ -329,10 +363,13 @@ pub fn readFile(file: fs.File, segment: *Segment) !void {
         std.posix.MADV.RANDOM | std.posix.MADV.WILLNEED,
     );
 
-    var fixed_buffer_steeam = std.io.fixedBufferStream(raw_data[0..]);
-    var reader = fixed_buffer_steeam.reader();
+    var fixed_buffer_stream = std.io.fixedBufferStream(raw_data[0..]);
+    const reader = fixed_buffer_stream.reader();
 
-    const header = try readHeader(reader);
+    const unpacker = msgpack.unpackerNoAlloc(reader, .{});
+
+    const header = try unpacker.read(Header);
+
     if (header.magic != header_magic_v1) {
         return error.InvalidSegment;
     }
@@ -340,38 +377,61 @@ pub fn readFile(file: fs.File, segment: *Segment) !void {
         return error.InvalidSegment;
     }
 
-    const blocks_data_start = reserved_header_size + header.num_docs * @sizeOf(DocInfo);
-    const blocks_data_size = file_size - blocks_data_start;
-    const blocks_data_end = blocks_data_start + blocks_data_size;
-    if (blocks_data_size % header.block_size != 0) {
-        return error.InvalidSegment;
-    }
-    const num_blocks = blocks_data_size / header.block_size;
-    if (num_blocks != header.num_blocks) {
-        return error.InvalidSegment;
-    }
-
     segment.id.version = header.version;
     segment.id.included_merges = header.included_merges;
     segment.block_size = header.block_size;
     segment.max_commit_id = header.max_commit_id;
-    segment.num_items = header.num_items;
 
-    try segment.docs.ensureTotalCapacity(header.num_docs);
-
-    for (0..header.num_docs) |_| {
-        const info = try reader.readStructEndian(DocInfo, .little);
-        try segment.docs.put(info.id, info.deleted == 0);
+    const num_docs = try unpacker.readMapHeader(.required);
+    try segment.docs.ensureTotalCapacity(num_docs);
+    for (0..num_docs) |_| {
+        const key = try unpacker.read(u32);
+        const value = try unpacker.read(bool);
+        try segment.docs.put(key, value);
     }
 
-    try segment.index.ensureTotalCapacity(num_blocks);
+    const block_size = header.block_size;
+    const padding_size = block_size - fixed_buffer_stream.pos % block_size;
+    try reader.skipBytes(padding_size, .{});
+
+    const blocks_data_start = fixed_buffer_stream.pos;
+
+    const estimated_block_count = (raw_data.len - fixed_buffer_stream.pos) / block_size;
+    try segment.index.ensureTotalCapacity(estimated_block_count);
+
+    var num_items: u32 = 0;
+    var num_blocks: u32 = 0;
+    var crc = std.hash.crc.Crc64Xz.init();
+
+    var block_data_buffer: [max_block_size]u8 = undefined;
+    var block_data = block_data_buffer[0..block_size];
+    while (true) {
+        try reader.readNoEof(block_data);
+        const block_header = try decodeBlockHeader(block_data);
+        if (block_header.num_items == 0) {
+            break;
+        }
+        try segment.index.append(block_header.first_item.hash);
+        num_items += block_header.num_items;
+        num_blocks += 1;
+        crc.update(block_data[0..]);
+    }
+
+    const blocks_data_end = fixed_buffer_stream.pos;
     segment.blocks = raw_data[blocks_data_start..blocks_data_end];
 
-    var i: u32 = 0;
-    while (i < header.num_blocks) : (i += 1) {
-        const block_data = segment.getBlockData(i);
-        const item = try readFirstItemFromBlock(block_data);
-        try segment.index.append(item.hash);
+    const footer = try unpacker.read(Footer);
+    if (footer.magic != footer_magic_v1) {
+        return error.InvalidSegment;
+    }
+    if (footer.num_items != num_items) {
+        return error.InvalidSegment;
+    }
+    if (footer.num_blocks != num_blocks) {
+        return error.InvalidSegment;
+    }
+    if (footer.checksum != crc.final()) {
+        return error.InvalidSegment;
     }
 }
 

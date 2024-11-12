@@ -80,15 +80,15 @@ pub fn Packer(comptime Writer: type) type {
             };
         }
 
-        pub fn writeNil(self: *Self) !void {
+        pub fn writeNil(self: Self) !void {
             try self.writer.writeByte(MSG_NIL);
         }
 
-        pub fn writeBool(self: *Self, value: bool) !void {
+        pub fn writeBool(self: Self, value: bool) !void {
             try self.writer.writeByte(if (value) MSG_TRUE else MSG_FALSE);
         }
 
-        inline fn writeFixedSizeIntValue(self: *Self, comptime T: type, value: T) !void {
+        inline fn writeFixedSizeIntValue(self: Self, comptime T: type, value: T) !void {
             var buf: [@sizeOf(T)]u8 = undefined;
             std.mem.writeInt(T, buf[0..], value, .big);
             try self.writer.writeAll(buf[0..]);
@@ -118,12 +118,12 @@ pub fn Packer(comptime Writer: type) type {
             }
         }
 
-        fn writeFixedSizeInt(self: *Self, comptime T: type, value: T) !void {
+        fn writeFixedSizeInt(self: Self, comptime T: type, value: T) !void {
             try self.writer.writeByte(resolveFixedSizeIntHeader(T));
             try self.writeFixedSizeIntValue(T, value);
         }
 
-        pub fn writeInt(self: *Self, comptime T: type, value: T) !void {
+        pub fn writeInt(self: Self, comptime T: type, value: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Int) {
                 @compileError("Expected integer type");
@@ -173,7 +173,7 @@ pub fn Packer(comptime Writer: type) type {
             }
         }
 
-        pub fn writeFloat(self: *Self, comptime T: type, value: T) !void {
+        pub fn writeFloat(self: Self, comptime T: type, value: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Float) {
                 @compileError("Expected float type");
@@ -192,7 +192,7 @@ pub fn Packer(comptime Writer: type) type {
             try self.writer.writeAll(buf[0..]);
         }
 
-        pub fn writeStringHeader(self: *Self, len: usize) !void {
+        pub fn writeStringHeader(self: Self, len: usize) !void {
             if (len <= 31) {
                 try self.writer.writeByte(MSG_FIXSTR | @as(u8, @intCast(len)));
             } else if (len <= std.math.maxInt(u8)) {
@@ -209,12 +209,12 @@ pub fn Packer(comptime Writer: type) type {
             }
         }
 
-        pub fn writeString(self: *Self, value: []const u8) !void {
+        pub fn writeString(self: Self, value: []const u8) !void {
             try self.writeStringHeader(value.len);
             try self.writer.writeAll(value);
         }
 
-        pub fn writeBinaryHeader(self: *Self, len: usize) !void {
+        pub fn writeBinaryHeader(self: Self, len: usize) !void {
             if (len <= std.math.maxInt(u8)) {
                 try self.writer.writeByte(MSG_BIN8);
                 try self.writer.writeByte(@as(u8, @intCast(len)));
@@ -229,12 +229,12 @@ pub fn Packer(comptime Writer: type) type {
             }
         }
 
-        pub fn writeBinary(self: *Self, value: []const u8) !void {
+        pub fn writeBinary(self: Self, value: []const u8) !void {
             try self.writeBinaryHeader(value.len);
             try self.writer.writeAll(value);
         }
 
-        pub fn writeArrayHeader(self: *Self, len: usize) !void {
+        pub fn writeArrayHeader(self: Self, len: usize) !void {
             if (len <= 15) {
                 try self.writer.writeByte(MSG_FIXARRAY | @as(u8, @intCast(len)));
             } else if (len <= std.math.maxInt(u16)) {
@@ -248,14 +248,14 @@ pub fn Packer(comptime Writer: type) type {
             }
         }
 
-        pub fn writeArray(self: *Self, comptime T: type, value: []const T) !void {
+        pub fn writeArray(self: Self, comptime T: type, value: []const T) !void {
             try self.writeArrayHeader(value.len);
             for (value) |item| {
                 try self.write(T, item);
             }
         }
 
-        pub fn writeMapHeader(self: *Self, len: usize) !void {
+        pub fn writeMapHeader(self: Self, len: usize) !void {
             if (len <= 15) {
                 try self.writer.writeByte(MSG_FIXMAP | @as(u8, @intCast(len)));
             } else if (len <= std.math.maxInt(u16)) {
@@ -269,7 +269,7 @@ pub fn Packer(comptime Writer: type) type {
             }
         }
 
-        fn isStructFieldUsed(self: *Self, field: std.builtin.Type.StructField, value: anytype) bool {
+        fn isStructFieldUsed(self: Self, field: std.builtin.Type.StructField, value: anytype) bool {
             const field_type_info = @typeInfo(field.type);
             const field_value = @field(value, field.name);
 
@@ -293,7 +293,7 @@ pub fn Packer(comptime Writer: type) type {
             return true;
         }
 
-        fn countUsedStructFields(self: *Self, fields: []const std.builtin.Type.StructField, value: anytype) u16 {
+        fn countUsedStructFields(self: Self, fields: []const std.builtin.Type.StructField, value: anytype) u16 {
             var used_field_count: u16 = 0;
             inline for (fields) |field| {
                 if (self.isStructFieldUsed(field, value)) {
@@ -303,7 +303,7 @@ pub fn Packer(comptime Writer: type) type {
             return used_field_count;
         }
 
-        pub fn writeStruct(self: *Self, comptime T: type, value: T) !void {
+        pub fn writeStruct(self: Self, comptime T: type, value: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct) {
                 @compileError("Expected struct type");
@@ -342,7 +342,7 @@ pub fn Packer(comptime Writer: type) type {
             }
         }
 
-        pub fn writeUnion(self: *Self, comptime T: type, value: T) !void {
+        pub fn writeUnion(self: Self, comptime T: type, value: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Union) {
                 @compileError("Expected union type , not " ++ @typeName(T));
@@ -368,7 +368,7 @@ pub fn Packer(comptime Writer: type) type {
             }
         }
 
-        pub fn writePointer(self: *Self, comptime T: type, value: T) !void {
+        pub fn writePointer(self: Self, comptime T: type, value: T) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Pointer) {
                 @compileError("Expected pointer type , not " ++ @typeName(T));
@@ -381,7 +381,7 @@ pub fn Packer(comptime Writer: type) type {
             }
         }
 
-        pub fn write(self: *Self, comptime T: type, value: T) !void {
+        pub fn write(self: Self, comptime T: type, value: T) !void {
             const type_info = @typeInfo(T);
             switch (type_info) {
                 .Bool => try self.writeBool(value),
@@ -418,7 +418,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             };
         }
 
-        pub fn readNil(self: *Self) !void {
+        pub fn readNil(self: Self) !void {
             const byte = try self.reader.readByte();
             switch (byte) {
                 MSG_NIL => {},
@@ -426,7 +426,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             }
         }
 
-        pub fn readBool(self: *Self, comptime T: type) !T {
+        pub fn readBool(self: Self, comptime T: type) !T {
             comptime var type_info: std.builtin.Type = @typeInfo(T);
             comptime var is_optional: bool = false;
 
@@ -449,7 +449,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             }
         }
 
-        inline fn readIntValue(self: *Self, comptime SourceType: type, comptime TargetType: type) !TargetType {
+        inline fn readIntValue(self: Self, comptime SourceType: type, comptime TargetType: type) !TargetType {
             const size = @divExact(@bitSizeOf(SourceType), 8);
             var buf: [size]u8 = undefined;
             const actual_size = try self.reader.readAll(&buf);
@@ -470,7 +470,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             return error.IntegerOverflow;
         }
 
-        pub fn readInt(self: *Self, comptime T: type) !T {
+        pub fn readInt(self: Self, comptime T: type) !T {
             comptime var Type: type = T;
             comptime var type_info: std.builtin.Type = @typeInfo(T);
             comptime var is_optional: bool = false;
@@ -515,7 +515,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             }
         }
 
-        pub fn readFloatValue(self: *Self, comptime SourceFloat: type, comptime TargetFloat: type) !TargetFloat {
+        pub fn readFloatValue(self: Self, comptime SourceFloat: type, comptime TargetFloat: type) !TargetFloat {
             const size = @divExact(@bitSizeOf(SourceFloat), 8);
             var buf: [size]u8 = undefined;
             const actual_size = try self.reader.readAll(&buf);
@@ -531,7 +531,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             return @floatCast(value);
         }
 
-        pub fn readFloat(self: *Self, comptime T: type) !T {
+        pub fn readFloat(self: Self, comptime T: type) !T {
             comptime var Type: type = T;
             comptime var type_info: std.builtin.Type = @typeInfo(T);
             comptime var is_optional: bool = false;
@@ -552,7 +552,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             }
         }
 
-        pub fn readStringHeader(self: *Self, comptime nullable: Nullable) !NullableType(usize, nullable) {
+        pub fn readStringHeader(self: Self, comptime nullable: Nullable) !NullableType(usize, nullable) {
             const byte = try self.reader.readByte();
             switch (byte) {
                 MSG_NIL => return if (nullable == .optional) null else error.InvalidFormat,
@@ -569,7 +569,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             }
         }
 
-        pub fn readString(self: *Self, comptime nullable: Nullable) !NullableType([]u8, nullable) {
+        pub fn readString(self: Self, comptime nullable: Nullable) !NullableType([]u8, nullable) {
             if (AllocatorType == NoAllocator) {
                 @compileError("No allocator provided");
             }
@@ -590,11 +590,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             return buf;
         }
 
-        pub fn readStringInto(self: *Self, buffer: []u8, comptime nullable: Nullable) !NullableType([]u8, nullable) {
-            if (AllocatorType == NoAllocator) {
-                @compileError("No allocator provided");
-            }
-
+        pub fn readStringInto(self: Self, buffer: []u8, comptime nullable: Nullable) !NullableType([]u8, nullable) {
             const size = if (nullable == .optional)
                 try self.readStringHeader(nullable) orelse return null
             else
@@ -614,7 +610,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             return buf;
         }
 
-        pub fn readArrayHeader(self: *Self, comptime opt: Nullable) !NullableType(usize, opt) {
+        pub fn readArrayHeader(self: Self, comptime opt: Nullable) !NullableType(usize, opt) {
             const byte = try self.reader.readByte();
             switch (byte) {
                 MSG_NIL => return if (opt == .optional) null else error.InvalidFormat,
@@ -630,7 +626,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             }
         }
 
-        pub fn readArray(self: *Self, comptime T: type, comptime opt: Nullable) !NullableType([]T, opt) {
+        pub fn readArray(self: Self, comptime T: type, comptime opt: Nullable) !NullableType([]T, opt) {
             if (AllocatorType == NoAllocator) {
                 @compileError("No allocator provided");
             }
@@ -650,12 +646,12 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             return result;
         }
 
-        fn readMapHeader(self: *Self, comptime optional: Nullable) !NullableType(usize, optional) {
+        pub fn readMapHeader(self: Self, comptime optional: Nullable) !NullableType(u32, optional) {
             const byte = try self.reader.readByte();
             switch (byte) {
                 MSG_NIL => if (optional == .optional) return null else return error.InvalidFormat,
-                MSG_MAP16 => return try self.readIntValue(u16, usize),
-                MSG_MAP32 => return try self.readIntValue(u32, usize),
+                MSG_MAP16 => return try self.readIntValue(u16, u32),
+                MSG_MAP32 => return try self.readIntValue(u32, u32),
                 else => {
                     if (byte & 0xf0 == MSG_FIXMAP) {
                         return byte & 0xf;
@@ -666,7 +662,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             }
         }
 
-        pub fn readStruct(self: *Self, comptime T: type, comptime optional: Nullable) !NullableType(T, optional) {
+        pub fn readStruct(self: Self, comptime T: type, comptime optional: Nullable) !NullableType(T, optional) {
             const type_info = @typeInfo(T);
             if (type_info != .Struct) {
                 @compileError("Expected struct type");
@@ -761,7 +757,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             return result;
         }
 
-        pub fn readUnionOrNull(self: *Self, comptime T: type) !?T {
+        pub fn readUnionOrNull(self: Self, comptime T: type) !?T {
             const type_info = @typeInfo(T);
             if (type_info != .Union) {
                 @compileError("Expected union type, not " ++ @typeName(T));
@@ -803,7 +799,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             return result;
         }
 
-        pub fn readUnion(self: *Self, comptime T: type) !T {
+        pub fn readUnion(self: Self, comptime T: type) !T {
             return try self.readUnionOrNull(T) orelse return error.InvalidFormat;
         }
 
@@ -815,7 +811,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             return T;
         }
 
-        pub fn read(self: *Self, comptime T: type) !T {
+        pub fn read(self: Self, comptime T: type) !T {
             const type_info = @typeInfo(T);
             switch (type_info) {
                 .Bool => return try self.readBool(T),
