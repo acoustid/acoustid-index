@@ -23,22 +23,22 @@ test "readBool: wrong type" {
 }
 
 test "writeBool: false" {
-    var output = std.ArrayList(u8).init(std.testing.allocator);
-    defer output.deinit();
-    try msgpack.pack(bool, output.writer(), false);
-    try std.testing.expectEqualSlices(u8, &packed_false, output.items);
+    var buffer: [16]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+    try msgpack.pack(bool, stream.writer(), false);
+    try std.testing.expectEqualSlices(u8, &packed_false, stream.getWritten());
 }
 
 test "writeBool: true" {
-    var output = std.ArrayList(u8).init(std.testing.allocator);
-    defer output.deinit();
-    try msgpack.pack(bool, output.writer(), true);
-    try std.testing.expectEqualSlices(u8, &packed_true, output.items);
+    var buffer: [16]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+    try msgpack.pack(bool, stream.writer(), true);
+    try std.testing.expectEqualSlices(u8, &packed_true, stream.getWritten());
 }
 
 test "writeBool: null" {
-    var output = std.ArrayList(u8).init(std.testing.allocator);
-    defer output.deinit();
-    try msgpack.pack(?bool, output.writer(), null);
-    try std.testing.expectEqualSlices(u8, &packed_null, output.items);
+    var buffer: [16]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+    try msgpack.pack(?bool, stream.writer(), null);
+    try std.testing.expectEqualSlices(u8, &packed_null, stream.getWritten());
 }
