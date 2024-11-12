@@ -11,7 +11,7 @@ test "writeStruct: map_by_index" {
     var buffer: [100]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buffer);
     var packer = msgpack.packer(stream.writer(), .{ .struct_format = .map_by_index });
-    try packer.writeStruct(Msg, msg);
+    try packer.writeStruct(Msg, msg, 0);
 
     try std.testing.expectEqualSlices(u8, &.{
         0x82, // map with 2 elements
@@ -32,7 +32,7 @@ test "writeStruct: map_by_name" {
     var buffer: [100]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buffer);
     var packer = msgpack.packer(stream.writer(), .{ .struct_format = .map_by_name });
-    try packer.writeStruct(Msg, msg);
+    try packer.writeStruct(Msg, msg, 0);
 
     try std.testing.expectEqualSlices(u8, &.{
         0x82, // map with 2 elements
@@ -53,7 +53,7 @@ test "writeStruct: array" {
     var buffer: [100]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buffer);
     var packer = msgpack.packer(stream.writer(), .{ .struct_format = .array });
-    try packer.writeStruct(Msg, msg);
+    try packer.writeStruct(Msg, msg, 0);
 
     try std.testing.expectEqualSlices(u8, &.{
         0x92, // array with 2 elements
@@ -72,7 +72,7 @@ test "writeStruct: omit defaults" {
     var buffer: [100]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buffer);
     var packer = msgpack.packer(stream.writer(), .{ .struct_format = .map_by_index, .omit_defaults = true });
-    try packer.writeStruct(Msg, msg);
+    try packer.writeStruct(Msg, msg, 0);
 
     try std.testing.expectEqualSlices(u8, &.{
         0x81, // map with 1 element
@@ -91,7 +91,7 @@ test "writeStruct: omit nulls" {
     var buffer: [100]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buffer);
     var packer = msgpack.packer(stream.writer(), .{ .struct_format = .map_by_index, .omit_nulls = true });
-    try packer.writeStruct(Msg, msg);
+    try packer.writeStruct(Msg, msg, 0);
 
     try std.testing.expectEqualSlices(u8, &.{
         0x81, // map with 1 element
@@ -115,7 +115,7 @@ test "readStruct: map_by_index" {
     };
     var stream = std.io.fixedBufferStream(&buffer);
     var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{ .struct_format = .map_by_index });
-    try std.testing.expectEqual(Msg{ .a = 1, .b = 2 }, try unpacker.readStruct(Msg, .required));
+    try std.testing.expectEqual(Msg{ .a = 1, .b = 2 }, try unpacker.read(Msg));
 }
 
 test "readStruct: map_by_name" {
@@ -136,7 +136,7 @@ test "readStruct: map_by_name" {
     };
     var stream = std.io.fixedBufferStream(&buffer);
     var unpacker = msgpack.unpacker(stream.reader(), arena.allocator(), .{ .struct_format = .map_by_name });
-    try std.testing.expectEqual(Msg{ .a = 1, .b = 2 }, try unpacker.readStruct(Msg, .required));
+    try std.testing.expectEqual(Msg{ .a = 1, .b = 2 }, try unpacker.read(Msg));
 }
 
 test "readStruct: array" {
@@ -152,7 +152,7 @@ test "readStruct: array" {
     };
     var stream = std.io.fixedBufferStream(&buffer);
     var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{ .struct_format = .array });
-    try std.testing.expectEqual(Msg{ .a = 1, .b = 2 }, try unpacker.readStruct(Msg, .required));
+    try std.testing.expectEqual(Msg{ .a = 1, .b = 2 }, try unpacker.read(Msg));
 }
 
 test "readStruct: omit nulls" {
@@ -168,7 +168,7 @@ test "readStruct: omit nulls" {
     };
     var stream = std.io.fixedBufferStream(&buffer);
     var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{ .struct_format = .map_by_index });
-    try std.testing.expectEqual(Msg{ .a = 1, .b = null }, try unpacker.readStruct(Msg, .required));
+    try std.testing.expectEqual(Msg{ .a = 1, .b = null }, try unpacker.read(Msg));
 }
 
 test "readStruct: omit defaults" {
@@ -184,7 +184,7 @@ test "readStruct: omit defaults" {
     };
     var stream = std.io.fixedBufferStream(&buffer);
     var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{ .struct_format = .map_by_index });
-    try std.testing.expectEqual(Msg{ .a = 1, .b = 100 }, try unpacker.readStruct(Msg, .required));
+    try std.testing.expectEqual(Msg{ .a = 1, .b = 100 }, try unpacker.read(Msg));
 }
 
 test "readStruct: missing field" {
@@ -200,5 +200,5 @@ test "readStruct: missing field" {
     };
     var stream = std.io.fixedBufferStream(&buffer);
     var unpacker = msgpack.unpackerNoAlloc(stream.reader(), .{ .struct_format = .map_by_index });
-    try std.testing.expectError(error.InvalidFormat, unpacker.readStruct(Msg, .required));
+    try std.testing.expectError(error.InvalidFormat, unpacker.read(Msg));
 }

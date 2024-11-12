@@ -488,37 +488,43 @@ const index_header_magic_v1: u32 = 0x31584449; // "IDX1" in little endian
 
 const IndexHeader = extern struct {
     magic: u32,
-    version: u32,
-    num_segments: u32,
 };
 
 pub fn writeIndexFile(writer: anytype, segments: std.ArrayList(SegmentVersion)) !void {
+    const packer = msgpack.packer(writer, .{});
+
     const header = IndexHeader{
         .magic = index_header_magic_v1,
-        .version = 1,
-        .num_segments = @intCast(segments.items.len),
     };
-    try writer.writeStructEndian(header, .little);
+    try packer.writeStruct(IndexHeader, header, 1);
+
+    try packer.writeArrayHeader(segments.items.len);
     for (segments.items) |segment| {
-        try writer.writeInt(u32, segment.version, .little);
-        try writer.writeInt(u32, segment.included_merges, .little);
+        try packer.writeArrayHeader(2);
+        try packer.writeInt(u32, segment.version);
+        try packer.writeInt(u32, segment.included_merges);
     }
 }
 
 pub fn readIndexFile(reader: anytype, segments: *std.ArrayList(SegmentVersion)) !void {
-    const header = try reader.readStructEndian(IndexHeader, .little);
+    const unpacker = msgpack.unpackerNoAlloc(reader, .{});
+
+    const header = try unpacker.readStruct(IndexHeader, .required, 1);
     if (header.magic != index_header_magic_v1) {
         return error.InvalidIndexfile;
     }
-    if (header.version != 1) {
-        return error.InvalidIndexfile;
-    }
-    try segments.ensureTotalCapacity(header.num_segments);
-    for (0..header.num_segments) |_| {
-        var version: SegmentVersion = undefined;
-        version.version = try reader.readInt(u32, .little);
-        version.included_merges = try reader.readInt(u32, .little);
-        try segments.append(version);
+
+    const num_segments = try unpacker.readArrayHeader(.required);
+    try segments.ensureTotalCapacityPrecise(num_segments);
+
+    for (0..num_segments) |_| {
+        const num_fields = try unpacker.readArrayHeader(.required);
+        if (num_fields != 2) {
+            return error.InvalidIndexfile;
+        }
+        const version = try unpacker.readInt(u32);
+        const included_merges = try unpacker.readInt(u32);
+        try segments.append(.{ .version = version, .included_merges = included_merges });
     }
 }
 

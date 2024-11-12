@@ -303,7 +303,7 @@ pub fn Packer(comptime Writer: type) type {
             return used_field_count;
         }
 
-        pub fn writeStruct(self: Self, comptime T: type, value: T) !void {
+        pub fn writeStruct(self: Self, comptime T: type, value: T, comptime extra_fields: i16) !void {
             const type_info = @typeInfo(T);
             if (type_info != .Struct) {
                 @compileError("Expected struct type");
@@ -316,7 +316,7 @@ pub fn Packer(comptime Writer: type) type {
 
             switch (self.options.struct_format) {
                 .map_by_index => {
-                    try self.writeMapHeader(self.countUsedStructFields(fields, value));
+                    try self.writeMapHeader(self.countUsedStructFields(fields, value) + extra_fields);
                     inline for (fields, 0..) |field, i| {
                         if (self.isStructFieldUsed(field, value)) {
                             try self.writeInt(u8, @intCast(i));
@@ -325,7 +325,7 @@ pub fn Packer(comptime Writer: type) type {
                     }
                 },
                 .map_by_name => {
-                    try self.writeMapHeader(self.countUsedStructFields(fields, value));
+                    try self.writeMapHeader(self.countUsedStructFields(fields, value) + extra_fields);
                     inline for (fields) |field| {
                         if (self.isStructFieldUsed(field, value)) {
                             try self.writeString(field.name);
@@ -334,7 +334,7 @@ pub fn Packer(comptime Writer: type) type {
                     }
                 },
                 .array => {
-                    try self.writeArrayHeader(fields.len);
+                    try self.writeArrayHeader(fields.len + extra_fields);
                     inline for (fields) |field| {
                         try self.write(field.type, @field(value, field.name));
                     }
@@ -395,7 +395,7 @@ pub fn Packer(comptime Writer: type) type {
                     }
                 },
                 .Array => try self.writeArray(type_info.Array.child, &value),
-                .Struct => try self.writeStruct(T, value),
+                .Struct => try self.writeStruct(T, value, 0),
                 .Union => try self.writeUnion(T, value),
                 .Pointer => try self.writePointer(T, value),
                 else => @compileError("Unsupported type " ++ @typeName(T)),
@@ -662,7 +662,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
             }
         }
 
-        pub fn readStruct(self: Self, comptime T: type, comptime optional: Nullable) !NullableType(T, optional) {
+        pub fn readStruct(self: Self, comptime T: type, comptime optional: Nullable, comptime extra_fields: u16) !NullableType(T, optional) {
             const type_info = @typeInfo(T);
             if (type_info != .Struct) {
                 @compileError("Expected struct type");
@@ -686,10 +686,11 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
                     else
                         try self.readMapHeader(.required);
 
-                    if (size > fields.len) return error.InvalidFormat;
+                    if (size < extra_fields) return error.InvalidFormat;
+                    if (size > fields.len + extra_fields) return error.InvalidFormat;
 
                     var j: usize = 0;
-                    while (j < size) : (j += 1) {
+                    while (j < size - extra_fields) : (j += 1) {
                         const index = try self.readInt(u8);
                         inline for (fields, 0..) |field, i| {
                             if (index == i) {
@@ -708,10 +709,11 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
                     else
                         try self.readMapHeader(.required);
 
-                    if (size > fields.len) return error.InvalidFormat;
+                    if (size < extra_fields) return error.InvalidFormat;
+                    if (size > fields.len + extra_fields) return error.InvalidFormat;
 
                     var j: usize = 0;
-                    while (j < size) : (j += 1) {
+                    while (j < size - extra_fields) : (j += 1) {
                         const name = try self.readStringInto(&field_name_buffer, .required);
                         inline for (fields, 0..) |field, i| {
                             if (std.mem.eql(u8, name, field.name)) {
@@ -730,7 +732,8 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
                     else
                         try self.readArrayHeader(.required);
 
-                    if (size < fields.len) return error.InvalidFormat;
+                    if (size < extra_fields) return error.InvalidFormat;
+                    if (size > fields.len + extra_fields) return error.InvalidFormat;
 
                     inline for (fields, 0..) |field, i| {
                         fields_set.set(i);
@@ -823,7 +826,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
                     }
                 },
                 .Union => return try self.readUnion(T),
-                .Struct => return try self.readStruct(T, .required),
+                .Struct => return try self.readStruct(T, .required, 0),
                 .Optional => {
                     const child_type_info = @typeInfo(type_info.Optional.child);
                     switch (child_type_info) {
@@ -832,7 +835,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type, comptime op
                         .Float => return try self.readFloat(T),
                         .Pointer => {
                             if (type_info.Pointer.size == .Slice) {
-                                return try self.readArray(type_info.Pointer.child, .optional);
+                                return try self.readArray(type_info.Pointer.child, .optional, 0);
                             }
                         },
                         .Struct => return try self.readStruct(T, .optional),

@@ -229,8 +229,7 @@ fn writeEntries(writer: anytype, commit_id: u64, changes: []const Change) !void 
         .id = commit_id,
         .changes = changes,
     };
-
-    try packer.writeStruct(Transaction, txn);
+    try packer.write(Transaction, txn);
 }
 
 pub fn write(self: *Self, changes: []const Change, index: *InMemoryIndex) !void {
