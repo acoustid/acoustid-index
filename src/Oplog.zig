@@ -4,8 +4,9 @@ const log = std.log.scoped(.oplog);
 
 const msgpack = @import("utils/msgpack/msgpack.zig");
 
-const common = @import("common.zig");
-const Change = common.Change;
+const Change = @import("change.zig").Change;
+const Transaction = @import("change.zig").Transaction;
+
 const InMemoryIndex = @import("InMemoryIndex.zig");
 
 const Self = @This();
@@ -15,15 +16,6 @@ pub const FileInfo = struct {
 
     fn cmp(_: void, a: FileInfo, b: FileInfo) bool {
         return a.id < b.id;
-    }
-};
-
-pub const Transaction = struct {
-    id: u64,
-    changes: []const Change,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
     }
 };
 

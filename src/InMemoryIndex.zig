@@ -7,7 +7,8 @@ const Deadline = @import("utils/Deadline.zig");
 const common = @import("common.zig");
 const Item = common.Item;
 const SearchResults = common.SearchResults;
-const Change = common.Change;
+
+const Change = @import("change.zig").Change;
 
 const InMemorySegment = @import("InMemorySegment.zig");
 const InMemorySegmentList = InMemorySegment.List;

@@ -7,7 +7,7 @@ const MultiIndex = @import("MultiIndex.zig");
 const IndexData = MultiIndex.IndexRef;
 const common = @import("common.zig");
 const SearchResults = common.SearchResults;
-const Change = common.Change;
+const Change = @import("change.zig").Change;
 const Deadline = @import("utils/Deadline.zig");
 const Scheduler = @import("utils/Scheduler.zig");
 

@@ -4,10 +4,11 @@ const io = std.io;
 const assert = std.debug.assert;
 
 const common = @import("common.zig");
-const Change = common.Change;
 const Item = common.Item;
 const SearchResults = common.SearchResults;
 const SegmentID = common.SegmentID;
+
+const Change = @import("change.zig").Change;
 
 const Deadline = @import("utils/Deadline.zig");
 
