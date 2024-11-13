@@ -234,11 +234,11 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
     try testing.expectEqual(items.items[0], header.first_item);
 }
 
-const header_magic_v1: u32 = 0x314D4753; // "SGM1" in little endian
-const footer_magic_v1: u32 = @byteSwap(header_magic_v1);
+const segment_file_header_magic_v1: u32 = 0x53474D31; // "SGM1" in big endian
+const segment_file_footer_magic_v1: u32 = @byteSwap(segment_file_header_magic_v1);
 
-pub const Header = extern struct {
-    magic: u32 = header_magic_v1,
+pub const SegmentFileHeader = extern struct {
+    magic: u32 = segment_file_header_magic_v1,
     version: u32,
     included_merges: u32,
     max_commit_id: u64,
@@ -255,8 +255,8 @@ pub const Header = extern struct {
     }
 };
 
-pub const Footer = struct {
-    magic: u32,
+pub const SegmentFileFooter = struct {
+    magic: u32 = segment_file_footer_magic_v1,
     num_items: u32,
     num_blocks: u32,
     checksum: u64,
@@ -272,38 +272,6 @@ pub const Footer = struct {
     }
 };
 
-const reserved_header_size = 256;
-const header_size = @sizeOf(Header);
-
-fn skipPadding(reader: anytype, reserved: comptime_int, used: comptime_int) !void {
-    const padding_size = reserved - used;
-    try reader.skipBytes(padding_size, .{});
-}
-
-fn writePadding(writer: anytype, reserved: comptime_int, used: comptime_int) !void {
-    const padding_size = reserved - used;
-    const padding = &[_]u8{0} ** padding_size;
-    try writer.writeAll(padding);
-}
-
-pub fn readHeader(reader: anytype) !Header {
-    const header = try reader.readStructEndian(Header, .little);
-    try skipPadding(reader, reserved_header_size, header_size);
-    return header;
-}
-
-pub fn writeHeader(writer: anytype, header: Header) !void {
-    assert(header.magic == header_magic_v1);
-    try writer.writeStructEndian(header, .little);
-    try writePadding(writer, reserved_header_size, header_size);
-}
-
-const DocInfo = packed struct(u64) {
-    id: u32,
-    version: u24,
-    deleted: u8,
-};
-
 pub fn writeFile(file: std.fs.File, reader: anytype) !void {
     const block_size = default_block_size;
 
@@ -315,13 +283,13 @@ pub fn writeFile(file: std.fs.File, reader: anytype) !void {
 
     const segment = reader.segment;
 
-    const header = Header{
+    const header = SegmentFileHeader{
         .version = segment.id.version,
         .included_merges = segment.id.included_merges,
         .max_commit_id = segment.max_commit_id,
         .block_size = block_size,
     };
-    try packer.write(Header, header);
+    try packer.write(SegmentFileHeader, header);
 
     try packer.writeMapHeader(segment.docs.count());
     var docs_iter = segment.docs.iterator();
@@ -351,13 +319,13 @@ pub fn writeFile(file: std.fs.File, reader: anytype) !void {
         crc.update(block_data[0..]);
     }
 
-    const footer = Footer{
-        .magic = footer_magic_v1,
+    const footer = SegmentFileFooter{
+        .magic = segment_file_footer_magic_v1,
         .num_items = num_items,
         .num_blocks = num_blocks,
         .checksum = crc.final(),
     };
-    try packer.write(Footer, footer);
+    try packer.write(SegmentFileFooter, footer);
 
     try buffered_writer.flush();
 
@@ -388,9 +356,9 @@ pub fn readFile(file: fs.File, segment: *Segment) !void {
 
     const unpacker = msgpack.unpackerNoAlloc(reader);
 
-    const header = try unpacker.read(Header);
+    const header = try unpacker.read(SegmentFileHeader);
 
-    if (header.magic != header_magic_v1) {
+    if (header.magic != segment_file_header_magic_v1) {
         return error.InvalidSegment;
     }
     if (header.block_size < min_block_size or header.block_size > max_block_size) {
@@ -440,8 +408,8 @@ pub fn readFile(file: fs.File, segment: *Segment) !void {
     const blocks_data_end = fixed_buffer_stream.pos;
     segment.blocks = raw_data[blocks_data_start..blocks_data_end];
 
-    const footer = try unpacker.read(Footer);
-    if (footer.magic != footer_magic_v1) {
+    const footer = try unpacker.read(SegmentFileFooter);
+    if (footer.magic != segment_file_footer_magic_v1) {
         return error.InvalidSegment;
     }
     if (footer.num_items != num_items) {
@@ -504,10 +472,10 @@ test "writeFile/readFile" {
     }
 }
 
-const index_header_magic_v1: u32 = 0x31584449; // "IDX1" in little endian
+const index_header_magic_v1: u32 = 0x49445831; // "IDX1" in big endian
 
-const IndexHeader = struct {
-    magic: u32,
+const IndexFileHeader = struct {
+    magic: u32 = index_header_magic_v1,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .field_index } };
@@ -517,39 +485,22 @@ const IndexHeader = struct {
 pub fn writeIndexFile(writer: anytype, segments: std.ArrayList(SegmentVersion)) !void {
     const packer = msgpack.packer(writer);
 
-    const header = IndexHeader{
-        .magic = index_header_magic_v1,
-    };
-    try packer.writeStruct(IndexHeader, header, 1);
-
-    try packer.writeArrayHeader(segments.items.len);
-    for (segments.items) |segment| {
-        try packer.writeArrayHeader(2);
-        try packer.writeInt(u32, segment.version);
-        try packer.writeInt(u32, segment.included_merges);
-    }
+    try packer.write(IndexFileHeader, .{});
+    try packer.write([]SegmentVersion, segments.items);
 }
 
 pub fn readIndexFile(reader: anytype, segments: *std.ArrayList(SegmentVersion)) !void {
-    const unpacker = msgpack.unpackerNoAlloc(reader);
+    const unpacker = msgpack.unpacker(reader, segments.allocator);
 
-    const header = try unpacker.readStruct(IndexHeader, .required, 1);
+    const header = try unpacker.read(IndexFileHeader);
     if (header.magic != index_header_magic_v1) {
         return error.InvalidIndexfile;
     }
 
-    const num_segments = try unpacker.readArrayHeader(.required);
-    try segments.ensureTotalCapacityPrecise(num_segments);
+    const new_segments = try unpacker.read([]SegmentVersion);
 
-    for (0..num_segments) |_| {
-        const num_fields = try unpacker.readArrayHeader(.required);
-        if (num_fields != 2) {
-            return error.InvalidIndexfile;
-        }
-        const version = try unpacker.readInt(u32);
-        const included_merges = try unpacker.readInt(u32);
-        try segments.append(.{ .version = version, .included_merges = included_merges });
-    }
+    segments.deinit();
+    segments.* = std.ArrayList(SegmentVersion).fromOwnedSlice(segments.allocator, new_segments);
 }
 
 test "readIndexFile/writeIndexFile" {
