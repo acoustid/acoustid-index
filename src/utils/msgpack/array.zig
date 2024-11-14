@@ -68,7 +68,7 @@ pub fn packArray(writer: anytype, comptime T: type, value_or_maybe_null: T) !voi
     try packArrayHeader(writer, value.len);
 
     for (value) |item| {
-        try packAny(writer, T, item);
+        try packAny(writer, @TypeOf(item), item);
     }
 }
 
@@ -78,13 +78,13 @@ pub fn unpackArray(reader: anytype, allocator: std.mem.Allocator, comptime T: ty
     else
         try unpackArrayHeader(reader, usize);
 
-    const Child = std.meta.Child(T);
+    const Item = std.meta.Child(NonOptional(T));
 
-    const data = try allocator.alloc(Child, len);
+    const data = try allocator.alloc(Item, len);
     errdefer allocator.free(data);
 
     for (0..len) |i| {
-        data[i] = try unpackAny(reader, allocator, Child);
+        data[i] = try unpackAny(reader, allocator, Item);
     }
 
     return data;

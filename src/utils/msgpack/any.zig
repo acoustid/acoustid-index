@@ -21,6 +21,7 @@ const unpackString = @import("string.zig").unpackString;
 
 const sizeOfPackedArray = @import("array.zig").sizeOfPackedArray;
 const packArray = @import("array.zig").packArray;
+const unpackArray = @import("array.zig").unpackArray;
 
 inline fn isString(comptime T: type) bool {
     switch (@typeInfo(T)) {
@@ -34,10 +35,9 @@ inline fn isString(comptime T: type) bool {
         .Optional => |opt_info| {
             return isString(opt_info.child);
         },
-        else => {
-            return false;
-        },
+        else => {},
     }
+    return false;
 }
 
 pub fn sizeOfPackedAny(comptime T: type, value: T) usize {
@@ -88,6 +88,8 @@ pub fn unpackAny(reader: anytype, allocator: std.mem.Allocator, comptime T: type
             if (ptr_info.size == .Slice) {
                 if (isString(T)) {
                     return unpackString(reader, allocator, T);
+                } else {
+                    return unpackArray(reader, allocator, T);
                 }
             }
         },
@@ -182,6 +184,37 @@ test "packAny/unpackAny: optional string" {
         defer if (result) |str| std.testing.allocator.free(str);
         if (value) |str| {
             try std.testing.expectEqualStrings(str, result.?);
+        } else {
+            try std.testing.expectEqual(value, result);
+        }
+    }
+}
+
+test "packAny/unpackAny: array" {
+    var buffer: [64]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+    const array = [_]i32{ 1, 2, 3, 4, 5 };
+    try packAny(stream.writer(), []const i32, &array);
+
+    stream.reset();
+    const result = try unpackAny(stream.reader(), std.testing.allocator, []const i32);
+    defer std.testing.allocator.free(result);
+    try std.testing.expectEqualSlices(i32, &array, result);
+}
+
+test "packAny/unpackAny: optional array" {
+    const array = [_]i32{ 1, 2, 3, 4, 5 };
+    const values = [_]?[]const i32{ &array, null };
+    for (values) |value| {
+        var buffer: [64]u8 = undefined;
+        var stream = std.io.fixedBufferStream(&buffer);
+        try packAny(stream.writer(), ?[]const i32, value);
+
+        stream.reset();
+        const result = try unpackAny(stream.reader(), std.testing.allocator, ?[]const i32);
+        defer if (result) |arr| std.testing.allocator.free(arr);
+        if (value) |arr| {
+            try std.testing.expectEqualSlices(i32, arr, result.?);
         } else {
             try std.testing.expectEqual(value, result);
         }
