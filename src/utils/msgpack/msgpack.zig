@@ -94,6 +94,25 @@ pub const default_union_format = UnionFormat{
 
 const NoAllocator = struct {};
 
+pub const getNullSize = @import("null.zig").getNullSize;
+pub const packNull = @import("null.zig").packNull;
+pub const unpackNull = @import("null.zig").unpackNull;
+
+pub const getBoolSize = @import("bool.zig").getBoolSize;
+pub const packBool = @import("bool.zig").packBool;
+pub const unpackBool = @import("bool.zig").unpackBool;
+
+pub const getIntSize = @import("int.zig").getIntSize;
+pub const getMaxIntSize = @import("int.zig").getMaxIntSize;
+pub const packInt = @import("int.zig").packInt;
+pub const packIntValue = @import("int.zig").packIntValue;
+pub const unpackInt = @import("int.zig").unpackInt;
+
+pub const getFloatSize = @import("float.zig").getFloatSize;
+pub const getMaxFloatSize = @import("float.zig").getMaxFloatSize;
+pub const packFloat = @import("float.zig").packFloat;
+pub const unpackFloat = @import("float.zig").unpackFloat;
+
 pub fn Packer(comptime Writer: type) type {
     return struct {
         writer: Writer,
@@ -106,116 +125,34 @@ pub fn Packer(comptime Writer: type) type {
             };
         }
 
-        pub fn writeNil(self: Self) !void {
-            try self.writer.writeByte(MSG_NIL);
+        pub fn writeNull(self: Self) !void {
+            try packNull(self.writer);
         }
 
-        pub fn writeBool(self: Self, value: bool) !void {
-            try self.writer.writeByte(if (value) MSG_TRUE else MSG_FALSE);
-        }
-
-        inline fn writeFixedSizeIntValue(self: Self, comptime T: type, value: T) !void {
-            var buf: [@sizeOf(T)]u8 = undefined;
-            std.mem.writeInt(T, buf[0..], value, .big);
-            try self.writer.writeAll(buf[0..]);
-        }
-
-        inline fn resolveFixedSizeIntHeader(comptime T: type) u8 {
-            const type_info = @typeInfo(T);
-            switch (type_info.Int.signedness) {
-                .signed => {
-                    switch (type_info.Int.bits) {
-                        8 => return MSG_INT8,
-                        16 => return MSG_INT16,
-                        32 => return MSG_INT32,
-                        64 => return MSG_INT64,
-                        else => @compileError("Unsupported signed int with " ++ type_info.Int.bits ++ "bits"),
-                    }
-                },
-                .unsigned => {
-                    switch (type_info.Int.bits) {
-                        8 => return MSG_UINT8,
-                        16 => return MSG_UINT16,
-                        32 => return MSG_UINT32,
-                        64 => return MSG_UINT64,
-                        else => @compileError("Unsupported unsigned int with " ++ type_info.Int.bits ++ "bits"),
-                    }
-                },
-            }
-        }
-
-        fn writeFixedSizeInt(self: Self, comptime T: type, value: T) !void {
-            try self.writer.writeByte(resolveFixedSizeIntHeader(T));
-            try self.writeFixedSizeIntValue(T, value);
+        pub fn writeBool(self: Self, comptime T: type, value: T) !void {
+            try packBool(self.writer, T, value);
         }
 
         pub fn writeInt(self: Self, comptime T: type, value: T) !void {
-            const type_info = @typeInfo(T);
-            if (type_info != .Int) {
-                @compileError("Expected integer type");
-            }
-
-            const is_signed = type_info.Int.signedness == .signed;
-            const bits = type_info.Int.bits;
-
-            if (is_signed) {
-                if (value >= -32 and value <= -1) {
-                    try self.writer.writeByte(@bitCast(@as(i8, @intCast(value))));
-                    return;
-                } else if (value >= 0 and value <= 127) {
-                    try self.writer.writeByte(@bitCast(@as(u8, @intCast(value))));
-                    return;
-                }
-                if (bits == 8 or value >= std.math.minInt(i8) and value <= std.math.maxInt(i8)) {
-                    return self.writeFixedSizeInt(i8, @intCast(value));
-                }
-                if (bits == 16 or value >= std.math.minInt(i16) and value <= std.math.maxInt(i16)) {
-                    return self.writeFixedSizeInt(i16, @intCast(value));
-                }
-                if (bits == 32 or value >= std.math.minInt(i32) and value <= std.math.maxInt(i32)) {
-                    return self.writeFixedSizeInt(i32, @intCast(value));
-                }
-                if (bits == 64 or value >= std.math.minInt(i64) and value <= std.math.maxInt(i64)) {
-                    return self.writeFixedSizeInt(i64, @intCast(value));
-                }
-                @compileError("Unsupported signed int with " ++ type_info.Int.bits ++ "bits");
-            } else {
-                if (value <= 127) {
-                    return self.writer.writeByte(@bitCast(@as(u8, @intCast(value))));
-                }
-                if (bits == 8 or value <= std.math.maxInt(u8)) {
-                    return self.writeFixedSizeInt(u8, @intCast(value));
-                }
-                if (bits == 16 or value <= std.math.maxInt(u16)) {
-                    return self.writeFixedSizeInt(u16, @intCast(value));
-                }
-                if (bits == 32 or value <= std.math.maxInt(u32)) {
-                    return self.writeFixedSizeInt(u32, @intCast(value));
-                }
-                if (bits == 64 or value <= std.math.maxInt(u64)) {
-                    return self.writeFixedSizeInt(u64, @intCast(value));
-                }
-                @compileError("Unsupported integer size of " ++ bits ++ "bits");
-            }
+            try packInt(self.writer, T, value);
         }
 
         pub fn writeFloat(self: Self, comptime T: type, value: T) !void {
-            const type_info = @typeInfo(T);
-            if (type_info != .Float) {
-                @compileError("Expected float type");
-            }
+            return packFloat(self.writer, T, value);
+        }
 
-            const bits = type_info.Float.bits;
-            switch (bits) {
-                32 => try self.writer.writeByte(MSG_FLOAT32),
-                64 => try self.writer.writeByte(MSG_FLOAT64),
-                else => @compileError("Unsupported float size"),
+        pub fn getStringHeaderSize(len: usize) !usize {
+            if (len <= MSG_FIXSTR_MAX - MSG_FIXARRAY_MIN) {
+                return 1;
+            } else if (len <= std.math.maxInt(u8)) {
+                return 1 + @sizeOf(u8);
+            } else if (len <= std.math.maxInt(u16)) {
+                return 1 + @sizeOf(u16);
+            } else if (len <= std.math.maxInt(u32)) {
+                return 1 + @sizeOf(u32);
+            } else {
+                return error.StringTooLong;
             }
-
-            var buf: [@sizeOf(T)]u8 = undefined;
-            const int = @as(std.meta.Int(.unsigned, @sizeOf(T) * 8), @bitCast(value));
-            std.mem.writeInt(@TypeOf(int), buf[0..], int, .big);
-            try self.writer.writeAll(buf[0..]);
         }
 
         pub fn writeStringHeader(self: Self, len: usize) !void {
@@ -223,16 +160,23 @@ pub fn Packer(comptime Writer: type) type {
                 try self.writer.writeByte(MSG_FIXSTR_MIN + @as(u8, @intCast(len)));
             } else if (len <= std.math.maxInt(u8)) {
                 try self.writer.writeByte(MSG_STR8);
-                try self.writer.writeByte(@as(u8, @intCast(len)));
+                try packIntValue(self.writer, u8, @intCast(len));
             } else if (len <= std.math.maxInt(u16)) {
                 try self.writer.writeByte(MSG_STR16);
-                try self.writeFixedSizeIntValue(u16, @intCast(len));
+                try packIntValue(self.writer, u16, @intCast(len));
             } else if (len <= std.math.maxInt(u32)) {
                 try self.writer.writeByte(MSG_STR32);
-                try self.writeFixedSizeIntValue(u32, @intCast(len));
+                try packIntValue(self.writer, u32, @intCast(len));
             } else {
                 return error.StringTooLong;
             }
+        }
+
+        pub fn getStringSize(value: []const u8) !usize {
+            var size: usize = 0;
+            size += try getStringHeaderSize(value.len);
+            size += value.len;
+            return size;
         }
 
         pub fn writeString(self: Self, value: []const u8) !void {
@@ -243,13 +187,13 @@ pub fn Packer(comptime Writer: type) type {
         pub fn writeBinaryHeader(self: Self, len: usize) !void {
             if (len <= std.math.maxInt(u8)) {
                 try self.writer.writeByte(MSG_BIN8);
-                try self.writer.writeByte(@as(u8, @intCast(len)));
+                try packIntValue(self.writer, u8, @intCast(len));
             } else if (len <= std.math.maxInt(u16)) {
                 try self.writer.writeByte(MSG_BIN16);
-                try self.writeFixedSizeIntValue(u16, @intCast(len));
+                try packIntValue(self.writer, u16, @intCast(len));
             } else if (len <= std.math.maxInt(u32)) {
                 try self.writer.writeByte(MSG_BIN32);
-                try self.writeFixedSizeIntValue(u32, @intCast(len));
+                try packIntValue(self.writer, u32, @intCast(len));
             } else {
                 return error.BinaryTooLong;
             }
@@ -260,15 +204,27 @@ pub fn Packer(comptime Writer: type) type {
             try self.writer.writeAll(value);
         }
 
+        pub fn getArrayHeaderSize(len: usize) !usize {
+            if (len <= MSG_FIXARRAY_MAX - MSG_FIXARRAY_MIN) {
+                return 1;
+            } else if (len <= std.math.maxInt(u16)) {
+                return 1 + @sizeOf(u16);
+            } else if (len <= std.math.maxInt(u32)) {
+                return 1 + @sizeOf(u32);
+            } else {
+                return error.ArrayTooLong;
+            }
+        }
+
         pub fn writeArrayHeader(self: Self, len: usize) !void {
             if (len <= MSG_FIXARRAY_MAX - MSG_FIXARRAY_MIN) {
                 try self.writer.writeByte(MSG_FIXARRAY_MIN + @as(u8, @intCast(len)));
             } else if (len <= std.math.maxInt(u16)) {
                 try self.writer.writeByte(MSG_ARRAY16);
-                try self.writeFixedSizeIntValue(u16, @intCast(len));
+                try packIntValue(self.writer, u16, @intCast(len));
             } else if (len <= std.math.maxInt(u32)) {
                 try self.writer.writeByte(MSG_ARRAY32);
-                try self.writeFixedSizeIntValue(u32, @intCast(len));
+                try packIntValue(self.writer, u32, @intCast(len));
             } else {
                 return error.ArrayTooLong;
             }
@@ -281,15 +237,38 @@ pub fn Packer(comptime Writer: type) type {
             }
         }
 
+        pub fn writeArrayList(self: Self, comptime T: type, value: std.ArrayList(T)) !void {
+            try self.writeArrayHeader(value.items.len);
+            for (value.items) |item| {
+                try self.write(T, item);
+            }
+        }
+
+        pub fn getMaxMapHeaderSize() usize {
+            return 1 + @sizeOf(u32);
+        }
+
+        pub fn getMapHeaderSize(len: usize) !usize {
+            if (len <= MSG_FIXMAP_MAX - MSG_FIXMAP_MIN) {
+                return 1;
+            } else if (len <= std.math.maxInt(u16)) {
+                return 1 + @sizeOf(u16);
+            } else if (len <= std.math.maxInt(u32)) {
+                return 1 + @sizeOf(u32);
+            } else {
+                return error.MapTooLong;
+            }
+        }
+
         pub fn writeMapHeader(self: Self, len: usize) !void {
             if (len <= MSG_FIXMAP_MAX - MSG_FIXMAP_MIN) {
                 try self.writer.writeByte(MSG_FIXMAP_MIN + @as(u8, @intCast(len)));
             } else if (len <= std.math.maxInt(u16)) {
                 try self.writer.writeByte(MSG_MAP16);
-                try self.writeFixedSizeIntValue(u16, @intCast(len));
+                try packIntValue(self.writer, u16, @intCast(len));
             } else if (len <= std.math.maxInt(u32)) {
                 try self.writer.writeByte(MSG_MAP32);
-                try self.writeFixedSizeIntValue(u32, @intCast(len));
+                try packIntValue(self.writer, u32, @intCast(len));
             } else {
                 return error.MapTooLong;
             }
@@ -327,6 +306,49 @@ pub fn Packer(comptime Writer: type) type {
                 }
             }
             return used_field_count;
+        }
+
+        pub fn getMaxStructSize(comptime T: type, comptime extra_fields: u16) usize {
+            const type_info = @typeInfo(T);
+            if (type_info != .Struct) {
+                @compileError("Expected struct type");
+            }
+
+            const fields = type_info.Struct.fields;
+            if (fields.len > 255) {
+                @compileError("Too many fields");
+            }
+
+            comptime var size: usize = 0;
+
+            const format = if (std.meta.hasFn(T, "msgpackFormat")) T.msgpackFormat() else default_struct_format;
+            switch (format) {
+                .as_map => |opts| {
+                    size += try getMapHeaderSize(fields.len + extra_fields);
+                    inline for (fields, 0..) |field, i| {
+                        switch (opts.key) {
+                            .field_index => {
+                                size += try getIntSize(u8, @intCast(i));
+                            },
+                            .field_name => {
+                                size += try getStringSize(field.name);
+                            },
+                            .field_name_prefix => |prefix| {
+                                size += try getStringSize(strPrefix(field.name, prefix));
+                            },
+                        }
+                        size += getMaxSize(field.type);
+                    }
+                },
+                .as_array => {
+                    size += try getArrayHeaderSize(fields.len + extra_fields);
+                    inline for (fields) |field| {
+                        size += getMaxSize(field.type);
+                    }
+                },
+            }
+
+            return size;
         }
 
         pub fn writeStruct(self: Self, comptime T: type, value: T, comptime extra_fields: i16) !void {
@@ -396,7 +418,7 @@ pub fn Packer(comptime Writer: type) type {
                                 },
                             }
                             if (field.type == void) {
-                                try self.writeNil();
+                                try self.writeNull();
                             } else {
                                 try self.write(field.type, @field(value, field.name));
                             }
@@ -422,17 +444,31 @@ pub fn Packer(comptime Writer: type) type {
             }
         }
 
+        pub fn getMaxSize(comptime T: type) usize {
+            const type_info = @typeInfo(T);
+            switch (type_info) {
+                .Bool => return getBoolSize(),
+                .Int => return getMaxIntSize(T),
+                .Float => return getMaxFloatSize(T),
+                .Struct => return getMaxStructSize(T),
+                .Optional => {
+                    return getMaxSize(type_info.Optional.child);
+                },
+                else => @compileError("Unsupported type '" ++ @typeName(T) ++ "'"),
+            }
+        }
+
         pub fn write(self: Self, comptime T: type, value: T) !void {
             const type_info = @typeInfo(T);
             switch (type_info) {
-                .Bool => try self.writeBool(value),
+                .Bool => try self.writeBool(T, value),
                 .Int => try self.writeInt(T, value),
                 .Float => try self.writeFloat(T, value),
                 .Optional => {
                     if (value) |val| {
                         try self.write(type_info.Optional.child, val);
                     } else {
-                        try self.writeNil();
+                        try self.writeNull();
                     }
                 },
                 .Array => try self.writeArray(type_info.Array.child, &value),
@@ -460,34 +496,11 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type) type {
         }
 
         pub fn readNil(self: Self) !void {
-            const byte = try self.reader.readByte();
-            switch (byte) {
-                MSG_NIL => {},
-                else => return error.InvalidFormat,
-            }
+            try unpackNull(self.reader);
         }
 
         pub fn readBool(self: Self, comptime T: type) !T {
-            comptime var type_info: std.builtin.Type = @typeInfo(T);
-            comptime var is_optional: bool = false;
-
-            if (type_info == .Optional) {
-                type_info = @typeInfo(type_info.Optional.child);
-                is_optional = true;
-            }
-
-            if (type_info != .Bool) {
-                @compileError("Expected boolean type, not " ++ @typeName(T));
-            }
-
-            const byte = try self.reader.readByte();
-
-            switch (byte) {
-                MSG_NIL => return if (is_optional) null else error.InvalidFormat,
-                MSG_TRUE => return true,
-                MSG_FALSE => return false,
-                else => return error.InvalidFormat,
-            }
+            return unpackBool(self.reader, T);
         }
 
         inline fn readIntValue(self: Self, comptime SourceType: type, comptime TargetType: type) !TargetType {
@@ -523,7 +536,7 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type) type {
             }
 
             if (type_info != .Int) {
-                @compileError("Expected integer type, not " ++ @typeName(T));
+                @compileError("Expected int type, not '" ++ @typeName(T) ++ "'");
             }
 
             const byte = try self.reader.readByte();
@@ -556,41 +569,8 @@ pub fn Unpacker(comptime Reader: type, comptime AllocatorType: type) type {
             }
         }
 
-        pub fn readFloatValue(self: Self, comptime SourceFloat: type, comptime TargetFloat: type) !TargetFloat {
-            const size = @divExact(@bitSizeOf(SourceFloat), 8);
-            var buf: [size]u8 = undefined;
-            const actual_size = try self.reader.readAll(&buf);
-            if (actual_size != size) {
-                return error.InvalidFormat;
-            }
-
-            const SourceInt = std.meta.Int(.unsigned, @bitSizeOf(SourceFloat));
-            const int_value = std.mem.readInt(SourceInt, &buf, .big);
-
-            const value: SourceFloat = @bitCast(int_value);
-
-            return @floatCast(value);
-        }
-
         pub fn readFloat(self: Self, comptime T: type) !T {
-            comptime var Type: type = T;
-            comptime var type_info: std.builtin.Type = @typeInfo(T);
-            comptime var is_optional: bool = false;
-
-            if (type_info == .Optional) {
-                Type = type_info.Optional.child;
-                type_info = @typeInfo(type_info.Optional.child);
-                is_optional = true;
-            }
-
-            const byte = try self.reader.readByte();
-
-            switch (byte) {
-                MSG_NIL => return if (is_optional) null else error.InvalidFormat,
-                MSG_FLOAT32 => return try self.readFloatValue(f32, Type),
-                MSG_FLOAT64 => return try self.readFloatValue(f64, Type),
-                else => return error.InvalidFormat,
-            }
+            return unpackFloat(self.reader, T);
         }
 
         pub fn readStringHeader(self: Self, comptime nullable: Nullable) !NullableType(usize, nullable) {
@@ -957,6 +937,22 @@ pub fn unpackFromBytes(comptime T: type, bytes: []const u8, options: UnpackOptio
 
 pub fn pack(comptime T: type, writer: anytype, value: anytype) !void {
     return try packer(writer).write(T, value);
+}
+
+fn isArraylist(comptime T: type) bool {
+    if (@typeInfo(T) != .Struct or !@hasDecl(T, "Slice"))
+        return false;
+
+    const Slice = T.Slice;
+    const ptr_info = switch (@typeInfo(Slice)) {
+        .pointer => |info| info,
+        else => return false,
+    };
+
+    return T == std.ArrayListAlignedUnmanaged(ptr_info.child, null) or
+        T == std.ArrayListAlignedUnmanaged(ptr_info.child, ptr_info.alignment) or
+        T == std.ArrayListAligned(ptr_info.child, null) or
+        T == std.ArrayListAligned(ptr_info.child, ptr_info.alignment);
 }
 
 test {

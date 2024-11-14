@@ -184,10 +184,6 @@ test "writeArray/writeArrayHeader" {
 }
 
 test {
-    _ = @import("msgpack_test_nil.zig");
-    _ = @import("msgpack_test_bool.zig");
-    _ = @import("msgpack_test_int.zig");
-    _ = @import("msgpack_test_float.zig");
     _ = @import("msgpack_test_union.zig");
     _ = @import("msgpack_test_struct.zig");
 }
