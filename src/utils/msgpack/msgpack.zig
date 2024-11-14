@@ -113,6 +113,11 @@ pub const getMaxFloatSize = @import("float.zig").getMaxFloatSize;
 pub const packFloat = @import("float.zig").packFloat;
 pub const unpackFloat = @import("float.zig").unpackFloat;
 
+pub const sizeOfPackedString = @import("string.zig").sizeOfPackedString;
+pub const sizeOfPackedStringHeader = @import("string.zig").sizeOfPackedStringHeader;
+pub const packString = @import("string.zig").packString;
+pub const packStringHeader = @import("string.zig").packStringHeader;
+
 pub fn Packer(comptime Writer: type) type {
     return struct {
         writer: Writer,
@@ -141,47 +146,12 @@ pub fn Packer(comptime Writer: type) type {
             return packFloat(self.writer, T, value);
         }
 
-        pub fn getStringHeaderSize(len: usize) !usize {
-            if (len <= MSG_FIXSTR_MAX - MSG_FIXARRAY_MIN) {
-                return 1;
-            } else if (len <= std.math.maxInt(u8)) {
-                return 1 + @sizeOf(u8);
-            } else if (len <= std.math.maxInt(u16)) {
-                return 1 + @sizeOf(u16);
-            } else if (len <= std.math.maxInt(u32)) {
-                return 1 + @sizeOf(u32);
-            } else {
-                return error.StringTooLong;
-            }
-        }
-
         pub fn writeStringHeader(self: Self, len: usize) !void {
-            if (len <= MSG_FIXSTR_MAX - MSG_FIXARRAY_MIN) {
-                try self.writer.writeByte(MSG_FIXSTR_MIN + @as(u8, @intCast(len)));
-            } else if (len <= std.math.maxInt(u8)) {
-                try self.writer.writeByte(MSG_STR8);
-                try packIntValue(self.writer, u8, @intCast(len));
-            } else if (len <= std.math.maxInt(u16)) {
-                try self.writer.writeByte(MSG_STR16);
-                try packIntValue(self.writer, u16, @intCast(len));
-            } else if (len <= std.math.maxInt(u32)) {
-                try self.writer.writeByte(MSG_STR32);
-                try packIntValue(self.writer, u32, @intCast(len));
-            } else {
-                return error.StringTooLong;
-            }
-        }
-
-        pub fn getStringSize(value: []const u8) !usize {
-            var size: usize = 0;
-            size += try getStringHeaderSize(value.len);
-            size += value.len;
-            return size;
+            return packStringHeader(self.writer, len);
         }
 
         pub fn writeString(self: Self, value: []const u8) !void {
-            try self.writeStringHeader(value.len);
-            try self.writer.writeAll(value);
+            return packString(self.writer, @TypeOf(value), value);
         }
 
         pub fn writeBinaryHeader(self: Self, len: usize) !void {
@@ -331,10 +301,10 @@ pub fn Packer(comptime Writer: type) type {
                                 size += try getIntSize(u8, @intCast(i));
                             },
                             .field_name => {
-                                size += try getStringSize(field.name);
+                                size += try sizeOfPackedString(field.name.len);
                             },
                             .field_name_prefix => |prefix| {
-                                size += try getStringSize(strPrefix(field.name, prefix));
+                                size += try sizeOfPackedString(strPrefix(field.name, prefix).len);
                             },
                         }
                         size += getMaxSize(field.type);

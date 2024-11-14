@@ -13,18 +13,42 @@ const getFloatSize = @import("float.zig").getFloatSize;
 const packFloat = @import("float.zig").packFloat;
 const unpackFloat = @import("float.zig").unpackFloat;
 
+const sizeOfPackedString = @import("string.zig").sizeOfPackedString;
+const packString = @import("string.zig").packString;
+
+fn isString(comptime T: type) bool {
+    return switch (T) {
+        []u8, []const u8 => true,
+        else => false,
+    };
+}
+
 pub fn sizeOfPackedAny(comptime T: type, value: T) usize {
     const type_info = @typeInfo(T);
     switch (type_info) {
         .Bool => return getBoolSize(),
         .Int => return getIntSize(T, value),
         .Float => return getFloatSize(T, value),
+        .Pointer => {
+            if (type_info.Pointer.size == .Slice) {
+                if (isString(T)) {
+                    return sizeOfPackedString(value);
+                }
+            }
+        },
         .Optional => {
             const child_type_info = @typeInfo(type_info.Optional.child);
             switch (child_type_info) {
                 .Bool => return getBoolSize(),
                 .Int => return getIntSize(T, value),
                 .Float => return getFloatSize(T, value),
+                .Pointer => {
+                    if (child_type_info.Pointer.size == .Slice) {
+                        if (isString(T)) {
+                            return sizeOfPackedString(value);
+                        }
+                    }
+                },
                 else => {},
             }
         },
@@ -39,12 +63,26 @@ pub fn packAny(writer: anytype, comptime T: type, value: T) !void {
         .Bool => return packBool(writer, T, value),
         .Int => return packInt(writer, T, value),
         .Float => return packFloat(writer, T, value),
+        .Pointer => {
+            if (type_info.Pointer.size == .Slice) {
+                if (isString(T)) {
+                    return packString(writer, T, value);
+                }
+            }
+        },
         .Optional => {
             const child_type_info = @typeInfo(type_info.Optional.child);
             switch (child_type_info) {
                 .Bool => return packBool(writer, T, value),
                 .Int => return packInt(writer, T, value),
                 .Float => return packFloat(writer, T, value),
+                .Pointer => {
+                    if (child_type_info.Pointer.size == .Slice) {
+                        if (isString(T)) {
+                            return packString(writer, T, value);
+                        }
+                    }
+                },
                 else => {},
             }
         },
