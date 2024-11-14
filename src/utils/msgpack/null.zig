@@ -1,6 +1,7 @@
 const std = @import("std");
 const c = @import("common.zig");
 
+const isOptional = @import("utils.zig").isOptional;
 const NonOptional = @import("utils.zig").NonOptional;
 
 pub fn getNullSize() usize {
@@ -30,7 +31,7 @@ pub fn maybePackNull(writer: anytype, comptime T: type, value: T) !?NonOptional(
 
 pub fn maybeUnpackNull(header: u8, comptime T: type) !T {
     switch (header) {
-        c.MSG_NIL => return if (@typeInfo(T) == .Optional) null else error.InvalidFormat,
+        c.MSG_NIL => return if (isOptional(T)) null else error.InvalidFormat,
         else => return error.InvalidFormat,
     }
 }

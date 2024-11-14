@@ -1,11 +1,14 @@
 const std = @import("std");
 const c = @import("common.zig");
 
+const isOptional = @import("utils.zig").isOptional;
 const NonOptional = @import("utils.zig").NonOptional;
+
 const maybePackNull = @import("null.zig").maybePackNull;
 const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 
 const packIntValue = @import("int.zig").packIntValue;
+const unpackIntValue = @import("int.zig").unpackIntValue;
 
 pub fn sizeOfPackedStringHeader(len: usize) !usize {
     if (len <= c.MSG_FIXSTR_MAX - c.MSG_FIXSTR_MIN) {
@@ -42,10 +45,44 @@ pub fn packStringHeader(writer: anytype, len: usize) !void {
     }
 }
 
+pub fn unpackStringHeader(reader: anytype, comptime T: type) !T {
+    const header = try reader.readByte();
+    switch (header) {
+        c.MSG_FIXSTR_MIN...c.MSG_FIXSTR_MAX => {
+            return header - c.MSG_FIXSTR_MIN;
+        },
+        c.MSG_STR8 => {
+            return try unpackIntValue(reader, u8, NonOptional(T));
+        },
+        c.MSG_STR16 => {
+            return try unpackIntValue(reader, u16, NonOptional(T));
+        },
+        c.MSG_STR32 => {
+            return try unpackIntValue(reader, u32, NonOptional(T));
+        },
+        else => {
+            return maybeUnpackNull(header, T);
+        },
+    }
+}
+
 pub fn packString(writer: anytype, comptime T: type, value_or_maybe_null: T) !void {
     const value = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
     try packStringHeader(writer, value.len);
     try writer.writeAll(value);
+}
+
+pub fn unpackString(reader: anytype, allocator: std.mem.Allocator, comptime T: type) !T {
+    const len = if (isOptional(T))
+        try unpackStringHeader(reader, ?usize) orelse return null
+    else
+        try unpackStringHeader(reader, usize);
+
+    const data = try allocator.alloc(u8, len);
+    errdefer allocator.free(data);
+
+    try reader.readNoEof(data);
+    return data;
 }
 
 const packed_null = [_]u8{0xc0};

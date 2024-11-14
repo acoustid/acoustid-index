@@ -118,6 +118,16 @@ pub const sizeOfPackedStringHeader = @import("string.zig").sizeOfPackedStringHea
 pub const packString = @import("string.zig").packString;
 pub const packStringHeader = @import("string.zig").packStringHeader;
 
+pub const sizeOfPackedArray = @import("array.zig").sizeOfPackedArray;
+pub const sizeOfPackedArrayHeader = @import("array.zig").sizeOfPackedArrayHeader;
+pub const packArray = @import("array.zig").packArray;
+pub const packArrayHeader = @import("array.zig").packArrayHeader;
+
+pub const sizeOfPackedMap = @import("map.zig").sizeOfPackedMap;
+pub const sizeOfPackedMapHeader = @import("map.zig").sizeOfPackedMapHeader;
+pub const packMap = @import("map.zig").packMap;
+pub const packMapHeader = @import("map.zig").packMapHeader;
+
 pub fn Packer(comptime Writer: type) type {
     return struct {
         writer: Writer,
@@ -175,29 +185,11 @@ pub fn Packer(comptime Writer: type) type {
         }
 
         pub fn getArrayHeaderSize(len: usize) !usize {
-            if (len <= MSG_FIXARRAY_MAX - MSG_FIXARRAY_MIN) {
-                return 1;
-            } else if (len <= std.math.maxInt(u16)) {
-                return 1 + @sizeOf(u16);
-            } else if (len <= std.math.maxInt(u32)) {
-                return 1 + @sizeOf(u32);
-            } else {
-                return error.ArrayTooLong;
-            }
+            return sizeOfPackedArrayHeader(len);
         }
 
         pub fn writeArrayHeader(self: Self, len: usize) !void {
-            if (len <= MSG_FIXARRAY_MAX - MSG_FIXARRAY_MIN) {
-                try self.writer.writeByte(MSG_FIXARRAY_MIN + @as(u8, @intCast(len)));
-            } else if (len <= std.math.maxInt(u16)) {
-                try self.writer.writeByte(MSG_ARRAY16);
-                try packIntValue(self.writer, u16, @intCast(len));
-            } else if (len <= std.math.maxInt(u32)) {
-                try self.writer.writeByte(MSG_ARRAY32);
-                try packIntValue(self.writer, u32, @intCast(len));
-            } else {
-                return error.ArrayTooLong;
-            }
+            return packArrayHeader(self.writer, len);
         }
 
         pub fn writeArray(self: Self, comptime T: type, value: []const T) !void {
@@ -214,34 +206,12 @@ pub fn Packer(comptime Writer: type) type {
             }
         }
 
-        pub fn getMaxMapHeaderSize() usize {
-            return 1 + @sizeOf(u32);
-        }
-
         pub fn getMapHeaderSize(len: usize) !usize {
-            if (len <= MSG_FIXMAP_MAX - MSG_FIXMAP_MIN) {
-                return 1;
-            } else if (len <= std.math.maxInt(u16)) {
-                return 1 + @sizeOf(u16);
-            } else if (len <= std.math.maxInt(u32)) {
-                return 1 + @sizeOf(u32);
-            } else {
-                return error.MapTooLong;
-            }
+            return sizeOfPackedMapHeader(len);
         }
 
         pub fn writeMapHeader(self: Self, len: usize) !void {
-            if (len <= MSG_FIXMAP_MAX - MSG_FIXMAP_MIN) {
-                try self.writer.writeByte(MSG_FIXMAP_MIN + @as(u8, @intCast(len)));
-            } else if (len <= std.math.maxInt(u16)) {
-                try self.writer.writeByte(MSG_MAP16);
-                try packIntValue(self.writer, u16, @intCast(len));
-            } else if (len <= std.math.maxInt(u32)) {
-                try self.writer.writeByte(MSG_MAP32);
-                try packIntValue(self.writer, u32, @intCast(len));
-            } else {
-                return error.MapTooLong;
-            }
+            return packMapHeader(self.writer, len);
         }
 
         fn isStructFieldUsed(opts: StructAsMapOptions, field: std.builtin.Type.StructField, value: anytype) bool {

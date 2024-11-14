@@ -1,6 +1,8 @@
 const std = @import("std");
 const c = @import("common.zig");
 
+const NonOptional = @import("utils.zig").NonOptional;
+
 const getBoolSize = @import("bool.zig").getBoolSize;
 const packBool = @import("bool.zig").packBool;
 const unpackBool = @import("bool.zig").unpackBool;
@@ -15,41 +17,41 @@ const unpackFloat = @import("float.zig").unpackFloat;
 
 const sizeOfPackedString = @import("string.zig").sizeOfPackedString;
 const packString = @import("string.zig").packString;
+const unpackString = @import("string.zig").unpackString;
 
-fn isString(comptime T: type) bool {
-    return switch (T) {
-        []u8, []const u8 => true,
-        else => false,
-    };
-}
+const sizeOfPackedArray = @import("array.zig").sizeOfPackedArray;
+const packArray = @import("array.zig").packArray;
 
-pub fn sizeOfPackedAny(comptime T: type, value: T) usize {
-    const type_info = @typeInfo(T);
-    switch (type_info) {
-        .Bool => return getBoolSize(),
-        .Int => return getIntSize(T, value),
-        .Float => return getFloatSize(T, value),
-        .Pointer => {
-            if (type_info.Pointer.size == .Slice) {
-                if (isString(T)) {
-                    return sizeOfPackedString(value);
+inline fn isString(comptime T: type) bool {
+    switch (@typeInfo(T)) {
+        .Pointer => |ptr_info| {
+            if (ptr_info.size == .Slice) {
+                if (ptr_info.child == u8) {
+                    return true;
                 }
             }
         },
-        .Optional => {
-            const child_type_info = @typeInfo(type_info.Optional.child);
-            switch (child_type_info) {
-                .Bool => return getBoolSize(),
-                .Int => return getIntSize(T, value),
-                .Float => return getFloatSize(T, value),
-                .Pointer => {
-                    if (child_type_info.Pointer.size == .Slice) {
-                        if (isString(T)) {
-                            return sizeOfPackedString(value);
-                        }
-                    }
-                },
-                else => {},
+        .Optional => |opt_info| {
+            return isString(opt_info.child);
+        },
+        else => {
+            return false;
+        },
+    }
+}
+
+pub fn sizeOfPackedAny(comptime T: type, value: T) usize {
+    switch (@typeInfo(NonOptional(T))) {
+        .Bool => return getBoolSize(),
+        .Int => return getIntSize(T, value),
+        .Float => return getFloatSize(T, value),
+        .Pointer => |ptr_info| {
+            if (ptr_info.size == .Slice) {
+                if (isString(T)) {
+                    return sizeOfPackedString(value.len);
+                } else {
+                    return sizeOfPackedArray(value.len);
+                }
             }
         },
         else => {},
@@ -58,32 +60,17 @@ pub fn sizeOfPackedAny(comptime T: type, value: T) usize {
 }
 
 pub fn packAny(writer: anytype, comptime T: type, value: T) !void {
-    const type_info = @typeInfo(T);
-    switch (type_info) {
+    switch (@typeInfo(NonOptional(T))) {
         .Bool => return packBool(writer, T, value),
         .Int => return packInt(writer, T, value),
         .Float => return packFloat(writer, T, value),
-        .Pointer => {
-            if (type_info.Pointer.size == .Slice) {
+        .Pointer => |ptr_info| {
+            if (ptr_info.size == .Slice) {
                 if (isString(T)) {
                     return packString(writer, T, value);
+                } else {
+                    return packArray(writer, T, value);
                 }
-            }
-        },
-        .Optional => {
-            const child_type_info = @typeInfo(type_info.Optional.child);
-            switch (child_type_info) {
-                .Bool => return packBool(writer, T, value),
-                .Int => return packInt(writer, T, value),
-                .Float => return packFloat(writer, T, value),
-                .Pointer => {
-                    if (child_type_info.Pointer.size == .Slice) {
-                        if (isString(T)) {
-                            return packString(writer, T, value);
-                        }
-                    }
-                },
-                else => {},
             }
         },
         else => {},
@@ -91,26 +78,22 @@ pub fn packAny(writer: anytype, comptime T: type, value: T) !void {
     @compileError("Unsupported type '" + @typeName(T) + "'");
 }
 
-pub fn unpackAny(reader: anytype, comptime T: type) !T {
-    const type_info = @typeInfo(T);
-    switch (type_info) {
+pub fn unpackAny(reader: anytype, allocator: std.mem.Allocator, comptime T: type) !T {
+    switch (@typeInfo(NonOptional(T))) {
         .Void => return,
         .Bool => return unpackBool(reader, T),
         .Int => return unpackInt(reader, T),
         .Float => return unpackFloat(reader, T),
-        .Optional => {
-            const child_type_info = @typeInfo(type_info.Optional.child);
-            switch (child_type_info) {
-                .Void => return,
-                .Bool => return unpackBool(reader, T),
-                .Int => return unpackInt(reader, T),
-                .Float => return unpackFloat(reader, T),
-                else => {},
+        .Pointer => |ptr_info| {
+            if (ptr_info.size == .Slice) {
+                if (isString(T)) {
+                    return unpackString(reader, allocator, T);
+                }
             }
         },
         else => {},
     }
-    @compileError("Unsupported type '" + @typeName(T) + "'");
+    @compileError("Unsupported type '" ++ @typeName(T) ++ "'");
 }
 
 test "packAny/unpackAny: bool" {
@@ -119,7 +102,7 @@ test "packAny/unpackAny: bool" {
     try packAny(stream.writer(), bool, true);
 
     stream.reset();
-    try std.testing.expectEqual(true, try unpackAny(stream.reader(), bool));
+    try std.testing.expectEqual(true, try unpackAny(stream.reader(), std.testing.allocator, bool));
 }
 
 test "packAny/unpackAny: optional bool" {
@@ -130,7 +113,7 @@ test "packAny/unpackAny: optional bool" {
         try packAny(stream.writer(), ?bool, value);
 
         stream.reset();
-        try std.testing.expectEqual(value, try unpackAny(stream.reader(), ?bool));
+        try std.testing.expectEqual(value, try unpackAny(stream.reader(), std.testing.allocator, ?bool));
     }
 }
 
@@ -140,7 +123,7 @@ test "packAny/unpackAny: int" {
     try packAny(stream.writer(), i32, -42);
 
     stream.reset();
-    try std.testing.expectEqual(-42, try unpackAny(stream.reader(), i32));
+    try std.testing.expectEqual(-42, try unpackAny(stream.reader(), std.testing.allocator, i32));
 }
 
 test "packAny/unpackAny: optional int" {
@@ -151,7 +134,7 @@ test "packAny/unpackAny: optional int" {
         try packAny(stream.writer(), ?i32, value);
 
         stream.reset();
-        try std.testing.expectEqual(value, try unpackAny(stream.reader(), ?i32));
+        try std.testing.expectEqual(value, try unpackAny(stream.reader(), std.testing.allocator, ?i32));
     }
 }
 
@@ -161,7 +144,7 @@ test "packAny/unpackAny: float" {
     try packAny(stream.writer(), f32, 3.14);
 
     stream.reset();
-    try std.testing.expectEqual(3.14, try unpackAny(stream.reader(), f32));
+    try std.testing.expectEqual(3.14, try unpackAny(stream.reader(), std.testing.allocator, f32));
 }
 
 test "packAny/unpackAny: optional float" {
@@ -172,6 +155,35 @@ test "packAny/unpackAny: optional float" {
         try packAny(stream.writer(), ?f32, value);
 
         stream.reset();
-        try std.testing.expectEqual(value, try unpackAny(stream.reader(), ?f32));
+        try std.testing.expectEqual(value, try unpackAny(stream.reader(), std.testing.allocator, ?f32));
+    }
+}
+
+test "packAny/unpackAny: string" {
+    var buffer: [32]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+    try packAny(stream.writer(), []const u8, "hello");
+
+    stream.reset();
+    const result = try unpackAny(stream.reader(), std.testing.allocator, []const u8);
+    defer std.testing.allocator.free(result);
+    try std.testing.expectEqualStrings("hello", result);
+}
+
+test "packAny/unpackAny: optional string" {
+    const values = [_]?[]const u8{ "hello", null };
+    for (values) |value| {
+        var buffer: [32]u8 = undefined;
+        var stream = std.io.fixedBufferStream(&buffer);
+        try packAny(stream.writer(), ?[]const u8, value);
+
+        stream.reset();
+        const result = try unpackAny(stream.reader(), std.testing.allocator, ?[]const u8);
+        defer if (result) |str| std.testing.allocator.free(str);
+        if (value) |str| {
+            try std.testing.expectEqualStrings(str, result.?);
+        } else {
+            try std.testing.expectEqual(value, result);
+        }
     }
 }
