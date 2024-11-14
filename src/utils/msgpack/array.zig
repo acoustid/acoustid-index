@@ -2,10 +2,16 @@ const std = @import("std");
 const c = @import("common.zig");
 
 const NonOptional = @import("utils.zig").NonOptional;
+const isOptional = @import("utils.zig").isOptional;
+
 const maybePackNull = @import("null.zig").maybePackNull;
 const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 
 const packIntValue = @import("int.zig").packIntValue;
+const unpackIntValue = @import("int.zig").unpackIntValue;
+
+const packAny = @import("any.zig").packAny;
+const unpackAny = @import("any.zig").unpackAny;
 
 pub fn sizeOfPackedArrayHeader(len: usize) !usize {
     if (len <= c.MSG_FIXARRAY_MAX - c.MSG_FIXARRAY_MIN) {
@@ -39,10 +45,49 @@ pub fn packArrayHeader(writer: anytype, len: usize) !void {
     }
 }
 
+pub fn unpackArrayHeader(reader: anytype, comptime T: type) !T {
+    const header = try reader.readByte();
+    switch (header) {
+        c.MSG_FIXARRAY_MIN...c.MSG_FIXARRAY_MAX => {
+            return header - c.MSG_FIXARRAY_MIN;
+        },
+        c.MSG_ARRAY16 => {
+            return try unpackIntValue(reader, u16, NonOptional(T));
+        },
+        c.MSG_ARRAY32 => {
+            return try unpackIntValue(reader, u32, NonOptional(T));
+        },
+        else => {
+            return maybeUnpackNull(header, T);
+        },
+    }
+}
+
 pub fn packArray(writer: anytype, comptime T: type, value_or_maybe_null: T) !void {
     const value = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
     try packArrayHeader(writer, value.len);
-    try writer.writeAll(value);
+
+    for (value) |item| {
+        try packAny(writer, T, item);
+    }
+}
+
+pub fn unpackArray(reader: anytype, allocator: std.mem.Allocator, comptime T: type) !T {
+    const len = if (isOptional(T))
+        try unpackArrayHeader(reader, ?usize) orelse return null
+    else
+        try unpackArrayHeader(reader, usize);
+
+    const Child = std.meta.Child(T);
+
+    const data = try allocator.alloc(Child, len);
+    errdefer allocator.free(data);
+
+    for (0..len) |i| {
+        data[i] = try unpackAny(reader, allocator, Child);
+    }
+
+    return data;
 }
 
 const packed_null = [_]u8{0xc0};
