@@ -291,12 +291,7 @@ pub fn writeFile(file: std.fs.File, reader: anytype) !void {
     };
     try packer.write(SegmentFileHeader, header);
 
-    try packer.writeMapHeader(segment.docs.count());
-    var docs_iter = segment.docs.iterator();
-    while (docs_iter.next()) |entry| {
-        try packer.write(u32, entry.key_ptr.*);
-        try packer.write(bool, entry.value_ptr.*);
-    }
+    try packer.writeMap(segment.docs);
 
     try buffered_writer.flush();
 

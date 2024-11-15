@@ -222,6 +222,10 @@ pub fn Packer(comptime Writer: type) type {
             return packMapHeader(self.writer, len);
         }
 
+        pub fn writeMap(self: Self, value: anytype) !void {
+            return packMap(self.writer, value);
+        }
+
         pub fn writeStruct(self: Self, comptime T: type, value: T) !void {
             return packStruct(self.writer, T, value);
         }
