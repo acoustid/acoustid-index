@@ -23,6 +23,12 @@ const sizeOfPackedArray = @import("array.zig").sizeOfPackedArray;
 const packArray = @import("array.zig").packArray;
 const unpackArray = @import("array.zig").unpackArray;
 
+const packStruct = @import("struct.zig").packStruct;
+const unpackStruct = @import("struct.zig").unpackStruct;
+
+const packUnion = @import("union.zig").packUnion;
+const unpackUnion = @import("union.zig").unpackUnion;
+
 inline fn isString(comptime T: type) bool {
     switch (@typeInfo(T)) {
         .Pointer => |ptr_info| {
@@ -73,6 +79,8 @@ pub fn packAny(writer: anytype, comptime T: type, value: T) !void {
                 }
             }
         },
+        .Struct => return packStruct(writer, T, value),
+        .Union => return packUnion(writer, T, value),
         else => {},
     }
     @compileError("Unsupported type '" + @typeName(T) + "'");
@@ -93,6 +101,8 @@ pub fn unpackAny(reader: anytype, allocator: std.mem.Allocator, comptime T: type
                 }
             }
         },
+        .Struct => return unpackStruct(reader, allocator, T),
+        .Union => return unpackUnion(reader, allocator, T),
         else => {},
     }
     @compileError("Unsupported type '" ++ @typeName(T) ++ "'");
@@ -215,6 +225,45 @@ test "packAny/unpackAny: optional array" {
         defer if (result) |arr| std.testing.allocator.free(arr);
         if (value) |arr| {
             try std.testing.expectEqualSlices(i32, arr, result.?);
+        } else {
+            try std.testing.expectEqual(value, result);
+        }
+    }
+}
+
+test "packAny/unpackAny: struct" {
+    const Point = struct {
+        x: i32,
+        y: i32,
+    };
+    var buffer: [64]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+    const point = Point{ .x = 10, .y = 20 };
+    try packAny(stream.writer(), Point, point);
+
+    stream.reset();
+    const result = try unpackAny(stream.reader(), std.testing.allocator, Point);
+    try std.testing.expectEqual(point.x, result.x);
+    try std.testing.expectEqual(point.y, result.y);
+}
+
+test "packAny/unpackAny: optional struct" {
+    const Point = struct {
+        x: i32,
+        y: i32,
+    };
+    const point = Point{ .x = 10, .y = 20 };
+    const values = [_]?Point{ point, null };
+    for (values) |value| {
+        var buffer: [64]u8 = undefined;
+        var stream = std.io.fixedBufferStream(&buffer);
+        try packAny(stream.writer(), ?Point, value);
+
+        stream.reset();
+        const result = try unpackAny(stream.reader(), std.testing.allocator, ?Point);
+        if (value) |p| {
+            try std.testing.expectEqual(p.x, result.?.x);
+            try std.testing.expectEqual(p.y, result.?.y);
         } else {
             try std.testing.expectEqual(value, result);
         }

@@ -182,8 +182,3 @@ test "writeArray/writeArrayHeader" {
         try std.testing.expectError(error.ArrayTooLong, err);
     }
 }
-
-test {
-    _ = @import("msgpack_test_union.zig");
-    _ = @import("msgpack_test_struct.zig");
-}

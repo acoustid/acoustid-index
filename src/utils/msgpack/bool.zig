@@ -66,7 +66,7 @@ test "unpackBool: null into optional" {
 
 test "unpackBool: null into non-optional" {
     var stream = std.io.fixedBufferStream(&packed_null);
-    try std.testing.expectError(error.InvalidFormat, unpackBool(stream.reader(), bool));
+    try std.testing.expectError(error.UnexpectedNull, unpackBool(stream.reader(), bool));
 }
 
 test "unpackBool: wrong type" {

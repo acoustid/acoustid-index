@@ -85,6 +85,21 @@ pub fn unpackString(reader: anytype, allocator: std.mem.Allocator, comptime T: t
     return data;
 }
 
+pub fn unpackStringInto(reader: anytype, comptime T: type, buf: anytype) !T {
+    const len = if (isOptional(T))
+        try unpackStringHeader(reader, ?usize) orelse return null
+    else
+        try unpackStringHeader(reader, usize);
+
+    if (len > buf.len) {
+        return error.BufferTooSmall;
+    }
+
+    const data = buf[0..len];
+    try reader.readNoEof(data);
+    return data;
+}
+
 const packed_null = [_]u8{0xc0};
 const packed_abc = [_]u8{ 0xa3, 0x61, 0x62, 0x63 };
 
