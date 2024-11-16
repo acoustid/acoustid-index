@@ -28,6 +28,8 @@ allocator: std.mem.Allocator,
 dir: std.fs.Dir,
 scheduler: *Scheduler,
 
+lock_file: ?std.fs.File = null,
+
 stage: InMemoryIndex,
 
 index: FileIndex,
@@ -86,9 +88,21 @@ pub fn deinit(self: *Self) void {
     self.index_dir.close();
 
     self.stage.deinit();
+
+    if (self.lock_file) |file| {
+        file.close();
+        self.lock_file = null;
+    }
 }
 
 pub fn open(self: *Self) !void {
+    self.lock_file = self.dir.createFile(".lock", .{ .lock = .exclusive, .lock_nonblocking = true }) catch |err| {
+        if (err == error.WouldBlock) {
+            return error.LockedByAnotherProcess;
+        }
+        return err;
+    };
+
     try self.index.open();
     try self.oplog.open(self.index.getMaxCommitId(), &self.stage);
 }

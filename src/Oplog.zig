@@ -22,8 +22,6 @@ pub const FileInfo = struct {
 allocator: std.mem.Allocator,
 dir: std.fs.Dir,
 
-lock_file: ?std.fs.File = null,
-
 write_lock: std.Thread.Mutex = .{},
 
 files: std.ArrayList(FileInfo),
@@ -42,8 +40,6 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) Self {
     };
 }
 
-const lock_file_name = ".lock";
-
 pub fn deinit(self: *Self) void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
@@ -53,11 +49,6 @@ pub fn deinit(self: *Self) void {
     self.closeCurrentFile();
 
     self.files.deinit();
-
-    if (self.lock_file) |file| {
-        file.close();
-        self.lock_file = null;
-    }
 }
 
 pub fn open(self: *Self, first_commit_id: u64, index: *InMemoryIndex) !void {
@@ -65,13 +56,6 @@ pub fn open(self: *Self, first_commit_id: u64, index: *InMemoryIndex) !void {
     defer self.write_lock.unlock();
 
     log.info("opening oplog", .{});
-
-    self.lock_file = self.dir.createFile(lock_file_name, .{ .lock = .exclusive, .lock_nonblocking = true }) catch |err| {
-        if (err == error.WouldBlock) {
-            return error.LockedByAnotherProcess;
-        }
-        return err;
-    };
 
     var it = self.dir.iterate();
     while (try it.next()) |entry| {
