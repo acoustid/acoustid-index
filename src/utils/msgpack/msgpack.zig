@@ -1,86 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const Nullable = enum {
-    optional,
-    required,
-};
-
-fn NullableType(comptime T: type, comptime nullable: Nullable) type {
-    switch (nullable) {
-        .optional => return ?T,
-        .required => return T,
-    }
-}
-
-fn strPrefix(src: []const u8, len: usize) []const u8 {
-    return src[0..@min(src.len, len)];
-}
-
-const MSG_POSITIVE_FIXINT_MIN = 0x00;
-const MSG_POSITIVE_FIXINT_MAX = 0x7f;
-const MSG_FIXMAP_MIN = 0x80;
-const MSG_FIXMAP_MAX = 0x8f;
-const MSG_FIXARRAY_MIN = 0x90;
-const MSG_FIXARRAY_MAX = 0x9f;
-const MSG_FIXSTR_MIN = 0xa0;
-const MSG_FIXSTR_MAX = 0xbf;
-const MSG_NIL = 0xc0;
-const MSG_FALSE = 0xc2;
-const MSG_TRUE = 0xc3;
-const MSG_BIN8 = 0xc4;
-const MSG_BIN16 = 0xc5;
-const MSG_BIN32 = 0xc6;
-const MSG_EXT8 = 0xc7;
-const MSG_EXT16 = 0xc8;
-const MSG_EXT32 = 0xc9;
-const MSG_FLOAT32 = 0xca;
-const MSG_FLOAT64 = 0xcb;
-const MSG_UINT8 = 0xcc;
-const MSG_UINT16 = 0xcd;
-const MSG_UINT32 = 0xce;
-const MSG_UINT64 = 0xcf;
-const MSG_INT8 = 0xd0;
-const MSG_INT16 = 0xd1;
-const MSG_INT32 = 0xd2;
-const MSG_INT64 = 0xd3;
-const MSG_FIXEXT1 = 0xd4;
-const MSG_FIXEXT2 = 0xd5;
-const MSG_FIXEXT4 = 0xd6;
-const MSG_FIXEXT8 = 0xd7;
-const MSG_FIXEXT16 = 0xd8;
-const MSG_STR8 = 0xd9;
-const MSG_STR16 = 0xda;
-const MSG_STR32 = 0xdb;
-const MSG_ARRAY16 = 0xdc;
-const MSG_ARRAY32 = 0xdd;
-const MSG_MAP16 = 0xde;
-const MSG_MAP32 = 0xdf;
-const MSG_NEGATIVE_FIXINT_MIN = 0xe0;
-const MSG_NEGATIVE_FIXINT_MAX = 0xff;
-
-var dummy: u8 = 0;
-
-const NoAllocator = struct {
-    pub fn noAlloc(ctx: *anyopaque, len: usize, ptr_align: u8, ret_addr: usize) ?[*]u8 {
-        _ = ctx;
-        _ = len;
-        _ = ptr_align;
-        _ = ret_addr;
-        return null;
-    }
-
-    pub fn allocator() std.mem.Allocator {
-        return .{
-            .ptr = &dummy,
-            .vtable = &.{
-                .alloc = noAlloc,
-                .resize = std.mem.Allocator.noResize,
-                .free = std.mem.Allocator.noFree,
-            },
-        };
-    }
-};
+const NoAllocator = @import("utils.zig").NoAllocator;
 
 pub const getNullSize = @import("null.zig").getNullSize;
 pub const packNull = @import("null.zig").packNull;
@@ -199,17 +120,7 @@ pub fn Packer(comptime Writer: type) type {
         }
 
         pub fn writeArray(self: Self, comptime T: type, value: []const T) !void {
-            try self.writeArrayHeader(value.len);
-            for (value) |item| {
-                try self.write(T, item);
-            }
-        }
-
-        pub fn writeArrayList(self: Self, comptime T: type, value: std.ArrayList(T)) !void {
-            try self.writeArrayHeader(value.items.len);
-            for (value.items) |item| {
-                try self.write(T, item);
-            }
+            return packArray(self.writer, @TypeOf(value), value);
         }
 
         pub fn getMapHeaderSize(len: usize) !usize {
@@ -241,11 +152,11 @@ pub fn Packer(comptime Writer: type) type {
 pub fn Unpacker(comptime Reader: type) type {
     return struct {
         reader: Reader,
-        allocator: std.mem.Allocator,
+        allocator: Allocator,
 
         const Self = @This();
 
-        pub fn init(reader: Reader, allocator: std.mem.Allocator) Self {
+        pub fn init(reader: Reader, allocator: Allocator) Self {
             return .{
                 .reader = reader,
                 .allocator = allocator,
@@ -330,7 +241,7 @@ pub fn packer(writer: anytype) Packer(@TypeOf(writer)) {
     return Packer(@TypeOf(writer)).init(writer);
 }
 
-pub fn unpacker(reader: anytype, allocator: std.mem.Allocator) Unpacker(@TypeOf(reader)) {
+pub fn unpacker(reader: anytype, allocator: Allocator) Unpacker(@TypeOf(reader)) {
     return Unpacker(@TypeOf(reader)).init(reader, allocator);
 }
 
@@ -339,7 +250,7 @@ pub fn unpackerNoAlloc(reader: anytype) Unpacker(@TypeOf(reader)) {
 }
 
 const UnpackOptions = struct {
-    allocator: ?std.mem.Allocator = null,
+    allocator: ?Allocator = null,
 };
 
 pub fn unpack(comptime T: type, reader: anytype, options: UnpackOptions) !T {
@@ -357,22 +268,6 @@ pub fn unpackFromBytes(comptime T: type, bytes: []const u8, options: UnpackOptio
 
 pub fn pack(comptime T: type, writer: anytype, value: anytype) !void {
     return try packer(writer).write(T, value);
-}
-
-fn isArraylist(comptime T: type) bool {
-    if (@typeInfo(T) != .Struct or !@hasDecl(T, "Slice"))
-        return false;
-
-    const Slice = T.Slice;
-    const ptr_info = switch (@typeInfo(Slice)) {
-        .pointer => |info| info,
-        else => return false,
-    };
-
-    return T == std.ArrayListAlignedUnmanaged(ptr_info.child, null) or
-        T == std.ArrayListAlignedUnmanaged(ptr_info.child, ptr_info.alignment) or
-        T == std.ArrayListAligned(ptr_info.child, null) or
-        T == std.ArrayListAligned(ptr_info.child, ptr_info.alignment);
 }
 
 test {

@@ -20,3 +20,26 @@ test isOptional {
     try std.testing.expect(isOptional(?u32));
     try std.testing.expect(!isOptional(u32));
 }
+
+var no_allocator_dummy: u8 = 0;
+
+pub const NoAllocator = struct {
+    pub fn noAlloc(ctx: *anyopaque, len: usize, ptr_align: u8, ret_addr: usize) ?[*]u8 {
+        _ = ctx;
+        _ = len;
+        _ = ptr_align;
+        _ = ret_addr;
+        return null;
+    }
+
+    pub fn allocator() std.mem.Allocator {
+        return .{
+            .ptr = &no_allocator_dummy,
+            .vtable = &.{
+                .alloc = noAlloc,
+                .resize = std.mem.Allocator.noResize,
+                .free = std.mem.Allocator.noFree,
+            },
+        };
+    }
+};

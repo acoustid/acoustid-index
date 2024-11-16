@@ -4,6 +4,7 @@ const c = @import("common.zig");
 const NonOptional = @import("utils.zig").NonOptional;
 const Optional = @import("utils.zig").Optional;
 const isOptional = @import("utils.zig").isOptional;
+const NoAllocator = @import("utils.zig").NoAllocator;
 
 const maybePackNull = @import("null.zig").maybePackNull;
 const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
@@ -159,4 +160,61 @@ pub fn unpackUnion(reader: anytype, allocator: std.mem.Allocator, comptime T: ty
             return try unpackUnionAsMap(reader, allocator, T, opts);
         },
     }
+}
+const Msg1 = union(enum) {
+    a: u32,
+    b: u64,
+
+    pub fn msgpackFormat() UnionFormat {
+        return .{ .as_map = .{ .key = .field_index } };
+    }
+};
+const msg1 = Msg1{ .a = 1 };
+const msg1_packed = [_]u8{
+    0x81, // map with 1 elements
+    0x00, // key: fixint 0
+    0x01, // value: u32(1)
+};
+
+const Msg2 = union(enum) {
+    a,
+    b: u64,
+
+    pub fn msgpackFormat() UnionFormat {
+        return .{ .as_map = .{ .key = .field_index } };
+    }
+};
+const msg2 = Msg2{ .a = {} };
+const msg2_packed = [_]u8{
+    0x81, // map with 1 elements
+    0x00, // key: fixint 0
+    0xc0, // value: nil
+};
+
+test "writeUnion: int field" {
+    var buffer: [100]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+    try packUnion(stream.writer(), Msg1, msg1);
+
+    try std.testing.expectEqualSlices(u8, &msg1_packed, stream.getWritten());
+}
+
+test "writeUnion: void field" {
+    var buffer: [100]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+    try packUnion(stream.writer(), Msg2, msg2);
+
+    try std.testing.expectEqualSlices(u8, &msg2_packed, stream.getWritten());
+}
+
+test "readUnion: int field" {
+    var stream = std.io.fixedBufferStream(&msg1_packed);
+    const value = try unpackUnion(stream.reader(), NoAllocator.allocator(), Msg1);
+    try std.testing.expectEqual(msg1, value);
+}
+
+test "readUnion: void field" {
+    var stream = std.io.fixedBufferStream(&msg2_packed);
+    const value = try unpackUnion(stream.reader(), NoAllocator.allocator(), Msg2);
+    try std.testing.expectEqual(msg2, value);
 }

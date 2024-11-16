@@ -4,6 +4,7 @@ const c = @import("common.zig");
 const NonOptional = @import("utils.zig").NonOptional;
 
 const packNull = @import("null.zig").packNull;
+const unpackNull = @import("null.zig").unpackNull;
 const isNullError = @import("null.zig").isNullError;
 
 const getBoolSize = @import("bool.zig").getBoolSize;
@@ -71,6 +72,7 @@ pub fn sizeOfPackedAny(comptime T: type, value: T) usize {
 
 pub fn packAny(writer: anytype, comptime T: type, value: T) !void {
     switch (@typeInfo(T)) {
+        .Void => return packNull(writer),
         .Bool => return packBool(writer, T, value),
         .Int => return packInt(writer, T, value),
         .Float => return packFloat(writer, T, value),
@@ -97,12 +99,12 @@ pub fn packAny(writer: anytype, comptime T: type, value: T) !void {
         },
         else => {},
     }
-    @compileError("Unsupported type '" + @typeName(T) + "'");
+    @compileError("Unsupported type '" ++ @typeName(T) ++ "'");
 }
 
 pub fn unpackAny(reader: anytype, allocator: std.mem.Allocator, comptime T: type) !T {
     switch (@typeInfo(T)) {
-        .Void => return,
+        .Void => return unpackNull(reader),
         .Bool => return unpackBool(reader, T),
         .Int => return unpackInt(reader, T),
         .Float => return unpackFloat(reader, T),
