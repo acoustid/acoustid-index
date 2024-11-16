@@ -173,7 +173,7 @@ pub fn unpackStructAsMap(reader: anytype, allocator: std.mem.Allocator, comptime
                 }
             },
             .field_name => {
-                const field_name = try unpackStringInto(reader, []u8, &field_name_buffer);
+                const field_name = try unpackStringInto(reader, &field_name_buffer);
                 inline for (fields, 0..) |field, i| {
                     if (std.mem.eql(u8, field.name, field_name)) {
                         fields_seen.set(i);
@@ -185,7 +185,7 @@ pub fn unpackStructAsMap(reader: anytype, allocator: std.mem.Allocator, comptime
                 }
             },
             .field_name_prefix => |prefix| {
-                const field_name = try unpackStringInto(reader, []u8, &field_name_buffer);
+                const field_name = try unpackStringInto(reader, &field_name_buffer);
                 inline for (fields, 0..) |field, i| {
                     if (std.mem.startsWith(u8, field.name, strPrefix(field_name, prefix))) {
                         fields_seen.set(i);

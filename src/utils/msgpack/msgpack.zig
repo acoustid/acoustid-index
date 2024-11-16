@@ -120,6 +120,9 @@ pub const unpackMapHeader = @import("map.zig").unpackMapHeader;
 pub const unpackString = @import("string.zig").unpackString;
 pub const unpackStringInto = @import("string.zig").unpackStringInto;
 
+pub const unpackBinary = @import("binary.zig").unpackBinary;
+pub const unpackBinaryInto = @import("binary.zig").unpackBinaryInto;
+
 pub const unpackArrayHeader = @import("array.zig").unpackArrayHeader;
 
 pub const StructFormat = @import("struct.zig").StructFormat;
@@ -270,12 +273,20 @@ pub fn Unpacker(comptime Reader: type) type {
             return unpackFloat(self.reader, T);
         }
 
-        pub fn readString(self: Self, comptime T: type) !T {
-            return unpackString(self.reader, T);
+        pub fn readString(self: Self) ![]const u8 {
+            return unpackString(self.reader, self.allocator);
         }
 
-        pub fn readStringInto(self: Self, comptime T: type, buffer: []u8) !T {
-            return unpackStringInto(self.reader, T, buffer);
+        pub fn readStringInto(self: Self, buffer: []u8) ![]const u8 {
+            return unpackStringInto(self.reader, buffer);
+        }
+
+        pub fn readBinary(self: Self) ![]const u8 {
+            return unpackString(self.reader, self.allocator);
+        }
+
+        pub fn readBinaryInto(self: Self, buffer: []u8) ![]const u8 {
+            return unpackBinaryInto(self.reader, buffer);
         }
 
         pub fn readArrayHeader(self: Self, comptime opt: Nullable) !NullableType(u32, opt) {
@@ -377,4 +388,8 @@ fn isArraylist(comptime T: type) bool {
         T == std.ArrayListAlignedUnmanaged(ptr_info.child, ptr_info.alignment) or
         T == std.ArrayListAligned(ptr_info.child, null) or
         T == std.ArrayListAligned(ptr_info.child, ptr_info.alignment);
+}
+
+test {
+    _ = std.testing.refAllDecls(@This());
 }

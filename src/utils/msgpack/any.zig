@@ -18,6 +18,7 @@ const unpackFloat = @import("float.zig").unpackFloat;
 const sizeOfPackedString = @import("string.zig").sizeOfPackedString;
 const packString = @import("string.zig").packString;
 const unpackString = @import("string.zig").unpackString;
+const String = @import("string.zig").String;
 
 const sizeOfPackedArray = @import("array.zig").sizeOfPackedArray;
 const packArray = @import("array.zig").packArray;
@@ -87,22 +88,30 @@ pub fn packAny(writer: anytype, comptime T: type, value: T) !void {
 }
 
 pub fn unpackAny(reader: anytype, allocator: std.mem.Allocator, comptime T: type) !T {
-    switch (@typeInfo(NonOptional(T))) {
+    switch (@typeInfo(T)) {
         .Void => return,
         .Bool => return unpackBool(reader, T),
         .Int => return unpackInt(reader, T),
         .Float => return unpackFloat(reader, T),
+        .Struct => return unpackStruct(reader, allocator, T),
+        .Union => return unpackUnion(reader, allocator, T),
         .Pointer => |ptr_info| {
             if (ptr_info.size == .Slice) {
                 if (isString(T)) {
-                    return unpackString(reader, allocator, T);
+                    return unpackString(reader, allocator);
                 } else {
                     return unpackArray(reader, allocator, T);
                 }
             }
         },
-        .Struct => return unpackStruct(reader, allocator, T),
-        .Union => return unpackUnion(reader, allocator, T),
+        .Optional => |opt_info| {
+            return unpackAny(reader, allocator, opt_info.child) catch |err| {
+                if (err == error.UnexpectedNull) {
+                    return null;
+                }
+                return err;
+            };
+        },
         else => {},
     }
     @compileError("Unsupported type '" ++ @typeName(T) ++ "'");
@@ -268,4 +277,16 @@ test "packAny/unpackAny: optional struct" {
             try std.testing.expectEqual(value, result);
         }
     }
+}
+
+test "packAny/unpackAny: String struct" {
+    var buffer: [64]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+    const str = String{ .data = "hello" };
+    try packAny(stream.writer(), String, str);
+
+    stream.reset();
+    const result = try unpackAny(stream.reader(), std.testing.allocator, String);
+    defer std.testing.allocator.free(result.data);
+    try std.testing.expectEqualStrings("hello", result.data);
 }

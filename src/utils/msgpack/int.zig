@@ -138,6 +138,16 @@ inline fn resolveFixedSizeIntHeader(comptime T: type) u8 {
     }
 }
 
+pub fn unpackShortIntValue(header: u8, min_value: u8, max_value: u8, comptime TargetType: type) !TargetType {
+    std.debug.assert(header >= min_value and header <= max_value);
+    const value = header - min_value;
+
+    if (value >= std.math.minInt(TargetType) and value <= std.math.maxInt(TargetType)) {
+        return @intCast(value);
+    }
+    return error.IntegerOverflow;
+}
+
 pub fn unpackIntValue(reader: anytype, comptime SourceType: type, comptime TargetType: type) !TargetType {
     const size = @divExact(@bitSizeOf(SourceType), 8);
     var buf: [size]u8 = undefined;
