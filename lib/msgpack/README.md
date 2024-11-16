@@ -14,13 +14,13 @@ const Message = struct {
 var buffer = std.ArrayList(u8).init(allocator);
 defer buffer.deinit();
 
-try msgpack.encode(Message, buffer.writer(), .{
+try msgpack.encode(buffer.writer(), Message, .{
     .name = "John",
     .age = 20,
 });
 
 var stream = std.io.fixedBufferStream(buffer.items);
-const message = try decode(Message, stream.reader(), allocator);
+const message = try decode(stream.reader(), allocator, Message);
 defer allocator.free(message.name);
 ```
 
@@ -50,11 +50,11 @@ const Message = struct {
     items: []u32,
 
     pub fn msgpackWrite(self: Message, packer: anytype) !void {
-        try packer.writeArray(self.items);
+        try packer.writeArray(u32, self.items);
     }
 
     pub fn msgpackRead(unpacker: anytype) !Message {
-        const items = try unpacker.readArray();
+        const items = try unpacker.readArray(u32);
         return Message{ .items = items };
     }
 };

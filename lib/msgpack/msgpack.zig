@@ -249,11 +249,11 @@ pub fn unpackerNoAlloc(reader: anytype) Unpacker(@TypeOf(reader)) {
     return Unpacker(@TypeOf(reader)).init(reader, NoAllocator.allocator());
 }
 
-pub fn encode(comptime T: type, writer: anytype, value: anytype) !void {
+pub fn encode(writer: anytype, comptime T: type, value: T) !void {
     return try packer(writer).write(T, value);
 }
 
-pub fn decode(comptime T: type, reader: anytype, allocator: ?Allocator) !T {
+pub fn decode(reader: anytype, allocator: ?Allocator, comptime T: type) !T {
     return try unpacker(reader, allocator).read(T);
 }
 
@@ -270,13 +270,13 @@ test "encode/decode" {
     var buffer = std.ArrayList(u8).init(std.testing.allocator);
     defer buffer.deinit();
 
-    try encode(Message, buffer.writer(), .{
+    try encode(buffer.writer(), Message, .{
         .name = "John",
         .age = 20,
     });
 
     var stream = std.io.fixedBufferStream(buffer.items);
-    const message = try decode(Message, stream.reader(), std.testing.allocator);
+    const message = try decode(stream.reader(), std.testing.allocator, Message);
     defer std.testing.allocator.free(message.name);
 
     try std.testing.expectEqualStrings("John", message.name);

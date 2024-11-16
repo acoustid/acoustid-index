@@ -198,18 +198,6 @@ pub fn truncate(self: *Self, commit_id: u64) !void {
     try self.truncateNoLock(commit_id);
 }
 
-const newline: u8 = '\n';
-
-fn writeEntries(writer: anytype, commit_id: u64, changes: []const Change) !void {
-    var packer = msgpack.packer(writer);
-
-    const txn = Transaction{
-        .id = commit_id,
-        .changes = changes,
-    };
-    try packer.write(Transaction, txn);
-}
-
 pub fn write(self: *Self, changes: []const Change, index: *InMemoryIndex) !void {
     var txn = try index.prepareUpdate(changes);
     defer index.cancelUpdate(&txn);
@@ -223,7 +211,10 @@ pub fn write(self: *Self, changes: []const Change, index: *InMemoryIndex) !void 
     var bufferred_writer = std.io.bufferedWriter(file.writer());
     const writer = bufferred_writer.writer();
 
-    try writeEntries(writer, commit_id, changes);
+    try msgpack.encode(writer, Transaction, .{
+        .id = commit_id,
+        .changes = changes,
+    });
 
     try bufferred_writer.flush();
 
@@ -345,12 +336,7 @@ pub const OplogFileIterator = struct {
     pub fn next(self: *OplogFileIterator) !?Transaction {
         _ = self.arena.reset(.retain_capacity);
 
-        var unpacker = msgpack.unpacker(
-            self.buffered_reader.reader(),
-            self.arena.allocator(),
-        );
-
-        return unpacker.read(Transaction) catch |err| {
+        return msgpack.decode(self.buffered_reader.reader(), self.arena.allocator(), Transaction) catch |err| {
             if (err == error.EndOfStream) {
                 return null;
             }
