@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("common.zig");
+const hdrs = @import("headers.zig");
 
 const NonOptional = @import("utils.zig").NonOptional;
 const maybePackNull = @import("null.zig").maybePackNull;
@@ -131,19 +131,19 @@ inline fn resolveFixedSizeIntHeader(comptime T: type) u8 {
     switch (type_info.Int.signedness) {
         .signed => {
             switch (type_info.Int.bits) {
-                8 => return c.MSG_INT8,
-                16 => return c.MSG_INT16,
-                32 => return c.MSG_INT32,
-                64 => return c.MSG_INT64,
+                8 => return hdrs.INT8,
+                16 => return hdrs.INT16,
+                32 => return hdrs.INT32,
+                64 => return hdrs.INT64,
                 else => @compileError("Unsupported signed int with " ++ type_info.Int.bits ++ "bits"),
             }
         },
         .unsigned => {
             switch (type_info.Int.bits) {
-                8 => return c.MSG_UINT8,
-                16 => return c.MSG_UINT16,
-                32 => return c.MSG_UINT32,
-                64 => return c.MSG_UINT64,
+                8 => return hdrs.UINT8,
+                16 => return hdrs.UINT16,
+                32 => return hdrs.UINT32,
+                64 => return hdrs.UINT64,
                 else => @compileError("Unsupported unsigned int with " ++ type_info.Int.bits ++ "bits"),
             }
         },
@@ -187,11 +187,11 @@ pub fn unpackInt(reader: anytype, comptime T: type) !T {
 
     const header = try reader.readByte();
 
-    if (header <= c.MSG_POSITIVE_FIXINT_MAX) {
+    if (header <= hdrs.POSITIVE_FIXINT_MAX) {
         return @intCast(header);
     }
 
-    if (header >= c.MSG_NEGATIVE_FIXINT_MIN) {
+    if (header >= hdrs.NEGATIVE_FIXINT_MIN) {
         const value: i8 = @bitCast(header);
         if (type_info.Int.signedness == .signed) {
             return value;
@@ -202,14 +202,14 @@ pub fn unpackInt(reader: anytype, comptime T: type) !T {
     }
 
     switch (header) {
-        c.MSG_INT8 => return try unpackIntValue(reader, i8, Type),
-        c.MSG_INT16 => return try unpackIntValue(reader, i16, Type),
-        c.MSG_INT32 => return try unpackIntValue(reader, i32, Type),
-        c.MSG_INT64 => return try unpackIntValue(reader, i64, Type),
-        c.MSG_UINT8 => return try unpackIntValue(reader, u8, Type),
-        c.MSG_UINT16 => return try unpackIntValue(reader, u16, Type),
-        c.MSG_UINT32 => return try unpackIntValue(reader, u32, Type),
-        c.MSG_UINT64 => return try unpackIntValue(reader, u64, Type),
+        hdrs.INT8 => return try unpackIntValue(reader, i8, Type),
+        hdrs.INT16 => return try unpackIntValue(reader, i16, Type),
+        hdrs.INT32 => return try unpackIntValue(reader, i32, Type),
+        hdrs.INT64 => return try unpackIntValue(reader, i64, Type),
+        hdrs.UINT8 => return try unpackIntValue(reader, u8, Type),
+        hdrs.UINT16 => return try unpackIntValue(reader, u16, Type),
+        hdrs.UINT32 => return try unpackIntValue(reader, u32, Type),
+        hdrs.UINT64 => return try unpackIntValue(reader, u64, Type),
         else => return maybeUnpackNull(header, T),
     }
 }

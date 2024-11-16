@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("common.zig");
+const hdrs = @import("headers.zig");
 
 const NonOptional = @import("utils.zig").NonOptional;
 const maybePackNull = @import("null.zig").maybePackNull;
@@ -34,11 +34,11 @@ pub fn packFloat(writer: anytype, comptime T: type, value_or_maybe_null: T) !voi
     const type_info = @typeInfo(Type);
     switch (type_info.Float.bits) {
         0...32 => {
-            try writer.writeByte(c.MSG_FLOAT32);
+            try writer.writeByte(hdrs.FLOAT32);
             TargetType = f32;
         },
         33...64 => {
-            try writer.writeByte(c.MSG_FLOAT64);
+            try writer.writeByte(hdrs.FLOAT64);
             TargetType = f64;
         },
         else => @compileError("Unsupported float size"),
@@ -70,8 +70,8 @@ pub fn unpackFloat(reader: anytype, comptime T: type) !T {
     const Type = assertFloatType(T);
     const header = try reader.readByte();
     switch (header) {
-        c.MSG_FLOAT32 => return try readFloatValue(reader, f32, Type),
-        c.MSG_FLOAT64 => return try readFloatValue(reader, f64, Type),
+        hdrs.FLOAT32 => return try readFloatValue(reader, f32, Type),
+        hdrs.FLOAT64 => return try readFloatValue(reader, f64, Type),
         else => return maybeUnpackNull(header, T),
     }
 }

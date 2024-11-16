@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("common.zig");
+const hdrs = @import("headers.zig");
 
 const isOptional = @import("utils.zig").isOptional;
 const NonOptional = @import("utils.zig").NonOptional;
@@ -12,7 +12,7 @@ const unpackIntValue = @import("int.zig").unpackIntValue;
 const unpackShortIntValue = @import("int.zig").unpackShortIntValue;
 
 pub fn sizeOfPackedBinaryHeader(len: usize) !usize {
-    if (len <= c.MSG_FIXSTR_MAX - c.MSG_FIXSTR_MIN) {
+    if (len <= hdrs.FIXSTR_MAX - hdrs.FIXSTR_MIN) {
         return 1;
     } else if (len <= std.math.maxInt(u8)) {
         return 1 + @sizeOf(u8);
@@ -30,16 +30,16 @@ pub fn sizeOfPackedBinary(len: usize) !usize {
 }
 
 pub fn packBinaryHeader(writer: anytype, len: usize) !void {
-    if (len <= c.MSG_FIXSTR_MAX - c.MSG_FIXSTR_MIN) {
-        try writer.writeByte(c.MSG_FIXSTR_MIN + @as(u8, @intCast(len)));
+    if (len <= hdrs.FIXSTR_MAX - hdrs.FIXSTR_MIN) {
+        try writer.writeByte(hdrs.FIXSTR_MIN + @as(u8, @intCast(len)));
     } else if (len <= std.math.maxInt(u8)) {
-        try writer.writeByte(c.MSG_STR8);
+        try writer.writeByte(hdrs.STR8);
         try packIntValue(writer, u8, @intCast(len));
     } else if (len <= std.math.maxInt(u16)) {
-        try writer.writeByte(c.MSG_STR16);
+        try writer.writeByte(hdrs.STR16);
         try packIntValue(writer, u16, @intCast(len));
     } else if (len <= std.math.maxInt(u32)) {
-        try writer.writeByte(c.MSG_STR32);
+        try writer.writeByte(hdrs.STR32);
         try packIntValue(writer, u32, @intCast(len));
     } else {
         return error.BinaryTooLong;
@@ -50,10 +50,10 @@ pub fn unpackBinaryHeader(reader: anytype, comptime MaybeOptionalType: type) !Ma
     const Type = NonOptional(MaybeOptionalType);
     const header = try reader.readByte();
     switch (header) {
-        c.MSG_FIXSTR_MIN...c.MSG_FIXSTR_MAX => return try unpackShortIntValue(header, c.MSG_FIXSTR_MIN, c.MSG_FIXSTR_MAX, Type),
-        c.MSG_STR8 => return try unpackIntValue(reader, u8, Type),
-        c.MSG_STR16 => return try unpackIntValue(reader, u16, Type),
-        c.MSG_STR32 => return try unpackIntValue(reader, u32, Type),
+        hdrs.FIXSTR_MIN...hdrs.FIXSTR_MAX => return try unpackShortIntValue(header, hdrs.FIXSTR_MIN, hdrs.FIXSTR_MAX, Type),
+        hdrs.STR8 => return try unpackIntValue(reader, u8, Type),
+        hdrs.STR16 => return try unpackIntValue(reader, u16, Type),
+        hdrs.STR32 => return try unpackIntValue(reader, u32, Type),
         else => return maybeUnpackNull(header, MaybeOptionalType),
     }
 }

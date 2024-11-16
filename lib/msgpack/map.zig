@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("common.zig");
+const hdrs = @import("headers.zig");
 
 const NonOptional = @import("utils.zig").NonOptional;
 const Optional = @import("utils.zig").Optional;
@@ -15,7 +15,7 @@ const packAny = @import("any.zig").packAny;
 const unpackAny = @import("any.zig").unpackAny;
 
 pub fn sizeOfPackedMapHeader(len: usize) !usize {
-    if (len <= c.MSG_FIXMAP_MAX - c.MSG_FIXMAP_MIN) {
+    if (len <= hdrs.FIXMAP_MAX - hdrs.FIXMAP_MIN) {
         return 1;
     } else if (len <= std.math.maxInt(u8)) {
         return 1 + @sizeOf(u8);
@@ -33,13 +33,13 @@ pub fn sizeOfPackedMap(len: usize) !usize {
 }
 
 pub fn packMapHeader(writer: anytype, len: usize) !void {
-    if (len <= c.MSG_FIXMAP_MAX - c.MSG_FIXMAP_MIN) {
-        try writer.writeByte(c.MSG_FIXMAP_MIN + @as(u8, @intCast(len)));
+    if (len <= hdrs.FIXMAP_MAX - hdrs.FIXMAP_MIN) {
+        try writer.writeByte(hdrs.FIXMAP_MIN + @as(u8, @intCast(len)));
     } else if (len <= std.math.maxInt(u16)) {
-        try writer.writeByte(c.MSG_MAP16);
+        try writer.writeByte(hdrs.MAP16);
         try packIntValue(writer, u16, @intCast(len));
     } else if (len <= std.math.maxInt(u32)) {
-        try writer.writeByte(c.MSG_MAP32);
+        try writer.writeByte(hdrs.MAP32);
         try packIntValue(writer, u32, @intCast(len));
     } else {
         return error.MapTooLong;
@@ -49,13 +49,13 @@ pub fn packMapHeader(writer: anytype, len: usize) !void {
 pub fn unpackMapHeader(reader: anytype, comptime T: type) !T {
     const header = try reader.readByte();
     switch (header) {
-        c.MSG_FIXMAP_MIN...c.MSG_FIXMAP_MAX => {
-            return @intCast(header - c.MSG_FIXMAP_MIN);
+        hdrs.FIXMAP_MIN...hdrs.FIXMAP_MAX => {
+            return @intCast(header - hdrs.FIXMAP_MIN);
         },
-        c.MSG_MAP16 => {
+        hdrs.MAP16 => {
             return try unpackIntValue(reader, u16, NonOptional(T));
         },
-        c.MSG_MAP32 => {
+        hdrs.MAP32 => {
             return try unpackIntValue(reader, u32, NonOptional(T));
         },
         else => {

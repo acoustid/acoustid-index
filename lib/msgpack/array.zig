@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("common.zig");
+const hdrs = @import("headers.zig");
 
 const NonOptional = @import("utils.zig").NonOptional;
 const isOptional = @import("utils.zig").isOptional;
@@ -14,7 +14,7 @@ const packAny = @import("any.zig").packAny;
 const unpackAny = @import("any.zig").unpackAny;
 
 pub fn sizeOfPackedArrayHeader(len: usize) !usize {
-    if (len <= c.MSG_FIXARRAY_MAX - c.MSG_FIXARRAY_MIN) {
+    if (len <= hdrs.FIXARRAY_MAX - hdrs.FIXARRAY_MIN) {
         return 1;
     } else if (len <= std.math.maxInt(u8)) {
         return 1 + @sizeOf(u8);
@@ -32,13 +32,13 @@ pub fn sizeOfPackedArray(len: usize) !usize {
 }
 
 pub fn packArrayHeader(writer: anytype, len: usize) !void {
-    if (len <= c.MSG_FIXARRAY_MAX - c.MSG_FIXARRAY_MIN) {
-        try writer.writeByte(c.MSG_FIXARRAY_MIN + @as(u8, @intCast(len)));
+    if (len <= hdrs.FIXARRAY_MAX - hdrs.FIXARRAY_MIN) {
+        try writer.writeByte(hdrs.FIXARRAY_MIN + @as(u8, @intCast(len)));
     } else if (len <= std.math.maxInt(u16)) {
-        try writer.writeByte(c.MSG_ARRAY16);
+        try writer.writeByte(hdrs.ARRAY16);
         try packIntValue(writer, u16, @intCast(len));
     } else if (len <= std.math.maxInt(u32)) {
-        try writer.writeByte(c.MSG_ARRAY32);
+        try writer.writeByte(hdrs.ARRAY32);
         try packIntValue(writer, u32, @intCast(len));
     } else {
         return error.ArrayTooLong;
@@ -48,13 +48,13 @@ pub fn packArrayHeader(writer: anytype, len: usize) !void {
 pub fn unpackArrayHeader(reader: anytype, comptime T: type) !T {
     const header = try reader.readByte();
     switch (header) {
-        c.MSG_FIXARRAY_MIN...c.MSG_FIXARRAY_MAX => {
-            return header - c.MSG_FIXARRAY_MIN;
+        hdrs.FIXARRAY_MIN...hdrs.FIXARRAY_MAX => {
+            return header - hdrs.FIXARRAY_MIN;
         },
-        c.MSG_ARRAY16 => {
+        hdrs.ARRAY16 => {
             return try unpackIntValue(reader, u16, NonOptional(T));
         },
-        c.MSG_ARRAY32 => {
+        hdrs.ARRAY32 => {
             return try unpackIntValue(reader, u32, NonOptional(T));
         },
         else => {

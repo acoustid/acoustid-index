@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("common.zig");
+const hdrs = @import("headers.zig");
 
 const maybePackNull = @import("null.zig").maybePackNull;
 const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
@@ -22,15 +22,15 @@ pub fn packBool(writer: anytype, comptime T: type, value_or_maybe_null: T) !void
     assertBoolType(T);
     const value = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
 
-    try writer.writeByte(if (value) c.MSG_TRUE else c.MSG_FALSE);
+    try writer.writeByte(if (value) hdrs.TRUE else hdrs.FALSE);
 }
 
 pub fn unpackBool(reader: anytype, comptime T: type) !T {
     assertBoolType(T);
     const header = try reader.readByte();
     switch (header) {
-        c.MSG_TRUE => return true,
-        c.MSG_FALSE => return false,
+        hdrs.TRUE => return true,
+        hdrs.FALSE => return false,
         else => return maybeUnpackNull(header, T),
     }
 }

@@ -1,5 +1,5 @@
 const std = @import("std");
-const c = @import("common.zig");
+const hdrs = @import("headers.zig");
 
 const isOptional = @import("utils.zig").isOptional;
 const NonOptional = @import("utils.zig").NonOptional;
@@ -9,7 +9,7 @@ pub fn getNullSize() usize {
 }
 
 pub fn packNull(writer: anytype) !void {
-    try writer.writeByte(c.MSG_NIL);
+    try writer.writeByte(hdrs.NIL);
 }
 
 pub fn unpackNull(reader: anytype) !void {
@@ -35,7 +35,7 @@ pub fn isNullError(err: anyerror) bool {
 
 pub fn maybeUnpackNull(header: u8, comptime T: type) !T {
     switch (header) {
-        c.MSG_NIL => return if (isOptional(T)) null else error.Null,
+        hdrs.NIL => return if (isOptional(T)) null else error.Null,
         else => return error.InvalidFormat,
     }
 }
