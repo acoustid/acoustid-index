@@ -14,11 +14,11 @@ const Message = struct {
 var buffer = std.ArrayList(u8).init(allocator);
 defer buffer.deinit();
 
-try msgpack.pack(buffer.writer(), Message, .{
+try msgpack.encode(Message, buffer.writer(), .{
     .name = "John",
     .age = 20,
 });
 
-const message = try msgpack.unpack(buffer.reader(), Message, allocator);
+const message = try msgpack.decode(Message, buffer.reader(), allocator);
 defer allocator.free(message.name);
 ```

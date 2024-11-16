@@ -249,25 +249,12 @@ pub fn unpackerNoAlloc(reader: anytype) Unpacker(@TypeOf(reader)) {
     return Unpacker(@TypeOf(reader)).init(reader, NoAllocator.allocator());
 }
 
-const UnpackOptions = struct {
-    allocator: ?Allocator = null,
-};
-
-pub fn unpack(comptime T: type, reader: anytype, options: UnpackOptions) !T {
-    if (options.allocator) |allocator| {
-        return try unpacker(reader, allocator).read(T);
-    } else {
-        return try unpackerNoAlloc(reader).read(T);
-    }
-}
-
-pub fn unpackFromBytes(comptime T: type, bytes: []const u8, options: UnpackOptions) !T {
-    var stream = std.io.fixedBufferStream(bytes);
-    return try unpack(T, stream.reader(), options);
-}
-
-pub fn pack(comptime T: type, writer: anytype, value: anytype) !void {
+pub fn encode(comptime T: type, writer: anytype, value: anytype) !void {
     return try packer(writer).write(T, value);
+}
+
+pub fn decode(comptime T: type, reader: anytype, allocator: ?Allocator) !T {
+    return try unpacker(reader, allocator orelse NoAllocator.allocator()).read(T);
 }
 
 test {
