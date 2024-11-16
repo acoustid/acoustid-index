@@ -1,6 +1,6 @@
 # Zig library for working with msgpack messages
 
-Example usage:
+Simple usage:
 
 ```zig
 const std = @import("std");
@@ -23,3 +23,40 @@ var stream = std.io.fixedBufferStream(buffer.items);
 const message = try decode(Message, stream.reader(), allocator);
 defer allocator.free(message.name);
 ```
+
+Change the default format from using field names to field indexes:
+
+```zig
+const std = @import("std");
+const msgpack = @import("msgpack");
+
+const Message = struct {
+    name: []const u8,
+    age: u8,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .field_index } };
+    }
+};
+```
+
+Completely custom format:
+
+```zig
+const std = @import("std");
+const msgpack = @import("msgpack");
+
+const Message = struct {
+    items: []u32,
+
+    pub fn msgpackWrite(self: Message, packer: anytype) !void {
+        try packer.writeArray(self.items);
+    }
+
+    pub fn msgpackRead(unpacker: anytype) !Message {
+        const items = try unpacker.readArray();
+        return Message{ .items = items };
+    }
+};
+```
+
