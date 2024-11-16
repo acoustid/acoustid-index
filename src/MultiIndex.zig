@@ -90,10 +90,8 @@ pub fn getIndex(self: *Self, id: u8) !*IndexRef {
 }
 
 pub fn createIndex(self: *Self, id: u8) !void {
-    var index_ref = try self.acquireIndex(id, true);
+    const index_ref = try self.acquireIndex(id, true);
     defer self.releaseIndex(index_ref);
-
-    try index_ref.index.open();
 }
 
 pub fn deleteIndex(self: *Self, id: u8) !void {

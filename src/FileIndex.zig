@@ -25,7 +25,8 @@ const Self = @This();
 
 const Options = struct {
     create: bool = false,
-    min_segment_size: usize = 1000,
+    min_segment_size: usize = 1_000,
+    max_segment_size: usize = 100_000_000,
 };
 
 options: Options,
@@ -110,7 +111,7 @@ fn prepareMerge(self: *Self) !?FileSegmentList.PreparedMerge {
     self.write_lock.lockShared();
     defer self.write_lock.unlockShared();
 
-    const merge = try self.segments.prepareMerge(.{ .max_segment_size = self.max_segment_size }) orelse return null;
+    const merge = try self.segments.prepareMerge(.{ .max_segment_size = self.options.max_segment_size }) orelse return null;
     errdefer self.segments.destroySegment(merge.target);
 
     var merger = SegmentMerger(FileSegment).init(self.allocator, &self.segments);
@@ -146,7 +147,7 @@ fn finnishMerge(self: *Self, merge: FileSegmentList.PreparedMerge) !void {
     log.info("committed merge segment {}:{}", .{ merge.target.data.id.version, merge.target.data.id.included_merges });
 }
 
-fn maybeMergeSegments(self: *Self) !void {
+pub fn maybeMergeSegments(self: *Self) !void {
     while (true) {
         if (try self.prepareMerge()) |merge| {
             try self.finnishMerge(merge);
@@ -156,8 +157,12 @@ fn maybeMergeSegments(self: *Self) !void {
     }
 }
 
-fn maybeWriteNewSegment(self: *Self, stage: *InMemoryIndex) !bool {
-    const source_segment = stage.maybeFreezeOldestSegment() orelse return false;
+pub const CheckpointInfo = struct {
+    max_commit_id: u64,
+};
+
+pub fn checkpoint(self: *Self, stage: *InMemoryIndex) !?CheckpointInfo {
+    const source_segment = stage.maybeFreezeOldestSegment() orelse return null;
 
     var source_reader = source_segment.reader();
     defer source_reader.close();
@@ -177,9 +182,9 @@ fn maybeWriteNewSegment(self: *Self, stage: *InMemoryIndex) !bool {
 
     try self.writeIndexFile();
 
-    self.stage.removeFrozenSegment(source_segment);
+    stage.removeFrozenSegment(source_segment);
 
-    return true;
+    return .{ .max_commit_id = self.segments.getMaxCommitId() };
 }
 
 pub fn getMaxCommitId(self: *Self) u64 {

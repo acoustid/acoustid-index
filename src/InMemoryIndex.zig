@@ -137,6 +137,23 @@ fn maybeMergeSegments(self: *Self) !void {
     }
 }
 
+pub fn isReadyForCheckpoint(self: *Self) bool {
+    self.write_lock.lockShared();
+    defer self.write_lock.unlockShared();
+
+    var iter = self.segments.segments.first;
+    while (iter) |node| : (iter = node.next) {
+        if (node.next != null) { // only continue if there is more than one segment
+            const segment = &node.data;
+            if (segment.items.items.len >= self.options.max_segment_size) {
+                return true;
+            }
+            return false;
+        }
+    }
+    return false;
+}
+
 // Freezes the oldest segment, if the segment is already at its max size.
 // This is called periodically by the cleanup process of the main index.
 // Frozen segments are then persisted to disk and removed from the in-memory index.
