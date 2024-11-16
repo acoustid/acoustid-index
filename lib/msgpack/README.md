@@ -19,6 +19,7 @@ try msgpack.encode(Message, buffer.writer(), .{
     .age = 20,
 });
 
-const message = try msgpack.decode(Message, buffer.reader(), allocator);
+var stream = std.io.fixedBufferStream(buffer.items);
+const message = try decode(Message, stream.reader(), allocator);
 defer allocator.free(message.name);
 ```

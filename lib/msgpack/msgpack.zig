@@ -260,3 +260,25 @@ pub fn decode(comptime T: type, reader: anytype, allocator: ?Allocator) !T {
 test {
     _ = std.testing.refAllDecls(@This());
 }
+
+test "encode/decode" {
+    const Message = struct {
+        name: []const u8,
+        age: u8,
+    };
+
+    var buffer = std.ArrayList(u8).init(std.testing.allocator);
+    defer buffer.deinit();
+
+    try encode(Message, buffer.writer(), .{
+        .name = "John",
+        .age = 20,
+    });
+
+    var stream = std.io.fixedBufferStream(buffer.items);
+    const message = try decode(Message, stream.reader(), std.testing.allocator);
+    defer std.testing.allocator.free(message.name);
+
+    try std.testing.expectEqualStrings("John", message.name);
+    try std.testing.expectEqual(20, message.age);
+}
