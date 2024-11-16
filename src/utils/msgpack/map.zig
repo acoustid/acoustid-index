@@ -77,13 +77,17 @@ pub fn packMap(writer: anytype, value_or_maybe_null: anytype) !void {
 }
 
 pub fn unpackMap(writer: anytype, allocator: std.mem.Allocator, comptime T: type) !T {
-    const len = if (@typeInfo(T) == .Optional)
-        try unpackMapHeader(writer, ?T.Size) orelse return null
-    else
-        try unpackMapHeader(writer, T.Size);
-
     var map = T.init(allocator);
     errdefer map.deinit();
+
+    try unpackMapInto(writer, allocator, &map);
+
+    return map;
+}
+
+pub fn unpackMapInto(writer: anytype, allocator: std.mem.Allocator, map: anytype) !void {
+    const T = std.meta.Child(@TypeOf(map));
+    const len = try unpackMapHeader(writer, T.Size);
 
     try map.ensureTotalCapacity(len);
 
@@ -93,8 +97,6 @@ pub fn unpackMap(writer: anytype, allocator: std.mem.Allocator, comptime T: type
         kv.value = try unpackAny(writer, allocator, @TypeOf(kv.value));
         map.putAssumeCapacity(kv.key, kv.value);
     }
-
-    return map;
 }
 
 test "packMap" {

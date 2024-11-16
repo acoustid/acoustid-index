@@ -116,6 +116,8 @@ pub const sizeOfPackedMapHeader = @import("map.zig").sizeOfPackedMapHeader;
 pub const packMap = @import("map.zig").packMap;
 pub const packMapHeader = @import("map.zig").packMapHeader;
 pub const unpackMapHeader = @import("map.zig").unpackMapHeader;
+pub const unpackMap = @import("map.zig").unpackMap;
+pub const unpackMapInto = @import("map.zig").unpackMapInto;
 
 pub const unpackString = @import("string.zig").unpackString;
 pub const unpackStringInto = @import("string.zig").unpackStringInto;
@@ -301,6 +303,14 @@ pub fn Unpacker(comptime Reader: type) type {
 
         pub fn readMapHeader(self: Self, comptime T: type) !T {
             return unpackMapHeader(self.reader, T);
+        }
+
+        pub fn readMap(self: Self, comptime T: type) !T {
+            return unpackMap(self.reader, self.allocator, T);
+        }
+
+        pub fn readMapInto(self: Self, map: anytype) !void {
+            return unpackMapInto(self.reader, self.allocator, map);
         }
 
         pub fn readStruct(self: Self, comptime T: type) !T {

@@ -365,13 +365,7 @@ pub fn readFile(file: fs.File, segment: *Segment) !void {
     segment.block_size = header.block_size;
     segment.max_commit_id = header.max_commit_id;
 
-    const num_docs = try unpacker.readMapHeader(u32);
-    try segment.docs.ensureTotalCapacity(num_docs);
-    for (0..num_docs) |_| {
-        const key = try unpacker.read(u32);
-        const value = try unpacker.read(bool);
-        try segment.docs.put(key, value);
-    }
+    try unpacker.readMapInto(&segment.docs);
 
     const block_size = header.block_size;
     const padding_size = block_size - fixed_buffer_stream.pos % block_size;
