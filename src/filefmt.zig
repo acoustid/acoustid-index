@@ -11,7 +11,7 @@ const common = @import("common.zig");
 const Item = common.Item;
 const SegmentVersion = common.SegmentID;
 const InMemorySegment = @import("InMemorySegment.zig");
-const Segment = @import("Segment.zig");
+const FileSegment = @import("FileSegment.zig");
 
 pub const default_block_size = 1024;
 pub const min_block_size = 256;
@@ -327,7 +327,7 @@ pub fn writeFile(file: std.fs.File, reader: anytype) !void {
     try file.sync();
 }
 
-pub fn readFile(file: fs.File, segment: *Segment) !void {
+pub fn readFile(file: fs.File, segment: *FileSegment) !void {
     const file_size = try file.getEndPos();
 
     var raw_data = try std.posix.mmap(
@@ -439,7 +439,7 @@ test "writeFile/readFile" {
         var file = try tmp.dir.openFile("test.dat", .{});
         defer file.close();
 
-        var segment = Segment.init(testing.allocator);
+        var segment = FileSegment.init(testing.allocator);
         defer segment.deinit();
 
         try readFile(file, &segment);

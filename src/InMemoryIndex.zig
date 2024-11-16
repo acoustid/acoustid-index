@@ -184,11 +184,18 @@ pub fn removeFrozenSegment(self: *Self, segment: *InMemorySegment) void {
     }
 }
 
-pub fn search(self: *Self, hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
+pub fn getMaxCommitId(self: *Self) u64 {
     self.write_lock.lockShared();
     defer self.write_lock.unlockShared();
 
-    try self.segments.search(hashes, results, deadline);
+    return self.segments.getMaxCommitId();
+}
+
+pub fn search(self: *Self, sorted_hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
+    self.write_lock.lockShared();
+    defer self.write_lock.unlockShared();
+
+    try self.segments.search(sorted_hashes, results, deadline);
 }
 
 test "insert and search" {
