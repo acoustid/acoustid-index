@@ -97,10 +97,10 @@ pub fn packStructAsMap(writer: anytype, comptime T: type, value: T, opts: Struct
                     try packInt(writer, u16, i);
                 },
                 .field_name => {
-                    try packString(writer, []const u8, field.name);
+                    try packString(writer, field.name);
                 },
                 .field_name_prefix => |prefix| {
-                    try packString(writer, []const u8, strPrefix(field.name, prefix));
+                    try packString(writer, strPrefix(field.name, prefix));
                 },
             }
             try packAny(writer, field.type, @field(value, field.name));
@@ -130,14 +130,19 @@ pub fn packStruct(writer: anytype, comptime T: type, value_or_maybe_null: T) !vo
         @compileError("Expected struct type");
     }
 
-    const format = if (std.meta.hasFn(Type, "msgpackFormat")) T.msgpackFormat() else default_struct_format;
-    switch (format) {
-        .as_map => |opts| {
-            return packStructAsMap(writer, Type, value, opts);
-        },
-        .as_array => |opts| {
-            return packStructAsArray(writer, Type, value, opts);
-        },
+    const has_custom_write_fn = std.meta.hasFn(Type, "msgpackWrite");
+    if (has_custom_write_fn) {
+        return try value.msgpackWrite(writer);
+    } else {
+        const format = if (std.meta.hasFn(Type, "msgpackFormat")) T.msgpackFormat() else default_struct_format;
+        switch (format) {
+            .as_map => |opts| {
+                return packStructAsMap(writer, Type, value, opts);
+            },
+            .as_array => |opts| {
+                return packStructAsArray(writer, Type, value, opts);
+            },
+        }
     }
 }
 
@@ -246,13 +251,18 @@ pub fn unpackStructAsArray(reader: anytype, allocator: std.mem.Allocator, compti
 pub fn unpackStruct(reader: anytype, allocator: std.mem.Allocator, comptime T: type) !T {
     const Type = NonOptional(T);
 
-    const format = if (std.meta.hasFn(Type, "msgpackFormat")) T.msgpackFormat() else default_struct_format;
-    switch (format) {
-        .as_map => |opts| {
-            return try unpackStructAsMap(reader, allocator, T, opts);
-        },
-        .as_array => |opts| {
-            return try unpackStructAsArray(reader, allocator, T, opts);
-        },
+    const has_custom_read_fn = std.meta.hasFn(Type, "msgpackRead");
+    if (has_custom_read_fn) {
+        return try T.msgpackRead(reader, allocator);
+    } else {
+        const format = if (std.meta.hasFn(Type, "msgpackFormat")) T.msgpackFormat() else default_struct_format;
+        switch (format) {
+            .as_map => |opts| {
+                return try unpackStructAsMap(reader, allocator, T, opts);
+            },
+            .as_array => |opts| {
+                return try unpackStructAsArray(reader, allocator, T, opts);
+            },
+        }
     }
 }

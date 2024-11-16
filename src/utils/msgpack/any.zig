@@ -3,6 +3,9 @@ const c = @import("common.zig");
 
 const NonOptional = @import("utils.zig").NonOptional;
 
+const packNull = @import("null.zig").packNull;
+const isNullError = @import("null.zig").isNullError;
+
 const getBoolSize = @import("bool.zig").getBoolSize;
 const packBool = @import("bool.zig").packBool;
 const unpackBool = @import("bool.zig").unpackBool;
@@ -67,21 +70,31 @@ pub fn sizeOfPackedAny(comptime T: type, value: T) usize {
 }
 
 pub fn packAny(writer: anytype, comptime T: type, value: T) !void {
-    switch (@typeInfo(NonOptional(T))) {
+    switch (@typeInfo(T)) {
         .Bool => return packBool(writer, T, value),
         .Int => return packInt(writer, T, value),
         .Float => return packFloat(writer, T, value),
         .Pointer => |ptr_info| {
             if (ptr_info.size == .Slice) {
-                if (isString(T)) {
-                    return packString(writer, T, value);
-                } else {
-                    return packArray(writer, T, value);
+                switch (ptr_info.child) {
+                    u8 => {
+                        return packString(writer, value);
+                    },
+                    else => {
+                        return packArray(writer, T, value);
+                    },
                 }
             }
         },
         .Struct => return packStruct(writer, T, value),
         .Union => return packUnion(writer, T, value),
+        .Optional => |opt_info| {
+            if (value) |val| {
+                return packAny(writer, opt_info.child, val);
+            } else {
+                return packNull(writer);
+            }
+        },
         else => {},
     }
     @compileError("Unsupported type '" + @typeName(T) + "'");
@@ -106,7 +119,7 @@ pub fn unpackAny(reader: anytype, allocator: std.mem.Allocator, comptime T: type
         },
         .Optional => |opt_info| {
             return unpackAny(reader, allocator, opt_info.child) catch |err| {
-                if (err == error.UnexpectedNull) {
+                if (isNullError(err)) {
                     return null;
                 }
                 return err;
@@ -252,8 +265,7 @@ test "packAny/unpackAny: struct" {
 
     stream.reset();
     const result = try unpackAny(stream.reader(), std.testing.allocator, Point);
-    try std.testing.expectEqual(point.x, result.x);
-    try std.testing.expectEqual(point.y, result.y);
+    try std.testing.expectEqualDeep(point, result);
 }
 
 test "packAny/unpackAny: optional struct" {
@@ -270,12 +282,52 @@ test "packAny/unpackAny: optional struct" {
 
         stream.reset();
         const result = try unpackAny(stream.reader(), std.testing.allocator, ?Point);
-        if (value) |p| {
-            try std.testing.expectEqual(p.x, result.?.x);
-            try std.testing.expectEqual(p.y, result.?.y);
-        } else {
-            try std.testing.expectEqual(value, result);
-        }
+        try std.testing.expectEqualDeep(value, result);
+    }
+}
+
+test "packAny/unpackAny: union" {
+    const Value = union(enum) {
+        int: i32,
+        float: f32,
+    };
+
+    const values = [_]Value{
+        Value{ .int = 42 },
+        Value{ .float = 3.14 },
+    };
+
+    for (values) |value| {
+        var buffer: [64]u8 = undefined;
+        var stream = std.io.fixedBufferStream(&buffer);
+        try packAny(stream.writer(), Value, value);
+
+        stream.reset();
+        const result = try unpackAny(stream.reader(), std.testing.allocator, Value);
+        try std.testing.expectEqualDeep(value, result);
+    }
+}
+
+test "packAny/unpackAny: optional union" {
+    const Value = union(enum) {
+        int: i32,
+        float: f32,
+    };
+
+    const values = [_]?Value{
+        Value{ .int = 42 },
+        Value{ .float = 3.14 },
+        null,
+    };
+
+    for (values) |value| {
+        var buffer: [64]u8 = undefined;
+        var stream = std.io.fixedBufferStream(&buffer);
+        try packAny(stream.writer(), ?Value, value);
+
+        stream.reset();
+        const result = try unpackAny(stream.reader(), std.testing.allocator, ?Value);
+        try std.testing.expectEqualDeep(value, result);
     }
 }
 
@@ -289,4 +341,16 @@ test "packAny/unpackAny: String struct" {
     const result = try unpackAny(stream.reader(), std.testing.allocator, String);
     defer std.testing.allocator.free(result.data);
     try std.testing.expectEqualStrings("hello", result.data);
+}
+
+test "packAny/unpackAny: Binary struct" {
+    var buffer: [64]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&buffer);
+    const str = String{ .data = "\x01\x02\x03\x04" };
+    try packAny(stream.writer(), String, str);
+
+    stream.reset();
+    const result = try unpackAny(stream.reader(), std.testing.allocator, String);
+    defer std.testing.allocator.free(result.data);
+    try std.testing.expectEqualStrings("\x01\x02\x03\x04", result.data);
 }

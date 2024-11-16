@@ -58,8 +58,8 @@ pub fn unpackStringHeader(reader: anytype, comptime MaybeOptionalType: type) !Ma
     }
 }
 
-pub fn packString(writer: anytype, comptime T: type, value_or_maybe_null: T) !void {
-    const value = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
+pub fn packString(writer: anytype, value_or_maybe_null: ?[]const u8) !void {
+    const value = try maybePackNull(writer, @TypeOf(value_or_maybe_null), value_or_maybe_null) orelse return;
     try packStringHeader(writer, value.len);
     try writer.writeAll(value);
 }
@@ -89,12 +89,12 @@ pub fn unpackStringInto(reader: anytype, buf: []u8) ![]u8 {
 pub const String = struct {
     data: []const u8,
 
-    pub fn msgpackWrite(self: *String, packer: anytype) !void {
-        try packer.writeString(self.data);
+    pub fn msgpackWrite(self: String, writer: anytype) !void {
+        try packString(writer, self.data);
     }
 
-    pub fn msgpackRead(unpacker: anytype, allocator: std.mem.Allocator) !String {
-        const data = try unpacker.readString(allocator);
+    pub fn msgpackRead(reader: anytype, allocator: std.mem.Allocator) !String {
+        const data = try unpackString(reader, allocator);
         return String{ .data = data };
     }
 };
@@ -105,7 +105,7 @@ const packed_abc = [_]u8{ 0xa3, 0x61, 0x62, 0x63 };
 test "packString: abc" {
     var buffer: [16]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buffer);
-    try packString(stream.writer(), []const u8, "abc");
+    try packString(stream.writer(), "abc");
     try std.testing.expectEqualSlices(u8, &packed_abc, stream.getWritten());
 }
 
@@ -119,7 +119,7 @@ test "unpackString: abc" {
 test "packString: null" {
     var buffer: [16]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buffer);
-    try packString(stream.writer(), ?[]const u8, null);
+    try packString(stream.writer(), null);
     try std.testing.expectEqualSlices(u8, &packed_null, stream.getWritten());
 }
 

@@ -124,6 +124,8 @@ pub const unpackBinary = @import("binary.zig").unpackBinary;
 pub const unpackBinaryInto = @import("binary.zig").unpackBinaryInto;
 
 pub const unpackArrayHeader = @import("array.zig").unpackArrayHeader;
+pub const unpackArray = @import("array.zig").unpackArray;
+pub const unpackArrayInto = @import("array.zig").unpackArrayInto;
 
 pub const StructFormat = @import("struct.zig").StructFormat;
 pub const StructAsMapOptions = @import("struct.zig").StructAsMapOptions;
@@ -289,34 +291,16 @@ pub fn Unpacker(comptime Reader: type) type {
             return unpackBinaryInto(self.reader, buffer);
         }
 
-        pub fn readArrayHeader(self: Self, comptime opt: Nullable) !NullableType(u32, opt) {
-            switch (opt) {
-                .optional => return try unpackArrayHeader(self.reader, ?u32),
-                .required => return try unpackArrayHeader(self.reader, u32),
-            }
+        pub fn readArray(self: Self, comptime T: type) ![]T {
+            return unpackArray(self.reader, self.allocator, T);
         }
 
-        pub fn readMapHeader(self: Self, comptime opt: Nullable) !NullableType(u32, opt) {
-            switch (opt) {
-                .optional => return try unpackMapHeader(self.reader, ?u32),
-                .required => return try unpackMapHeader(self.reader, u32),
-            }
+        pub fn readArrayInto(self: Self, comptime T: type, buffer: []T) ![]T {
+            return unpackArrayInto(self.reader, self.allocator, T, buffer);
         }
 
-        pub fn readArray(self: Self, comptime T: type, comptime opt: Nullable) !NullableType([]T, opt) {
-            const size = if (opt == .optional)
-                try self.readArrayHeader(opt) orelse return null
-            else
-                try self.readArrayHeader(opt);
-
-            const result = try self.allocator.alloc(T, size);
-            errdefer self.allocator.free(result);
-
-            for (result) |*item| {
-                item.* = try self.read(T);
-            }
-
-            return result;
+        pub fn readMapHeader(self: Self, comptime T: type) !T {
+            return unpackMapHeader(self.reader, T);
         }
 
         pub fn readStruct(self: Self, comptime T: type) !T {
@@ -325,14 +309,6 @@ pub fn Unpacker(comptime Reader: type) type {
 
         pub fn readUnion(self: Self, comptime T: type) !?T {
             return unpackUnion(self.reader, self.allocator, T);
-        }
-
-        fn resolveValueType(comptime T: type) type {
-            const type_info = @typeInfo(T);
-            if (type_info == .Optional) {
-                return type_info.Optional.child;
-            }
-            return T;
         }
 
         pub fn read(self: Self, comptime T: type) !T {

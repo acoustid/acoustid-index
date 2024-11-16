@@ -62,10 +62,10 @@ pub fn packUnionAsMap(writer: anytype, comptime T: type, value: T, opts: UnionAs
                     try packInt(writer, u16, i);
                 },
                 .field_name => {
-                    try packString(writer, []const u8, field.name);
+                    try packString(writer, field.name);
                 },
                 .field_name_prefix => |prefix| {
-                    try packString(writer, []const u8, strPrefix(field.name, prefix));
+                    try packString(writer, strPrefix(field.name, prefix));
                 },
             }
             try packAny(writer, field.type, @field(value, field.name));

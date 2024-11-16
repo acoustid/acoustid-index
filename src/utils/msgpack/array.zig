@@ -74,14 +74,30 @@ pub fn packArray(writer: anytype, comptime T: type, value_or_maybe_null: T) !voi
 
 pub fn unpackArray(reader: anytype, allocator: std.mem.Allocator, comptime T: type) !T {
     const len = if (isOptional(T))
-        try unpackArrayHeader(reader, ?usize) orelse return null
+        try unpackArrayHeader(reader, ?u32) orelse return null
     else
-        try unpackArrayHeader(reader, usize);
+        try unpackArrayHeader(reader, u32);
 
     const Item = std.meta.Child(NonOptional(T));
 
     const data = try allocator.alloc(Item, len);
     errdefer allocator.free(data);
+
+    for (0..len) |i| {
+        data[i] = try unpackAny(reader, allocator, Item);
+    }
+
+    return data;
+}
+
+pub fn unpackArrayInto(reader: anytype, allocator: std.mem.Allocator, comptime Item: type, buffer: []Item) ![]Item {
+    const len = try unpackArrayHeader(reader, u32);
+
+    if (buffer.len < len) {
+        return error.NoSpaceLeft;
+    }
+
+    const data = buffer[0..len];
 
     for (0..len) |i| {
         data[i] = try unpackAny(reader, allocator, Item);

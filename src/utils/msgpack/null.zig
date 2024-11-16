@@ -29,9 +29,13 @@ pub fn maybePackNull(writer: anytype, comptime T: type, value: T) !?NonOptional(
     return value;
 }
 
+pub fn isNullError(err: anyerror) bool {
+    return err == error.Null;
+}
+
 pub fn maybeUnpackNull(header: u8, comptime T: type) !T {
     switch (header) {
-        c.MSG_NIL => return if (isOptional(T)) null else error.UnexpectedNull,
+        c.MSG_NIL => return if (isOptional(T)) null else error.Null,
         else => return error.InvalidFormat,
     }
 }
