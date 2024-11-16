@@ -53,16 +53,14 @@ pub fn getBlockData(self: *const Self, block: usize) []const u8 {
     return self.blocks[block * self.block_size .. (block + 1) * self.block_size];
 }
 
-pub fn search(self: *Self, hashes: []const u32, results: *SearchResults) !void {
-    assert(std.sort.isSorted(u32, hashes, {}, std.sort.asc(u32)));
-
+pub fn search(self: *Self, sorted_hashes: []const u32, results: *SearchResults) !void {
     var prev_block_no: usize = std.math.maxInt(usize);
     var prev_block_range_start: usize = 0;
 
-    var block_items = std.ArrayList(Item).init(self.allocator);
+    var block_items = std.ArrayList(Item).init(results.results.allocator);
     defer block_items.deinit();
 
-    for (hashes) |hash| {
+    for (sorted_hashes) |hash| {
         var block_no = std.sort.lowerBound(u32, hash, self.index.items, {}, std.sort.asc(u32));
         if (block_no == self.index.items.len) {
             block_no = prev_block_range_start;
