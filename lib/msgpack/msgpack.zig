@@ -163,7 +163,7 @@ pub fn Unpacker(comptime Reader: type) type {
             };
         }
 
-        pub fn readNil(self: Self) !void {
+        pub fn readNull(self: Self) !void {
             try unpackNull(self.reader);
         }
 
@@ -241,8 +241,8 @@ pub fn packer(writer: anytype) Packer(@TypeOf(writer)) {
     return Packer(@TypeOf(writer)).init(writer);
 }
 
-pub fn unpacker(reader: anytype, allocator: Allocator) Unpacker(@TypeOf(reader)) {
-    return Unpacker(@TypeOf(reader)).init(reader, allocator);
+pub fn unpacker(reader: anytype, allocator: ?Allocator) Unpacker(@TypeOf(reader)) {
+    return Unpacker(@TypeOf(reader)).init(reader, allocator orelse NoAllocator.allocator());
 }
 
 pub fn unpackerNoAlloc(reader: anytype) Unpacker(@TypeOf(reader)) {
@@ -254,7 +254,7 @@ pub fn encode(comptime T: type, writer: anytype, value: anytype) !void {
 }
 
 pub fn decode(comptime T: type, reader: anytype, allocator: ?Allocator) !T {
-    return try unpacker(reader, allocator orelse NoAllocator.allocator()).read(T);
+    return try unpacker(reader, allocator).read(T);
 }
 
 test {

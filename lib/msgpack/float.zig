@@ -5,21 +5,33 @@ const NonOptional = @import("utils.zig").NonOptional;
 const maybePackNull = @import("null.zig").maybePackNull;
 const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 
+inline fn assertFloatType(comptime T: type) type {
+    switch (@typeInfo(T)) {
+        .Float => return T,
+        .Optional => |opt_info| {
+            return assertFloatType(opt_info.child);
+        },
+        else => @compileError("Expected float, got " ++ @typeName(T)),
+    }
+}
+
 pub fn getMaxFloatSize(comptime T: type) usize {
-    return 1 + @sizeOf(T);
+    const Type = assertFloatType(T);
+    return 1 + @sizeOf(Type);
 }
 
 pub fn getFloatSize(comptime T: type, value: T) usize {
+    const Type = assertFloatType(T);
     _ = value;
-    return getMaxFloatSize(T);
+    return getMaxFloatSize(Type);
 }
 
 pub fn packFloat(writer: anytype, comptime T: type, value_or_maybe_null: T) !void {
-    const value = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
-    const Type = @TypeOf(value);
-    const type_info = @typeInfo(Type);
+    const Type = assertFloatType(T);
+    const value: Type = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
 
     comptime var TargetType: type = undefined;
+    const type_info = @typeInfo(Type);
     switch (type_info.Float.bits) {
         0...32 => {
             try writer.writeByte(c.MSG_FLOAT32);
@@ -55,10 +67,11 @@ pub fn readFloatValue(reader: anytype, comptime SourceFloat: type, comptime Targ
 }
 
 pub fn unpackFloat(reader: anytype, comptime T: type) !T {
+    const Type = assertFloatType(T);
     const header = try reader.readByte();
     switch (header) {
-        c.MSG_FLOAT32 => return try readFloatValue(reader, f32, NonOptional(T)),
-        c.MSG_FLOAT64 => return try readFloatValue(reader, f64, NonOptional(T)),
+        c.MSG_FLOAT32 => return try readFloatValue(reader, f32, Type),
+        c.MSG_FLOAT64 => return try readFloatValue(reader, f64, Type),
         else => return maybeUnpackNull(header, T),
     }
 }

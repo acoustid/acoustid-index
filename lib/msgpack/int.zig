@@ -5,12 +5,24 @@ const NonOptional = @import("utils.zig").NonOptional;
 const maybePackNull = @import("null.zig").maybePackNull;
 const maybeUnpackNull = @import("null.zig").maybeUnpackNull;
 
+inline fn assertIntType(comptime T: type) type {
+    switch (@typeInfo(T)) {
+        .Int => return T,
+        .Optional => |opt_info| {
+            return assertIntType(opt_info.child);
+        },
+        else => @compileError("Expected int, got " ++ @typeName(T)),
+    }
+}
+
 pub fn getMaxIntSize(comptime T: type) usize {
-    return 1 + @sizeOf(T);
+    const Type = assertIntType(T);
+    return 1 + @sizeOf(Type);
 }
 
 pub fn getIntSize(comptime T: type, value: T) usize {
-    const type_info = @typeInfo(T);
+    const Type = assertIntType(T);
+    const type_info = @typeInfo(Type);
 
     const is_signed = type_info.Int.signedness == .signed;
     const bits = type_info.Int.bits;
@@ -61,10 +73,10 @@ pub fn packIntValue(writer: anytype, comptime T: type, value: T) !void {
 }
 
 pub fn packInt(writer: anytype, comptime T: type, value_or_maybe_null: T) !void {
-    const value = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
-    const Type = @TypeOf(value);
-    const type_info = @typeInfo(Type);
+    const Type = assertIntType(T);
+    const value: Type = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
 
+    const type_info = @typeInfo(Type);
     const is_signed = type_info.Int.signedness == .signed;
     const bits = type_info.Int.bits;
 
@@ -170,7 +182,7 @@ pub fn unpackIntValue(reader: anytype, comptime SourceType: type, comptime Targe
 }
 
 pub fn unpackInt(reader: anytype, comptime T: type) !T {
-    const Type = NonOptional(T);
+    const Type = assertIntType(T);
     const type_info = @typeInfo(Type);
 
     const header = try reader.readByte();

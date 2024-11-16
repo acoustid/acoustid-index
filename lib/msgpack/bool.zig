@@ -8,13 +8,25 @@ pub fn getBoolSize() usize {
     return 1;
 }
 
+inline fn assertBoolType(comptime T: type) void {
+    switch (@typeInfo(T)) {
+        .Bool => return,
+        .Optional => |opt_info| {
+            assertBoolType(opt_info.child);
+        },
+        else => @compileError("Expected bool, got " ++ @typeName(T)),
+    }
+}
+
 pub fn packBool(writer: anytype, comptime T: type, value_or_maybe_null: T) !void {
+    assertBoolType(T);
     const value = try maybePackNull(writer, T, value_or_maybe_null) orelse return;
 
     try writer.writeByte(if (value) c.MSG_TRUE else c.MSG_FALSE);
 }
 
 pub fn unpackBool(reader: anytype, comptime T: type) !T {
+    assertBoolType(T);
     const header = try reader.readByte();
     switch (header) {
         c.MSG_TRUE => return true,
