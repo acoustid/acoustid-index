@@ -6,6 +6,24 @@ const Scheduler = @import("utils/Scheduler.zig");
 const server = @import("server.zig");
 const metrics = @import("metrics.zig");
 
+pub const std_options = .{
+    .log_level = .debug,
+    .logFn = logHandler,
+};
+
+var current_log_level: std.log.Level = .info;
+
+pub fn logHandler(
+    comptime level: std.log.Level,
+    comptime scope: @TypeOf(.EnumLiteral),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    if (@intFromEnum(level) <= @intFromEnum(current_log_level)) {
+        std.log.defaultLog(level, scope, format, args);
+    }
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -14,6 +32,14 @@ pub fn main() !void {
 
     var args = try zul.CommandLineArgs.parse(allocator);
     defer args.deinit();
+
+    if (args.get("log-level")) |log_level_name| {
+        if (std.meta.stringToEnum(std.log.Level, log_level_name)) |log_level| {
+            current_log_level = log_level;
+        } else {
+            return error.InvalidLogLevel;
+        }
+    }
 
     const dir_path = args.get("dir") orelse ".";
     const dir = try std.fs.cwd().makeOpenPath(dir_path, .{ .iterate = true });
