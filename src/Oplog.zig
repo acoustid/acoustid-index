@@ -2,7 +2,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 const log = std.log.scoped(.oplog);
 
-const msgpack = @import("utils/msgpack/msgpack.zig");
+const msgpack = @import("msgpack");
 
 const Change = @import("change.zig").Change;
 const Transaction = @import("change.zig").Transaction;

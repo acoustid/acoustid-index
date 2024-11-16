@@ -30,6 +30,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const msgpack = b.addModule("msgpack", .{
+        .root_source_file = b.path("lib/msgpack/msgpack.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const main_exe = b.addExecutable(.{
         .name = "fpindex",
         .root_source_file = b.path("src/main.zig"),
@@ -40,6 +46,7 @@ pub fn build(b: *std.Build) void {
     main_exe.root_module.addImport("httpz", httpz.module("httpz"));
     main_exe.root_module.addImport("metrics", metrics.module("metrics"));
     main_exe.root_module.addImport("zul", zul.module("zul"));
+    main_exe.root_module.addImport("msgpack", msgpack);
 
     b.installArtifact(main_exe);
 
@@ -63,6 +70,7 @@ pub fn build(b: *std.Build) void {
     main_tests.root_module.addImport("httpz", httpz.module("httpz"));
     main_tests.root_module.addImport("metrics", metrics.module("metrics"));
     main_tests.root_module.addImport("zul", zul.module("zul"));
+    main_tests.root_module.addImport("msgpack", msgpack);
 
     const run_main_tests = b.addRunArtifact(main_tests);
 

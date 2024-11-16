@@ -1,4 +1,4 @@
-const msgpack = @import("utils/msgpack/msgpack.zig");
+const msgpack = @import("msgpack");
 
 pub const Insert = struct {
     id: u32,

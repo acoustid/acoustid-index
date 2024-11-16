@@ -1,7 +1,7 @@
 const std = @import("std");
 const testing = std.testing;
 
-const msgpack = @import("utils/msgpack/msgpack.zig");
+const msgpack = @import("msgpack");
 
 pub const Item = packed struct(u64) {
     id: u32,

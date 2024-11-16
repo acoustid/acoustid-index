@@ -5,13 +5,13 @@ const math = std.math;
 const io = std.io;
 const fs = std.fs;
 
+const msgpack = @import("msgpack");
+
 const common = @import("common.zig");
 const Item = common.Item;
 const SegmentVersion = common.SegmentID;
 const InMemorySegment = @import("InMemorySegment.zig");
 const Segment = @import("Segment.zig");
-
-const msgpack = @import("utils/msgpack/msgpack.zig");
 
 pub const default_block_size = 1024;
 pub const min_block_size = 256;
