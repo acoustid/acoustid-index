@@ -106,6 +106,21 @@ pub fn unpackArrayInto(reader: anytype, allocator: std.mem.Allocator, comptime I
     return data;
 }
 
+pub fn Array(comptime T: type) type {
+    return struct {
+        data: []T,
+
+        pub fn msgpackWrite(self: @This(), packer: anytype) !void {
+            try packer.writeArray(self.data);
+        }
+
+        pub fn msgpackRead(unpacker: anytype) !@This() {
+            const data = try unpacker.readArray([]T);
+            return .{ .data = data };
+        }
+    };
+}
+
 const packed_null = [_]u8{0xc0};
 const packed_abc = [_]u8{ 0x93, 0x61, 0x62, 0x63 };
 

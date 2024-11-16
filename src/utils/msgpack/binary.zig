@@ -93,8 +93,8 @@ pub const Binary = struct {
         try packer.writeBinary(self.data);
     }
 
-    pub fn msgpackRead(unpacker: anytype, allocator: std.mem.Allocator) !Binary {
-        const data = try unpacker.readBinary(allocator);
+    pub fn msgpackRead(unpacker: anytype) !Binary {
+        const data = try unpacker.readBinary();
         return Binary{ .data = data };
     }
 };

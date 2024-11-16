@@ -101,11 +101,6 @@ pub const getMaxFloatSize = @import("float.zig").getMaxFloatSize;
 pub const packFloat = @import("float.zig").packFloat;
 pub const unpackFloat = @import("float.zig").unpackFloat;
 
-pub const sizeOfPackedString = @import("string.zig").sizeOfPackedString;
-pub const sizeOfPackedStringHeader = @import("string.zig").sizeOfPackedStringHeader;
-pub const packString = @import("string.zig").packString;
-pub const packStringHeader = @import("string.zig").packStringHeader;
-
 pub const sizeOfPackedArray = @import("array.zig").sizeOfPackedArray;
 pub const sizeOfPackedArrayHeader = @import("array.zig").sizeOfPackedArrayHeader;
 pub const packArray = @import("array.zig").packArray;
@@ -119,9 +114,17 @@ pub const unpackMapHeader = @import("map.zig").unpackMapHeader;
 pub const unpackMap = @import("map.zig").unpackMap;
 pub const unpackMapInto = @import("map.zig").unpackMapInto;
 
+pub const sizeOfPackedString = @import("string.zig").sizeOfPackedString;
+pub const sizeOfPackedStringHeader = @import("string.zig").sizeOfPackedStringHeader;
+pub const packStringHeader = @import("string.zig").packStringHeader;
+pub const packString = @import("string.zig").packString;
+pub const unpackStringHeader = @import("string.zig").unpackStringHeader;
 pub const unpackString = @import("string.zig").unpackString;
 pub const unpackStringInto = @import("string.zig").unpackStringInto;
 
+pub const packBinaryHeader = @import("binary.zig").packBinaryHeader;
+pub const packBinary = @import("binary.zig").packBinary;
+pub const unpackBinaryHeader = @import("binary.zig").unpackBinaryHeader;
 pub const unpackBinary = @import("binary.zig").unpackBinary;
 pub const unpackBinaryInto = @import("binary.zig").unpackBinaryInto;
 
@@ -176,27 +179,15 @@ pub fn Packer(comptime Writer: type) type {
         }
 
         pub fn writeString(self: Self, value: []const u8) !void {
-            return packString(self.writer, @TypeOf(value), value);
+            return packString(self.writer, value);
         }
 
         pub fn writeBinaryHeader(self: Self, len: usize) !void {
-            if (len <= std.math.maxInt(u8)) {
-                try self.writer.writeByte(MSG_BIN8);
-                try packIntValue(self.writer, u8, @intCast(len));
-            } else if (len <= std.math.maxInt(u16)) {
-                try self.writer.writeByte(MSG_BIN16);
-                try packIntValue(self.writer, u16, @intCast(len));
-            } else if (len <= std.math.maxInt(u32)) {
-                try self.writer.writeByte(MSG_BIN32);
-                try packIntValue(self.writer, u32, @intCast(len));
-            } else {
-                return error.BinaryTooLong;
-            }
+            return packBinaryHeader(self.writer, len);
         }
 
         pub fn writeBinary(self: Self, value: []const u8) !void {
-            try self.writeBinaryHeader(value.len);
-            try self.writer.writeAll(value);
+            return packBinary(self.writer, value);
         }
 
         pub fn getArrayHeaderSize(len: usize) !usize {
@@ -277,12 +268,20 @@ pub fn Unpacker(comptime Reader: type) type {
             return unpackFloat(self.reader, T);
         }
 
+        pub fn readStringHeader(self: Self, comptime T: type) !T {
+            return unpackStringHeader(self.reader, T);
+        }
+
         pub fn readString(self: Self) ![]const u8 {
             return unpackString(self.reader, self.allocator);
         }
 
         pub fn readStringInto(self: Self, buffer: []u8) ![]const u8 {
             return unpackStringInto(self.reader, buffer);
+        }
+
+        pub fn readBinaryHeader(self: Self, comptime T: type) !T {
+            return unpackBinaryHeader(self.reader, T);
         }
 
         pub fn readBinary(self: Self) ![]const u8 {

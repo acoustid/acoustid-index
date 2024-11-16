@@ -23,6 +23,9 @@ const unpackArrayHeader = @import("array.zig").unpackArrayHeader;
 const packAny = @import("any.zig").packAny;
 const unpackAny = @import("any.zig").unpackAny;
 
+const packer = @import("msgpack.zig").packer;
+const unpacker = @import("msgpack.zig").unpacker;
+
 pub const StructAsMapOptions = struct {
     key: union(enum) {
         field_name,
@@ -132,7 +135,7 @@ pub fn packStruct(writer: anytype, comptime T: type, value_or_maybe_null: T) !vo
 
     const has_custom_write_fn = std.meta.hasFn(Type, "msgpackWrite");
     if (has_custom_write_fn) {
-        return try value.msgpackWrite(writer);
+        return try value.msgpackWrite(packer(writer));
     } else {
         const format = if (std.meta.hasFn(Type, "msgpackFormat")) T.msgpackFormat() else default_struct_format;
         switch (format) {
@@ -253,7 +256,7 @@ pub fn unpackStruct(reader: anytype, allocator: std.mem.Allocator, comptime T: t
 
     const has_custom_read_fn = std.meta.hasFn(Type, "msgpackRead");
     if (has_custom_read_fn) {
-        return try T.msgpackRead(reader, allocator);
+        return try T.msgpackRead(unpacker(reader, allocator));
     } else {
         const format = if (std.meta.hasFn(Type, "msgpackFormat")) T.msgpackFormat() else default_struct_format;
         switch (format) {

@@ -89,12 +89,12 @@ pub fn unpackStringInto(reader: anytype, buf: []u8) ![]u8 {
 pub const String = struct {
     data: []const u8,
 
-    pub fn msgpackWrite(self: String, writer: anytype) !void {
-        try packString(writer, self.data);
+    pub fn msgpackWrite(self: String, packer: anytype) !void {
+        try packer.writeString(self.data);
     }
 
-    pub fn msgpackRead(reader: anytype, allocator: std.mem.Allocator) !String {
-        const data = try unpackString(reader, allocator);
+    pub fn msgpackRead(unpacker: anytype) !String {
+        const data = try unpacker.readString();
         return String{ .data = data };
     }
 };
