@@ -140,6 +140,18 @@ pub const SegmentID = packed struct(u64) {
     version: u32,
     included_merges: u32 = 0,
 
+    pub fn cmp(_: void, a: SegmentID, b: SegmentID) bool {
+        const xa: u64 = @bitCast(a);
+        const xb: u64 = @bitCast(b);
+        return xa < xb;
+    }
+
+    pub fn eq(a: SegmentID, b: SegmentID) bool {
+        const xa: u64 = @bitCast(a);
+        const xb: u64 = @bitCast(b);
+        return xa == xb;
+    }
+
     pub fn first() SegmentID {
         return .{
             .version = 1,

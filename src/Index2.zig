@@ -19,6 +19,8 @@ const FileSegment = @import("FileSegment.zig");
 const FileSegmentList = FileSegment.List;
 const FileSegmentNode = FileSegment.List.List.Node;
 
+const SegmentMerger = @import("segment_merger.zig").SegmentMerger;
+
 const filefmt = @import("filefmt.zig");
 
 const Self = @This();
@@ -46,7 +48,7 @@ segments_lock: std.Thread.RwLock = .{},
 
 // Mutex used to control exclusivity during re-shuffling of segment lists during checkpoint/merges.
 // This lock by itself doesn't give access to either list, you need to hold the segments_lock as well.
-segments_maintenance_lock: std.Thread.Mutex = .{},
+file_segments_lock: std.Thread.Mutex = .{},
 
 // Mutex used to control linearity of updates.
 update_lock: std.Thread.Mutex = .{},
@@ -54,15 +56,17 @@ update_lock: std.Thread.Mutex = .{},
 // Mutex used to control merging of in-memory segments.
 memory_merge_lock: std.Thread.Mutex = .{},
 
-// Mutex used to control merging of file segments.
-file_merge_lock: std.Thread.Mutex = .{},
-
-stopping: std.atomic.Value(bool),
+file_segments_to_delete: std.ArrayList(SegmentID),
 
 checkpoint_mutex: std.Thread.Mutex = .{},
 checkpoint_condition: std.Thread.Condition = .{},
-checkpoint_thread: ?std.Thread = null,
 checkpoint_stop: bool = false,
+checkpoint_thread: ?std.Thread = null,
+
+file_segment_merge_mutex: std.Thread.Mutex = .{},
+file_segment_merge_condition: std.Thread.Condition = .{},
+file_segment_merge_stop: bool = false,
+file_segment_merge_thread: ?std.Thread = null,
 
 pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Self {
     var data_dir = try dir.makeOpenPath("data", .{ .iterate = true });
@@ -78,18 +82,14 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Se
         .oplog_dir = oplog_dir,
         .oplog = Oplog.init(allocator, oplog_dir),
         .file_segments = FileSegmentList.init(allocator),
+        .file_segments_to_delete = std.ArrayList(SegmentID).init(allocator),
         .memory_segments = MemorySegmentList.init(allocator),
-        .stopping = std.atomic.Value(bool).init(false),
     };
 }
 
 pub fn deinit(self: *Self) void {
-    self.stopping.store(true, .release);
-
-    if (self.checkpoint_thread) |thread| {
-        self.stopCheckpointThread();
-        thread.join();
-    }
+    self.stopCheckpointThread();
+    self.stopFileSegmentMergeThread();
 
     self.oplog.deinit();
     self.memory_segments.deinit();
@@ -123,12 +123,14 @@ fn prepareMemorySegmentMerge(self: *Self) !?MemorySegmentList.PreparedMerge {
     return merge;
 }
 
-fn finnishMemorySegmentMerge(self: *Self, merge: MemorySegmentList.PreparedMerge) bool {
+fn finishMemorySegmentMerge(self: *Self, merge: MemorySegmentList.PreparedMerge) bool {
+    defer self.memory_segments.destroySegment(merge.sources.node1);
+    defer self.memory_segments.destroySegment(merge.sources.node2);
+
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
 
     self.memory_segments.applyMerge(merge);
-    self.memory_segments.destroyMergedSegments(merge);
 
     self.flattenMemorySegmentIds();
 
@@ -141,7 +143,7 @@ fn maybeMergeMemorySegments(self: *Self) !bool {
     defer self.memory_merge_lock.unlock();
 
     const merge = try self.prepareMemorySegmentMerge() orelse return false;
-    return self.finnishMemorySegmentMerge(merge);
+    return self.finishMemorySegmentMerge(merge);
 }
 
 pub const PendingUpdate = struct {
@@ -251,8 +253,8 @@ fn doCheckpoint(self: *Self) !bool {
 
     errdefer dest.data.delete(self.data_dir);
 
-    self.segments_maintenance_lock.lock();
-    defer self.segments_maintenance_lock.unlock();
+    self.file_segments_lock.lock();
+    defer self.file_segments_lock.unlock();
 
     var ids = try self.getFileSegmentIds();
     defer ids.deinit();
@@ -284,6 +286,39 @@ fn doCheckpoint(self: *Self) !bool {
     return true;
 }
 
+fn checkpointThreadFn(self: *Self) void {
+    const min_delay = std.time.ns_per_s;
+    const max_delay = std.time.ns_per_s * 60;
+    var delay: u64 = min_delay;
+    var retries: u32 = 0;
+
+    while (true) {
+        self.checkpoint_mutex.lock();
+        defer self.checkpoint_mutex.unlock();
+
+        if (self.checkpoint_stop) return;
+
+        var wait: bool = true;
+
+        if (self.doCheckpoint()) |successful| {
+            delay = min_delay;
+            retries = 0;
+            if (successful) {
+                wait = false;
+                self.file_segment_merge_condition.signal();
+            }
+        } else |err| {
+            delay = @min(delay * 110 / 100, max_delay);
+            retries += 1;
+            log.err("checkpoint failed: {} (retry {})", .{ err, retries });
+        }
+
+        if (wait) {
+            self.checkpoint_condition.timedWait(&self.checkpoint_mutex, delay) catch {};
+        }
+    }
+}
+
 fn startCheckpointThread(self: *Self) !void {
     if (self.checkpoint_thread != null) return;
 
@@ -307,39 +342,136 @@ fn stopCheckpointThread(self: *Self) void {
     self.checkpoint_thread = null;
 }
 
-fn checkpointThreadFn(self: *Self) void {
+fn fileSegmentMergeThreadFn(self: *Self) void {
     const min_delay = std.time.ns_per_s;
     const max_delay = std.time.ns_per_s * 60;
     var delay: u64 = min_delay;
     var retries: u32 = 0;
 
     while (true) {
-        self.checkpoint_mutex.lock();
-        defer self.checkpoint_mutex.unlock();
+        self.file_segment_merge_mutex.lock();
+        defer self.file_segment_merge_mutex.unlock();
 
-        if (self.stopping.load(.acquire)) return;
+        if (self.file_segment_merge_stop) return;
 
-        var wait: bool = false;
+        var wait: bool = true;
 
-        if (self.doCheckpoint()) |successful| {
+        if (self.maybeMergeFileSegments()) |successful| {
             delay = min_delay;
             retries = 0;
-            wait = !successful;
+            if (successful) {
+                wait = false;
+            }
         } else |err| {
             delay = @min(delay * 110 / 100, max_delay);
             retries += 1;
-            wait = true;
-            log.err("checkpoint failed: {} (retry {})", .{ err, retries });
+            log.err("file segment merge failed: {} (retry {})", .{ err, retries });
         }
 
         if (wait) {
-            self.checkpoint_condition.timedWait(&self.checkpoint_mutex, delay) catch {};
+            self.checkpoint_condition.timedWait(&self.file_segment_merge_mutex, delay) catch {};
         }
     }
 }
 
+fn startFileSegmentMergeThread(self: *Self) !void {
+    if (self.file_segment_merge_thread != null) return;
+
+    self.file_segment_merge_mutex.lock();
+    self.file_segment_merge_stop = false;
+    self.file_segment_merge_mutex.unlock();
+
+    self.file_segment_merge_thread = try std.Thread.spawn(.{}, fileSegmentMergeThreadFn, .{self});
+}
+
+fn stopFileSegmentMergeThread(self: *Self) void {
+    self.file_segment_merge_mutex.lock();
+    self.file_segment_merge_stop = true;
+    self.file_segment_merge_condition.broadcast();
+    self.file_segment_merge_mutex.unlock();
+
+    if (self.file_segment_merge_thread) |thread| {
+        thread.join();
+    }
+
+    self.file_segment_merge_thread = null;
+}
+
+fn prepareFileSegmentMerge(self: *Self) !?FileSegmentList.PreparedMerge {
+    self.segments_lock.lockShared();
+    defer self.segments_lock.unlockShared();
+
+    const merge = try self.file_segments.prepareMerge(.{ .max_segment_size = self.options.max_segment_size }) orelse return null;
+    errdefer self.file_segments.destroySegment(merge.target);
+
+    var merger = SegmentMerger(FileSegment).init(self.allocator, &self.file_segments);
+    defer merger.deinit();
+
+    try merger.addSource(&merge.sources.node1.data);
+    try merger.addSource(&merge.sources.node2.data);
+    try merger.prepare();
+
+    try merge.target.data.build(self.data_dir, &merger);
+
+    return merge;
+}
+
+fn finishFileSegmentMerge(self: *Self, merge: FileSegmentList.PreparedMerge) !void {
+    self.file_segments_lock.lock();
+    defer self.file_segments_lock.unlock();
+
+    try self.file_segments_to_delete.ensureUnusedCapacity(3);
+
+    errdefer self.file_segments.destroySegment(merge.target);
+    errdefer merge.target.data.delete(self.data_dir);
+
+    var ids = try self.getFileSegmentIds();
+    defer ids.deinit();
+
+    var index1: usize = 0;
+    var index2: usize = 0;
+
+    var i: usize = 0;
+    while (i < ids.items.len) : (i += 1) {
+        if (SegmentID.eq(ids.items[i], merge.sources.node1.data.id)) {
+            index1 = i;
+        }
+        if (SegmentID.eq(ids.items[i], merge.sources.node2.data.id)) {
+            index2 = i;
+        }
+    }
+
+    std.debug.assert(index1 + 1 == index2);
+
+    try ids.replaceRange(index1, 2, &[_]SegmentID{merge.target.data.id});
+
+    std.debug.assert(std.sort.isSorted(SegmentID, ids.items, {}, SegmentID.cmp));
+
+    try filefmt.writeIndexFile(self.data_dir, ids);
+
+    defer self.file_segments.destroySegment(merge.sources.node1);
+    defer self.file_segments.destroySegment(merge.sources.node2);
+
+    defer merge.sources.node1.data.delete(self.data_dir);
+    defer merge.sources.node2.data.delete(self.data_dir);
+
+    self.segments_lock.lock();
+    defer self.segments_lock.unlock();
+
+    self.file_segments.applyMerge(merge);
+
+    log.info("committed merge segment {}:{}", .{ merge.target.data.id.version, merge.target.data.id.included_merges });
+}
+
+pub fn maybeMergeFileSegments(self: *Self) !bool {
+    const merge = try self.prepareFileSegmentMerge() orelse return false;
+    try self.finishFileSegmentMerge(merge);
+    return true;
+}
+
 pub fn open(self: *Self) !void {
     try self.startCheckpointThread();
+    try self.startFileSegmentMergeThread();
     try self.loadSegments();
     try self.oplog.open(self.getMaxCommitId(), Updater{ .index = self });
 }

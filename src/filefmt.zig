@@ -354,7 +354,15 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
     });
 }
 
-pub fn readFile(file: fs.File, segment: *FileSegment) !void {
+pub fn readSegmentFile(dir: fs.Dir, id: SegmentVersion, segment: *FileSegment) !void {
+    var file_name_buf: [max_file_name_size]u8 = undefined;
+    const file_name = buildSegmentFileName(&file_name_buf, id);
+
+    log.info("writing segment file {s}", .{file_name});
+
+    var file = try dir.openFile(file_name, .{});
+    errdefer file.close();
+
     const file_size = try file.getEndPos();
 
     var raw_data = try std.posix.mmap(
@@ -443,14 +451,13 @@ test "writeFile/readFile" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    {
-        var file = try tmp.dir.createFile("test.dat", .{});
-        defer file.close();
+    const version: SegmentVersion = .{ .version = 1, .included_merges = 0 };
 
+    {
         var in_memory_segment = InMemorySegment.init(testing.allocator);
         defer in_memory_segment.deinit();
 
-        in_memory_segment.id.version = 1;
+        in_memory_segment.id = version;
 
         try in_memory_segment.build(&.{
             .{ .insert = .{ .id = 1, .hashes = &[_]u32{ 1, 2 } } },
@@ -459,17 +466,14 @@ test "writeFile/readFile" {
         var reader = in_memory_segment.reader();
         defer reader.close();
 
-        try writeSegmentFile(file, &reader);
+        try writeSegmentFile(tmp.dir, &reader);
     }
 
     {
-        var file = try tmp.dir.openFile("test.dat", .{});
-        defer file.close();
-
         var segment = FileSegment.init(testing.allocator);
         defer segment.deinit();
 
-        try readFile(file, &segment);
+        try readSegmentFile(tmp.dir, version, &segment);
 
         try testing.expectEqual(1, segment.id.version);
         try testing.expectEqual(0, segment.id.included_merges);

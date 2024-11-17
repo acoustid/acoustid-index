@@ -172,17 +172,6 @@ pub fn SegmentList(Segment: type) type {
             self.segments.remove(merge.sources.node1);
             self.segments.remove(merge.sources.node2);
         }
-
-        pub fn revertMerge(self: *Self, merge: PreparedMerge) void {
-            self.segments.insertBefore(merge.target, merge.sources.node1);
-            self.segments.insertBefore(merge.target, merge.sources.node2);
-            self.segments.remove(merge.target);
-        }
-
-        pub fn destroyMergedSegments(self: *Self, merge: PreparedMerge) void {
-            self.destroySegment(merge.sources.node1);
-            self.destroySegment(merge.sources.node2);
-        }
     };
 }
 
