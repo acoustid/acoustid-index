@@ -87,11 +87,11 @@ pub const SearchResults = struct {
         }
     }
 
-    pub fn count(self: *SearchResults) usize {
+    pub fn count(self: SearchResults) usize {
         return self.results.count();
     }
 
-    pub fn get(self: *SearchResults, id: u32) ?SearchResult {
+    pub fn get(self: SearchResults, id: u32) ?SearchResult {
         return self.results.get(id);
     }
 
@@ -105,7 +105,7 @@ pub const SearchResults = struct {
         self.results.sort(Ctx{ .values = self.results.values() });
     }
 
-    pub fn values(self: *SearchResults) []SearchResult {
+    pub fn values(self: SearchResults) []SearchResult {
         return self.results.values();
     }
 

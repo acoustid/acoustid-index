@@ -2,7 +2,7 @@ const std = @import("std");
 const log = std.log.scoped(.multi_index);
 const assert = std.debug.assert;
 
-const Index = @import("Index.zig");
+const Index = @import("Index2.zig");
 const Scheduler = @import("utils/Scheduler.zig");
 
 const Self = @This();
@@ -70,7 +70,7 @@ pub fn acquireIndex(self: *Self, id: u8, create: bool) !*IndexRef {
     result.value_ptr.dir = try self.dir.makeOpenPath(sub_dir_name, .{ .iterate = true });
     errdefer result.value_ptr.dir.close();
 
-    result.value_ptr.index = try Index.init(self.allocator, result.value_ptr.dir, self.scheduler, .{ .create = create });
+    result.value_ptr.index = try Index.init(self.allocator, result.value_ptr.dir, .{ .create = create });
     errdefer result.value_ptr.index.deinit();
 
     result.value_ptr.index.open() catch |err| {

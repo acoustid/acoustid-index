@@ -4,6 +4,7 @@ const assert = std.debug.assert;
 const math = std.math;
 const io = std.io;
 const fs = std.fs;
+const log = std.log.scoped(.filefmt);
 
 const msgpack = @import("msgpack");
 
@@ -272,16 +273,33 @@ pub const SegmentFileFooter = struct {
     }
 };
 
-pub fn writeFile(file: std.fs.File, reader: anytype) !void {
+pub fn deleteSegmentFile(dir: std.fs.Dir, segment_id: SegmentVersion) !void {
+    var file_name_buf: [max_file_name_size]u8 = undefined;
+    const file_name = buildSegmentFileName(&file_name_buf, segment_id);
+
+    log.info("deleting segment file {s}", .{file_name});
+
+    try dir.deleteFile(file_name);
+}
+
+pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
+    const segment = reader.segment;
+
+    var file_name_buf: [max_file_name_size]u8 = undefined;
+    const file_name = buildSegmentFileName(&file_name_buf, segment.id);
+
+    log.info("writing segment file {s}", .{file_name});
+
+    var file = try dir.atomicFile(file_name, .{});
+    errdefer file.deinit();
+
     const block_size = default_block_size;
 
-    var buffered_writer = std.io.bufferedWriter(file.writer());
+    var buffered_writer = std.io.bufferedWriter(file.file.writer());
     var counting_writer = std.io.countingWriter(buffered_writer.writer());
     const writer = counting_writer.writer();
 
     const packer = msgpack.packer(writer);
-
-    const segment = reader.segment;
 
     const header = SegmentFileHeader{
         .version = segment.id.version,
@@ -324,7 +342,16 @@ pub fn writeFile(file: std.fs.File, reader: anytype) !void {
 
     try buffered_writer.flush();
 
-    try file.sync();
+    try file.file.sync();
+
+    try file.finish();
+
+    log.info("wrote segment file {s} (blocks = {}, items = {}, checksum = {})", .{
+        file_name,
+        footer.num_blocks,
+        footer.num_items,
+        footer.checksum,
+    });
 }
 
 pub fn readFile(file: fs.File, segment: *FileSegment) !void {
@@ -432,7 +459,7 @@ test "writeFile/readFile" {
         var reader = in_memory_segment.reader();
         defer reader.close();
 
-        try writeFile(file, &reader);
+        try writeSegmentFile(file, &reader);
     }
 
     {
@@ -471,25 +498,45 @@ const IndexFileHeader = struct {
     }
 };
 
-pub fn writeIndexFile(writer: anytype, segments: std.ArrayList(SegmentVersion)) !void {
-    const packer = msgpack.packer(writer);
+pub fn writeIndexFile(dir: std.fs.Dir, segments: std.ArrayList(SegmentVersion)) !void {
+    log.info("writing index file {s}", .{index_file_name});
 
-    try packer.write(IndexFileHeader, .{});
-    try packer.write([]SegmentVersion, segments.items);
+    var file = try dir.atomicFile(index_file_name, .{});
+    defer file.deinit();
+
+    var buffered_writer = std.io.bufferedWriter(file.file.writer());
+    const writer = buffered_writer.writer();
+
+    try msgpack.encode(writer, IndexFileHeader, .{});
+    try msgpack.encode(writer, []SegmentVersion, segments.items);
+
+    try buffered_writer.flush();
+
+    try file.file.sync();
+
+    try file.finish();
+
+    log.info("wrote index file {s} (segments = {})", .{
+        index_file_name,
+        segments.items.len,
+    });
 }
 
-pub fn readIndexFile(reader: anytype, segments: *std.ArrayList(SegmentVersion)) !void {
-    const unpacker = msgpack.unpacker(reader, segments.allocator);
+pub fn readIndexFile(dir: std.fs.Dir, allocator: std.mem.Allocator) ![]SegmentVersion {
+    log.info("reading index file {s}", .{index_file_name});
 
-    const header = try unpacker.read(IndexFileHeader);
+    var file = try dir.openFile(index_file_name, .{});
+    defer file.close();
+
+    var buffered_reader = std.io.bufferedReader(file.reader());
+    const reader = buffered_reader.reader();
+
+    const header = try msgpack.decode(reader, allocator, IndexFileHeader);
     if (header.magic != index_header_magic_v1) {
         return error.InvalidIndexfile;
     }
 
-    const new_segments = try unpacker.read([]SegmentVersion);
-
-    segments.deinit();
-    segments.* = std.ArrayList(SegmentVersion).fromOwnedSlice(segments.allocator, new_segments);
+    return try msgpack.decode(reader, allocator, []SegmentVersion);
 }
 
 test "readIndexFile/writeIndexFile" {
@@ -503,22 +550,10 @@ test "readIndexFile/writeIndexFile" {
     try segments.append(.{ .version = 2, .included_merges = 1 });
     try segments.append(.{ .version = 4, .included_merges = 0 });
 
-    {
-        var file = try tmp.dir.createFile("test.idx", .{});
-        defer file.close();
+    try writeIndexFile(tmp.dir, segments);
 
-        try writeIndexFile(file.writer(), segments);
-    }
+    const segments2 = try readIndexFile(tmp.dir, std.testing.allocator);
+    defer std.testing.allocator.free(segments2);
 
-    {
-        var file = try tmp.dir.openFile("test.idx", .{});
-        defer file.close();
-
-        var segments2 = std.ArrayList(SegmentVersion).init(testing.allocator);
-        defer segments2.deinit();
-
-        try readIndexFile(file.reader(), &segments2);
-
-        try testing.expectEqualSlices(SegmentVersion, segments.items, segments2.items);
-    }
+    try testing.expectEqualSlices(SegmentVersion, segments.items, segments2);
 }

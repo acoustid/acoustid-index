@@ -194,7 +194,7 @@ pub fn removeFrozenSegment(self: *Self, segment: *InMemorySegment) void {
     while (it) |node| : (it = node.next) {
         if (&node.data == segment) {
             if (node.data.frozen) {
-                self.segments.removeAndDestroy(node);
+                self.segments.removeAndDestroySegment(node);
                 return;
             }
         }

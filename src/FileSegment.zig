@@ -85,6 +85,8 @@ pub fn open(self: *Self, dir: std.fs.Dir, id: SegmentID) !void {
     var file_name_buf: [filefmt.max_file_name_size]u8 = undefined;
     const file_name = filefmt.buildSegmentFileName(&file_name_buf, id);
 
+    log.info("reading segment file {s}", .{file_name});
+
     try self.read(dir, file_name);
 }
 
@@ -103,7 +105,7 @@ pub fn build(self: *Self, dir: std.fs.Dir, source: anytype) !void {
     var file_name_buf: [filefmt.max_file_name_size]u8 = undefined;
     const file_name = filefmt.buildSegmentFileName(&file_name_buf, source.segment.id);
 
-    try write(dir, file_name, source);
+    try filefmt.writeSegmentFile(dir, source);
 
     errdefer dir.deleteFile(file_name) catch |err| {
         log.err("failed to clean up segment file {s}: {}", .{ file_name, err });
@@ -147,14 +149,6 @@ fn read(self: *Self, dir: std.fs.Dir, file_name: []const u8) !void {
     defer file.close();
 
     try filefmt.readFile(file, self);
-}
-
-fn write(dir: std.fs.Dir, file_name: []u8, source: anytype) !void {
-    var file = try dir.atomicFile(file_name, .{});
-    defer file.deinit();
-
-    try filefmt.writeFile(file.file, source);
-    try file.finish();
 }
 
 pub fn canBeMerged(self: Self) bool {

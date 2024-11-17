@@ -41,9 +41,13 @@ pub fn SegmentList(Segment: type) type {
             self.allocator.destroy(node);
         }
 
-        pub fn removeAndDestroy(self: *Self, node: *List.Node) void {
+        pub fn removeAndDestroySegment(self: *Self, node: *List.Node) void {
             self.segments.remove(node);
             self.destroySegment(node);
+        }
+
+        pub fn appendSegment(self: *Self, node: *List.Node) void {
+            self.segments.append(node);
         }
 
         pub fn getIds(self: *Self, ids: *std.ArrayList(common.SegmentID)) !void {

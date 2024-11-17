@@ -51,7 +51,7 @@ pub fn deinit(self: *Self) void {
     self.files.deinit();
 }
 
-pub fn open(self: *Self, first_commit_id: u64, index: *InMemoryIndex) !void {
+pub fn open(self: *Self, first_commit_id: u64, receiver: anytype) !void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
@@ -76,7 +76,8 @@ pub fn open(self: *Self, first_commit_id: u64, index: *InMemoryIndex) !void {
     defer oplog_it.deinit();
     while (try oplog_it.next()) |txn| {
         max_commit_id = @max(max_commit_id, txn.id);
-        try index.update(txn.changes, txn.id);
+        var pending_update = try receiver.prepareUpdate(txn.changes);
+        receiver.commitUpdate(&pending_update, txn.id);
     }
     self.next_commit_id = max_commit_id + 1;
 }
@@ -198,9 +199,9 @@ pub fn truncate(self: *Self, commit_id: u64) !void {
     try self.truncateNoLock(commit_id);
 }
 
-pub fn write(self: *Self, changes: []const Change, index: *InMemoryIndex) !void {
-    var txn = try index.prepareUpdate(changes);
-    defer index.cancelUpdate(&txn);
+pub fn write(self: *Self, changes: []const Change, receiver: anytype) !void {
+    var pending_update = try receiver.prepareUpdate(changes);
+    defer receiver.cancelUpdate(&pending_update);
 
     self.write_lock.lock();
     defer self.write_lock.unlock();
@@ -229,7 +230,7 @@ pub fn write(self: *Self, changes: []const Change, index: *InMemoryIndex) !void 
         return err;
     };
 
-    index.commitUpdate(&txn, commit_id);
+    receiver.commitUpdate(&pending_update, commit_id);
 }
 
 test "write entries" {

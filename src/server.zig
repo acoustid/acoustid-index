@@ -157,9 +157,6 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
     const index = &index_ref.index;
     defer releaseIndex(ctx, index_ref);
 
-    var results = SearchResults.init(req.arena);
-    defer results.deinit();
-
     var timeout = body.timeout;
     if (timeout == 0) {
         timeout = default_search_timeout;
@@ -171,7 +168,7 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 
     metrics.search();
 
-    index.search(body.query, &results, deadline) catch |err| {
+    const results = index.search(body.query, req.arena, deadline) catch |err| {
         log.err("index search error: {}", .{err});
         res.status = 500;
         return res.json(.{ .status = "internal error" }, .{});
