@@ -540,31 +540,6 @@ pub fn getMaxCommitId(self: *Self) u64 {
     return @max(self.file_segments.getMaxCommitId(), self.memory_segments.getMaxCommitId());
 }
 
-test "Index" {
-    var tmpDir = std.testing.tmpDir(.{});
-    defer tmpDir.cleanup();
-
-    var index = try Self.init(std.testing.allocator, tmpDir.dir, .{ .create = true });
-    defer index.deinit();
-
-    try index.open();
-
-    try index.update(&[_]Change{
-        .{
-            .insert = .{
-                .id = 1,
-                .hashes = &[_]u32{ 100, 101, 102 },
-            },
-        },
-    });
-
-    var results = try index.search(&[_]u32{ 100, 101, 102 }, std.testing.allocator, .{});
-    defer results.deinit();
-
-    try std.testing.expectEqual(1, results.count());
-    try std.testing.expectEqualDeep(SearchResult{ .id = 1, .score = 3, .version = 1 }, results.get(1));
-}
-
 test {
     _ = @import("index_tests.zig");
 }
