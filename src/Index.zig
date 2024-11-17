@@ -227,7 +227,7 @@ fn loadSegment(self: *Self, segment_id: SegmentID) !void {
 fn loadSegments(self: *Self) !void {
     const segment_ids = filefmt.readIndexFile(self.data_dir, self.allocator) catch |err| {
         if (err == error.FileNotFound and self.options.create) {
-            try filefmt.writeIndexFile(self.data_dir, std.ArrayList(SegmentID).init(self.allocator));
+            try filefmt.writeIndexFile(self.data_dir, &[_]SegmentID{});
             return;
         }
         return err;
@@ -262,7 +262,7 @@ fn doCheckpoint(self: *Self) !bool {
 
     try ids.append(dest.data.id);
 
-    try filefmt.writeIndexFile(self.data_dir, ids);
+    try filefmt.writeIndexFile(self.data_dir, ids.items);
 
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
@@ -448,7 +448,7 @@ fn finishFileSegmentMerge(self: *Self, merge: FileSegmentList.PreparedMerge) !vo
 
     std.debug.assert(std.sort.isSorted(SegmentID, ids.items, {}, SegmentID.cmp));
 
-    try filefmt.writeIndexFile(self.data_dir, ids);
+    try filefmt.writeIndexFile(self.data_dir, ids.items);
 
     defer self.file_segments.destroySegment(merge.sources.node1);
     defer self.file_segments.destroySegment(merge.sources.node2);

@@ -502,7 +502,7 @@ const IndexFileHeader = struct {
     }
 };
 
-pub fn writeIndexFile(dir: std.fs.Dir, segments: std.ArrayList(SegmentVersion)) !void {
+pub fn writeIndexFile(dir: std.fs.Dir, segments: []const SegmentVersion) !void {
     log.info("writing index file {s}", .{index_file_name});
 
     var file = try dir.atomicFile(index_file_name, .{});
@@ -512,7 +512,7 @@ pub fn writeIndexFile(dir: std.fs.Dir, segments: std.ArrayList(SegmentVersion)) 
     const writer = buffered_writer.writer();
 
     try msgpack.encode(writer, IndexFileHeader, .{});
-    try msgpack.encode(writer, []SegmentVersion, segments.items);
+    try msgpack.encode(writer, []const SegmentVersion, segments);
 
     try buffered_writer.flush();
 
@@ -522,7 +522,7 @@ pub fn writeIndexFile(dir: std.fs.Dir, segments: std.ArrayList(SegmentVersion)) 
 
     log.info("wrote index file {s} (segments = {})", .{
         index_file_name,
-        segments.items.len,
+        segments.len,
     });
 }
 
@@ -547,17 +547,16 @@ test "readIndexFile/writeIndexFile" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    var segments = std.ArrayList(SegmentVersion).init(testing.allocator);
-    defer segments.deinit();
+    const segments = [_]SegmentVersion{
+        .{ .version = 1, .included_merges = 0 },
+        .{ .version = 2, .included_merges = 1 },
+        .{ .version = 4, .included_merges = 0 },
+    };
 
-    try segments.append(.{ .version = 1, .included_merges = 0 });
-    try segments.append(.{ .version = 2, .included_merges = 1 });
-    try segments.append(.{ .version = 4, .included_merges = 0 });
-
-    try writeIndexFile(tmp.dir, segments);
+    try writeIndexFile(tmp.dir, &segments);
 
     const segments2 = try readIndexFile(tmp.dir, std.testing.allocator);
     defer std.testing.allocator.free(segments2);
 
-    try testing.expectEqualSlices(SegmentVersion, segments.items, segments2);
+    try testing.expectEqualSlices(SegmentVersion, &segments, segments2);
 }
