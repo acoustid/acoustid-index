@@ -7,8 +7,6 @@ const msgpack = @import("msgpack");
 const Change = @import("change.zig").Change;
 const Transaction = @import("change.zig").Transaction;
 
-const InMemoryIndex = @import("InMemoryIndex.zig");
-
 const Self = @This();
 
 pub const FileInfo = struct {
@@ -243,17 +241,35 @@ test "write entries" {
     var oplog = Self.init(std.testing.allocator, oplogDir);
     defer oplog.deinit();
 
-    var stage = InMemoryIndex.init(std.testing.allocator, .{});
-    defer stage.deinit();
+    const Updater = struct {
+        pub fn prepareUpdate(self: *@This(), changes: []const Change) !u8 {
+            _ = self;
+            _ = changes;
+            return 0;
+        }
 
-    try oplog.open(0, &stage);
+        pub fn cancelUpdate(self: *@This(), update: *u8) void {
+            _ = self;
+            _ = update;
+        }
+
+        pub fn commitUpdate(self: *@This(), update: *u8, commit_id: u64) void {
+            _ = self;
+            _ = update;
+            _ = commit_id;
+        }
+    };
+
+    var updater: Updater = .{};
+
+    try oplog.open(0, &updater);
 
     const changes = [_]Change{.{ .insert = .{
         .id = 1,
         .hashes = &[_]u32{ 1, 2, 3 },
     } }};
 
-    try oplog.write(&changes, &stage);
+    try oplog.write(&changes, &updater);
 
     var file = try oplogDir.openFile("0000000000000001.xlog", .{});
     defer file.close();

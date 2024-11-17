@@ -7,7 +7,7 @@ const Item = common.Item;
 const SearchResults = common.SearchResults;
 const SegmentID = common.SegmentID;
 
-const InMemorySegment = @import("InMemorySegment.zig");
+const MemorySegment = @import("MemorySegment.zig");
 
 const filefmt = @import("filefmt.zig");
 
@@ -82,12 +82,7 @@ pub fn search(self: *Self, sorted_hashes: []const u32, results: *SearchResults) 
 }
 
 pub fn open(self: *Self, dir: std.fs.Dir, id: SegmentID) !void {
-    var file_name_buf: [filefmt.max_file_name_size]u8 = undefined;
-    const file_name = filefmt.buildSegmentFileName(&file_name_buf, id);
-
-    log.info("reading segment file {s}", .{file_name});
-
-    try self.read(dir, file_name);
+    try filefmt.readSegmentFile(dir, id, self);
 }
 
 pub fn delete(self: *Self, dir: std.fs.Dir) void {
@@ -111,7 +106,7 @@ pub fn build(self: *Self, dir: std.fs.Dir, source: anytype) !void {
         log.err("failed to clean up segment file {s}: {}", .{ file_name, err });
     };
 
-    try self.read(dir, file_name);
+    try filefmt.readSegmentFile(dir, source.segment.id, self);
 }
 
 test "build" {
@@ -121,7 +116,7 @@ test "build" {
     var data_dir = try tmp_dir.dir.makeOpenPath("data", .{});
     defer data_dir.close();
 
-    var source = InMemorySegment.init(std.testing.allocator);
+    var source = MemorySegment.init(std.testing.allocator);
     defer source.deinit();
 
     source.id.version = 1;
@@ -142,13 +137,6 @@ test "build" {
     try std.testing.expectEqual(0, segment.id.included_merges);
     try std.testing.expectEqual(1, segment.docs.count());
     try std.testing.expectEqual(1, segment.index.items.len);
-}
-
-fn read(self: *Self, dir: std.fs.Dir, file_name: []const u8) !void {
-    const file = try dir.openFile(file_name, .{});
-    defer file.close();
-
-    try filefmt.readFile(file, self);
 }
 
 pub fn canBeMerged(self: Self) bool {

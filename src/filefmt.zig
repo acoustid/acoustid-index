@@ -11,7 +11,7 @@ const msgpack = @import("msgpack");
 const common = @import("common.zig");
 const Item = common.Item;
 const SegmentVersion = common.SegmentID;
-const InMemorySegment = @import("InMemorySegment.zig");
+const MemorySegment = @import("MemorySegment.zig");
 const FileSegment = @import("FileSegment.zig");
 
 pub const default_block_size = 1024;
@@ -198,7 +198,7 @@ pub fn encodeBlock(data: []u8, reader: anytype) !u16 {
 }
 
 test "writeBlock/readBlock/readFirstItemFromBlock" {
-    var segment = InMemorySegment.init(std.testing.allocator);
+    var segment = MemorySegment.init(std.testing.allocator);
     defer segment.deinit();
 
     try segment.items.append(.{ .hash = 1, .id = 1 });
@@ -454,7 +454,7 @@ test "writeFile/readFile" {
     const version: SegmentVersion = .{ .version = 1, .included_merges = 0 };
 
     {
-        var in_memory_segment = InMemorySegment.init(testing.allocator);
+        var in_memory_segment = MemorySegment.init(testing.allocator);
         defer in_memory_segment.deinit();
 
         in_memory_segment.id = version;
