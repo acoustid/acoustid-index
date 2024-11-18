@@ -4,8 +4,6 @@ const common = @import("common.zig");
 const Change = @import("change.zig").Change;
 const SearchResults = common.SearchResults;
 
-const Scheduler = @import("utils/Scheduler.zig");
-
 const Index = @import("Index.zig");
 
 fn generateRandomHashes(buf: []u32, seed: u64) []u32 {
@@ -25,7 +23,7 @@ test "index does not exist" {
     defer index.deinit();
 
     const result = index.open();
-    try std.testing.expectError(error.FileNotFound, result);
+    try std.testing.expectError(error.IndexNotFound, result);
 }
 
 test "index create, update and search" {
@@ -104,13 +102,6 @@ test "index many updates" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
-    var data_dir = try tmp_dir.dir.makeOpenPath("data", .{});
-    defer data_dir.close();
-
-    var scheduler = Scheduler.init(std.testing.allocator);
-    defer scheduler.deinit();
-    try scheduler.start(1);
-
     var hashes: [100]u32 = undefined;
 
     {
@@ -154,13 +145,6 @@ test "index many updates" {
 test "index, multiple fingerprints with the same hashes" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
-
-    var data_dir = try tmp_dir.dir.makeOpenPath("data", .{});
-    defer data_dir.close();
-
-    var scheduler = Scheduler.init(std.testing.allocator);
-    defer scheduler.deinit();
-    try scheduler.start(1);
 
     var index = try Index.init(std.testing.allocator, tmp_dir.dir, .{ .create = true });
     defer index.deinit();

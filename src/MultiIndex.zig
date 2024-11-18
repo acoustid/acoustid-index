@@ -3,7 +3,6 @@ const log = std.log.scoped(.multi_index);
 const assert = std.debug.assert;
 
 const Index = @import("Index.zig");
-const Scheduler = @import("utils/Scheduler.zig");
 
 const Self = @This();
 
@@ -17,17 +16,15 @@ pub const IndexRef = struct {
 lock: std.Thread.Mutex = .{},
 allocator: std.mem.Allocator,
 dir: std.fs.Dir,
-scheduler: *Scheduler,
 indexes: std.AutoHashMap(u8, IndexRef),
 
 const max_sub_dir_name_size = 10;
 const sub_dir_name_fmt = "{x:0>2}";
 
-pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, scheduler: *Scheduler) Self {
+pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) Self {
     return .{
         .allocator = allocator,
         .dir = dir,
-        .scheduler = scheduler,
         .indexes = std.AutoHashMap(u8, IndexRef).init(allocator),
     };
 }
@@ -39,7 +36,6 @@ pub fn deinit(self: *Self) void {
         entry.value_ptr.dir.close();
     }
     self.indexes.deinit();
-    self.* = undefined;
 }
 
 pub fn releaseIndex(self: *Self, index_data: *IndexRef) void {
@@ -73,12 +69,7 @@ pub fn acquireIndex(self: *Self, id: u8, create: bool) !*IndexRef {
     result.value_ptr.index = try Index.init(self.allocator, result.value_ptr.dir, .{ .create = create });
     errdefer result.value_ptr.index.deinit();
 
-    result.value_ptr.index.open() catch |err| {
-        if (err == error.FileNotFound) {
-            return error.IndexNotFound;
-        }
-        return err;
-    };
+    try result.value_ptr.index.open();
 
     result.value_ptr.references = 1;
     result.value_ptr.last_used_at = std.time.timestamp();

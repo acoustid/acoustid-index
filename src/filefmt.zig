@@ -438,6 +438,8 @@ pub fn readSegmentFile(dir: fs.Dir, id: SegmentVersion, segment: *FileSegment) !
     }
     if (footer.num_items != num_items) {
         return error.InvalidSegment;
+    } else {
+        segment.num_items = num_items;
     }
     if (footer.num_blocks != num_blocks) {
         return error.InvalidSegment;

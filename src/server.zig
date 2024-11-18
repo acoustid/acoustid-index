@@ -9,7 +9,6 @@ const common = @import("common.zig");
 const SearchResults = common.SearchResults;
 const Change = @import("change.zig").Change;
 const Deadline = @import("utils/Deadline.zig");
-const Scheduler = @import("utils/Scheduler.zig");
 
 const metrics = @import("metrics.zig");
 
