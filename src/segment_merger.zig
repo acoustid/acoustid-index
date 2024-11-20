@@ -157,20 +157,27 @@ test "merge segments" {
     var node2 = try collection.createSegment();
     collection.segments.append(node2);
 
+    var node3 = try collection.createSegment();
+    collection.segments.append(node3);
+
     node1.data.id = SegmentID{ .version = 1, .included_merges = 0 };
     node1.data.max_commit_id = 11;
 
     node2.data.id = SegmentID{ .version = 2, .included_merges = 0 };
     node2.data.max_commit_id = 12;
 
+    node3.data.id = SegmentID{ .version = 3, .included_merges = 0 };
+    node3.data.max_commit_id = 13;
+
     try merger.addSource(&node1.data);
     try merger.addSource(&node2.data);
+    try merger.addSource(&node3.data);
 
     try merger.prepare();
 
     try std.testing.expectEqual(1, merger.segment.id.version);
-    try std.testing.expectEqual(1, merger.segment.id.included_merges);
-    try std.testing.expectEqual(12, merger.segment.max_commit_id);
+    try std.testing.expectEqual(2, merger.segment.id.included_merges);
+    try std.testing.expectEqual(13, merger.segment.max_commit_id);
 
     while (true) {
         const item = try merger.read();

@@ -1,150 +1,187 @@
 const std = @import("std");
 const log = std.log.scoped(.segment_merge_policy);
 
-pub const LogMergePolicy = struct {
-    // Defines the allowed range of log(size) for each
-    // level. A level is computed by taking the max segment
-    // log size, minus level_log_span, and finding all
-    // segments falling within that range.
-    const level_log_span: f64 = 0.75;
+pub fn MergeCandidate(comptime T: type) type {
+    return struct {
+        start: *std.DoublyLinkedList(T).Node,
+        end: *std.DoublyLinkedList(T).Node,
+        num_segments: usize = 0,
+        size: usize = 0,
+        level_size: usize,
+        level_no: usize,
+    };
+}
 
-    // Default merge factor, which is how many segments are
-    // merged at a time.
-    pub const default_merge_factor: usize = 10;
+pub const TieredMergePolicy = struct {
+    max_segment_size: usize,
+    min_segment_size: usize,
 
-    // How many segments to merge at a time.
-    merge_factor: usize = default_merge_factor,
+    max_merge_size: u32 = 10,
+    segments_per_level: u32 = 10,
 
-    // Any segments whose size is smaller than this value
-    // will be rounded up to this value. This ensures that
-    // tiny segments are aggressively merged.
-    min_merge_size: usize,
+    pub fn findMerges(self: TieredMergePolicy, comptime T: type, segments: std.DoublyLinkedList(T), allocator: std.mem.Allocator) !std.ArrayList(MergeCandidate(T)) {
+        const Candidate = MergeCandidate(T);
 
-    // If the size of a segment exceeds this value then it
-    // will never be merged.
-    max_merge_size: usize,
+        var candidates = std.ArrayList(Candidate).init(allocator);
+        errdefer candidates.deinit();
 
-    // If true, we pro-rate a segment's size by the
-    // percentage of non-deleted documents.
-    calibrate_size_by_deletes: bool = false,
+        var total_size: usize = 0;
+        var num_mergeable_segments: usize = 0;
+        var min_segment_size: usize = std.math.maxInt(usize);
 
-    // Log details about the segment selection process.
-    verbose: bool = false,
-
-    fn logSize(size: usize) f64 {
-        return @log2(@as(f64, @floatFromInt(@max(1, size))));
-    }
-
-    pub fn findMerges(self: LogMergePolicy, comptime T: type, segments: std.DoublyLinkedList(T), allocator: std.mem.Allocator) !void {
-        const LevelAndSegment = struct {
-            level: f64,
-            segment: *const T,
-            merging: bool = false,
-        };
-
-        var levels = std.ArrayList(LevelAndSegment).init(allocator);
-        defer levels.deinit();
-
-        const norm = logSize(self.merge_factor);
-
-        std.debug.print("candidates:\n", .{});
-        var iter = segments.first;
-        while (iter) |node| : (iter = node.next) {
-            const segment = &node.data;
-            const level = logSize(segment.getSize()) / norm;
-            std.debug.print("  segment {}: {}\n", .{ segment.id, segment.getSize() });
-            try levels.append(.{ .level = level, .segment = segment });
+        {
+            std.debug.print("segments:\n", .{});
+            var iter = segments.first;
+            while (iter) |node| : (iter = node.next) {
+                const segment = &node.data;
+                const size = segment.getSize();
+                if (size > self.max_segment_size) {
+                    std.debug.print("  segment {}: {} (too large)\n", .{ segment.id, size });
+                    continue;
+                }
+                total_size += size;
+                num_mergeable_segments += 1;
+                min_segment_size = @min(min_segment_size, size);
+                std.debug.print("  segment {}: {}\n", .{ segment.id, size });
+            }
         }
 
-        const level_floor = logSize(self.min_merge_size) / norm;
-        std.debug.print("level_floor: {}\n", .{level_floor});
+        std.debug.print("total size: {}\n", .{total_size});
+        std.debug.print("num mergeable segments: {}\n", .{num_mergeable_segments});
 
-        const num_mergeable_segments = levels.items.len;
+        var floor_level = self.min_segment_size;
+        var top_level = floor_level;
+        const merge_factor = @min(self.max_merge_size, self.segments_per_level);
 
-        var start: usize = 0;
-        while (start < num_mergeable_segments) {
-
-            // Find max level of all segments not already
-            // quantized.
-            var max_level: f64 = 0.0;
-            for (levels.items[start..]) |item| {
-                max_level = @max(max_level, item.level);
-            }
-
-            // Now search backwards for the rightmost segment that
-            // falls into this level:
-            var level_bottom: f64 = undefined;
-            if (max_level <= level_floor) {
-                // All remaining segments fall into the min level
-                level_bottom = -1.0;
-            } else {
-                level_bottom = max_level - level_log_span;
-
-                // Force a boundary at the level floor
-                if (level_bottom < level_floor and max_level >= level_floor) {
-                    level_bottom = level_floor;
-                }
-            }
-
-            std.debug.print("level_bottom: {}\n", .{level_bottom});
-
-            var upto: usize = num_mergeable_segments - 1;
-            while (upto >= start) {
-                if (levels.items[upto].level >= level_bottom) {
-                    break;
-                }
-                if (upto > start) {
-                    upto -= 1;
+        var allowed_segment_count: usize = 0;
+        {
+            var level_size = floor_level;
+            var remaining_size = total_size;
+            while (true) {
+                if (level_size < self.min_segment_size) {
+                    floor_level = level_size;
                 } else {
-                    break;
-                }
-            }
-
-            // Finally, record all merges that are viable at this level:
-            var end: usize = start + self.merge_factor;
-            while (end <= 1 + upto) {
-                var any_too_large = false;
-                var any_merging = false;
-
-                for (levels.items[start..end]) |item| {
-                    if (item.segment.getSize() > self.max_merge_size) {
-                        any_too_large = true;
-                    }
-                    if (item.merging) {
-                        any_merging = true;
+                    const segments_per_level = remaining_size * 100 / level_size;
+                    if (segments_per_level < self.segments_per_level * 100 or level_size >= self.max_segment_size) {
+                        allowed_segment_count += segments_per_level;
+                        top_level = level_size;
                         break;
                     }
+                    allowed_segment_count += self.segments_per_level * 100;
+                    remaining_size -= self.segments_per_level * level_size;
+                }
+                level_size = @min(self.max_segment_size, level_size * merge_factor);
+            }
+            allowed_segment_count = (allowed_segment_count + 50) / 100;
+            std.debug.print("allowed segment count: {}\n", .{allowed_segment_count});
+        }
+
+        std.debug.print("floor level: {}\n", .{floor_level});
+        std.debug.print("top level: {}\n", .{top_level});
+
+        if (allowed_segment_count >= num_mergeable_segments) {
+            return candidates;
+        }
+
+        {
+            var level_size = floor_level;
+            var level_boundary = level_size * merge_factor * 2 / 4;
+
+            var level_no: usize = 0;
+            var end_node = segments.last orelse return candidates;
+            while (true) {
+                if (end_node.data.getSize() > self.max_segment_size) {
+                    end_node = end_node.prev orelse break;
+                    continue;
                 }
 
-                if (!any_too_large and !any_merging) {
-                    std.debug.print("merge:\n", .{});
-                    for (levels.items[start..end]) |*item| {
-                        std.debug.print("  segment {}: {}\n", .{ item.segment.id, item.segment.getSize() });
-                        item.merging = true;
+                const next_level_size = level_size * merge_factor;
+                const next_level_boundary = next_level_size * merge_factor * 2 / 4;
+
+                var start_node = end_node;
+                while (true) {
+                    if (start_node.prev) |prev_node| {
+                        if (prev_node.data.getSize() <= level_boundary) {
+                            start_node = prev_node;
+                            continue;
+                        }
+                    }
+                    break;
+                }
+
+                std.debug.print("level={} segments={}-{}\n", .{ level_size, start_node.data.id, end_node.data.id });
+
+                var candidate = Candidate{
+                    .start = start_node,
+                    .end = start_node,
+                    .num_segments = 0,
+                    .size = 0,
+                    .level_size = level_size,
+                    .level_no = level_no,
+                };
+
+                var iter = start_node;
+                while (true) {
+                    if (candidate.num_segments >= self.max_merge_size or candidate.size >= self.max_segment_size or candidate.size >= level_boundary) {
+                        break;
+                    }
+                    candidate.end = iter;
+                    candidate.num_segments += 1;
+                    candidate.size += iter.data.getSize();
+                    if (iter == end_node) break;
+                    iter = iter.next orelse break;
+                }
+
+                if (candidate.num_segments > 1) {
+                    if (candidate.size >= level_boundary or candidate.size < next_level_boundary or true) {
+                        const prev_size: usize = if (candidate.start.prev) |prev_node| prev_node.data.getSize() else std.math.maxInt(usize);
+                        if (prev_size > candidate.size * 75 / 100) {
+                            try candidates.append(candidate);
+                        } else {
+                            std.debug.print("skipping candidate {}-{}, because size={} and prev_size={}\n", .{ candidate.start.data.id, candidate.end.data.id, candidate.size, prev_size });
+                        }
                     }
                 }
 
-                start = end;
-                end = start + self.merge_factor;
+                level_size = next_level_size;
+                level_boundary = next_level_boundary;
+                level_no += 1;
+                end_node = start_node.prev orelse break;
             }
-
-            start = 1 + upto;
         }
+
+        std.debug.print("candidate:\n", .{});
+        for (candidates.items) |c| {
+            std.debug.print("  {}-{}: {} {} level_size={}\n", .{ c.start.data.id, c.end.data.id, c.size, c.num_segments, c.level_size });
+        }
+        return candidates;
     }
 };
 
+const MockSegment = struct {
+    id: u64,
+    size: usize,
+
+    pub fn getSize(self: @This()) usize {
+        return self.size;
+    }
+};
+
+const MockSegmentList = std.DoublyLinkedList(MockSegment);
+
+fn applyMerge(comptime T: type, segments: *std.DoublyLinkedList(T), merge: MergeCandidate(T), allocator: std.mem.Allocator) !void {
+    var iter = merge.start.next;
+    while (iter) |node| {
+        const next_node = node.next;
+        merge.start.data.size += node.data.size;
+        segments.remove(node);
+        allocator.destroy(node);
+        if (node == merge.end) break;
+        iter = next_node orelse break;
+    }
+}
+
 test {
-    const MockSegment = struct {
-        id: u64,
-        size: usize,
-
-        pub fn getSize(self: @This()) usize {
-            return self.size;
-        }
-    };
-
-    const MockSegmentList = std.DoublyLinkedList(MockSegment);
-
     var segments: std.DoublyLinkedList(MockSegment) = .{};
 
     defer {
@@ -155,17 +192,43 @@ test {
         }
     }
 
-    for (0..10) |i| {
-        var segment = try std.testing.allocator.create(MockSegmentList.Node);
-        segment.data = .{ .id = i, .size = 100 + (10 - i) * 10 };
-        segments.append(segment);
-    }
+    var last_id: u64 = 1;
 
-    const policy = LogMergePolicy{
-        .min_merge_size = 1,
-        .max_merge_size = 1000,
-        .merge_factor = 3,
+    var prng = std.rand.DefaultPrng.init(blk: {
+        var seed: u64 = undefined;
+        try std.posix.getrandom(std.mem.asBytes(&seed));
+        break :blk seed;
+    });
+    const rand = prng.random();
+
+    const policy = TieredMergePolicy{
+        .min_segment_size = 100,
+        .max_segment_size = 100000,
+        .max_merge_size = 3,
+        .segments_per_level = 3,
     };
 
-    try policy.findMerges(MockSegment, segments, std.testing.allocator);
+    for (0..10) |_| {
+        var segment = try std.testing.allocator.create(MockSegmentList.Node);
+        segment.data = .{ .id = last_id, .size = 100 + rand.intRangeAtMost(u8, 0, 50) };
+        segments.append(segment);
+        last_id += 1;
+    }
+
+    for (0..1) |_| {
+        if (rand.boolean()) {
+            var segment = try std.testing.allocator.create(MockSegmentList.Node);
+            segment.data = .{ .id = last_id, .size = 100 + rand.intRangeAtMost(u8, 0, 50) };
+            segments.append(segment);
+            last_id += 1;
+        }
+
+        var candidates = try policy.findMerges(MockSegment, segments, std.testing.allocator);
+        defer candidates.deinit();
+
+        if (candidates.items.len > 0) {
+            try applyMerge(MockSegment, &segments, candidates.items[0], std.testing.allocator);
+        }
+        std.debug.print("---\n", .{});
+    }
 }
