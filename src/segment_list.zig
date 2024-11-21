@@ -57,12 +57,44 @@ pub fn SegmentList(Segment: type) type {
             self.segments.append(node);
         }
 
-        pub fn getIds(self: *Self, ids: *std.ArrayList(common.SegmentID)) !void {
-            try ids.ensureTotalCapacity(self.segments.len);
+        pub fn getIdsAfterAppend(self: *Self, new_segment: *List.Node, allocator: std.mem.Allocator) !std.ArrayList(common.SegmentID) {
+            var ids = std.ArrayList(common.SegmentID).init(allocator);
+            errdefer ids.deinit();
+
+            try ids.ensureTotalCapacity(self.segments.len + 1);
+
             var it = self.segments.first;
             while (it) |node| : (it = node.next) {
-                try ids.append(node.data.id);
+                ids.appendAssumeCapacity(node.data.id);
             }
+
+            ids.appendAssumeCapacity(new_segment.data.id);
+
+            return ids;
+        }
+
+        pub fn getIdsAfterAppliedMerge(self: *Self, merge: PreparedMerge, allocator: std.mem.Allocator) !std.ArrayList(common.SegmentID) {
+            var ids = std.ArrayList(common.SegmentID).init(allocator);
+            errdefer ids.deinit();
+
+            try ids.ensureTotalCapacity(self.segments.len - merge.sources.num_segments + 1);
+
+            var it = self.segments.first;
+            var inside_merge = false;
+            while (it) |node| : (it = node.next) {
+                if (it == merge.sources.start) {
+                    inside_merge = true;
+                }
+                if (!inside_merge) {
+                    ids.appendAssumeCapacity(node.data.id);
+                }
+                if (it == merge.sources.end) {
+                    inside_merge = false;
+                    ids.appendAssumeCapacity(merge.target.data.id);
+                }
+            }
+
+            return ids;
         }
 
         pub fn getMaxCommitId(self: *const Self) u64 {

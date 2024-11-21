@@ -285,10 +285,8 @@ fn doCheckpoint(self: *Self) !bool {
     self.file_segments_lock.lock();
     defer self.file_segments_lock.unlock();
 
-    var ids = try self.getFileSegmentIds();
+    var ids = try self.file_segments.getIdsAfterAppend(dest, self.allocator);
     defer ids.deinit();
-
-    try ids.append(dest.data.id);
 
     try filefmt.writeIndexFile(self.data_dir, ids.items);
 
@@ -424,32 +422,12 @@ fn finishFileSegmentMerge(self: *Self, merge: FileSegmentList.PreparedMerge) !vo
     errdefer self.file_segments.destroySegment(merge.target);
     errdefer merge.target.data.delete(self.data_dir);
 
-    var ids = try self.getFileSegmentIds();
+    var ids = try self.file_segments.getIdsAfterAppliedMerge(merge, self.allocator);
     defer ids.deinit();
-
-    var index1: usize = 0;
-    var index2: usize = 0;
-
-    std.debug.assert(merge.sources.num_segments == 2);
-
-    var i: usize = 0;
-    while (i < ids.items.len) : (i += 1) {
-        if (SegmentID.eq(ids.items[i], merge.sources.start.data.id)) {
-            index1 = i;
-        }
-        if (SegmentID.eq(ids.items[i], merge.sources.end.data.id)) {
-            index2 = i;
-        }
-    }
-
-    std.debug.assert(index1 + 1 == index2);
-
-    try ids.replaceRange(index1, 2, &[_]SegmentID{merge.target.data.id});
-
-    std.debug.assert(std.sort.isSorted(SegmentID, ids.items, {}, SegmentID.cmp));
 
     try filefmt.writeIndexFile(self.data_dir, ids.items);
 
+    // we want to do this outside of segments_lock to avoid blocking searches more than necessary
     defer self.file_segments.cleanupAfterMerge(merge, .{self.data_dir});
 
     self.segments_lock.lock();
@@ -535,18 +513,6 @@ fn readyForCheckpoint(self: *Self) !?*MemorySegmentNode {
     }
 
     return null;
-}
-
-fn getFileSegmentIds(self: *Self) !std.ArrayList(SegmentID) {
-    var segment_ids = std.ArrayList(SegmentID).init(self.allocator);
-    errdefer segment_ids.deinit();
-
-    self.segments_lock.lockShared();
-    defer self.segments_lock.unlockShared();
-
-    try self.file_segments.getIds(&segment_ids);
-
-    return segment_ids;
 }
 
 pub fn update(self: *Self, changes: []const Change) !void {
