@@ -146,9 +146,16 @@ fn prepareMemorySegmentMerge(self: *Self) !?MemorySegmentList.PreparedMerge {
 }
 
 fn finishMemorySegmentMerge(self: *Self, merge: MemorySegmentList.PreparedMerge) bool {
-    std.debug.assert(merge.sources.num_segments == 2);
-    defer self.memory_segments.destroySegment(merge.sources.start);
-    defer self.memory_segments.destroySegment(merge.sources.end);
+    defer {
+        var iter = merge.sources.start;
+        while (true) {
+            const next_node = iter.next;
+            const is_end = iter == merge.sources.end;
+            self.memory_segments.destroySegment(iter);
+            if (is_end) break;
+            iter = next_node orelse break;
+        }
+    }
 
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
@@ -452,12 +459,17 @@ fn finishFileSegmentMerge(self: *Self, merge: FileSegmentList.PreparedMerge) !vo
 
     try filefmt.writeIndexFile(self.data_dir, ids.items);
 
-    std.debug.assert(merge.sources.num_segments == 2);
-    defer self.file_segments.destroySegment(merge.sources.start);
-    defer self.file_segments.destroySegment(merge.sources.end);
-
-    defer merge.sources.start.data.delete(self.data_dir);
-    defer merge.sources.end.data.delete(self.data_dir);
+    defer {
+        var iter = merge.sources.start;
+        while (true) {
+            const next_node = iter.next;
+            const is_end = iter == merge.sources.end;
+            iter.data.delete(self.data_dir);
+            self.file_segments.destroySegment(iter);
+            if (is_end) break;
+            iter = next_node orelse break;
+        }
+    }
 
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
