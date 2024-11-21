@@ -101,14 +101,7 @@ pub fn build(self: *Self, changes: []const Change) !void {
     std.sort.pdq(Item, self.items.items, {}, Item.cmp);
 }
 
-pub fn merge(self: *Self, source1: *Self, source2: *Self, collection: *List) !void {
-    var merger = SegmentMerger(Self).init(self.allocator, collection);
-    defer merger.deinit();
-
-    try merger.addSource(source1);
-    try merger.addSource(source2);
-    try merger.prepare();
-
+pub fn merge(self: *Self, merger: *SegmentMerger(Self)) !void {
     self.id = merger.segment.id;
     self.max_commit_id = merger.segment.max_commit_id;
 

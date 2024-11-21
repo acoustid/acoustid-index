@@ -136,11 +136,11 @@ fn prepareMemorySegmentMerge(self: *Self) !?MemorySegmentList.PreparedMerge {
     self.segments_lock.lockShared();
     defer self.segments_lock.unlockShared();
 
-    const merge = try self.memory_segments.prepareMerge() orelse return null;
+    var merge = try self.memory_segments.prepareMerge() orelse return null;
+    defer merge.merger.deinit();
     errdefer self.memory_segments.destroySegment(merge.target);
 
-    std.debug.assert(merge.sources.num_segments == 2);
-    try merge.target.data.merge(&merge.sources.start.data, &merge.sources.end.data, &self.memory_segments);
+    try merge.target.data.merge(&merge.merger);
 
     return merge;
 }
@@ -410,21 +410,11 @@ fn prepareFileSegmentMerge(self: *Self) !?FileSegmentList.PreparedMerge {
     self.segments_lock.lockShared();
     defer self.segments_lock.unlockShared();
 
-    const merge = try self.file_segments.prepareMerge() orelse return null;
+    var merge = try self.file_segments.prepareMerge() orelse return null;
+    defer merge.merger.deinit();
     errdefer self.file_segments.destroySegment(merge.target);
 
-    var merger = SegmentMerger(FileSegment).init(self.allocator, &self.file_segments);
-    defer merger.deinit();
-
-    var source_node = merge.sources.start;
-    while (true) {
-        try merger.addSource(&source_node.data);
-        if (source_node == merge.sources.end) break;
-        source_node = source_node.next orelse break;
-    }
-    try merger.prepare();
-
-    try merge.target.data.build(self.data_dir, &merger);
+    try merge.target.data.build(self.data_dir, &merge.merger);
 
     return merge;
 }

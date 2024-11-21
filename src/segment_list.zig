@@ -3,6 +3,7 @@ const std = @import("std");
 const common = @import("common.zig");
 const SearchResults = common.SearchResults;
 
+const SegmentMerger = @import("segment_merger.zig").SegmentMerger;
 const TieredMergePolicy = @import("segment_merge_policy.zig").TieredMergePolicy;
 
 const Deadline = @import("utils/Deadline.zig");
@@ -106,12 +107,25 @@ pub fn SegmentList(Segment: type) type {
         pub const PreparedMerge = struct {
             sources: SegmentsToMerge,
             target: *List.Node,
+            merger: SegmentMerger(Segment),
         };
 
         pub fn prepareMerge(self: *Self) !?PreparedMerge {
             const sources = self.merge_policy.findSegmentsToMerge(self.segments) orelse return null;
+
+            var merger = SegmentMerger(Segment).init(self.allocator, self);
+            errdefer merger.deinit();
+
+            var source_node = sources.start;
+            while (true) {
+                try merger.addSource(&source_node.data);
+                if (source_node == sources.end) break;
+                source_node = source_node.next orelse break;
+            }
+            try merger.prepare();
+
             const target = try self.createSegment();
-            return .{ .sources = sources, .target = target };
+            return .{ .sources = sources, .merger = merger, .target = target };
         }
 
         pub fn applyMerge(self: *Self, merge: PreparedMerge) void {
