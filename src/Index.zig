@@ -23,6 +23,8 @@ const FileSegmentNode = FileSegment.List.List.Node;
 
 const SegmentMerger = @import("segment_merger.zig").SegmentMerger;
 
+const TieredMergePolicy = @import("segment_merge_policy.zig").TieredMergePolicy;
+
 const filefmt = @import("filefmt.zig");
 
 const Self = @This();
@@ -30,7 +32,7 @@ const Self = @This();
 const Options = struct {
     create: bool = false,
     min_segment_size: usize = 1_000_000,
-    max_segment_size: usize = 100_000_000,
+    max_segment_size: usize = 1_000_000_000,
 };
 
 options: Options,
@@ -58,8 +60,6 @@ update_lock: std.Thread.Mutex = .{},
 // Mutex used to control merging of in-memory segments.
 memory_merge_lock: std.Thread.Mutex = .{},
 
-file_segments_to_delete: std.ArrayList(SegmentID),
-
 checkpoint_mutex: std.Thread.Mutex = .{},
 checkpoint_condition: std.Thread.Condition = .{},
 checkpoint_stop: bool = false,
@@ -82,15 +82,28 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Se
     var oplog_dir = try dir.makeOpenPath("oplog", .{ .iterate = true });
     errdefer oplog_dir.close();
 
+    const file_segment_merge_policy = TieredMergePolicy(FileSegment){
+        .min_segment_size = options.min_segment_size,
+        .max_segment_size = options.max_segment_size,
+        .segments_per_level = 10,
+        .segments_per_merge = 2, // TODO increase to 10
+    };
+
+    const memory_segment_merge_policy = TieredMergePolicy(MemorySegment){
+        .min_segment_size = 100,
+        .max_segment_size = options.min_segment_size,
+        .segments_per_level = 10,
+        .segments_per_merge = 2, // TODO increase to 5
+    };
+
     return .{
         .options = options,
         .allocator = allocator,
         .data_dir = data_dir,
         .oplog_dir = oplog_dir,
         .oplog = Oplog.init(allocator, oplog_dir),
-        .file_segments = FileSegmentList.init(allocator),
-        .file_segments_to_delete = std.ArrayList(SegmentID).init(allocator),
-        .memory_segments = MemorySegmentList.init(allocator),
+        .file_segments = FileSegmentList.init(allocator, file_segment_merge_policy),
+        .memory_segments = MemorySegmentList.init(allocator, memory_segment_merge_policy),
     };
 }
 
@@ -123,21 +136,19 @@ fn prepareMemorySegmentMerge(self: *Self) !?MemorySegmentList.PreparedMerge {
     self.segments_lock.lockShared();
     defer self.segments_lock.unlockShared();
 
-    const options = SegmentMergeOptions{
-        .max_segment_size = self.options.min_segment_size,
-    };
-
-    const merge = try self.memory_segments.prepareMerge(options) orelse return null;
+    const merge = try self.memory_segments.prepareMerge() orelse return null;
     errdefer self.memory_segments.destroySegment(merge.target);
 
-    try merge.target.data.merge(&merge.sources.node1.data, &merge.sources.node2.data, &self.memory_segments);
+    std.debug.assert(merge.sources.num_segments == 2);
+    try merge.target.data.merge(&merge.sources.start.data, &merge.sources.end.data, &self.memory_segments);
 
     return merge;
 }
 
 fn finishMemorySegmentMerge(self: *Self, merge: MemorySegmentList.PreparedMerge) bool {
-    defer self.memory_segments.destroySegment(merge.sources.node1);
-    defer self.memory_segments.destroySegment(merge.sources.node2);
+    std.debug.assert(merge.sources.num_segments == 2);
+    defer self.memory_segments.destroySegment(merge.sources.start);
+    defer self.memory_segments.destroySegment(merge.sources.end);
 
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
@@ -399,18 +410,18 @@ fn prepareFileSegmentMerge(self: *Self) !?FileSegmentList.PreparedMerge {
     self.segments_lock.lockShared();
     defer self.segments_lock.unlockShared();
 
-    const options = SegmentMergeOptions{
-        .max_segment_size = self.options.max_segment_size,
-    };
-
-    const merge = try self.file_segments.prepareMerge(options) orelse return null;
+    const merge = try self.file_segments.prepareMerge() orelse return null;
     errdefer self.file_segments.destroySegment(merge.target);
 
     var merger = SegmentMerger(FileSegment).init(self.allocator, &self.file_segments);
     defer merger.deinit();
 
-    try merger.addSource(&merge.sources.node1.data);
-    try merger.addSource(&merge.sources.node2.data);
+    var source_node = merge.sources.start;
+    while (true) {
+        try merger.addSource(&source_node.data);
+        if (source_node == merge.sources.end) break;
+        source_node = source_node.next orelse break;
+    }
     try merger.prepare();
 
     try merge.target.data.build(self.data_dir, &merger);
@@ -422,8 +433,6 @@ fn finishFileSegmentMerge(self: *Self, merge: FileSegmentList.PreparedMerge) !vo
     self.file_segments_lock.lock();
     defer self.file_segments_lock.unlock();
 
-    try self.file_segments_to_delete.ensureUnusedCapacity(3);
-
     errdefer self.file_segments.destroySegment(merge.target);
     errdefer merge.target.data.delete(self.data_dir);
 
@@ -433,12 +442,14 @@ fn finishFileSegmentMerge(self: *Self, merge: FileSegmentList.PreparedMerge) !vo
     var index1: usize = 0;
     var index2: usize = 0;
 
+    std.debug.assert(merge.sources.num_segments == 2);
+
     var i: usize = 0;
     while (i < ids.items.len) : (i += 1) {
-        if (SegmentID.eq(ids.items[i], merge.sources.node1.data.id)) {
+        if (SegmentID.eq(ids.items[i], merge.sources.start.data.id)) {
             index1 = i;
         }
-        if (SegmentID.eq(ids.items[i], merge.sources.node2.data.id)) {
+        if (SegmentID.eq(ids.items[i], merge.sources.end.data.id)) {
             index2 = i;
         }
     }
@@ -451,11 +462,12 @@ fn finishFileSegmentMerge(self: *Self, merge: FileSegmentList.PreparedMerge) !vo
 
     try filefmt.writeIndexFile(self.data_dir, ids.items);
 
-    defer self.file_segments.destroySegment(merge.sources.node1);
-    defer self.file_segments.destroySegment(merge.sources.node2);
+    std.debug.assert(merge.sources.num_segments == 2);
+    defer self.file_segments.destroySegment(merge.sources.start);
+    defer self.file_segments.destroySegment(merge.sources.end);
 
-    defer merge.sources.node1.data.delete(self.data_dir);
-    defer merge.sources.node2.data.delete(self.data_dir);
+    defer merge.sources.start.data.delete(self.data_dir);
+    defer merge.sources.end.data.delete(self.data_dir);
 
     self.segments_lock.lock();
     defer self.segments_lock.unlock();

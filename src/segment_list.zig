@@ -3,6 +3,8 @@ const std = @import("std");
 const common = @import("common.zig");
 const SearchResults = common.SearchResults;
 
+const TieredMergePolicy = @import("segment_merge_policy.zig").TieredMergePolicy;
+
 const Deadline = @import("utils/Deadline.zig");
 
 pub fn SegmentList(Segment: type) type {
@@ -10,12 +12,16 @@ pub fn SegmentList(Segment: type) type {
         pub const Self = @This();
         pub const List = std.DoublyLinkedList(Segment);
 
+        pub const MergePolicy = TieredMergePolicy(Segment);
+
         allocator: std.mem.Allocator,
+        merge_policy: MergePolicy,
         segments: List,
 
-        pub fn init(allocator: std.mem.Allocator) Self {
+        pub fn init(allocator: std.mem.Allocator, merge_policy: MergePolicy) Self {
             return .{
                 .allocator = allocator,
+                .merge_policy = merge_policy,
                 .segments = .{},
             };
         }
@@ -95,82 +101,31 @@ pub fn SegmentList(Segment: type) type {
             }
         }
 
-        pub const SegmentsToMerge = struct {
-            node1: *List.Node,
-            node2: *List.Node,
-        };
-
-        pub fn findSegmentsToMerge(self: *Self, options: SegmentMergeOptions) ?SegmentsToMerge {
-            var total_size: usize = 0;
-            var max_size: usize = 0;
-            var min_size: usize = std.math.maxInt(usize);
-            var num_segments: usize = 0;
-            var segments_iter = self.segments.first;
-            while (segments_iter) |node| : (segments_iter = node.next) {
-                if (!node.data.canBeMerged())
-                    continue;
-                const size = node.data.getSize();
-                if (size >= options.max_segment_size)
-                    continue;
-                num_segments += 1;
-                total_size += size;
-                max_size = @max(max_size, size);
-                min_size = @min(min_size, size);
-            }
-
-            if (total_size == 0) {
-                return null;
-            }
-
-            const max_segments = options.getMaxSegments(total_size);
-            if (num_segments < max_segments) {
-                return null;
-            }
-
-            var best_node: ?*List.Node = null;
-            var best_score: f64 = std.math.inf(f64);
-            segments_iter = self.segments.first;
-            var level_size = @as(f64, @floatFromInt(total_size)) / 2;
-            while (segments_iter) |node| : (segments_iter = node.next) {
-                if (!node.data.canBeMerged())
-                    continue;
-                const size = node.data.getSize();
-                if (size >= options.max_segment_size)
-                    continue;
-                if (node.next) |next_node| {
-                    const merge_size = size + next_node.data.getSize();
-                    const score = @as(f64, @floatFromInt(merge_size)) - level_size;
-                    if (score < best_score) {
-                        best_node = node;
-                        best_score = score;
-                    }
-                }
-                level_size /= 2;
-            }
-
-            if (best_node) |node| {
-                if (node.next) |next_node| {
-                    return .{ .node1 = node, .node2 = next_node };
-                }
-            }
-            return null;
-        }
+        pub const SegmentsToMerge = MergePolicy.Candidate;
 
         pub const PreparedMerge = struct {
             sources: SegmentsToMerge,
             target: *List.Node,
         };
 
-        pub fn prepareMerge(self: *Self, options: SegmentMergeOptions) !?PreparedMerge {
-            const sources = self.findSegmentsToMerge(options) orelse return null;
+        pub fn prepareMerge(self: *Self) !?PreparedMerge {
+            const sources = self.merge_policy.findSegmentsToMerge(self.segments) orelse return null;
             const target = try self.createSegment();
             return .{ .sources = sources, .target = target };
         }
 
         pub fn applyMerge(self: *Self, merge: PreparedMerge) void {
-            self.segments.insertBefore(merge.sources.node1, merge.target);
-            self.segments.remove(merge.sources.node1);
-            self.segments.remove(merge.sources.node2);
+            self.segments.insertBefore(merge.sources.start, merge.target);
+            var iter = merge.sources.start;
+            while (true) {
+                const next_node = iter.next;
+                self.segments.remove(iter);
+                if (iter == merge.sources.end) {
+                    break;
+                } else {
+                    iter = next_node orelse break;
+                }
+            }
         }
     };
 }

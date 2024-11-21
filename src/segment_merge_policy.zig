@@ -1,10 +1,25 @@
 const std = @import("std");
 const log = std.log.scoped(.segment_merge_policy);
 
+const verbose = false;
+
+pub fn MergeCandidate(comptime Segment: type) type {
+    return struct {
+        start: *SegmentNode,
+        end: *SegmentNode,
+        num_segments: usize = 0,
+        size: usize = 0,
+        score: f64 = 0.0,
+
+        const SegmentList = std.DoublyLinkedList(Segment);
+        const SegmentNode = SegmentList.Node;
+    };
+}
+
 pub fn TieredMergePolicy(comptime T: type) type {
     return struct {
-        max_segment_size: usize,
-        min_segment_size: usize,
+        min_segment_size: usize = 100,
+        max_segment_size: usize = 1_000_000_000,
 
         segments_per_merge: u32 = 10,
         segments_per_level: u32 = 10,
@@ -12,13 +27,7 @@ pub fn TieredMergePolicy(comptime T: type) type {
         const SegmentList = std.DoublyLinkedList(T);
         const SegmentNode = SegmentList.Node;
 
-        const Candidate = struct {
-            start: *SegmentNode,
-            end: *SegmentNode,
-            num_segments: usize = 0,
-            size: usize = 0,
-            score: f64 = 0.0,
-        };
+        pub const Candidate = MergeCandidate(T);
 
         const Self = @This();
 
@@ -65,7 +74,7 @@ pub fn TieredMergePolicy(comptime T: type) type {
             return num_allowed_segments + num_oversized_segments;
         }
 
-        pub fn findSegmentsToMerge(self: Self, segments: std.DoublyLinkedList(T)) ?Candidate {
+        pub fn findSegmentsToMerge(self: Self, segments: SegmentList) ?Candidate {
             const num_segments = segments.len;
             const num_allowed_segments = self.calculateBudget(segments);
             log.debug("budget: {} segments", .{num_allowed_segments});
@@ -161,7 +170,7 @@ fn applyMerge(comptime T: type, segments: *std.DoublyLinkedList(T), merge: Tiere
     }
 }
 
-test {
+test "TieredMergePolicy" {
     var segments: std.DoublyLinkedList(MockSegment) = .{};
 
     defer {
@@ -172,15 +181,6 @@ test {
         }
     }
 
-    var last_id: u64 = 1;
-
-    var prng = std.rand.DefaultPrng.init(blk: {
-        var seed: u64 = undefined;
-        try std.posix.getrandom(std.mem.asBytes(&seed));
-        break :blk seed;
-    });
-    const rand = prng.random();
-
     const policy = TieredMergePolicy(MockSegment){
         .min_segment_size = 100,
         .max_segment_size = 100000,
@@ -188,24 +188,31 @@ test {
         .segments_per_level = 5,
     };
 
+    var last_id: u64 = 1;
+
+    var prng = std.rand.DefaultPrng.init(0);
+    const rand = prng.random();
+
     for (0..10) |_| {
         var segment = try std.testing.allocator.create(MockSegmentList.Node);
-        segment.data = .{ .id = last_id, .size = 100 + rand.intRangeAtMost(u8, 0, 50) };
+        segment.data = .{ .id = last_id, .size = 100 + rand.intRangeAtMost(u16, 0, 200) };
         segments.append(segment);
         last_id += 1;
     }
 
-    for (0..10000) |_| {
-        std.debug.print("---\n", .{});
+    for (0..1000) |_| {
+        if (verbose) {
+            std.debug.print("---\n", .{});
+        }
 
-        if (rand.boolean() or true) {
+        if (rand.boolean()) {
             var segment = try std.testing.allocator.create(MockSegmentList.Node);
             segment.data = .{ .id = last_id, .size = 100 + rand.intRangeAtMost(u16, 0, 200) };
             segments.append(segment);
             last_id += 1;
         }
 
-        {
+        if (verbose) {
             std.debug.print("segments:\n", .{});
             var iter = segments.first;
             while (iter) |node| {
@@ -216,7 +223,12 @@ test {
 
         const candidate = policy.findSegmentsToMerge(segments) orelse continue;
 
-        std.debug.print("merging {}-{}\n", .{ candidate.start.data.id, candidate.end.data.id });
+        if (verbose) {
+            std.debug.print("merging {}-{}\n", .{ candidate.start.data.id, candidate.end.data.id });
+        }
         try applyMerge(MockSegment, &segments, candidate, std.testing.allocator);
     }
+
+    const num_allowed_segmens = policy.calculateBudget(segments);
+    try std.testing.expect(num_allowed_segmens >= segments.len);
 }
