@@ -146,16 +146,7 @@ fn prepareMemorySegmentMerge(self: *Self) !?MemorySegmentList.PreparedMerge {
 }
 
 fn finishMemorySegmentMerge(self: *Self, merge: MemorySegmentList.PreparedMerge) bool {
-    defer {
-        var iter = merge.sources.start;
-        while (true) {
-            const next_node = iter.next;
-            const is_end = iter == merge.sources.end;
-            self.memory_segments.destroySegment(iter);
-            if (is_end) break;
-            iter = next_node orelse break;
-        }
-    }
+    defer self.memory_segments.cleanupAfterMerge(merge, .{});
 
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
@@ -459,17 +450,7 @@ fn finishFileSegmentMerge(self: *Self, merge: FileSegmentList.PreparedMerge) !vo
 
     try filefmt.writeIndexFile(self.data_dir, ids.items);
 
-    defer {
-        var iter = merge.sources.start;
-        while (true) {
-            const next_node = iter.next;
-            const is_end = iter == merge.sources.end;
-            iter.data.delete(self.data_dir);
-            self.file_segments.destroySegment(iter);
-            if (is_end) break;
-            iter = next_node orelse break;
-        }
-    }
+    defer self.file_segments.cleanupAfterMerge(merge, .{self.data_dir});
 
     self.segments_lock.lock();
     defer self.segments_lock.unlock();

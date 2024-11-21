@@ -96,6 +96,10 @@ pub fn delete(self: *Self, dir: std.fs.Dir) void {
     };
 }
 
+pub fn cleanup(self: *Self, dir: std.fs.Dir) void {
+    self.delete(dir);
+}
+
 pub fn build(self: *Self, dir: std.fs.Dir, source: anytype) !void {
     var file_name_buf: [filefmt.max_file_name_size]u8 = undefined;
     const file_name = filefmt.buildSegmentFileName(&file_name_buf, source.segment.id);

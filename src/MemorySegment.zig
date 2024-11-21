@@ -101,6 +101,10 @@ pub fn build(self: *Self, changes: []const Change) !void {
     std.sort.pdq(Item, self.items.items, {}, Item.cmp);
 }
 
+pub fn cleanup(self: *Self) void {
+    _ = self;
+}
+
 pub fn merge(self: *Self, merger: *SegmentMerger(Self)) !void {
     self.id = merger.segment.id;
     self.max_commit_id = merger.segment.max_commit_id;

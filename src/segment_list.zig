@@ -128,17 +128,27 @@ pub fn SegmentList(Segment: type) type {
             return .{ .sources = sources, .merger = merger, .target = target };
         }
 
+        pub fn cleanupAfterMerge(self: *Self, merge: PreparedMerge, cleanup_args: anytype) void {
+            var iter = merge.sources.start;
+            while (true) {
+                const next_node = iter.next;
+                const is_end = iter == merge.sources.end;
+                @call(.auto, Segment.cleanup, .{&iter.data} ++ cleanup_args);
+                self.destroySegment(iter);
+                if (is_end) break;
+                iter = next_node orelse break;
+            }
+        }
+
         pub fn applyMerge(self: *Self, merge: PreparedMerge) void {
             self.segments.insertBefore(merge.sources.start, merge.target);
             var iter = merge.sources.start;
             while (true) {
                 const next_node = iter.next;
+                const is_end = iter == merge.sources.end;
                 self.segments.remove(iter);
-                if (iter == merge.sources.end) {
-                    break;
-                } else {
-                    iter = next_node orelse break;
-                }
+                if (is_end) break;
+                iter = next_node orelse break;
             }
         }
     };
