@@ -6,7 +6,7 @@ pub fn TieredMergePolicy(comptime T: type) type {
         max_segment_size: usize,
         min_segment_size: usize,
 
-        max_merge_size: u32 = 10,
+        segments_per_merge: u32 = 10,
         segments_per_level: u32 = 10,
 
         const SegmentList = std.DoublyLinkedList(T);
@@ -17,11 +17,12 @@ pub fn TieredMergePolicy(comptime T: type) type {
             end: *SegmentNode,
             num_segments: usize = 0,
             size: usize = 0,
-            level_size: usize,
-            level_no: usize,
+            score: f64 = 0.0,
         };
 
-        pub fn calculateBudget(self: TieredMergePolicy, segments: SegmentList) usize {
+        const Self = @This();
+
+        pub fn calculateBudget(self: Self, segments: SegmentList) usize {
             var total_size: usize = 0;
             var num_oversized_segments: usize = 0;
             var min_segment_size: usize = std.math.maxInt(usize);
@@ -40,7 +41,7 @@ pub fn TieredMergePolicy(comptime T: type) type {
 
             var floor_level = self.min_segment_size;
             var top_level = floor_level;
-            const merge_factor = @min(self.max_merge_size, self.segments_per_level);
+            const merge_factor = @min(self.segments_per_merge, self.segments_per_level);
 
             var num_allowed_segments: usize = 0;
             var level_size = floor_level;
@@ -64,18 +65,75 @@ pub fn TieredMergePolicy(comptime T: type) type {
             return num_allowed_segments + num_oversized_segments;
         }
 
-        pub fn findMerges(self: TieredMergePolicy, segments: std.DoublyLinkedList(T), allocator: std.mem.Allocator) !std.ArrayList(Candidate) {
+        pub fn findSegmentsToMerge(self: Self, segments: std.DoublyLinkedList(T)) ?Candidate {
+            const num_segments = segments.len;
             const num_allowed_segments = self.calculateBudget(segments);
             log.debug("budget: {} segments", .{num_allowed_segments});
 
-            var candidates = std.ArrayList(Candidate).init(allocator);
-            errdefer candidates.deinit();
-
             if (num_allowed_segments >= segments.len) {
-                return candidates;
+                return null;
             }
 
-            const merge_factor = @min(self.max_merge_size, self.segments_per_level);
+            const merge_factor = @min(self.segments_per_merge, self.segments_per_level);
+            const log_merge_factor = @log2(@as(f64, @floatFromInt(merge_factor)));
+            const log_min_segment_size = @log2(@as(f64, @floatFromInt(self.min_segment_size)));
+
+            const tier_scaling_factor = @as(f64, @floatFromInt(num_allowed_segments)) / @as(f64, @floatFromInt(num_segments)) / @as(f64, @floatFromInt(self.segments_per_level));
+            var tier = @as(f64, @floatFromInt(num_segments - 1)) * tier_scaling_factor;
+
+            var best_candidate: ?Candidate = null;
+            var best_score: f64 = 0.0;
+
+            var max_merge_size: usize = self.max_segment_size * 2;
+
+            var iter = segments.first;
+            while (iter) |current_node| : (iter = current_node.next) {
+                tier -= tier_scaling_factor;
+
+                if (current_node.data.getSize() > self.max_segment_size) {
+                    // skip oversized segments
+                    continue;
+                }
+
+                // std.debug.print("evaluating segment {d} (size={d}, max_merge_size={}, tier={})\n", .{ current_node.data.id, current_node.data.getSize(), max_merge_size, tier });
+
+                var candidate = Candidate{
+                    .start = current_node,
+                    .end = current_node,
+                    .num_segments = 1,
+                    .size = current_node.data.getSize(),
+                };
+
+                while (candidate.num_segments < self.segments_per_merge) {
+                    const next_node = candidate.end.next orelse break;
+                    const next_size = next_node.data.getSize();
+                    candidate.end = next_node;
+                    candidate.num_segments += 1;
+                    candidate.size += next_size;
+
+                    if (candidate.size > max_merge_size) {
+                        break;
+                    }
+
+                    const log_size = @log2(@as(f64, @floatFromInt(candidate.size)));
+                    const candidate_tier = (log_size - log_min_segment_size) / log_merge_factor;
+                    const score = candidate_tier - tier;
+                    // std.debug.print("candidate {}-{}: len={} size={} candidate_tier={}, score={d}\n", .{ candidate.start.data.id, candidate.end.data.id, candidate.num_segments, candidate.size, candidate_tier, score });
+                    if (score < best_score or best_candidate == null) {
+                        best_candidate = candidate;
+                        best_score = score;
+                    }
+
+                    if (candidate.size > self.max_segment_size) {
+                        // if we are over the max_segment_size setting, don't try to add more segments to the merge
+                        break;
+                    }
+                }
+
+                max_merge_size = current_node.data.getSize();
+            }
+
+            return best_candidate;
         }
     };
 }
@@ -123,11 +181,11 @@ test {
     });
     const rand = prng.random();
 
-    const policy = TieredMergePolicy{
+    const policy = TieredMergePolicy(MockSegment){
         .min_segment_size = 100,
         .max_segment_size = 100000,
-        .max_merge_size = 3,
-        .segments_per_level = 3,
+        .segments_per_merge = 10,
+        .segments_per_level = 5,
     };
 
     for (0..10) |_| {
@@ -137,20 +195,28 @@ test {
         last_id += 1;
     }
 
-    for (0..1) |_| {
-        if (rand.boolean()) {
+    for (0..10000) |_| {
+        std.debug.print("---\n", .{});
+
+        if (rand.boolean() or true) {
             var segment = try std.testing.allocator.create(MockSegmentList.Node);
-            segment.data = .{ .id = last_id, .size = 100 + rand.intRangeAtMost(u8, 0, 50) };
+            segment.data = .{ .id = last_id, .size = 100 + rand.intRangeAtMost(u16, 0, 200) };
             segments.append(segment);
             last_id += 1;
         }
 
-        var candidates = try policy.findMerges(MockSegment, segments, std.testing.allocator);
-        defer candidates.deinit();
-
-        if (candidates.items.len > 0) {
-            try applyMerge(MockSegment, &segments, candidates.items[0], std.testing.allocator);
+        {
+            std.debug.print("segments:\n", .{});
+            var iter = segments.first;
+            while (iter) |node| {
+                std.debug.print("  {}: {}\n", .{ node.data.id, node.data.size });
+                iter = node.next;
+            }
         }
-        std.debug.print("---\n", .{});
+
+        const candidate = policy.findSegmentsToMerge(segments) orelse continue;
+
+        std.debug.print("merging {}-{}\n", .{ candidate.start.data.id, candidate.end.data.id });
+        try applyMerge(MockSegment, &segments, candidate, std.testing.allocator);
     }
 }
