@@ -197,6 +197,15 @@ pub fn SegmentList(Segment: type) type {
                 iter = next_node orelse unreachable; // next_node being null implies a memory corruption
             }
         }
+
+        pub fn getTotalSize(self: Self) usize {
+            var size: usize = 0;
+            var iter = self.segments.first;
+            while (iter) |node| : (iter = node.next) {
+                size += node.data.getSize();
+            }
+            return size;
+        }
     };
 }
 

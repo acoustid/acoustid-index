@@ -1,7 +1,7 @@
 const std = @import("std");
 const log = std.log.scoped(.segment_merge_policy);
 
-const verbose = true;
+const verbose = false;
 
 pub fn MergeCandidate(comptime Segment: type) type {
     return struct {
@@ -18,6 +18,8 @@ pub fn MergeCandidate(comptime Segment: type) type {
 
 pub fn TieredMergePolicy(comptime T: type) type {
     return struct {
+        max_segments: ?usize = null,
+
         min_segment_size: usize = 100,
         max_segment_size: usize = 1_000_000_000,
 
@@ -55,9 +57,13 @@ pub fn TieredMergePolicy(comptime T: type) type {
                 min_segment_size = @min(min_segment_size, size);
             }
 
+            if (self.max_segments) |max_segments| {
+                return max_segments + num_oversized_segments;
+            }
+
             var floor_level = self.min_segment_size;
             var top_level = floor_level;
-            const merge_factor = @min(self.segments_per_merge, self.segments_per_level);
+            const merge_factor = @max(2, @min(self.segments_per_merge, self.segments_per_level));
 
             var num_allowed_segments: usize = 0;
             var level_size = floor_level;
@@ -100,7 +106,7 @@ pub fn TieredMergePolicy(comptime T: type) type {
                 return result;
             }
 
-            const merge_factor = @min(self.segments_per_merge, self.segments_per_level);
+            const merge_factor = @max(2, @min(self.segments_per_merge, self.segments_per_level));
             const log_merge_factor = @log2(@as(f64, @floatFromInt(merge_factor)));
             const log_min_segment_size = @log2(@as(f64, @floatFromInt(self.min_segment_size)));
 
