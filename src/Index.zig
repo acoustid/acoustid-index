@@ -138,19 +138,21 @@ fn flattenMemorySegmentIds(self: *Self) void {
 }
 
 fn prepareMemorySegmentMerge(self: *Self) !?MemorySegmentList.PreparedMerge {
-    self.memory_segments_lock.lock();
-    defer self.memory_segments_lock.unlock();
+    self.segments_lock.lockShared();
+    defer self.segments_lock.unlockShared();
 
-    var merge = try self.memory_segments.prepareMerge() orelse return null;
+    return try self.memory_segments.prepareMerge() orelse return null;
+}
+
+fn maybeMergeMemorySegments(self: *Self) !bool {
+    var merge = try self.prepareMemorySegmentMerge() orelse return false;
     defer merge.merger.deinit();
     errdefer self.memory_segments.destroySegment(merge.target);
 
+    // here we are accessing the segment without any lock, but it's OK, because we are the only thread
+    // that can delete a segment
     try merge.target.data.merge(&merge.merger);
 
-    return merge;
-}
-
-fn finishMemorySegmentMerge(self: *Self, merge: MemorySegmentList.PreparedMerge) bool {
     self.memory_segments_lock.lock();
     defer self.memory_segments_lock.unlock();
 
@@ -168,12 +170,6 @@ fn finishMemorySegmentMerge(self: *Self, merge: MemorySegmentList.PreparedMerge)
     }
 
     return merge.target.data.getSize() >= self.options.min_segment_size;
-}
-
-// Perform partial compaction on the in-memory segments.
-fn maybeMergeMemorySegments(self: *Self) !bool {
-    const merge = try self.prepareMemorySegmentMerge() orelse return false;
-    return self.finishMemorySegmentMerge(merge);
 }
 
 pub const PendingUpdate = struct {
@@ -384,44 +380,44 @@ fn stopFileSegmentMergeThread(self: *Self) void {
 }
 
 fn prepareFileSegmentMerge(self: *Self) !?FileSegmentList.PreparedMerge {
-    self.file_segments_lock.lock();
-    defer self.file_segments_lock.unlock();
+    self.segments_lock.lockShared();
+    defer self.segments_lock.unlockShared();
 
-    var merge = try self.file_segments.prepareMerge() orelse return null;
+    return try self.file_segments.prepareMerge();
+}
+
+fn maybeMergeFileSegments(self: *Self) !bool {
+    var merge = try self.prepareFileSegmentMerge() orelse return false;
     defer merge.merger.deinit();
     errdefer self.file_segments.destroySegment(merge.target);
 
+    // We are reading segment data without holding any lock here,
+    // but it's OK, because are the only ones modifying segments.
+    // The only other place with write access to the segment list is
+    // the checkpoint thread, which is only ever adding new segments.
     try merge.target.data.build(self.data_dir, &merge.merger);
+    errdefer merge.target.data.delete(self.data_dir);
 
-    return merge;
-}
-
-fn finishFileSegmentMerge(self: *Self, merge: FileSegmentList.PreparedMerge) !void {
+    // By acquiring file_segments_lock, we make sure that the file_segments list
+    // can't be modified by other threads.
     self.file_segments_lock.lock();
     defer self.file_segments_lock.unlock();
-
-    errdefer self.file_segments.destroySegment(merge.target);
-    errdefer merge.target.data.delete(self.data_dir);
 
     var ids = try self.file_segments.getIdsAfterAppliedMerge(merge, self.allocator);
     defer ids.deinit();
 
     try filefmt.writeIndexFile(self.data_dir, ids.items);
 
-    // we want to do this outside of segments_lock to avoid blocking searches more than necessary
+    // We want to do this outside of segments_lock to avoid blocking searches more than necessary
     defer self.file_segments.cleanupAfterMerge(merge, .{self.data_dir});
 
+    // This lock allows to modify the file_segments list, it's blocking all other threads.
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
 
     self.file_segments.applyMerge(merge);
 
     log.info("committed merge segment {}:{}", .{ merge.target.data.id.version, merge.target.data.id.included_merges });
-}
-
-pub fn maybeMergeFileSegments(self: *Self) !bool {
-    const merge = try self.prepareFileSegmentMerge() orelse return false;
-    try self.finishFileSegmentMerge(merge);
     return true;
 }
 
