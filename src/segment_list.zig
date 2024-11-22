@@ -19,11 +19,14 @@ pub fn SegmentList(Segment: type) type {
         merge_policy: MergePolicy,
         segments: List,
 
+        num_allowed_segments: std.atomic.Value(usize),
+
         pub fn init(allocator: std.mem.Allocator, merge_policy: MergePolicy) Self {
             return .{
                 .allocator = allocator,
                 .merge_policy = merge_policy,
                 .segments = .{},
+                .num_allowed_segments = std.atomic.Value(usize).init(0),
             };
         }
 
@@ -134,6 +137,10 @@ pub fn SegmentList(Segment: type) type {
             }
         }
 
+        pub fn needsMerge(self: *Self) bool {
+            return self.segments.len > self.num_allowed_segments.load(.monotonic);
+        }
+
         pub const SegmentsToMerge = MergePolicy.Candidate;
 
         pub const PreparedMerge = struct {
@@ -143,7 +150,10 @@ pub fn SegmentList(Segment: type) type {
         };
 
         pub fn prepareMerge(self: *Self) !?PreparedMerge {
-            const sources = self.merge_policy.findSegmentsToMerge(self.segments) orelse return null;
+            const result = self.merge_policy.findSegmentsToMerge(self.segments);
+            self.num_allowed_segments.store(result.num_allowed_segments, .monotonic);
+
+            const sources = result.candidate orelse return null;
 
             var merger = SegmentMerger(Segment).init(self.allocator, self);
             errdefer merger.deinit();
@@ -157,7 +167,11 @@ pub fn SegmentList(Segment: type) type {
             try merger.prepare();
 
             const target = try self.createSegment();
-            return .{ .sources = sources, .merger = merger, .target = target };
+            return .{
+                .sources = sources,
+                .merger = merger,
+                .target = target,
+            };
         }
 
         pub fn cleanupAfterMerge(self: *Self, merge: PreparedMerge, cleanup_args: anytype) void {

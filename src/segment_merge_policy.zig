@@ -1,7 +1,7 @@
 const std = @import("std");
 const log = std.log.scoped(.segment_merge_policy);
 
-const verbose = false;
+const verbose = true;
 
 pub fn MergeCandidate(comptime Segment: type) type {
     return struct {
@@ -23,6 +23,13 @@ pub fn TieredMergePolicy(comptime T: type) type {
 
         segments_per_merge: u32 = 10,
         segments_per_level: u32 = 10,
+
+        strategy: Strategy = .balanced,
+
+        const Strategy = enum {
+            balanced,
+            aggressive,
+        };
 
         const SegmentList = std.DoublyLinkedList(T);
         const SegmentNode = SegmentList.Node;
@@ -74,13 +81,23 @@ pub fn TieredMergePolicy(comptime T: type) type {
             return num_allowed_segments + num_oversized_segments;
         }
 
-        pub fn findSegmentsToMerge(self: Self, segments: SegmentList) ?Candidate {
+        pub const FindSegmentsToMergeResult = struct {
+            num_allowed_segments: usize,
+            candidate: ?Candidate,
+        };
+
+        pub fn findSegmentsToMerge(self: Self, segments: SegmentList) FindSegmentsToMergeResult {
             const num_segments = segments.len;
             const num_allowed_segments = self.calculateBudget(segments);
             log.debug("budget: {} segments", .{num_allowed_segments});
 
+            var result = FindSegmentsToMergeResult{
+                .num_allowed_segments = num_allowed_segments,
+                .candidate = null,
+            };
+
             if (num_allowed_segments >= segments.len) {
-                return null;
+                return result;
             }
 
             const merge_factor = @min(self.segments_per_merge, self.segments_per_level);
@@ -88,7 +105,10 @@ pub fn TieredMergePolicy(comptime T: type) type {
             const log_min_segment_size = @log2(@as(f64, @floatFromInt(self.min_segment_size)));
 
             const tier_scaling_factor = @as(f64, @floatFromInt(num_allowed_segments)) / @as(f64, @floatFromInt(num_segments)) / @as(f64, @floatFromInt(self.segments_per_level));
-            var tier = @as(f64, @floatFromInt(num_segments - 1)) * tier_scaling_factor;
+            const top_tier = @as(f64, @floatFromInt(num_segments)) * tier_scaling_factor;
+            var tier = top_tier;
+
+            var segment_no: usize = 0;
 
             var best_candidate: ?Candidate = null;
             var best_score: f64 = 0.0;
@@ -98,6 +118,7 @@ pub fn TieredMergePolicy(comptime T: type) type {
             var iter = segments.first;
             while (iter) |current_node| : (iter = current_node.next) {
                 tier -= tier_scaling_factor;
+                segment_no += 1;
 
                 if (current_node.data.getSize() > self.max_segment_size) {
                     // skip oversized segments
@@ -126,7 +147,16 @@ pub fn TieredMergePolicy(comptime T: type) type {
 
                     const log_size = @log2(@as(f64, @floatFromInt(candidate.size)));
                     const candidate_tier = (log_size - log_min_segment_size) / log_merge_factor;
-                    const score = candidate_tier - tier;
+                    var score = candidate_tier - tier;
+
+                    const adjustment_factor: f64 = switch (self.strategy) {
+                        .balanced => 1.2,
+                        .aggressive => 1.8,
+                    };
+
+                    const adjustment = @as(f64, @floatFromInt(candidate.num_segments)) / @as(f64, @floatFromInt(self.segments_per_merge));
+                    score = score - adjustment_factor * adjustment;
+
                     // std.debug.print("candidate {}-{}: len={} size={} candidate_tier={}, score={d}\n", .{ candidate.start.data.id, candidate.end.data.id, candidate.num_segments, candidate.size, candidate_tier, score });
                     if (score < best_score or best_candidate == null) {
                         best_candidate = candidate;
@@ -142,7 +172,8 @@ pub fn TieredMergePolicy(comptime T: type) type {
                 max_merge_size = current_node.data.getSize();
             }
 
-            return best_candidate;
+            result.candidate = best_candidate;
+            return result;
         }
     };
 }
@@ -186,6 +217,7 @@ test "TieredMergePolicy" {
         .max_segment_size = 100000,
         .segments_per_merge = 10,
         .segments_per_level = 5,
+        .strategy = .aggressive,
     };
 
     var last_id: u64 = 1;
@@ -199,6 +231,9 @@ test "TieredMergePolicy" {
         segments.append(segment);
         last_id += 1;
     }
+
+    var total_merge_size: u64 = 0;
+    var total_merge_count: u64 = 0;
 
     for (0..1000) |_| {
         if (verbose) {
@@ -221,12 +256,20 @@ test "TieredMergePolicy" {
             }
         }
 
-        const candidate = policy.findSegmentsToMerge(segments) orelse continue;
+        const result = policy.findSegmentsToMerge(segments);
+        const candidate = result.candidate orelse continue;
+
+        total_merge_size += candidate.num_segments;
+        total_merge_count += 1;
 
         if (verbose) {
             std.debug.print("merging {}-{}\n", .{ candidate.start.data.id, candidate.end.data.id });
         }
         try applyMerge(MockSegment, &segments, candidate, std.testing.allocator);
+    }
+
+    if (verbose) {
+        std.debug.print("avg merge size: {}\n", .{total_merge_size / total_merge_count});
     }
 
     const num_allowed_segmens = policy.calculateBudget(segments);

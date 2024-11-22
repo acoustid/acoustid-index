@@ -91,7 +91,7 @@ test "check writeVarint32" {
 }
 
 pub const max_file_name_size = 64;
-const segment_file_name_fmt = "segment-{d}-{d}.dat";
+const segment_file_name_fmt = "segment-{x:0>8}-{x:0>8}.dat";
 pub const index_file_name = "index.dat";
 
 pub fn buildSegmentFileName(buf: []u8, version: common.SegmentID) []u8 {

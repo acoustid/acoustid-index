@@ -31,7 +31,7 @@ const Self = @This();
 
 const Options = struct {
     create: bool = false,
-    min_segment_size: usize = 1_000_000,
+    min_segment_size: usize = 250_000,
     max_segment_size: usize = 1_000_000_000,
 };
 
@@ -86,14 +86,16 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Se
         .min_segment_size = options.min_segment_size,
         .max_segment_size = options.max_segment_size,
         .segments_per_level = 10,
-        .segments_per_merge = 2, // TODO increase to 10
+        .segments_per_merge = 10,
+        .strategy = .balanced,
     };
 
     const memory_segment_merge_policy = TieredMergePolicy(MemorySegment){
         .min_segment_size = 100,
         .max_segment_size = options.min_segment_size,
         .segments_per_level = 10,
-        .segments_per_merge = 2, // TODO increase to 5
+        .segments_per_merge = 10,
+        .strategy = .aggressive,
     };
 
     return .{
@@ -270,7 +272,7 @@ fn loadSegments(self: *Self) !void {
 fn doCheckpoint(self: *Self) !bool {
     const start_time = std.time.milliTimestamp();
 
-    var src = try self.readyForCheckpoint() orelse return false;
+    var src = self.readyForCheckpoint() orelse return false;
 
     var src_reader = src.data.reader();
     defer src_reader.close();
@@ -322,7 +324,7 @@ fn checkpointThreadFn(self: *Self) void {
 
         if (self.doCheckpoint()) |successful| {
             if (successful) {
-                self.file_segment_merge_condition.signal();
+                self.signalFileSegmentMerge();
                 continue;
             }
         } else |err| {
@@ -502,7 +504,7 @@ const Checkpoint = struct {
     dest: ?*FileSegmentNode = null,
 };
 
-fn readyForCheckpoint(self: *Self) !?*MemorySegmentNode {
+fn readyForCheckpoint(self: *Self) ?*MemorySegmentNode {
     self.segments_lock.lockShared();
     defer self.segments_lock.unlockShared();
 
@@ -515,15 +517,27 @@ fn readyForCheckpoint(self: *Self) !?*MemorySegmentNode {
     return null;
 }
 
-pub fn update(self: *Self, changes: []const Change) !void {
-    //const t1 = std.time.milliTimestamp();
-    if (try self.maybeMergeMemorySegments()) {
-        self.checkpoint_condition.signal();
+fn signalMemorySegmentMerge(self: *Self) void {
+    self.segments_lock.lockShared();
+    defer self.segments_lock.unlockShared();
+
+    if (self.memory_segments.needsMerge()) {
+        self.memory_segment_merge_condition.signal();
     }
-    //const t2 = std.time.milliTimestamp();
+}
+
+fn signalFileSegmentMerge(self: *Self) void {
+    self.segments_lock.lockShared();
+    defer self.segments_lock.unlockShared();
+
+    if (self.file_segments.needsMerge()) {
+        self.file_segment_merge_condition.signal();
+    }
+}
+
+pub fn update(self: *Self, changes: []const Change) !void {
     try self.oplog.write(changes, Updater{ .index = self });
-    // const t3 = std.time.milliTimestamp();
-    //log.info("merge: {}ms, update: {}ms", .{ t2 - t1, t3 - t2 });
+    self.signalMemorySegmentMerge();
 }
 
 pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, deadline: Deadline) !SearchResults {
