@@ -48,17 +48,19 @@ memory_segments: MemorySegmentList,
 
 // RW lock used to control general mutations to either file_segments or memory_segments.
 // This lock needs to be held for any read/write operations on either list.
+// Once you hold this lock, you can be sure that no changes are happening to either list.
 segments_lock: std.Thread.RwLock = .{},
 
-// Mutex used to control exclusivity during re-shuffling of segment lists during checkpoint/merges.
-// This lock by itself doesn't give access to either list, you need to hold the segments_lock as well.
+// These locks give partial access to the respective segments list.
+//   1) For memory_segments, new segment can be appended to the list without this lock.
+//   2) For file_segments, no write operation can happen without this lock.
+// These lock can be only acquired before segments_lock, never after, to avoid deadlock situatons.
+// They are mostly useful to allowing read access to segments during merge/checkpoint, without blocking real-time update.
 file_segments_lock: std.Thread.Mutex = .{},
+memory_segments_lock: std.Thread.Mutex = .{},
 
 // Mutex used to control linearity of updates.
 update_lock: std.Thread.Mutex = .{},
-
-// Mutex used to control merging of in-memory segments.
-memory_merge_lock: std.Thread.Mutex = .{},
 
 checkpoint_mutex: std.Thread.Mutex = .{},
 checkpoint_condition: std.Thread.Condition = .{},
@@ -135,8 +137,8 @@ fn flattenMemorySegmentIds(self: *Self) void {
 }
 
 fn prepareMemorySegmentMerge(self: *Self) !?MemorySegmentList.PreparedMerge {
-    self.segments_lock.lockShared();
-    defer self.segments_lock.unlockShared();
+    self.memory_segments_lock.lock();
+    defer self.memory_segments_lock.unlock();
 
     var merge = try self.memory_segments.prepareMerge() orelse return null;
     defer merge.merger.deinit();
@@ -148,6 +150,9 @@ fn prepareMemorySegmentMerge(self: *Self) !?MemorySegmentList.PreparedMerge {
 }
 
 fn finishMemorySegmentMerge(self: *Self, merge: MemorySegmentList.PreparedMerge) bool {
+    self.memory_segments_lock.lock();
+    defer self.memory_segments_lock.unlock();
+
     defer self.memory_segments.cleanupAfterMerge(merge, .{});
 
     self.segments_lock.lock();
@@ -166,9 +171,6 @@ fn finishMemorySegmentMerge(self: *Self, merge: MemorySegmentList.PreparedMerge)
 
 // Perform partial compaction on the in-memory segments.
 fn maybeMergeMemorySegments(self: *Self) !bool {
-    self.memory_merge_lock.lock();
-    defer self.memory_merge_lock.unlock();
-
     const merge = try self.prepareMemorySegmentMerge() orelse return false;
     return self.finishMemorySegmentMerge(merge);
 }
@@ -292,6 +294,10 @@ fn doCheckpoint(self: *Self) !bool {
 
     try filefmt.writeIndexFile(self.data_dir, ids.items);
 
+    // we are about to remove segment from the memory_segments list
+    self.memory_segments_lock.lock();
+    defer self.memory_segments_lock.unlock();
+
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
 
@@ -405,8 +411,8 @@ fn stopFileSegmentMergeThread(self: *Self) void {
 }
 
 fn prepareFileSegmentMerge(self: *Self) !?FileSegmentList.PreparedMerge {
-    self.segments_lock.lockShared();
-    defer self.segments_lock.unlockShared();
+    self.file_segments_lock.lock();
+    defer self.file_segments_lock.unlock();
 
     var merge = try self.file_segments.prepareMerge() orelse return null;
     defer merge.merger.deinit();

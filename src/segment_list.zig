@@ -182,7 +182,7 @@ pub fn SegmentList(Segment: type) type {
                 @call(.auto, Segment.cleanup, .{&iter.data} ++ cleanup_args);
                 self.destroySegment(iter);
                 if (is_end) break;
-                iter = next_node orelse break;
+                iter = next_node orelse unreachable; // next_node being null implies a memory corruption
             }
         }
 
@@ -194,7 +194,7 @@ pub fn SegmentList(Segment: type) type {
                 const is_end = iter == merge.sources.end;
                 self.segments.remove(iter);
                 if (is_end) break;
-                iter = next_node orelse break;
+                iter = next_node orelse unreachable; // next_node being null implies a memory corruption
             }
         }
     };
