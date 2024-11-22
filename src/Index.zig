@@ -10,16 +10,17 @@ const SearchResults = @import("common.zig").SearchResults;
 const SegmentID = @import("common.zig").SegmentID;
 
 const SegmentMergeOptions = @import("segment_list.zig").SegmentMergeOptions;
+const SegmentList = @import("segment_list.zig").SegmentList;
 
 const Oplog = @import("Oplog.zig");
 
 const MemorySegment = @import("MemorySegment.zig");
-const MemorySegmentList = MemorySegment.List;
-const MemorySegmentNode = MemorySegment.List.List.Node;
+const MemorySegmentList = SegmentList(MemorySegment);
+const MemorySegmentNode = MemorySegmentList.Node;
 
 const FileSegment = @import("FileSegment.zig");
-const FileSegmentList = FileSegment.List;
-const FileSegmentNode = FileSegment.List.List.Node;
+const FileSegmentList = SegmentList(FileSegment);
+const FileSegmentNode = FileSegmentList.Node;
 
 const SegmentMerger = @import("segment_merger.zig").SegmentMerger;
 

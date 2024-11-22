@@ -12,6 +12,7 @@ pub fn SegmentList(Segment: type) type {
     return struct {
         pub const Self = @This();
         pub const List = std.DoublyLinkedList(Segment);
+        pub const Node = List.Node;
 
         pub const MergePolicy = TieredMergePolicy(Segment);
 
@@ -38,29 +39,33 @@ pub fn SegmentList(Segment: type) type {
 
         // Creates a new segment and returns a pointer to the list node owning it.
         // This function is safe to call from any thread.
-        pub fn createSegment(self: *Self) !*List.Node {
-            const node = try self.allocator.create(List.Node);
-            node.data = Segment.init(self.allocator);
+        pub fn createSegment(self: *Self) !*Node {
+            const node = try self.allocator.create(Node);
+            node.* = .{
+                .data = Segment.init(self.allocator),
+                .next = null,
+                .prev = null,
+            };
             return node;
         }
 
         // Destroys a segment and frees the memory.
         // This function is safe to call from any thread, but only if the segment is not in the list.
-        pub fn destroySegment(self: *Self, node: *List.Node) void {
+        pub fn destroySegment(self: *Self, node: *Node) void {
             node.data.deinit();
             self.allocator.destroy(node);
         }
 
-        pub fn removeAndDestroySegment(self: *Self, node: *List.Node) void {
+        pub fn removeAndDestroySegment(self: *Self, node: *Node) void {
             self.segments.remove(node);
             self.destroySegment(node);
         }
 
-        pub fn appendSegment(self: *Self, node: *List.Node) void {
+        pub fn appendSegment(self: *Self, node: *Node) void {
             self.segments.append(node);
         }
 
-        pub fn getIdsAfterAppend(self: *Self, new_segment: *List.Node, allocator: std.mem.Allocator) !std.ArrayList(common.SegmentID) {
+        pub fn getIdsAfterAppend(self: *Self, new_segment: *Node, allocator: std.mem.Allocator) !std.ArrayList(common.SegmentID) {
             var ids = std.ArrayList(common.SegmentID).init(allocator);
             errdefer ids.deinit();
 
@@ -145,7 +150,7 @@ pub fn SegmentList(Segment: type) type {
 
         pub const PreparedMerge = struct {
             sources: SegmentsToMerge,
-            target: *List.Node,
+            target: *Node,
             merger: SegmentMerger(Segment),
         };
 
