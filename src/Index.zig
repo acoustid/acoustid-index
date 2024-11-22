@@ -91,8 +91,8 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Se
     const memory_segment_merge_policy = TieredMergePolicy(MemorySegment){
         .min_segment_size = 100,
         .max_segment_size = options.min_segment_size,
-        .segments_per_level = 8,
-        .segments_per_merge = 16,
+        .segments_per_level = 5,
+        .segments_per_merge = 10,
         .max_segments = 16,
     };
 
