@@ -231,6 +231,7 @@ pub const SegmentMergeOptions = struct {
 
 const MemorySegment = @import("MemorySegment.zig");
 const FileSegment = @import("FileSegment.zig");
+const SegmentID = @import("common.zig").SegmentID;
 
 pub const AnySegment = union(enum) {
     file: FileSegment,
@@ -240,6 +241,13 @@ pub const AnySegment = union(enum) {
         switch (self) {
             .file => |segment| try segment.search(sorted_hashes, results),
             .memory => |segment| try segment.search(sorted_hashes, results),
+        }
+    }
+
+    pub fn getId(self: AnySegment) SegmentID {
+        switch (self) {
+            .file => |segment| return segment.id,
+            .memory => |segment| return segment.id,
         }
     }
 
@@ -256,19 +264,19 @@ pub const AnySegmentNode = struct {
     refs: std.atomic.Value(u32),
     next: std.atomic.Value(?*AnySegmentNode),
 
-    pub fn create(comptime Segment: type, allocator: std.mem.Allocator) !*AnySegmentNode {
+    pub fn create(comptime Segment: type, args: anytype, allocator: std.mem.Allocator) !*AnySegmentNode {
         const result = try allocator.create(AnySegmentNode);
         errdefer allocator.destroy(result);
 
         result.* = .{
             .segment = undefined,
-            .refs = std.atomic.Value(u32).init(0),
+            .refs = std.atomic.Value(u32).init(1),
             .next = std.atomic.Value(?*AnySegmentNode).init(null),
         };
 
         inline for (@typeInfo(AnySegment).Union.fields) |f| {
             if (f.type == Segment) {
-                result.segment = @unionInit(AnySegment, f.name, Segment.init(allocator));
+                result.segment = @unionInit(AnySegment, f.name, @call(.auto, Segment.init, args ++ .{allocator}));
                 break;
             }
         } else {
@@ -286,23 +294,11 @@ pub const AnySegmentNode = struct {
         allocator.destroy(self);
     }
 
-    pub fn ref(self: *AnySegmentNode) void {
-        _ = self.refs.fetchAdd(1, .release);
-    }
-
-    pub fn unref(self: *AnySegmentNode) void {
-        _ = self.refs.fetchSub(1, .release);
-    }
-
     pub fn search(self: *AnySegmentNode, sorted_hashes: []const u32, results: *SearchResults) !void {
-        self.ref();
-        defer self.unref();
         return self.segment.search(sorted_hashes, results);
     }
 
     pub fn getMaxCommitId(self: *AnySegmentNode) u64 {
-        self.ref();
-        defer self.unref();
         return self.segment.getMaxCommitId();
     }
 };
@@ -310,6 +306,7 @@ pub const AnySegmentNode = struct {
 pub const AnySegmentList = struct {
     allocator: std.mem.Allocator,
     head: std.atomic.Value(?*AnySegmentNode),
+    replace_lock: std.Thread.Mutex = .{},
 
     pub fn init(allocator: std.mem.Allocator) AnySegmentList {
         return .{
@@ -318,60 +315,179 @@ pub const AnySegmentList = struct {
         };
     }
 
+    pub fn deinit(self: *AnySegmentList) void {
+        var iter = self.head;
+        while (iter.load(.acquire)) |node| {
+            std.debug.print("deinit {}\n", .{node.segment.getId().version});
+            const next_node = node.next;
+            self.unref(node);
+            iter = next_node;
+        }
+    }
+
+    pub fn create(self: AnySegmentList, comptime Segment: type, args: anytype) !*AnySegmentNode {
+        return try AnySegmentNode.create(Segment, args, self.allocator);
+    }
+
     pub fn count(self: *AnySegmentList) usize {
         var result: usize = 0;
-        var iter = self.head.load(.acquire);
-        while (iter) |node| : (iter = node.next.load(.acquire)) {
+        var iter = self.head;
+        while (iter.load(.acquire)) |node| : (iter = node.next) {
             result += 1;
         }
         return result;
     }
 
     pub fn search(self: *AnySegmentList, sorted_hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
-        var iter = self.head.load(.acquire);
-        while (iter) |node| : (iter = node.next.load(.acquire)) {
+        std.debug.print("search\n", .{});
+        const head_node = self.head.load(.acquire) orelse return;
+        self.ref(head_node);
+        defer self.unref(head_node);
+
+        var node = head_node;
+        while (true) {
             if (deadline.isExpired()) {
                 return error.Timeout;
             }
             try node.search(sorted_hashes, results);
+            node = node.next.load(.acquire) orelse break;
         }
     }
 
     pub fn getMaxCommitId(self: *AnySegmentList) u64 {
+        const head_node = self.head.load(.acquire) orelse return;
+        self.ref(head_node);
+        defer self.unref(head_node);
+
         var result: u64 = 0;
-        var iter = self.head.load(.acquire);
-        while (iter) |node| : (iter = node.next.load(.acquire)) {
+        var node = head_node;
+        while (true) {
             result = @max(result, node.getMaxCommitId());
+            node = node.next.load(.acquire) orelse break;
         }
         return result;
     }
 
-    pub fn prepend(self: *AnySegmentList, node: *AnySegmentNode) void {
-        var head = self.head.load(.acquire);
-        while (true) {
-            node.next.store(head, .release);
-            head = self.head.cmpxchgWeak(head, node, .seq_cst, .seq_cst) orelse break;
+    pub fn ref(self: AnySegmentList, node: *AnySegmentNode) void {
+        // https://www.boost.org/doc/libs/1_55_0/doc/html/atomic/usage_examples.html#boost_atomic.usage_examples.example_reference_counters
+        _ = self;
+        const prev_ref_count = node.refs.fetchAdd(1, .monotonic);
+        std.debug.assert(prev_ref_count > 0);
+        std.debug.print("ref {} -> {}\n", .{ node.segment.getId().version, prev_ref_count + 1 });
+    }
+
+    pub fn unref(self: AnySegmentList, node: *AnySegmentNode) void {
+        // https://www.boost.org/doc/libs/1_55_0/doc/html/atomic/usage_examples.html#boost_atomic.usage_examples.example_reference_counters
+        const prev_ref_count = node.refs.fetchSub(1, .release);
+        std.debug.print("unref {} -> {}\n", .{ node.segment.getId().version, prev_ref_count - 1 });
+        if (prev_ref_count == 1) {
+            node.refs.fence(.acquire);
+            self.allocator.destroy(node);
         }
     }
 
-    pub fn swap(self: *AnySegmentList, new_node: *AnySegmentNode, old_node: *AnySegmentNode, old_count: usize) void {
-        _ = self;
-        _ = new_node;
-        _ = old_node;
-        _ = old_count;
+    fn setNext(self: AnySegmentList, node: *AnySegmentNode, next: ?*AnySegmentNode) void {
+        if (next) |next_node| {
+            self.ref(next_node);
+        }
+        const prev_next = node.next.swap(next, .acq_rel);
+        if (prev_next) |prev_next_node| {
+            self.unref(prev_next_node);
+        }
+    }
+
+    pub fn print(self: *AnySegmentList) void {
+        var iter = self.head;
+        while (iter.load(.acquire)) |node| : (iter = node.next) {
+            std.debug.print("{}: refs={}\n", .{ node.segment.getId().version, node.refs.load(.acquire) });
+        }
+    }
+
+    pub fn prepend(self: *AnySegmentList, node: *AnySegmentNode) void {
+        // https://www.boost.org/doc/libs/1_55_0/doc/html/atomic/usage_examples.html#boost_atomic.usage_examples.mp_queue
+        // https://en.cppreference.com/w/cpp/atomic/atomic/compare_exchange
+        std.debug.print("prepend {}\n", .{node.segment.getId().version});
+        self.ref(node);
+        var stale_head = self.head.load(.monotonic);
+        while (true) {
+            self.setNext(node, stale_head);
+            stale_head = self.head.cmpxchgWeak(stale_head, node, .release, .monotonic) orelse break;
+        }
+        if (stale_head) |prev_head| {
+            self.unref(prev_head);
+        }
+    }
+
+    pub fn replace(self: *AnySegmentList, new_node: *AnySegmentNode, old_node: *AnySegmentNode, old_count: usize) void {
+        // This operation is safe regarding any read and prepend, but not other replaces.
+        // We need to ensure that no other thread is trying to replace the overlapping set of nodes at the same time.
+        // This is theoretically solvable in a non-blocking fashion, but it's too complex, and we are fine with blocking updates.
+        // https://en.wikipedia.org/wiki/Non-blocking_linked_list
+        std.debug.print("replace {}\n", .{new_node.segment.getId().version});
+
+        std.debug.assert(old_count >= 1);
+
+        self.replace_lock.lock();
+        defer self.replace_lock.unlock();
+
+        var prev: ?*AnySegmentNode = null;
+        var next: ?*AnySegmentNode = null;
+
+        {
+            var iter = self.head;
+            while (iter.load(.acquire)) |node| : (iter = node.next) {
+                if (node == old_node) {
+                    break;
+                }
+                prev = node;
+            } else {
+                std.debug.panic("old_node not found", .{});
+            }
+        }
+
+        {
+            next = prev;
+            for (0..old_count + 1) |_| {
+                if (next) |next_node| {
+                    next = next_node.next.load(.acquire);
+                } else {
+                    break;
+                }
+            }
+        }
+
+        const prev_node = prev orelse std.debug.panic("can't replace head", .{});
+
+        self.setNext(new_node, next);
+        self.setNext(prev_node, new_node);
     }
 };
 
 test "AnySegment" {
-    var node1 = try AnySegmentNode.create(MemorySegment, std.testing.allocator);
-    defer node1.destroy(std.testing.allocator);
-
-    var node2 = try AnySegmentNode.create(MemorySegment, std.testing.allocator);
-    defer node2.destroy(std.testing.allocator);
-
     var list = AnySegmentList.init(std.testing.allocator);
+    defer list.deinit();
+
+    const node1 = try list.create(MemorySegment, .{});
+    defer list.unref(node1);
+
+    const node2 = try list.create(MemorySegment, .{});
+    defer list.unref(node2);
+
+    const node3 = try list.create(MemorySegment, .{});
+    defer list.unref(node3);
+
+    node1.segment.memory.id.version = 1;
+    node2.segment.memory.id.version = 2;
+    node3.segment.memory.id.version = 3;
+
+    list.prepend(node2);
     list.prepend(node1);
-    list.swap(node2, node1, 1);
+    std.debug.print("before replace\n", .{});
+    list.print();
+
+    list.replace(node3, node2, 1);
+    std.debug.print("after replace\n", .{});
+    list.print();
 
     var results = SearchResults.init(std.testing.allocator);
     defer results.deinit();
