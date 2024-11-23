@@ -228,3 +228,153 @@ pub const SegmentMergeOptions = struct {
         }
     }
 };
+
+const MemorySegment = @import("MemorySegment.zig");
+const FileSegment = @import("FileSegment.zig");
+
+pub const AnySegment = union(enum) {
+    file: FileSegment,
+    memory: MemorySegment,
+
+    pub fn search(self: AnySegment, sorted_hashes: []const u32, results: *SearchResults) !void {
+        switch (self) {
+            .file => |segment| try segment.search(sorted_hashes, results),
+            .memory => |segment| try segment.search(sorted_hashes, results),
+        }
+    }
+
+    pub fn getMaxCommitId(self: AnySegment) u64 {
+        switch (self) {
+            .file => |segment| return segment.max_commit_id,
+            .memory => |segment| return segment.max_commit_id,
+        }
+    }
+};
+
+pub const AnySegmentNode = struct {
+    segment: AnySegment,
+    refs: std.atomic.Value(u32),
+    next: std.atomic.Value(?*AnySegmentNode),
+
+    pub fn create(comptime Segment: type, allocator: std.mem.Allocator) !*AnySegmentNode {
+        const result = try allocator.create(AnySegmentNode);
+        errdefer allocator.destroy(result);
+
+        result.* = .{
+            .segment = undefined,
+            .refs = std.atomic.Value(u32).init(0),
+            .next = std.atomic.Value(?*AnySegmentNode).init(null),
+        };
+
+        inline for (@typeInfo(AnySegment).Union.fields) |f| {
+            if (f.type == Segment) {
+                result.segment = @unionInit(AnySegment, f.name, Segment.init(allocator));
+                break;
+            }
+        } else {
+            @compileError("Unknown segment type '" ++ @typeName(Segment) ++ "'");
+        }
+
+        return result;
+    }
+
+    pub fn destroy(self: *AnySegmentNode, allocator: std.mem.Allocator) void {
+        const refs = self.refs.load(.acquire);
+        if (refs != 0) {
+            std.debug.panic("trying to destroy segment with {} reference(s)", .{refs});
+        }
+        allocator.destroy(self);
+    }
+
+    pub fn ref(self: *AnySegmentNode) void {
+        _ = self.refs.fetchAdd(1, .release);
+    }
+
+    pub fn unref(self: *AnySegmentNode) void {
+        _ = self.refs.fetchSub(1, .release);
+    }
+
+    pub fn search(self: *AnySegmentNode, sorted_hashes: []const u32, results: *SearchResults) !void {
+        self.ref();
+        defer self.unref();
+        return self.segment.search(sorted_hashes, results);
+    }
+
+    pub fn getMaxCommitId(self: *AnySegmentNode) u64 {
+        self.ref();
+        defer self.unref();
+        return self.segment.getMaxCommitId();
+    }
+};
+
+pub const AnySegmentList = struct {
+    allocator: std.mem.Allocator,
+    head: std.atomic.Value(?*AnySegmentNode),
+
+    pub fn init(allocator: std.mem.Allocator) AnySegmentList {
+        return .{
+            .allocator = allocator,
+            .head = std.atomic.Value(?*AnySegmentNode).init(null),
+        };
+    }
+
+    pub fn count(self: *AnySegmentList) usize {
+        var result: usize = 0;
+        var iter = self.head.load(.acquire);
+        while (iter) |node| : (iter = node.next.load(.acquire)) {
+            result += 1;
+        }
+        return result;
+    }
+
+    pub fn search(self: *AnySegmentList, sorted_hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
+        var iter = self.head.load(.acquire);
+        while (iter) |node| : (iter = node.next.load(.acquire)) {
+            if (deadline.isExpired()) {
+                return error.Timeout;
+            }
+            try node.search(sorted_hashes, results);
+        }
+    }
+
+    pub fn getMaxCommitId(self: *AnySegmentList) u64 {
+        var result: u64 = 0;
+        var iter = self.head.load(.acquire);
+        while (iter) |node| : (iter = node.next.load(.acquire)) {
+            result = @max(result, node.getMaxCommitId());
+        }
+        return result;
+    }
+
+    pub fn prepend(self: *AnySegmentList, node: *AnySegmentNode) void {
+        var head = self.head.load(.acquire);
+        while (true) {
+            node.next.store(head, .release);
+            head = self.head.cmpxchgWeak(head, node, .seq_cst, .seq_cst) orelse break;
+        }
+    }
+
+    pub fn swap(self: *AnySegmentList, new_node: *AnySegmentNode, old_node: *AnySegmentNode, old_count: usize) void {
+        _ = self;
+        _ = new_node;
+        _ = old_node;
+        _ = old_count;
+    }
+};
+
+test "AnySegment" {
+    var node1 = try AnySegmentNode.create(MemorySegment, std.testing.allocator);
+    defer node1.destroy(std.testing.allocator);
+
+    var node2 = try AnySegmentNode.create(MemorySegment, std.testing.allocator);
+    defer node2.destroy(std.testing.allocator);
+
+    var list = AnySegmentList.init(std.testing.allocator);
+    list.prepend(node1);
+    list.swap(node2, node1, 1);
+
+    var results = SearchResults.init(std.testing.allocator);
+    defer results.deinit();
+
+    try list.search(&[_]u32{}, &results, .{});
+}

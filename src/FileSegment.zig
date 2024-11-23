@@ -49,11 +49,11 @@ pub fn deinit(self: *Self) void {
     }
 }
 
-pub fn getBlockData(self: *const Self, block: usize) []const u8 {
+pub fn getBlockData(self: Self, block: usize) []const u8 {
     return self.blocks[block * self.block_size .. (block + 1) * self.block_size];
 }
 
-pub fn search(self: *Self, sorted_hashes: []const u32, results: *SearchResults) !void {
+pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !void {
     var prev_block_no: usize = std.math.maxInt(usize);
     var prev_block_range_start: usize = 0;
 
