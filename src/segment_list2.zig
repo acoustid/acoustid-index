@@ -175,6 +175,7 @@ pub fn SegmentListManager(Segment: type) type {
         segments: SharedPtr(List),
         merge_policy: MergePolicy,
         num_allowed_segments: std.atomic.Value(usize),
+        update_lock: std.Thread.Mutex,
 
         pub fn init(allocator: Allocator, merge_policy: MergePolicy) !Self {
             const segments = try SharedPtr(List).create(allocator, List.initEmpty());
@@ -183,6 +184,7 @@ pub fn SegmentListManager(Segment: type) type {
                 .segments = segments,
                 .merge_policy = merge_policy,
                 .num_allowed_segments = std.atomic.Value(usize).init(0),
+                .update_lock = .{},
             };
         }
 
@@ -216,7 +218,7 @@ pub fn SegmentListManager(Segment: type) type {
             return self.segments.value.nodes.items.len > self.num_allowed_segments.load(.acquire);
         }
 
-        pub fn merge(self: *Self, lock: *std.Thread.RwLock) !bool {
+        pub fn merge(self: *Self, lock: *std.Thread.RwLock, preCommitFn: anytype, ctx: anytype) !bool {
             var segments = self.acquireSegments(lock);
             defer self.releaseSegments(&segments);
 
@@ -240,25 +242,34 @@ pub fn SegmentListManager(Segment: type) type {
 
             try target.value.merge(&merger);
 
-            lock.lock();
-            defer lock.unlock();
+            self.update_lock.lock();
+            defer self.update_lock.unlock();
 
-            var new_segments = try List.init(self.allocator, self.segments.value.nodes.items.len);
-            errdefer new_segments.deinit(self.allocator);
+            var new_segments = try SharedPtr(List).create(self.allocator, undefined);
+            defer new_segments.release(self.allocator, .{self.allocator});
+
+            new_segments.value.* = try List.init(self.allocator, self.segments.value.nodes.items.len);
+            defer new_segments.value.deinit(self.allocator);
 
             var inserted_merged = false;
             for (self.segments.value.nodes.items) |node| {
                 if (target.value.id.contains(node.value.id)) {
                     if (!inserted_merged) {
-                        new_segments.nodes.appendAssumeCapacity(target);
+                        new_segments.value.nodes.appendAssumeCapacity(target);
                         inserted_merged = true;
                     }
                 } else {
-                    new_segments.nodes.appendAssumeCapacity(node.acquire());
+                    new_segments.value.nodes.appendAssumeCapacity(node.acquire());
                 }
             }
 
-            try self.swap(new_segments);
+            try @call(.auto, preCommitFn, .{ ctx, new_segments.value });
+
+            lock.lock();
+            defer lock.unlock();
+
+            self.segments.swap(&new_segments);
+
             return true;
         }
     };

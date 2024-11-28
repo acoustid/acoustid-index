@@ -338,9 +338,16 @@ fn stopCheckpointThread(self: *Self) void {
     self.checkpoint_thread = null;
 }
 
+fn writeIndexFile(self: *Self, segments: *MemorySegmentList) !void {
+    var ids = try segments.getIds(self.allocator);
+    defer ids.deinit(self.allocator);
+
+    try filefmt.writeIndexFile(self.data_dir, ids.items);
+}
+
 fn fileSegmentMergeThreadFn(self: *Self) void {
     while (!self.stopping.load(.acquire)) {
-        if (self.maybeMergeFileSegments()) |successful| {
+        if (self.file_segments.merge(&self.segments_lock, writeIndexFile, self)) |successful| {
             if (successful) {
                 continue;
             }
@@ -410,9 +417,14 @@ fn maybeMergeFileSegments(self: *Self) !bool {
     return true;
 }
 
+fn memorySegmentMergePreCommit(self: *Self, segments: *MemorySegmentList) !void {
+    _ = self;
+    _ = segments;
+}
+
 fn memorySegmentMergeThreadFn(self: *Self) void {
     while (!self.stopping.load(.acquire)) {
-        if (self.memory_segments.merge(&self.segments_lock)) |successful| {
+        if (self.memory_segments.merge(&self.segments_lock, memorySegmentMergePreCommit, self)) |successful| {
             if (successful) {
                 self.checkpoint_event.set();
                 continue;
