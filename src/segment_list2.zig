@@ -9,6 +9,7 @@ const Deadline = @import("utils/Deadline.zig");
 
 const SharedPtr = @import("utils/smartptr.zig").SharedPtr;
 const TieredMergePolicy = @import("segment_merge_policy.zig").TieredMergePolicy;
+const SegmentMerger = @import("segment_merger.zig").SegmentMerger;
 
 pub fn SegmentList(Segment: type) type {
     return struct {
@@ -40,7 +41,7 @@ pub fn SegmentList(Segment: type) type {
         }
 
         pub fn createShared(allocator: Allocator, capacity: anytype) Allocator.Error!SharedPtr(Self) {
-            const self = try List.initCapacity(allocator, capacity);
+            var self = try Self.init(allocator, capacity);
             errdefer self.deinit(allocator);
 
             return try SharedPtr(Self).create(allocator, self);
@@ -170,16 +171,18 @@ pub fn SegmentListManager(Segment: type) type {
         pub const List = SegmentList(Segment);
         pub const MergePolicy = TieredMergePolicy(List.Node, getSegmentSize(Segment));
 
+        allocator: Allocator,
         segments: SharedPtr(List),
         merge_policy: MergePolicy,
-        num_allowed_segments: std.atomic.Value(u32),
+        num_allowed_segments: std.atomic.Value(usize),
 
         pub fn init(allocator: Allocator, merge_policy: MergePolicy) !Self {
             const segments = try SharedPtr(List).create(allocator, List.initEmpty());
             return Self{
+                .allocator = allocator,
                 .segments = segments,
                 .merge_policy = merge_policy,
-                .num_allowed_segments = std.atomic.Value(u32).init(0),
+                .num_allowed_segments = std.atomic.Value(usize).init(0),
             };
         }
 
@@ -191,11 +194,72 @@ pub fn SegmentListManager(Segment: type) type {
             return self.segments.value.nodes.items.len;
         }
 
-        pub fn swap(self: *Self, allocator: Allocator, segments_list: List) !void {
-            var segments = try SharedPtr(List).create(allocator, segments_list);
-            defer segments.release(allocator, .{allocator});
+        pub fn swap(self: *Self, segments_list: List) !void {
+            var segments = try SharedPtr(List).create(self.allocator, segments_list);
+            defer segments.release(self.allocator, .{self.allocator});
 
             self.segments.swap(&segments);
+        }
+
+        fn acquireSegments(self: Self, lock: *std.Thread.RwLock) SharedPtr(List) {
+            lock.lockShared();
+            defer lock.unlockShared();
+
+            return self.segments.acquire();
+        }
+
+        fn releaseSegments(self: *Self, segments: *SharedPtr(List)) void {
+            segments.release(self.allocator, .{self.allocator});
+        }
+
+        pub fn needsMerge(self: Self) bool {
+            return self.segments.value.nodes.items.len > self.num_allowed_segments.load(.acquire);
+        }
+
+        pub fn merge(self: *Self, lock: *std.Thread.RwLock) !bool {
+            var segments = self.acquireSegments(lock);
+            defer self.releaseSegments(&segments);
+
+            self.num_allowed_segments.store(self.merge_policy.calculateBudget(segments.value.nodes.items), .release);
+            if (!self.needsMerge()) {
+                return false;
+            }
+
+            const candidate = self.merge_policy.findSegmentsToMerge(segments.value.nodes.items) orelse return false;
+
+            var target = try List.createSegment(self.allocator, .{});
+            errdefer List.destroySegment(self.allocator, &target);
+
+            var merger = SegmentMerger(Segment).init(self.allocator, segments.value);
+            defer merger.deinit();
+
+            for (segments.value.nodes.items[candidate.start..candidate.end]) |segment| {
+                try merger.addSource(segment.value);
+            }
+            try merger.prepare();
+
+            try target.value.merge(&merger);
+
+            lock.lock();
+            defer lock.unlock();
+
+            var new_segments = try List.init(self.allocator, self.segments.value.nodes.items.len);
+            errdefer new_segments.deinit(self.allocator);
+
+            var inserted_merged = false;
+            for (self.segments.value.nodes.items) |node| {
+                if (target.value.id.contains(node.value.id)) {
+                    if (!inserted_merged) {
+                        new_segments.nodes.appendAssumeCapacity(target);
+                        inserted_merged = true;
+                    }
+                } else {
+                    new_segments.nodes.appendAssumeCapacity(node.acquire());
+                }
+            }
+
+            try self.swap(new_segments);
+            return true;
         }
     };
 }

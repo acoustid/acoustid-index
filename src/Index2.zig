@@ -134,78 +134,6 @@ pub fn deinit(self: *Self) void {
     self.data_dir.close();
 }
 
-fn flattenMemorySegmentIds(self: *Self) void {
-    var iter = self.memory_segments.segments.first;
-    var prev_node: @TypeOf(iter) = null;
-    while (iter) |node| : (iter = node.next) {
-        if (!node.data.frozen) {
-            if (prev_node) |prev| {
-                node.data.id = prev.data.id.next();
-            } else {
-                node.data.id.included_merges = 0;
-            }
-        }
-        prev_node = node;
-    }
-}
-
-fn maybeMergeMemorySegments(self: *Self) !bool {
-    var snapshot = self.acquireSegments();
-    defer self.releaseSegments(&snapshot);
-
-    const memory_segments = snapshot.memory_segments.value;
-
-    const num_allowed_segments = self.memory_segment_merge_policy.calculateBudget(memory_segments.nodes.items);
-    self.num_allowed_memory_segments.store(num_allowed_segments, .monotonic);
-    if (num_allowed_segments >= memory_segments.nodes.items.len) {
-        return false;
-    }
-
-    const candidate = self.memory_segment_merge_policy.findSegmentsToMerge(memory_segments.nodes.items) orelse return false;
-
-    var target = try MemorySegmentList.createSegment(self.allocator, .{});
-    defer MemorySegmentList.destroySegment(self.allocator, &target);
-
-    var merger = SegmentMerger(MemorySegment).init(self.allocator, memory_segments);
-    defer merger.deinit();
-
-    for (memory_segments.nodes.items[candidate.start..candidate.end]) |segment| {
-        try merger.addSource(segment.value);
-    }
-    try merger.prepare();
-
-    try target.value.merge(&merger);
-
-    self.segments_lock.lock();
-    defer self.segments_lock.unlock();
-
-    try self.applyMerge(MemorySegment, &self.memory_segments, target);
-
-    return target.value.getSize() >= self.options.min_segment_size;
-}
-
-fn applyMerge(self: Self, comptime T: type, old_segments: *SharedPtr(SegmentList(T)), merged: SharedPtr(T)) !void {
-    var segments_list = try SegmentList(T).initCapacity(self.allocator, old_segments.value.nodes.items.len);
-    errdefer segments_list.deinit(self.allocator);
-
-    var inserted_merged = false;
-    for (old_segments.value.nodes.items) |node| {
-        if (merged.value.id.contains(node.value.id)) {
-            if (!inserted_merged) {
-                segments_list.nodes.appendAssumeCapacity(merged.acquire());
-                inserted_merged = true;
-            }
-        } else {
-            segments_list.nodes.appendAssumeCapacity(node.acquire());
-        }
-    }
-
-    var segments = try SharedPtr(SegmentList(T)).create(self.allocator, segments_list);
-    defer segments.release(self.allocator, .{self.allocator});
-
-    old_segments.swap(&segments);
-}
-
 pub const PendingUpdate = struct {
     node: MemorySegmentNode,
     segments: SharedPtr(MemorySegmentList),
@@ -248,9 +176,9 @@ fn commitUpdate(self: *Self, pending_update: *PendingUpdate, commit_id: u64) voi
 
     pending_update.node.value.max_commit_id = commit_id;
     pending_update.node.value.id = blk: {
-        if (self.memory_segments.value.getLast()) |n| {
+        if (self.memory_segments.segments.value.getLast()) |n| {
             break :blk n.value.id.next();
-        } else if (self.file_segments.value.getFirst()) |n| {
+        } else if (self.file_segments.segments.value.getFirst()) |n| {
             break :blk n.value.id.next();
         } else {
             break :blk SegmentId.first();
@@ -484,7 +412,7 @@ fn maybeMergeFileSegments(self: *Self) !bool {
 
 fn memorySegmentMergeThreadFn(self: *Self) void {
     while (!self.stopping.load(.acquire)) {
-        if (self.maybeMergeMemorySegments()) |successful| {
+        if (self.memory_segments.merge(&self.segments_lock)) |successful| {
             if (successful) {
                 self.checkpoint_event.set();
                 continue;
@@ -546,7 +474,7 @@ fn scheduleMemorySegmentMerge(self: *Self) void {
     self.segments_lock.lockShared();
     defer self.segments_lock.unlockShared();
 
-    if (self.memory_segments.value.count() > self.num_allowed_memory_segments.load(.monotonic)) {
+    if (self.memory_segments.needsMerge()) {
         self.memory_segment_merge_event.set();
     }
 }
@@ -555,7 +483,7 @@ fn scheduleFileSegmentMerge(self: *Self) void {
     self.segments_lock.lockShared();
     defer self.segments_lock.unlockShared();
 
-    if (self.file_segments.value.count() > self.num_allowed_file_segments.load(.monotonic)) {
+    if (self.file_segments.needsMerge()) {
         self.file_segment_merge_event.set();
     }
 }

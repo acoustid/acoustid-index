@@ -45,6 +45,10 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !
     }
 }
 
+pub fn isFrozen(self: Self) bool {
+    return self.frozen;
+}
+
 pub fn canBeMerged(self: Self) bool {
     return !self.frozen;
 }
