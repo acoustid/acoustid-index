@@ -91,20 +91,30 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Se
     var oplog_dir = try dir.makeOpenPath("oplog", .{ .iterate = true });
     errdefer oplog_dir.close();
 
-    const memory_segments = try SegmentListManager(MemorySegment).init(allocator, .{
-        .min_segment_size = 100,
-        .max_segment_size = options.min_segment_size,
-        .segments_per_level = 5,
-        .segments_per_merge = 10,
-        .max_segments = 16,
-    });
+    const memory_segments = try SegmentListManager(MemorySegment).init(
+        allocator,
+        .{},
+        .{
+            .min_segment_size = 100,
+            .max_segment_size = options.min_segment_size,
+            .segments_per_level = 5,
+            .segments_per_merge = 10,
+            .max_segments = 16,
+        },
+    );
 
-    const file_segments = try SegmentListManager(FileSegment).init(allocator, .{
-        .min_segment_size = options.min_segment_size,
-        .max_segment_size = options.max_segment_size,
-        .segments_per_level = 10,
-        .segments_per_merge = 10,
-    });
+    const file_segments = try SegmentListManager(FileSegment).init(
+        allocator,
+        .{
+            .dir = data_dir,
+        },
+        .{
+            .min_segment_size = options.min_segment_size,
+            .max_segment_size = options.max_segment_size,
+            .segments_per_level = 10,
+            .segments_per_merge = 10,
+        },
+    );
 
     return .{
         .options = options,
@@ -220,10 +230,10 @@ const Updater = struct {
 };
 
 fn loadSegment(self: *Self, segment_id: SegmentId) !FileSegmentNode {
-    var node = try FileSegmentList.createSegment(self.allocator, .{});
+    var node = try FileSegmentList.createSegment(self.allocator, .{ .dir = self.data_dir });
     errdefer FileSegmentList.destroySegment(self.allocator, &node);
 
-    try node.value.open(self.data_dir, segment_id);
+    try node.value.open(segment_id);
 
     return node;
 }

@@ -54,8 +54,8 @@ pub fn SegmentList(Segment: type) type {
             self.nodes.deinit(allocator);
         }
 
-        pub fn createSegment(allocator: Allocator, extra_init_args: anytype) Allocator.Error!Node {
-            return Node.create(allocator, @call(.auto, Segment.init, .{allocator} ++ extra_init_args));
+        pub fn createSegment(allocator: Allocator, options: Segment.Options) Allocator.Error!Node {
+            return Node.create(allocator, @call(.auto, Segment.init, .{ allocator, options }));
         }
 
         pub fn destroySegment(allocator: Allocator, node: *Node) void {
@@ -172,15 +172,17 @@ pub fn SegmentListManager(Segment: type) type {
         pub const MergePolicy = TieredMergePolicy(List.Node, getSegmentSize(Segment));
 
         allocator: Allocator,
+        options: Segment.Options,
         segments: SharedPtr(List),
         merge_policy: MergePolicy,
         num_allowed_segments: std.atomic.Value(usize),
         update_lock: std.Thread.Mutex,
 
-        pub fn init(allocator: Allocator, merge_policy: MergePolicy) !Self {
+        pub fn init(allocator: Allocator, options: Segment.Options, merge_policy: MergePolicy) !Self {
             const segments = try SharedPtr(List).create(allocator, List.initEmpty());
             return Self{
                 .allocator = allocator,
+                .options = options,
                 .segments = segments,
                 .merge_policy = merge_policy,
                 .num_allowed_segments = std.atomic.Value(usize).init(0),
@@ -229,7 +231,7 @@ pub fn SegmentListManager(Segment: type) type {
 
             const candidate = self.merge_policy.findSegmentsToMerge(segments.value.nodes.items) orelse return false;
 
-            var target = try List.createSegment(self.allocator, .{});
+            var target = try List.createSegment(self.allocator, self.options);
             errdefer List.destroySegment(self.allocator, &target);
 
             var merger = SegmentMerger(Segment).init(self.allocator, segments.value);
@@ -241,6 +243,7 @@ pub fn SegmentListManager(Segment: type) type {
             try merger.prepare();
 
             try target.value.merge(&merger);
+            errdefer target.value.cleanup();
 
             self.update_lock.lock();
             defer self.update_lock.unlock();

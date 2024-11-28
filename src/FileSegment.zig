@@ -13,7 +13,12 @@ const filefmt = @import("filefmt.zig");
 
 const Self = @This();
 
+pub const Options = struct {
+    dir: std.fs.Dir,
+};
+
 allocator: std.mem.Allocator,
+options: Options,
 id: SegmentId = .{ .version = 0, .included_merges = 0 },
 max_commit_id: u64 = 0,
 docs: std.AutoHashMap(u32, bool),
@@ -25,9 +30,10 @@ num_items: usize = 0,
 
 raw_data: ?[]align(std.mem.page_size) u8 = null,
 
-pub fn init(allocator: std.mem.Allocator) Self {
+pub fn init(allocator: std.mem.Allocator, options: Options) Self {
     return Self{
         .allocator = allocator,
+        .options = options,
         .docs = std.AutoHashMap(u32, bool).init(allocator),
         .index = std.ArrayList(u32).init(allocator),
         .blocks = undefined,
@@ -76,23 +82,23 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !
     }
 }
 
-pub fn open(self: *Self, dir: std.fs.Dir, id: SegmentId) !void {
-    try filefmt.readSegmentFile(dir, id, self);
+pub fn open(self: *Self, id: SegmentId) !void {
+    try filefmt.readSegmentFile(self.options.dir, id, self);
 }
 
-pub fn delete(self: *Self, dir: std.fs.Dir) void {
+pub fn delete(self: *Self) void {
     var file_name_buf: [filefmt.max_file_name_size]u8 = undefined;
     const file_name = filefmt.buildSegmentFileName(&file_name_buf, self.id);
 
     log.info("deleting segment file {s}", .{file_name});
 
-    dir.deleteFile(file_name) catch |err| {
+    self.options.deleteFile(file_name) catch |err| {
         log.err("failed to clean up segment file {s}: {}", .{ file_name, err });
     };
 }
 
-pub fn cleanup(self: *Self, dir: std.fs.Dir) void {
-    self.delete(dir);
+pub fn cleanup(self: *Self) void {
+    self.delete();
 }
 
 pub fn build(self: *Self, dir: std.fs.Dir, source: anytype) !void {

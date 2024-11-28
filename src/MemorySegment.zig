@@ -14,6 +14,8 @@ const SegmentMerger = @import("segment_merger.zig").SegmentMerger;
 
 const Self = @This();
 
+pub const Options = struct {};
+
 allocator: std.mem.Allocator,
 id: SegmentId = .{ .version = 0, .included_merges = 0 },
 max_commit_id: u64 = 0,
@@ -21,7 +23,8 @@ docs: std.AutoHashMap(u32, bool),
 items: std.ArrayList(Item),
 frozen: bool = false,
 
-pub fn init(allocator: std.mem.Allocator) Self {
+pub fn init(allocator: std.mem.Allocator, opts: Options) Self {
+    _ = opts;
     return .{
         .allocator = allocator,
         .docs = std.AutoHashMap(u32, bool).init(allocator),
