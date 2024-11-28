@@ -136,37 +136,47 @@ test "sort search results" {
     }, results.values());
 }
 
-pub const SegmentID = packed struct(u64) {
+pub const SegmentId = packed struct(u64) {
     version: u32,
     included_merges: u32 = 0,
 
-    pub fn cmp(_: void, a: SegmentID, b: SegmentID) bool {
+    pub fn cmp(_: void, a: SegmentId, b: SegmentId) bool {
         const xa: u64 = @bitCast(a);
         const xb: u64 = @bitCast(b);
         return xa < xb;
     }
 
-    pub fn eq(a: SegmentID, b: SegmentID) bool {
+    pub fn eq(a: SegmentId, b: SegmentId) bool {
         const xa: u64 = @bitCast(a);
         const xb: u64 = @bitCast(b);
         return xa == xb;
     }
 
-    pub fn first() SegmentID {
+    pub fn contains(self: SegmentId, other: SegmentId) bool {
+        const start = self.version;
+        const end = self.version + self.included_merges;
+
+        const other_start = other.version;
+        const other_end = other.version + other.included_merges;
+
+        return other_start >= start and other_end <= end;
+    }
+
+    pub fn first() SegmentId {
         return .{
             .version = 1,
             .included_merges = 0,
         };
     }
 
-    pub fn next(a: SegmentID) SegmentID {
+    pub fn next(a: SegmentId) SegmentId {
         return .{
             .version = a.version + a.included_merges + 1,
             .included_merges = 0,
         };
     }
 
-    pub fn merge(a: SegmentID, b: SegmentID) SegmentID {
+    pub fn merge(a: SegmentId, b: SegmentId) SegmentId {
         return .{
             .version = @min(a.version, b.version),
             .included_merges = 1 + a.included_merges + b.included_merges,
@@ -177,3 +187,21 @@ pub const SegmentID = packed struct(u64) {
         return .{ .as_array = .{} };
     }
 };
+
+test "SegmentId.contains" {
+    const a = SegmentId{ .version = 1, .included_merges = 0 };
+    const b = SegmentId{ .version = 2, .included_merges = 0 };
+    const c = SegmentId{ .version = 1, .included_merges = 1 };
+
+    try std.testing.expect(a.contains(a));
+    try std.testing.expect(!a.contains(b));
+    try std.testing.expect(!a.contains(c));
+
+    try std.testing.expect(!b.contains(a));
+    try std.testing.expect(b.contains(b));
+    try std.testing.expect(!b.contains(c));
+
+    try std.testing.expect(c.contains(a));
+    try std.testing.expect(c.contains(b));
+    try std.testing.expect(c.contains(c));
+}

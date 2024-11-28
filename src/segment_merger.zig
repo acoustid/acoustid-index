@@ -2,10 +2,13 @@ const std = @import("std");
 
 const common = @import("common.zig");
 const Item = common.Item;
-const SegmentID = common.SegmentID;
+const SegmentId = common.SegmentId;
+
+const SharedPtr = @import("utils/smartptr.zig").SharedPtr;
+const SegmentList = @import("segment_list2.zig").SegmentList;
 
 pub const MergedSegmentInfo = struct {
-    id: SegmentID,
+    id: SegmentId,
     max_commit_id: u64,
     docs: std.AutoHashMap(u32, bool),
 };
@@ -36,13 +39,13 @@ pub fn SegmentMerger(comptime Segment: type) type {
 
         allocator: std.mem.Allocator,
         sources: std.ArrayList(Source),
-        collection: *Segment.List,
+        collection: *SegmentList(Segment),
         segment: MergedSegmentInfo,
         estimated_size: usize = 0,
 
         current_item: ?Item = null,
 
-        pub fn init(allocator: std.mem.Allocator, collection: *Segment.List) Self {
+        pub fn init(allocator: std.mem.Allocator, collection: *SegmentList(Segment)) Self {
             return .{
                 .allocator = allocator,
                 .sources = std.ArrayList(Source).init(allocator),
@@ -84,7 +87,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
                     self.segment.id = source.reader.segment.id;
                     self.segment.max_commit_id = source.reader.segment.max_commit_id;
                 } else {
-                    self.segment.id = SegmentID.merge(self.segment.id, source.reader.segment.id);
+                    self.segment.id = SegmentId.merge(self.segment.id, source.reader.segment.id);
                     self.segment.max_commit_id = @max(self.segment.max_commit_id, source.reader.segment.max_commit_id);
                 }
                 total_docs += source.reader.segment.docs.count();
@@ -163,13 +166,13 @@ test "merge segments" {
     var node3 = try collection.createSegment();
     collection.segments.append(node3);
 
-    node1.data.id = SegmentID{ .version = 1, .included_merges = 0 };
+    node1.data.id = SegmentId{ .version = 1, .included_merges = 0 };
     node1.data.max_commit_id = 11;
 
-    node2.data.id = SegmentID{ .version = 2, .included_merges = 0 };
+    node2.data.id = SegmentId{ .version = 2, .included_merges = 0 };
     node2.data.max_commit_id = 12;
 
-    node3.data.id = SegmentID{ .version = 3, .included_merges = 0 };
+    node3.data.id = SegmentId{ .version = 3, .included_merges = 0 };
     node3.data.max_commit_id = 13;
 
     try merger.addSource(&node1.data);

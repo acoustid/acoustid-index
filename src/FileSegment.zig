@@ -5,21 +5,16 @@ const assert = std.debug.assert;
 const common = @import("common.zig");
 const Item = common.Item;
 const SearchResults = common.SearchResults;
-const SegmentID = common.SegmentID;
+const SegmentId = common.SegmentId;
 
 const MemorySegment = @import("MemorySegment.zig");
 
 const filefmt = @import("filefmt.zig");
 
-const segment_list = @import("segment_list.zig");
-pub const List = segment_list.SegmentList(Self);
-
-const segment_merger = @import("segment_merger.zig");
-
 const Self = @This();
 
 allocator: std.mem.Allocator,
-id: SegmentID = .{ .version = 0, .included_merges = 0 },
+id: SegmentId = .{ .version = 0, .included_merges = 0 },
 max_commit_id: u64 = 0,
 docs: std.AutoHashMap(u32, bool),
 index: std.ArrayList(u32),
@@ -81,7 +76,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !
     }
 }
 
-pub fn open(self: *Self, dir: std.fs.Dir, id: SegmentID) !void {
+pub fn open(self: *Self, dir: std.fs.Dir, id: SegmentId) !void {
     try filefmt.readSegmentFile(dir, id, self);
 }
 

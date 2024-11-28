@@ -10,7 +10,7 @@ const msgpack = @import("msgpack");
 
 const common = @import("common.zig");
 const Item = common.Item;
-const SegmentVersion = common.SegmentID;
+const SegmentId = common.SegmentId;
 const MemorySegment = @import("MemorySegment.zig");
 const FileSegment = @import("FileSegment.zig");
 
@@ -94,7 +94,7 @@ pub const max_file_name_size = 64;
 const segment_file_name_fmt = "segment-{x:0>8}-{x:0>8}.dat";
 pub const index_file_name = "index.dat";
 
-pub fn buildSegmentFileName(buf: []u8, version: common.SegmentID) []u8 {
+pub fn buildSegmentFileName(buf: []u8, version: common.SegmentId) []u8 {
     assert(buf.len == max_file_name_size);
     return std.fmt.bufPrint(buf, segment_file_name_fmt, .{ version.version, version.version + version.included_merges }) catch unreachable;
 }
@@ -273,7 +273,7 @@ pub const SegmentFileFooter = struct {
     }
 };
 
-pub fn deleteSegmentFile(dir: std.fs.Dir, segment_id: SegmentVersion) !void {
+pub fn deleteSegmentFile(dir: std.fs.Dir, segment_id: SegmentId) !void {
     var file_name_buf: [max_file_name_size]u8 = undefined;
     const file_name = buildSegmentFileName(&file_name_buf, segment_id);
 
@@ -354,7 +354,7 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
     });
 }
 
-pub fn readSegmentFile(dir: fs.Dir, id: SegmentVersion, segment: *FileSegment) !void {
+pub fn readSegmentFile(dir: fs.Dir, id: SegmentId, segment: *FileSegment) !void {
     var file_name_buf: [max_file_name_size]u8 = undefined;
     const file_name = buildSegmentFileName(&file_name_buf, id);
 
@@ -453,7 +453,7 @@ test "writeFile/readFile" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const version: SegmentVersion = .{ .version = 1, .included_merges = 0 };
+    const version: SegmentId = .{ .version = 1, .included_merges = 0 };
 
     {
         var in_memory_segment = MemorySegment.init(testing.allocator);
@@ -504,7 +504,7 @@ const IndexFileHeader = struct {
     }
 };
 
-pub fn writeIndexFile(dir: std.fs.Dir, segments: []const SegmentVersion) !void {
+pub fn writeIndexFile(dir: std.fs.Dir, segments: []const SegmentId) !void {
     log.info("writing index file {s}", .{index_file_name});
 
     var file = try dir.atomicFile(index_file_name, .{});
@@ -514,7 +514,7 @@ pub fn writeIndexFile(dir: std.fs.Dir, segments: []const SegmentVersion) !void {
     const writer = buffered_writer.writer();
 
     try msgpack.encode(writer, IndexFileHeader, .{});
-    try msgpack.encode(writer, []const SegmentVersion, segments);
+    try msgpack.encode(writer, []const SegmentId, segments);
 
     try buffered_writer.flush();
 
@@ -528,7 +528,7 @@ pub fn writeIndexFile(dir: std.fs.Dir, segments: []const SegmentVersion) !void {
     });
 }
 
-pub fn readIndexFile(dir: std.fs.Dir, allocator: std.mem.Allocator) ![]SegmentVersion {
+pub fn readIndexFile(dir: std.fs.Dir, allocator: std.mem.Allocator) ![]SegmentId {
     log.info("reading index file {s}", .{index_file_name});
 
     var file = try dir.openFile(index_file_name, .{});
@@ -542,14 +542,14 @@ pub fn readIndexFile(dir: std.fs.Dir, allocator: std.mem.Allocator) ![]SegmentVe
         return error.InvalidIndexfile;
     }
 
-    return try msgpack.decode(reader, allocator, []SegmentVersion);
+    return try msgpack.decode(reader, allocator, []SegmentId);
 }
 
 test "readIndexFile/writeIndexFile" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const segments = [_]SegmentVersion{
+    const segments = [_]SegmentId{
         .{ .version = 1, .included_merges = 0 },
         .{ .version = 2, .included_merges = 1 },
         .{ .version = 4, .included_merges = 0 },
@@ -560,5 +560,5 @@ test "readIndexFile/writeIndexFile" {
     const segments2 = try readIndexFile(tmp.dir, std.testing.allocator);
     defer std.testing.allocator.free(segments2);
 
-    try testing.expectEqualSlices(SegmentVersion, &segments, segments2);
+    try testing.expectEqualSlices(SegmentId, &segments, segments2);
 }

@@ -1,4 +1,5 @@
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const log = std.log.scoped(.index);
 
 const zul = @import("zul");
@@ -9,10 +10,10 @@ const SearchResult = @import("common.zig").SearchResult;
 const SearchResults = @import("common.zig").SearchResults;
 const SegmentId = @import("common.zig").SegmentId;
 
-const SegmentMergeOptions = @import("segment_list.zig").SegmentMergeOptions;
-const SegmentList = @import("segment_list.zig").SegmentList;
-
 const Oplog = @import("Oplog.zig");
+
+const SegmentList = @import("segment_list2.zig").SegmentList;
+const SegmentListManager = @import("segment_list2.zig").SegmentListManager;
 
 const MemorySegment = @import("MemorySegment.zig");
 const MemorySegmentList = SegmentList(MemorySegment);
@@ -21,6 +22,8 @@ const MemorySegmentNode = MemorySegmentList.Node;
 const FileSegment = @import("FileSegment.zig");
 const FileSegmentList = SegmentList(FileSegment);
 const FileSegmentNode = FileSegmentList.Node;
+
+const SharedPtr = @import("utils/smartptr.zig").SharedPtr;
 
 const SegmentMerger = @import("segment_merger.zig").SegmentMerger;
 
@@ -44,12 +47,11 @@ oplog_dir: std.fs.Dir,
 
 oplog: Oplog,
 
-file_segments: FileSegmentList,
-memory_segments: MemorySegmentList,
+memory_segments: SegmentListManager(MemorySegment),
+file_segments: SegmentListManager(FileSegment),
 
-// RW lock used to control general mutations to either file_segments or memory_segments.
-// This lock needs to be held for any read/write operations on either list.
-// Once you hold this lock, you can be sure that no changes are happening to either list.
+// These segments are owned by the index and can't be accessed without acquiring segments_lock.
+// They can never be modified, only replaced.
 segments_lock: std.Thread.RwLock = .{},
 
 // These locks give partial access to the respective segments list.
@@ -74,6 +76,14 @@ file_segment_merge_thread: ?std.Thread = null,
 memory_segment_merge_event: std.Thread.ResetEvent = .{},
 memory_segment_merge_thread: ?std.Thread = null,
 
+fn getFileSegmentSize(segment: SharedPtr(FileSegment)) usize {
+    return segment.value.getSize();
+}
+
+fn getMemorySegmentSize(segment: SharedPtr(MemorySegment)) usize {
+    return segment.value.getSize();
+}
+
 pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Self {
     var data_dir = try dir.makeOpenPath("data", .{ .iterate = true });
     errdefer data_dir.close();
@@ -81,20 +91,20 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Se
     var oplog_dir = try dir.makeOpenPath("oplog", .{ .iterate = true });
     errdefer oplog_dir.close();
 
-    const file_segment_merge_policy = TieredMergePolicy(FileSegment){
-        .min_segment_size = options.min_segment_size,
-        .max_segment_size = options.max_segment_size,
-        .segments_per_level = 10,
-        .segments_per_merge = 10,
-    };
-
-    const memory_segment_merge_policy = TieredMergePolicy(MemorySegment){
+    const memory_segments = try SegmentListManager(MemorySegment).init(allocator, .{
         .min_segment_size = 100,
         .max_segment_size = options.min_segment_size,
         .segments_per_level = 5,
         .segments_per_merge = 10,
         .max_segments = 16,
-    };
+    });
+
+    const file_segments = try SegmentListManager(FileSegment).init(allocator, .{
+        .min_segment_size = options.min_segment_size,
+        .max_segment_size = options.max_segment_size,
+        .segments_per_level = 10,
+        .segments_per_merge = 10,
+    });
 
     return .{
         .options = options,
@@ -102,8 +112,9 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Se
         .data_dir = data_dir,
         .oplog_dir = oplog_dir,
         .oplog = Oplog.init(allocator, oplog_dir),
-        .file_segments = FileSegmentList.init(allocator, file_segment_merge_policy),
-        .memory_segments = MemorySegmentList.init(allocator, memory_segment_merge_policy),
+        .segments_lock = .{},
+        .memory_segments = memory_segments,
+        .file_segments = file_segments,
         .stopping = std.atomic.Value(bool).init(false),
     };
 }
@@ -112,12 +123,13 @@ pub fn deinit(self: *Self) void {
     self.stopping.store(true, .release);
 
     self.stopCheckpointThread();
-    self.stopFileSegmentMergeThread();
     self.stopMemorySegmentMergeThread();
+    self.stopFileSegmentMergeThread();
+
+    self.memory_segments.deinit(self.allocator);
+    self.file_segments.deinit(self.allocator);
 
     self.oplog.deinit();
-    self.memory_segments.deinit();
-    self.file_segments.deinit();
     self.oplog_dir.close();
     self.data_dir.close();
 }
@@ -137,76 +149,117 @@ fn flattenMemorySegmentIds(self: *Self) void {
     }
 }
 
-fn prepareMemorySegmentMerge(self: *Self) !?MemorySegmentList.PreparedMerge {
-    self.segments_lock.lockShared();
-    defer self.segments_lock.unlockShared();
-
-    return try self.memory_segments.prepareMerge() orelse return null;
-}
-
 fn maybeMergeMemorySegments(self: *Self) !bool {
-    var merge = try self.prepareMemorySegmentMerge() orelse return false;
-    defer merge.merger.deinit();
-    errdefer self.memory_segments.destroySegment(merge.target);
+    var snapshot = self.acquireSegments();
+    defer self.releaseSegments(&snapshot);
 
-    // here we are accessing the segment without any lock, but it's OK, because we are the only thread
-    // that can delete a segment
-    try merge.target.data.merge(&merge.merger);
+    const memory_segments = snapshot.memory_segments.value;
 
-    self.memory_segments_lock.lock();
-    defer self.memory_segments_lock.unlock();
+    const num_allowed_segments = self.memory_segment_merge_policy.calculateBudget(memory_segments.nodes.items);
+    self.num_allowed_memory_segments.store(num_allowed_segments, .monotonic);
+    if (num_allowed_segments >= memory_segments.nodes.items.len) {
+        return false;
+    }
 
-    defer self.memory_segments.cleanupAfterMerge(merge, .{});
+    const candidate = self.memory_segment_merge_policy.findSegmentsToMerge(memory_segments.nodes.items) orelse return false;
+
+    var target = try MemorySegmentList.createSegment(self.allocator, .{});
+    defer MemorySegmentList.destroySegment(self.allocator, &target);
+
+    var merger = SegmentMerger(MemorySegment).init(self.allocator, memory_segments);
+    defer merger.deinit();
+
+    for (memory_segments.nodes.items[candidate.start..candidate.end]) |segment| {
+        try merger.addSource(segment.value);
+    }
+    try merger.prepare();
+
+    try target.value.merge(&merger);
 
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
 
-    self.memory_segments.applyMerge(merge);
+    try self.applyMerge(MemorySegment, &self.memory_segments, target);
 
-    self.flattenMemorySegmentIds();
+    return target.value.getSize() >= self.options.min_segment_size;
+}
 
-    if (merge.target.data.getSize() > self.options.min_segment_size / 2) {
-        log.info("performed big memory merge, size={}", .{merge.target.data.getSize()});
+fn applyMerge(self: Self, comptime T: type, old_segments: *SharedPtr(SegmentList(T)), merged: SharedPtr(T)) !void {
+    var segments_list = try SegmentList(T).initCapacity(self.allocator, old_segments.value.nodes.items.len);
+    errdefer segments_list.deinit(self.allocator);
+
+    var inserted_merged = false;
+    for (old_segments.value.nodes.items) |node| {
+        if (merged.value.id.contains(node.value.id)) {
+            if (!inserted_merged) {
+                segments_list.nodes.appendAssumeCapacity(merged.acquire());
+                inserted_merged = true;
+            }
+        } else {
+            segments_list.nodes.appendAssumeCapacity(node.acquire());
+        }
     }
 
-    return merge.target.data.getSize() >= self.options.min_segment_size;
+    var segments = try SharedPtr(SegmentList(T)).create(self.allocator, segments_list);
+    defer segments.release(self.allocator, .{self.allocator});
+
+    old_segments.swap(&segments);
 }
 
 pub const PendingUpdate = struct {
-    node: *MemorySegmentNode,
+    node: MemorySegmentNode,
+    segments: SharedPtr(MemorySegmentList),
     finished: bool = false,
+
+    pub fn deinit(self: *@This(), allocator: Allocator) void {
+        if (self.finished) return;
+        self.segments.release(allocator, .{allocator});
+        MemorySegmentList.destroySegment(allocator, &self.node);
+        self.finished = true;
+    }
 };
 
 // Prepares update for later commit, will block until previous update has been committed.
 fn prepareUpdate(self: *Self, changes: []const Change) !PendingUpdate {
-    const node = try self.memory_segments.createSegment();
-    errdefer self.memory_segments.destroySegment(node);
+    var node = try MemorySegmentList.createSegment(self.allocator, .{});
+    errdefer MemorySegmentList.destroySegment(self.allocator, &node);
 
-    try node.data.build(changes);
+    try node.value.build(changes);
 
     self.update_lock.lock();
-    return .{ .node = node };
+    errdefer self.update_lock.unlock();
+
+    self.segments_lock.lockShared();
+    defer self.segments_lock.unlockShared();
+
+    const segments = try MemorySegmentList.createShared(self.allocator, self.memory_segments.count() + 1);
+
+    return .{ .node = node, .segments = segments };
 }
 
 // Commits the update, does nothing if it has already been cancelled or committted.
 fn commitUpdate(self: *Self, pending_update: *PendingUpdate, commit_id: u64) void {
     if (pending_update.finished) return;
 
+    defer pending_update.deinit(self.allocator);
+
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
 
-    self.memory_segments.appendSegment(pending_update.node);
-
-    pending_update.node.data.max_commit_id = commit_id;
-    if (pending_update.node.prev) |prev| {
-        pending_update.node.data.id = prev.data.id.next();
-    } else {
-        if (self.file_segments.segments.last) |last_file_segment| {
-            pending_update.node.data.id = last_file_segment.data.id.next();
+    pending_update.node.value.max_commit_id = commit_id;
+    pending_update.node.value.id = blk: {
+        if (self.memory_segments.value.getLast()) |n| {
+            break :blk n.value.id.next();
+        } else if (self.file_segments.value.getFirst()) |n| {
+            break :blk n.value.id.next();
         } else {
-            pending_update.node.data.id = SegmentId.first();
+            break :blk SegmentId.first();
         }
-    }
+    };
+
+    self.memory_segments.segments.value.appendSegmentInto(pending_update.segments.value, pending_update.node);
+
+    self.memory_segments.segments.swap(&pending_update.segments);
 
     pending_update.finished = true;
     self.update_lock.unlock();
@@ -216,7 +269,7 @@ fn commitUpdate(self: *Self, pending_update: *PendingUpdate, commit_id: u64) voi
 fn cancelUpdate(self: *Self, pending_update: *PendingUpdate) void {
     if (pending_update.finished) return;
 
-    self.memory_segments.destroySegment(pending_update.node);
+    defer pending_update.deinit(self.allocator);
 
     pending_update.finished = true;
     self.update_lock.unlock();
@@ -238,19 +291,19 @@ const Updater = struct {
     }
 };
 
-fn loadSegment(self: *Self, segment_id: SegmentId) !void {
-    const node = try self.file_segments.createSegment();
-    errdefer self.file_segments.destroySegment(node);
+fn loadSegment(self: *Self, segment_id: SegmentId) !FileSegmentNode {
+    var node = try FileSegmentList.createSegment(self.allocator, .{});
+    errdefer FileSegmentList.destroySegment(self.allocator, &node);
 
-    try node.data.open(self.data_dir, segment_id);
+    try node.value.open(self.data_dir, segment_id);
 
-    self.segments_lock.lock();
-    defer self.segments_lock.unlock();
-
-    self.file_segments.appendSegment(node);
+    return node;
 }
 
 fn loadSegments(self: *Self) !void {
+    self.segments_lock.lock();
+    defer self.segments_lock.unlock();
+
     const segment_ids = filefmt.readIndexFile(self.data_dir, self.allocator) catch |err| {
         if (err == error.FileNotFound) {
             if (self.options.create) {
@@ -263,9 +316,15 @@ fn loadSegments(self: *Self) !void {
     };
     defer self.allocator.free(segment_ids);
 
+    var segments = try FileSegmentList.createShared(self.allocator, segment_ids.len);
+    defer segments.release(self.allocator, .{self.allocator});
+
     for (segment_ids) |segment_id| {
-        try self.loadSegment(segment_id);
+        const node = try self.loadSegment(segment_id);
+        segments.value.nodes.appendAssumeCapacity(node);
     }
+
+    self.file_segments.segments.swap(&segments);
 }
 
 fn doCheckpoint(self: *Self) !bool {
@@ -276,7 +335,7 @@ fn doCheckpoint(self: *Self) !bool {
     var src_reader = src.data.reader();
     defer src_reader.close();
 
-    var dest = try self.file_segments.createSegment();
+    var dest = try self.file_segments.createSegment(.{self.allocator});
     errdefer self.file_segments.destroySegment(dest);
 
     try dest.data.build(self.data_dir, &src_reader);
@@ -339,10 +398,11 @@ fn startCheckpointThread(self: *Self) !void {
     if (self.checkpoint_thread != null) return;
 
     log.info("starting checkpoint thread", .{});
-    self.checkpoint_thread = try std.Thread.spawn(.{}, checkpointThreadFn, .{self});
+    // self.checkpoint_thread = try std.Thread.spawn(.{}, checkpointThreadFn, .{self});
 }
 
 fn stopCheckpointThread(self: *Self) void {
+    log.info("stopping checkpoint thread", .{});
     if (self.checkpoint_thread) |thread| {
         self.checkpoint_event.set();
         thread.join();
@@ -368,10 +428,11 @@ fn startFileSegmentMergeThread(self: *Self) !void {
     if (self.file_segment_merge_thread != null) return;
 
     log.info("starting file segment merge thread", .{});
-    self.file_segment_merge_thread = try std.Thread.spawn(.{}, fileSegmentMergeThreadFn, .{self});
+    //self.file_segment_merge_thread = try std.Thread.spawn(.{}, fileSegmentMergeThreadFn, .{self});
 }
 
 fn stopFileSegmentMergeThread(self: *Self) void {
+    log.info("stopping file segment merge thread", .{});
     if (self.file_segment_merge_thread) |thread| {
         self.file_segment_merge_event.set();
         thread.join();
@@ -444,6 +505,7 @@ fn startMemorySegmentMergeThread(self: *Self) !void {
 }
 
 fn stopMemorySegmentMergeThread(self: *Self) void {
+    log.info("stopping memory segment merge thread", .{});
     if (self.memory_segment_merge_thread) |thread| {
         self.memory_segment_merge_event.set();
         thread.join();
@@ -464,16 +526,15 @@ const Checkpoint = struct {
     dest: ?*FileSegmentNode = null,
 };
 
-fn readyForCheckpoint(self: *Self) ?*MemorySegmentNode {
+fn readyForCheckpoint(self: *Self) ?MemorySegmentNode {
     self.segments_lock.lockShared();
     defer self.segments_lock.unlockShared();
 
-    if (self.memory_segments.segments.first) |first_node| {
-        if (first_node.data.getSize() > self.options.min_segment_size) {
-            return first_node;
+    if (self.segments.memory_segments.value.getFirstOrNull()) |first_node| {
+        if (first_node.value.getSize() > self.options.min_segment_size) {
+            return first_node.acquire();
         }
     }
-
     return null;
 }
 
@@ -485,7 +546,7 @@ fn scheduleMemorySegmentMerge(self: *Self) void {
     self.segments_lock.lockShared();
     defer self.segments_lock.unlockShared();
 
-    if (self.memory_segments.needsMerge()) {
+    if (self.memory_segments.value.count() > self.num_allowed_memory_segments.load(.monotonic)) {
         self.memory_segment_merge_event.set();
     }
 }
@@ -494,14 +555,37 @@ fn scheduleFileSegmentMerge(self: *Self) void {
     self.segments_lock.lockShared();
     defer self.segments_lock.unlockShared();
 
-    if (self.file_segments.needsMerge()) {
+    if (self.file_segments.value.count() > self.num_allowed_file_segments.load(.monotonic)) {
         self.file_segment_merge_event.set();
     }
 }
 
 pub fn update(self: *Self, changes: []const Change) !void {
+    log.debug("update with {} changes", .{changes.len});
     try self.oplog.write(changes, Updater{ .index = self });
     self.scheduleMemorySegmentMerge();
+}
+
+const SegmentsSnapshot = struct {
+    file_segments: SharedPtr(FileSegmentList),
+    memory_segments: SharedPtr(MemorySegmentList),
+};
+
+// Get the current segments lists and make sure they won't get deleted.
+fn acquireSegments(self: *Self) SegmentsSnapshot {
+    self.segments_lock.lockShared();
+    defer self.segments_lock.unlockShared();
+
+    return .{
+        .file_segments = self.file_segments.segments.acquire(),
+        .memory_segments = self.memory_segments.segments.acquire(),
+    };
+}
+
+// Release the previously acquired segments lists, they will get deleted if no longer needed.
+fn releaseSegments(self: *Self, segments: *SegmentsSnapshot) void {
+    segments.file_segments.release(self.allocator, .{self.allocator});
+    segments.memory_segments.release(self.allocator, .{self.allocator});
 }
 
 pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, deadline: Deadline) !SearchResults {
@@ -512,23 +596,24 @@ pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, de
     var results = SearchResults.init(allocator);
     errdefer results.deinit();
 
-    self.segments_lock.lockShared();
-    defer self.segments_lock.unlockShared();
+    var segments = self.acquireSegments();
+    defer self.releaseSegments(&segments);
 
-    try self.file_segments.search(sorted_hashes, &results, deadline);
-    try self.memory_segments.search(sorted_hashes, &results, deadline);
+    try segments.file_segments.value.search(sorted_hashes, &results, deadline);
+    try segments.memory_segments.value.search(sorted_hashes, &results, deadline);
 
     results.sort();
     return results;
 }
 
 pub fn getMaxCommitId(self: *Self) u64 {
-    self.segments_lock.lockShared();
-    defer self.segments_lock.unlockShared();
+    var segments = self.acquireSegments();
+    defer self.releaseSegments(&segments);
 
-    return @max(self.file_segments.getMaxCommitId(), self.memory_segments.getMaxCommitId());
+    return @max(segments.file_segments.value.getMaxCommitId(), segments.memory_segments.value.getMaxCommitId());
 }
 
 test {
     _ = @import("index_tests.zig");
+    _ = @import("segment_list2.zig");
 }

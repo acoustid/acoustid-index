@@ -4,21 +4,18 @@ const log = std.log;
 const common = @import("common.zig");
 const Item = common.Item;
 const SearchResults = common.SearchResults;
-const SegmentID = common.SegmentID;
+const SegmentId = common.SegmentId;
 
 const Change = @import("change.zig").Change;
 
 const Deadline = @import("utils/Deadline.zig");
-
-const segment_list = @import("segment_list.zig");
-pub const List = segment_list.SegmentList(Self);
 
 const SegmentMerger = @import("segment_merger.zig").SegmentMerger;
 
 const Self = @This();
 
 allocator: std.mem.Allocator,
-id: SegmentID = .{ .version = 0, .included_merges = 0 },
+id: SegmentId = .{ .version = 0, .included_merges = 0 },
 max_commit_id: u64 = 0,
 docs: std.AutoHashMap(u32, bool),
 items: std.ArrayList(Item),

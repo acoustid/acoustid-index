@@ -2,7 +2,7 @@ const std = @import("std");
 const log = std.log.scoped(.multi_index);
 const assert = std.debug.assert;
 
-const Index = @import("Index.zig");
+const Index = @import("Index2.zig");
 
 const Self = @This();
 

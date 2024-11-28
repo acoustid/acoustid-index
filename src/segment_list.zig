@@ -65,8 +65,8 @@ pub fn SegmentList(Segment: type) type {
             self.segments.append(node);
         }
 
-        pub fn getIdsAfterAppend(self: *Self, new_segment: *Node, allocator: std.mem.Allocator) !std.ArrayList(common.SegmentID) {
-            var ids = std.ArrayList(common.SegmentID).init(allocator);
+        pub fn getIdsAfterAppend(self: *Self, new_segment: *Node, allocator: std.mem.Allocator) !std.ArrayList(common.SegmentId) {
+            var ids = std.ArrayList(common.SegmentId).init(allocator);
             errdefer ids.deinit();
 
             try ids.ensureTotalCapacity(self.segments.len + 1);
@@ -81,8 +81,8 @@ pub fn SegmentList(Segment: type) type {
             return ids;
         }
 
-        pub fn getIdsAfterAppliedMerge(self: *Self, merge: PreparedMerge, allocator: std.mem.Allocator) !std.ArrayList(common.SegmentID) {
-            var ids = std.ArrayList(common.SegmentID).init(allocator);
+        pub fn getIdsAfterAppliedMerge(self: *Self, merge: PreparedMerge, allocator: std.mem.Allocator) !std.ArrayList(common.SegmentId) {
+            var ids = std.ArrayList(common.SegmentId).init(allocator);
             errdefer ids.deinit();
 
             try ids.ensureTotalCapacity(self.segments.len - merge.sources.num_segments + 1);
@@ -231,7 +231,7 @@ pub const SegmentMergeOptions = struct {
 
 const MemorySegment = @import("MemorySegment.zig");
 const FileSegment = @import("FileSegment.zig");
-const SegmentID = @import("common.zig").SegmentID;
+const SegmentId = @import("common.zig").SegmentId;
 
 pub const AnySegment = union(enum) {
     file: FileSegment,
@@ -244,7 +244,7 @@ pub const AnySegment = union(enum) {
         }
     }
 
-    pub fn getId(self: AnySegment) SegmentID {
+    pub fn getId(self: AnySegment) SegmentId {
         switch (self) {
             .file => |segment| return segment.id,
             .memory => |segment| return segment.id,
