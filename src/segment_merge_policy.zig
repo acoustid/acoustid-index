@@ -236,7 +236,7 @@ test "TieredMergePolicy" {
 
         const candidate = policy.findSegmentsToMerge(segments.items) orelse continue;
 
-        total_merge_size += candidate.len;
+        total_merge_size += candidate.end - candidate.start;
         total_merge_count += 1;
 
         if (verbose) {

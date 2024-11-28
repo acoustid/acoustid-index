@@ -147,11 +147,8 @@ pub fn SegmentMerger(comptime Segment: type) type {
 
 test "merge segments" {
     const MemorySegment = @import("MemorySegment.zig");
-    const TieredMergePolicy = @import("segment_merge_policy.zig").TieredMergePolicy;
 
-    const merge_policy = TieredMergePolicy(MemorySegment){};
-
-    var collection = MemorySegment.List.init(std.testing.allocator, merge_policy);
+    var collection = try SegmentList(MemorySegment).init(std.testing.allocator, 3);
     defer collection.deinit();
 
     var merger = SegmentMerger(MemorySegment).init(std.testing.allocator, &collection);

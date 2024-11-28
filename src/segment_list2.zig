@@ -86,7 +86,7 @@ pub fn SegmentList(Segment: type) type {
         }
 
         pub fn replaceSegments(self: *Self, allocator: Allocator, node: Node, start_idx: usize, end_idx: usize) Allocator.Error!Self {
-            var copy = try Self.initCapacity(allocator, self.nodes.items.len + 1 - (end_idx - start_idx));
+            var copy = try Self.init(allocator, self.nodes.items.len + 1 - (end_idx - start_idx));
             for (self.nodes.items, 0..) |n, i| {
                 if (i < start_idx or i >= end_idx) {
                     copy.nodes.appendAssumeCapacity(n.acquire());
@@ -100,7 +100,7 @@ pub fn SegmentList(Segment: type) type {
         pub fn getIds(self: Self, allocator: Allocator) Allocator.Error!std.ArrayListUnmanaged(SegmentId) {
             var ids = try std.ArrayListUnmanaged(SegmentId).initCapacity(allocator, self.nodes.items.len);
             for (self.nodes.items) |node| {
-                ids.appendAssumeCapacity(node.segment.id);
+                ids.appendAssumeCapacity(node.value.id);
             }
             return ids;
         }
@@ -280,8 +280,11 @@ pub fn SegmentListManager(Segment: type) type {
 
 test "SegmentList" {
     const MockSegment = struct {
-        pub fn init(allocator: Allocator) @This() {
+        pub const Options = struct {};
+
+        pub fn init(allocator: Allocator, options: Options) @This() {
             _ = allocator;
+            _ = options;
             return .{};
         }
 

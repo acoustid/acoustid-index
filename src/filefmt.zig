@@ -198,7 +198,7 @@ pub fn encodeBlock(data: []u8, reader: anytype) !u16 {
 }
 
 test "writeBlock/readBlock/readFirstItemFromBlock" {
-    var segment = MemorySegment.init(std.testing.allocator);
+    var segment = MemorySegment.init(std.testing.allocator, .{});
     defer segment.deinit();
 
     try segment.items.append(.{ .hash = 1, .id = 1 });

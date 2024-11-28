@@ -348,7 +348,7 @@ fn stopCheckpointThread(self: *Self) void {
     self.checkpoint_thread = null;
 }
 
-fn writeIndexFile(self: *Self, segments: *MemorySegmentList) !void {
+fn writeIndexFile(self: *Self, segments: *FileSegmentList) !void {
     var ids = try segments.getIds(self.allocator);
     defer ids.deinit(self.allocator);
 
@@ -373,7 +373,7 @@ fn startFileSegmentMergeThread(self: *Self) !void {
     if (self.file_segment_merge_thread != null) return;
 
     log.info("starting file segment merge thread", .{});
-    //self.file_segment_merge_thread = try std.Thread.spawn(.{}, fileSegmentMergeThreadFn, .{self});
+    self.file_segment_merge_thread = try std.Thread.spawn(.{}, fileSegmentMergeThreadFn, .{self});
 }
 
 fn stopFileSegmentMergeThread(self: *Self) void {
