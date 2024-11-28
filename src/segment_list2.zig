@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 
 const SearchResults = @import("common.zig").SearchResults;
 
+const Change = @import("change.zig").Change;
 const SegmentId = @import("common.zig").SegmentId;
 
 const Deadline = @import("utils/Deadline.zig");
@@ -265,6 +266,32 @@ pub fn SegmentListManager(Segment: type) type {
                     new_segments.value.nodes.appendAssumeCapacity(node.acquire());
                 }
             }
+
+            try @call(.auto, preCommitFn, .{ ctx, new_segments.value });
+
+            lock.lock();
+            defer lock.unlock();
+
+            self.segments.swap(&new_segments);
+
+            return true;
+        }
+
+        pub fn update(self: *Self, changes: []const Change, lock: *std.Thread.RwLock, preCommitFn: anytype, ctx: anytype) !bool {
+            var new_segment = try List.createSegment(self.allocator, self.options);
+            errdefer List.destroySegment(self.allocator, &new_segment);
+
+            try new_segment.value.build(changes);
+            errdefer new_segment.value.cleanup();
+
+            self.update_lock.lock();
+            defer self.update_lock.unlock();
+
+            var new_segments_list = try self.segments.value.appendSegment(self.allocator, new_segment);
+            errdefer new_segments_list.deinit(self.allocator);
+
+            var new_segments = try SharedPtr(List).create(self.allocator, new_segments_list);
+            defer new_segments.release(self.allocator, .{self.allocator});
 
             try @call(.auto, preCommitFn, .{ ctx, new_segments.value });
 
