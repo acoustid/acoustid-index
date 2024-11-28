@@ -70,13 +70,13 @@ pub fn SegmentList(Segment: type) type {
         }
 
         pub fn appendSegment(self: *Self, allocator: Allocator, node: Node) Allocator.Error!Self {
-            var copy = try Self.initCapacity(allocator, self.nodes.items.len + 1);
+            var copy = try Self.init(allocator, self.nodes.items.len + 1);
             self.appendSegmentInto(&copy, node);
             return copy;
         }
 
         pub fn removeSegment(self: *Self, allocator: Allocator, idx: usize) Allocator.Error!Self {
-            var copy = try Self.initCapacity(allocator, self.nodes.items.len - 1);
+            var copy = try Self.init(allocator, self.nodes.items.len - 1);
             for (self.nodes.items, 0..) |n, i| {
                 if (i != idx) {
                     copy.nodes.appendAssumeCapacity(n.acquire());

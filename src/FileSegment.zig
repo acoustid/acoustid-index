@@ -140,7 +140,7 @@ test "build" {
     var segment = Self.init(std.testing.allocator, .{ .dir = tmp_dir.dir });
     defer segment.deinit();
 
-    try segment.build(tmp_dir.dir, &source_reader);
+    try segment.build(&source_reader);
 
     try std.testing.expectEqual(1, segment.id.version);
     try std.testing.expectEqual(0, segment.id.included_merges);

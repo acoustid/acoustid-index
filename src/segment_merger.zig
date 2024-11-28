@@ -149,32 +149,32 @@ test "merge segments" {
     const MemorySegment = @import("MemorySegment.zig");
 
     var collection = try SegmentList(MemorySegment).init(std.testing.allocator, 3);
-    defer collection.deinit();
+    defer collection.deinit(std.testing.allocator);
 
     var merger = SegmentMerger(MemorySegment).init(std.testing.allocator, &collection);
     defer merger.deinit();
 
-    var node1 = try collection.createSegment();
-    collection.segments.append(node1);
+    var node1 = try SegmentList(MemorySegment).createSegment(std.testing.allocator, .{});
+    collection.nodes.appendAssumeCapacity(node1);
 
-    var node2 = try collection.createSegment();
-    collection.segments.append(node2);
+    var node2 = try SegmentList(MemorySegment).createSegment(std.testing.allocator, .{});
+    collection.nodes.appendAssumeCapacity(node2);
 
-    var node3 = try collection.createSegment();
-    collection.segments.append(node3);
+    var node3 = try SegmentList(MemorySegment).createSegment(std.testing.allocator, .{});
+    collection.nodes.appendAssumeCapacity(node3);
 
-    node1.data.id = SegmentId{ .version = 1, .included_merges = 0 };
-    node1.data.max_commit_id = 11;
+    node1.value.id = SegmentId{ .version = 1, .included_merges = 0 };
+    node1.value.max_commit_id = 11;
 
-    node2.data.id = SegmentId{ .version = 2, .included_merges = 0 };
-    node2.data.max_commit_id = 12;
+    node2.value.id = SegmentId{ .version = 2, .included_merges = 0 };
+    node2.value.max_commit_id = 12;
 
-    node3.data.id = SegmentId{ .version = 3, .included_merges = 0 };
-    node3.data.max_commit_id = 13;
+    node3.value.id = SegmentId{ .version = 3, .included_merges = 0 };
+    node3.value.max_commit_id = 13;
 
-    try merger.addSource(&node1.data);
-    try merger.addSource(&node2.data);
-    try merger.addSource(&node3.data);
+    try merger.addSource(node1.value);
+    try merger.addSource(node2.value);
+    try merger.addSource(node3.value);
 
     try merger.prepare();
 

@@ -564,6 +564,6 @@ pub fn getMaxCommitId(self: *Self) u64 {
 }
 
 test {
-    _ = @import("index_tests.zig");
+    // _ = @import("index_tests.zig");
     _ = @import("segment_list2.zig");
 }

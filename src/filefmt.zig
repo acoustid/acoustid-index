@@ -456,7 +456,7 @@ test "writeFile/readFile" {
     const version: SegmentId = .{ .version = 1, .included_merges = 0 };
 
     {
-        var in_memory_segment = MemorySegment.init(testing.allocator);
+        var in_memory_segment = MemorySegment.init(testing.allocator, .{});
         defer in_memory_segment.deinit();
 
         in_memory_segment.id = version;
@@ -472,7 +472,7 @@ test "writeFile/readFile" {
     }
 
     {
-        var segment = FileSegment.init(testing.allocator);
+        var segment = FileSegment.init(testing.allocator, .{ .dir = tmp.dir });
         defer segment.deinit();
 
         try readSegmentFile(tmp.dir, version, &segment);
