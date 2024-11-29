@@ -43,7 +43,6 @@ options: Options,
 allocator: std.mem.Allocator,
 
 data_dir: std.fs.Dir,
-oplog_dir: std.fs.Dir,
 
 oplog: Oplog,
 
@@ -88,8 +87,8 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Se
     var data_dir = try dir.makeOpenPath("data", .{ .iterate = true });
     errdefer data_dir.close();
 
-    var oplog_dir = try dir.makeOpenPath("oplog", .{ .iterate = true });
-    errdefer oplog_dir.close();
+    var oplog = try Oplog.init(allocator, data_dir);
+    errdefer oplog.deinit();
 
     const memory_segments = try SegmentListManager(MemorySegment).init(
         allocator,
@@ -120,8 +119,7 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Se
         .options = options,
         .allocator = allocator,
         .data_dir = data_dir,
-        .oplog_dir = oplog_dir,
-        .oplog = Oplog.init(allocator, oplog_dir),
+        .oplog = oplog,
         .segments_lock = .{},
         .memory_segments = memory_segments,
         .file_segments = file_segments,
@@ -140,7 +138,6 @@ pub fn deinit(self: *Self) void {
     self.file_segments.deinit();
 
     self.oplog.deinit();
-    self.oplog_dir.close();
     self.data_dir.close();
 }
 

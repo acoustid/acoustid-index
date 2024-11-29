@@ -30,7 +30,10 @@ max_file_size: usize = 1_000_000,
 
 next_commit_id: u64 = 1,
 
-pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) Self {
+pub fn init(allocator: std.mem.Allocator, parent_dir: std.fs.Dir) !Self {
+    var dir = try parent_dir.makeOpenPath("oplog", .{ .iterate = true });
+    errdefer dir.close();
+
     return Self{
         .allocator = allocator,
         .dir = dir,
@@ -47,6 +50,8 @@ pub fn deinit(self: *Self) void {
     self.closeCurrentFile();
 
     self.files.deinit();
+
+    self.dir.close();
 }
 
 pub fn open(self: *Self, first_commit_id: u64, receiver: anytype, ctx: anytype) !void {
@@ -228,13 +233,10 @@ pub fn write(self: *Self, changes: []const Change) !u64 {
 }
 
 test "write entries" {
-    var tmpDir = std.testing.tmpDir(.{});
-    defer tmpDir.cleanup();
+    var tmp_dir = std.testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
 
-    var oplogDir = try tmpDir.dir.makeOpenPath("oplog", .{ .iterate = true });
-    defer oplogDir.close();
-
-    var oplog = Self.init(std.testing.allocator, oplogDir);
+    var oplog = try Self.init(std.testing.allocator, tmp_dir.dir);
     defer oplog.deinit();
 
     const Updater = struct {
@@ -256,7 +258,7 @@ test "write entries" {
 
     _ = try oplog.write(&changes);
 
-    var file = try oplogDir.openFile("0000000000000001.xlog", .{});
+    var file = try tmp_dir.dir.openFile("oplog/0000000000000001.xlog", .{});
     defer file.close();
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
