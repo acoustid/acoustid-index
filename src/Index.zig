@@ -531,6 +531,7 @@ pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, de
     try segments.memory_segments.value.search(sorted_hashes, &results, deadline);
 
     results.sort();
+
     return results;
 }
 

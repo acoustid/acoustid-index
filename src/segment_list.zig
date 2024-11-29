@@ -110,6 +110,7 @@ pub fn SegmentList(Segment: type) type {
                 }
                 try node.value.search(hashes, results);
             }
+            results.removeOutdatedResults(self);
         }
 
         pub fn getMaxCommitId(self: Self) u64 {
