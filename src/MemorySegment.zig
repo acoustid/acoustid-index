@@ -37,7 +37,6 @@ pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
     _ = delete_file;
     self.docs.deinit();
     self.items.deinit();
-    log.debug("deinit memory segment {}:{}", .{ self.id.version, self.id.included_merges });
 }
 
 pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !void {

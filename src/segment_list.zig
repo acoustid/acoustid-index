@@ -74,7 +74,6 @@ pub fn SegmentList(Segment: type) type {
                 copy.nodes.appendAssumeCapacity(n.acquire());
             }
             copy.nodes.appendAssumeCapacity(node.acquire());
-            std.log.debug("adding {s} {}:{}", .{ @typeName(Segment), node.value.id.version, node.value.id.included_merges });
         }
 
         pub fn removeSegmentInto(self: Self, copy: *Self, node: Node) void {
@@ -82,8 +81,6 @@ pub fn SegmentList(Segment: type) type {
             for (self.nodes.items) |n| {
                 if (n.value != node.value) {
                     copy.nodes.appendAssumeCapacity(n.acquire());
-                } else {
-                    std.log.debug("removing {s} {}:{}", .{ @typeName(Segment), n.value.id.version, n.value.id.included_merges });
                 }
             }
         }
@@ -93,11 +90,9 @@ pub fn SegmentList(Segment: type) type {
             var inserted_merged = false;
             for (self.nodes.items) |n| {
                 if (node.value.id.contains(n.value.id)) {
-                    std.log.debug("removing {s} {}:{}", .{ @typeName(Segment), n.value.id.version, n.value.id.included_merges });
                     if (!inserted_merged) {
                         copy.nodes.appendAssumeCapacity(node.acquire());
                         inserted_merged = true;
-                        std.log.debug("adding {s} {}:{}", .{ @typeName(Segment), node.value.id.version, node.value.id.included_merges });
                     }
                 } else {
                     copy.nodes.appendAssumeCapacity(n.acquire());

@@ -141,75 +141,6 @@ pub fn deinit(self: *Self) void {
     self.dir.close();
 }
 
-pub const PendingUpdate = struct {
-    node: MemorySegmentNode,
-    segments: SharedPtr(MemorySegmentList),
-    finished: bool = false,
-
-    pub fn deinit(self: *@This(), allocator: Allocator) void {
-        if (self.finished) return;
-        MemorySegmentList.destroySegments(allocator, &self.segments);
-        MemorySegmentList.destroySegment(allocator, &self.node);
-        self.finished = true;
-    }
-};
-
-// Prepares update for later commit, will block until previous update has been committed.
-fn prepareUpdate(self: *Self, changes: []const Change) !PendingUpdate {
-    var node = try MemorySegmentList.createSegment(self.allocator, .{});
-    errdefer MemorySegmentList.destroySegment(self.allocator, &node);
-
-    try node.value.build(changes);
-
-    self.update_lock.lock();
-    errdefer self.update_lock.unlock();
-
-    self.segments_lock.lockShared();
-    defer self.segments_lock.unlockShared();
-
-    const segments = try MemorySegmentList.createShared(self.allocator, self.memory_segments.count() + 1);
-
-    return .{ .node = node, .segments = segments };
-}
-
-// Commits the update, does nothing if it has already been cancelled or committted.
-fn commitUpdate(self: *Self, pending_update: *PendingUpdate, commit_id: u64) void {
-    if (pending_update.finished) return;
-
-    defer pending_update.deinit(self.allocator);
-
-    self.segments_lock.lock();
-    defer self.segments_lock.unlock();
-
-    pending_update.node.value.max_commit_id = commit_id;
-    pending_update.node.value.id = blk: {
-        if (self.memory_segments.segments.value.getLast()) |n| {
-            break :blk n.value.id.next();
-        } else if (self.file_segments.segments.value.getFirst()) |n| {
-            break :blk n.value.id.next();
-        } else {
-            break :blk SegmentId.first();
-        }
-    };
-
-    self.memory_segments.segments.value.appendSegmentInto(pending_update.segments.value, pending_update.node);
-
-    self.memory_segments.segments.swap(&pending_update.segments);
-
-    pending_update.finished = true;
-    self.update_lock.unlock();
-}
-
-// Cancels the update, does nothing if it has already been cancelled or committted.
-fn cancelUpdate(self: *Self, pending_update: *PendingUpdate) void {
-    if (pending_update.finished) return;
-
-    defer pending_update.deinit(self.allocator);
-
-    pending_update.finished = true;
-    self.update_lock.unlock();
-}
-
 fn loadSegment(self: *Self, segment_id: SegmentId) !FileSegmentNode {
     var node = try FileSegmentList.createSegment(self.allocator, .{ .dir = self.dir });
     errdefer FileSegmentList.destroySegment(self.allocator, &node);
@@ -341,7 +272,7 @@ fn maybeMergeFileSegments(self: *Self) !bool {
     defer self.segments_lock.unlock();
 
     self.file_segments.commitUpdate(&upd);
-    log.debug("committed file segments merge", .{});
+    // log.debug("committed file segments merge", .{});
 
     return true;
 }
@@ -384,7 +315,7 @@ fn maybeMergeMemorySegments(self: *Self) !bool {
     defer self.segments_lock.unlock();
 
     self.memory_segments.commitUpdate(&upd);
-    log.debug("committed memory segments merge", .{});
+    // log.debug("committed memory segments merge", .{});
 
     self.maybeScheduleCheckpoint();
 
@@ -459,7 +390,7 @@ pub fn update(self: *Self, changes: []const Change) !void {
 }
 
 pub fn updateInternal(self: *Self, changes: []const Change, commit_id: ?u64) !void {
-    log.debug("update with {} changes", .{changes.len});
+    // log.debug("update with {} changes", .{changes.len});
 
     var target = try MemorySegmentList.createSegment(self.allocator, .{});
     defer MemorySegmentList.destroySegment(self.allocator, &target);
@@ -468,8 +399,6 @@ pub fn updateInternal(self: *Self, changes: []const Change, commit_id: ?u64) !vo
 
     var upd = try self.memory_segments.beginUpdate();
     defer self.memory_segments.cleanupAfterUpdate(&upd);
-
-    upd.appendSegment(target);
 
     target.value.max_commit_id = commit_id orelse try self.oplog.write(changes);
 
@@ -485,6 +414,8 @@ pub fn updateInternal(self: *Self, changes: []const Change, commit_id: ?u64) !vo
             break :blk SegmentId.first();
         }
     };
+
+    upd.appendSegment(target);
 
     self.memory_segments.commitUpdate(&upd);
 
