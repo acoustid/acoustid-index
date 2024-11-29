@@ -148,7 +148,7 @@ pub const PendingUpdate = struct {
 
     pub fn deinit(self: *@This(), allocator: Allocator) void {
         if (self.finished) return;
-        self.segments.release(allocator, .{allocator});
+        MemorySegmentList.destroySegments(allocator, &self.segments);
         MemorySegmentList.destroySegment(allocator, &self.node);
         self.finished = true;
     }
@@ -509,8 +509,8 @@ fn acquireSegments(self: *Self) SegmentsSnapshot {
 
 // Release the previously acquired segments lists, they will get deleted if no longer needed.
 fn releaseSegments(self: *Self, segments: *SegmentsSnapshot) void {
-    segments.file_segments.release(self.allocator, .{self.allocator});
-    segments.memory_segments.release(self.allocator, .{self.allocator});
+    MemorySegmentList.destroySegments(self.allocator, &segments.memory_segments);
+    FileSegmentList.destroySegments(self.allocator, &segments.file_segments);
 }
 
 pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, deadline: Deadline) !SearchResults {

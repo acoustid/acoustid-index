@@ -50,7 +50,7 @@ pub fn SegmentList(Segment: type) type {
 
         pub fn deinit(self: *Self, allocator: Allocator) void {
             for (self.nodes.items) |*node| {
-                destroySegment(allocator, node);
+                node.release(allocator, .{});
             }
             self.nodes.deinit(allocator);
         }
@@ -59,8 +59,26 @@ pub fn SegmentList(Segment: type) type {
             return Node.create(allocator, @call(.auto, Segment.init, .{ allocator, options }));
         }
 
-        pub fn destroySegment(allocator: Allocator, node: *Node) void {
-            node.release(allocator, .{});
+        pub fn destroySegment(allocator: Allocator, segment: *Node) void {
+            segment.releaseWithCleanup(allocator, destroySegmentCallback, .{});
+        }
+
+        pub fn destroySegments(allocator: Allocator, segments: *SharedPtr(Self)) void {
+            // we also call cleanup on these segments, to ensure that unused segments will get deleted from disk
+            segments.releaseWithCleanup(allocator, destroySegmentListCallback, .{allocator});
+        }
+
+        fn destroySegmentListCallback(segments: *Self, allocator: Allocator) void {
+            while (segments.nodes.items.len > 0) {
+                var node = segments.nodes.pop();
+                destroySegment(allocator, &node);
+            }
+            segments.deinit(allocator);
+        }
+
+        fn destroySegmentCallback(segment: *Segment) void {
+            segment.cleanup();
+            segment.deinit();
         }
 
         pub fn appendSegmentInto(self: Self, copy: *Self, node: Node) void {
@@ -190,7 +208,7 @@ pub fn SegmentListManager(Segment: type) type {
         }
 
         pub fn deinit(self: *Self) void {
-            self.releaseSegments(&self.segments);
+            self.segments.release(self.allocator, .{self.allocator});
         }
 
         pub fn count(self: Self) usize {
@@ -204,8 +222,8 @@ pub fn SegmentListManager(Segment: type) type {
             return self.segments.acquire();
         }
 
-        fn releaseSegments(self: *Self, segments: *SharedPtr(List)) void {
-            segments.release(self.allocator, .{self.allocator});
+        fn destroySegments(self: *Self, segments: *SharedPtr(List)) void {
+            List.destroySegments(self.allocator, segments);
         }
 
         pub fn needsMerge(self: Self) bool {
@@ -214,7 +232,7 @@ pub fn SegmentListManager(Segment: type) type {
 
         pub fn prepareMerge(self: *Self) !?Update {
             var segments = self.acquireSegments();
-            defer self.releaseSegments(&segments);
+            defer self.destroySegments(&segments);
 
             self.num_allowed_segments.store(self.merge_policy.calculateBudget(segments.value.nodes.items), .release);
             if (!self.needsMerge()) {
@@ -288,24 +306,6 @@ pub fn SegmentListManager(Segment: type) type {
                 self.update_lock.unlock();
             }
             self.destroySegments(&update.segments);
-        }
-
-        pub fn destroySegments(self: *Self, segments: *SharedPtr(List)) void {
-            // we also call cleanup on these segments, to ensure that unused segments will get deleted from disk
-            segments.releaseWithCleanup(self.allocator, destroySegmentList, .{self.allocator});
-        }
-
-        fn destroySegmentList(segments: *List, allocator: Allocator) void {
-            while (segments.nodes.items.len > 0) {
-                var node = segments.nodes.pop();
-                node.releaseWithCleanup(allocator, destroySegment, .{});
-            }
-            segments.deinit(allocator);
-        }
-
-        fn destroySegment(segment: *Segment) void {
-            segment.cleanup();
-            segment.deinit();
         }
     };
 }
