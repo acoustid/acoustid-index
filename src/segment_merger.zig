@@ -5,7 +5,7 @@ const Item = common.Item;
 const SegmentId = common.SegmentId;
 
 const SharedPtr = @import("utils/smartptr.zig").SharedPtr;
-const SegmentList = @import("segment_list2.zig").SegmentList;
+const SegmentList = @import("segment_list.zig").SegmentList;
 
 pub const MergedSegmentInfo = struct {
     id: SegmentId,

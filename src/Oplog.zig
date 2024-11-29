@@ -49,7 +49,7 @@ pub fn deinit(self: *Self) void {
     self.files.deinit();
 }
 
-pub fn open(self: *Self, first_commit_id: u64, receiver: anytype) !void {
+pub fn open(self: *Self, first_commit_id: u64, receiver: anytype, ctx: anytype) !void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
@@ -74,8 +74,7 @@ pub fn open(self: *Self, first_commit_id: u64, receiver: anytype) !void {
     defer oplog_it.deinit();
     while (try oplog_it.next()) |txn| {
         max_commit_id = @max(max_commit_id, txn.id);
-        var pending_update = try receiver.prepareUpdate(txn.changes);
-        receiver.commitUpdate(&pending_update, txn.id);
+        try receiver(ctx, txn.changes, txn.id);
     }
     self.next_commit_id = max_commit_id + 1;
 }
@@ -197,7 +196,7 @@ pub fn truncate(self: *Self, commit_id: u64) !void {
     try self.truncateNoLock(commit_id);
 }
 
-pub fn write(self: *Self, changes: []const Change) !void {
+pub fn write(self: *Self, changes: []const Change) !u64 {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
@@ -224,6 +223,8 @@ pub fn write(self: *Self, changes: []const Change) !void {
         }
         return err;
     };
+
+    return commit_id;
 }
 
 test "write entries" {
@@ -237,34 +238,23 @@ test "write entries" {
     defer oplog.deinit();
 
     const Updater = struct {
-        pub fn prepareUpdate(self: *@This(), changes: []const Change) !u8 {
+        pub fn receive(self: *@This(), changes: []const Change, commit_id: u64) !void {
             _ = self;
             _ = changes;
-            return 0;
-        }
-
-        pub fn cancelUpdate(self: *@This(), update: *u8) void {
-            _ = self;
-            _ = update;
-        }
-
-        pub fn commitUpdate(self: *@This(), update: *u8, commit_id: u64) void {
-            _ = self;
-            _ = update;
             _ = commit_id;
         }
     };
 
     var updater: Updater = .{};
 
-    try oplog.open(0, &updater);
+    try oplog.open(0, Updater.receive, &updater);
 
     const changes = [_]Change{.{ .insert = .{
         .id = 1,
         .hashes = &[_]u32{ 1, 2, 3 },
     } }};
 
-    try oplog.write(&changes);
+    _ = try oplog.write(&changes);
 
     var file = try oplogDir.openFile("0000000000000001.xlog", .{});
     defer file.close();
