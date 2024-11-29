@@ -266,10 +266,10 @@ fn loadSegments(self: *Self) !void {
 }
 
 fn doCheckpoint(self: *Self) !bool {
-    var segments = self.acquireSegments();
-    defer self.releaseSegments(&segments);
+    var snapshot = self.acquireSegments();
+    defer self.releaseSegments(&snapshot);
 
-    const source = segments.memory_segments.value.getFirst() orelse return false;
+    const source = snapshot.memory_segments.value.getFirst() orelse return false;
     if (source.value.getSize() < self.options.min_segment_size) {
         return false;
     }

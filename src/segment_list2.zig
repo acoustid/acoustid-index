@@ -189,19 +189,12 @@ pub fn SegmentListManager(Segment: type) type {
             };
         }
 
-        pub fn deinit(self: *Self, allocator: Allocator) void {
-            self.segments.release(allocator, .{allocator});
+        pub fn deinit(self: *Self) void {
+            releaseSegments(&self.segments);
         }
 
         pub fn count(self: Self) usize {
             return self.segments.value.nodes.items.len;
-        }
-
-        pub fn swap(self: *Self, segments_list: List) !void {
-            var segments = try SharedPtr(List).create(self.allocator, segments_list);
-            defer segments.release(self.allocator, .{self.allocator});
-
-            self.segments.swap(&segments);
         }
 
         fn acquireSegments(self: Self, lock: *std.Thread.RwLock) SharedPtr(List) {
@@ -282,7 +275,8 @@ pub fn SegmentListManager(Segment: type) type {
             var segments = try SharedPtr(List).create(self.allocator, List.initEmpty());
             errdefer self.releaseSegments(&segments);
 
-            try segments.value.nodes.ensureTotalCapacity(self.allocator, self.segments.value.nodes.items.len + 1);
+            // allocate memory for one extra segment, if it's going to be unused, it's going to be unused, but we need to have it ready
+            try segments.value.nodes.ensureTotalCapacity(self.allocator, self.count() + 1);
 
             return .{
                 .manager = self,
@@ -300,63 +294,25 @@ pub fn SegmentListManager(Segment: type) type {
             if (!update.committed) {
                 self.update_lock.unlock();
             }
-            update.segments.releaseWithCleanup(self.allocator, destroySegmentList, .{self});
+            self.destroySegments(&update.segments);
         }
 
-        fn destroySegmentList(segments: *List, self: *Self) void {
-            for (segments.nodes.items) |node| {
-                node.value.cleanup();
+        pub fn destroySegments(self: *Self, segments: *SharedPtr(List)) void {
+            // we also call cleanup on these segments, to ensure that unused segments will get deleted from disk
+            segments.releaseWithCleanup(self.allocator, destroySegmentList, .{self.allocator});
+        }
+
+        fn destroySegmentList(segments: *List, allocator: Allocator) void {
+            while (segments.nodes.items.len > 0) {
+                var node = segments.nodes.pop();
+                node.releaseWithCleanup(allocator, destroySegment, .{});
             }
-            segments.deinit(self.allocator);
+            segments.deinit(allocator);
+        }
+
+        fn destroySegment(segment: *Segment) void {
+            segment.cleanup();
+            segment.deinit();
         }
     };
-}
-
-test "SegmentList" {
-    const MockSegment = struct {
-        pub const Options = struct {};
-
-        pub fn init(allocator: Allocator, options: Options) @This() {
-            _ = allocator;
-            _ = options;
-            return .{};
-        }
-
-        pub fn deinit(self: *@This()) void {
-            _ = self;
-        }
-
-        pub fn search(self: @This(), hashes: []const u32, results: *SearchResults) !void {
-            _ = self;
-            _ = hashes;
-            _ = results;
-        }
-    };
-
-    const MockSegmentList = SegmentList(MockSegment);
-
-    const allocator = std.testing.allocator;
-
-    var segments1 = MockSegmentList.initEmpty();
-    defer segments1.deinit(allocator);
-
-    var node = try MockSegmentList.createSegment(allocator, .{});
-    defer MockSegmentList.destroySegment(allocator, &node);
-
-    var segments2 = try segments1.appendSegment(allocator, node);
-    defer segments2.deinit(allocator);
-
-    var segments3 = try segments2.removeSegment(allocator, 0);
-    defer segments3.deinit(allocator);
-
-    var segments4 = try segments2.replaceSegments(allocator, node, 0, 1);
-    defer segments4.deinit(allocator);
-
-    var results = SearchResults.init(allocator);
-    defer results.deinit();
-
-    try segments1.search(&[_]u32{ 1, 2, 3 }, &results, .{});
-    try segments2.search(&[_]u32{ 1, 2, 3 }, &results, .{});
-    try segments3.search(&[_]u32{ 1, 2, 3 }, &results, .{});
-    try segments4.search(&[_]u32{ 1, 2, 3 }, &results, .{});
 }
