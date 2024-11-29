@@ -149,7 +149,7 @@ test "merge segments" {
     const MemorySegment = @import("MemorySegment.zig");
 
     var collection = try SegmentList(MemorySegment).init(std.testing.allocator, 3);
-    defer collection.deinit(std.testing.allocator);
+    defer collection.deinit(std.testing.allocator, .delete);
 
     var merger = SegmentMerger(MemorySegment).init(std.testing.allocator, &collection);
     defer merger.deinit();

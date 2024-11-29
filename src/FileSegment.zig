@@ -6,6 +6,7 @@ const common = @import("common.zig");
 const Item = common.Item;
 const SearchResults = common.SearchResults;
 const SegmentId = common.SegmentId;
+const KeepOrDelete = common.KeepOrDelete;
 
 const MemorySegment = @import("MemorySegment.zig");
 
@@ -27,6 +28,7 @@ block_size: usize = 0,
 blocks: []const u8,
 merged: u32 = 0,
 num_items: usize = 0,
+delete_in_deinit: bool = false,
 
 raw_data: ?[]align(std.mem.page_size) u8 = null,
 
@@ -40,13 +42,17 @@ pub fn init(allocator: std.mem.Allocator, options: Options) Self {
     };
 }
 
-pub fn deinit(self: *Self) void {
+pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
     self.docs.deinit();
     self.index.deinit();
 
     if (self.raw_data) |data| {
         std.posix.munmap(data);
         self.raw_data = null;
+    }
+
+    if (delete_file == .delete) {
+        self.delete();
     }
 }
 
@@ -126,7 +132,7 @@ test "build" {
     defer data_dir.close();
 
     var source = MemorySegment.init(std.testing.allocator, .{});
-    defer source.deinit();
+    defer source.deinit(.delete);
 
     source.id.version = 1;
     source.frozen = true;
@@ -138,7 +144,7 @@ test "build" {
     defer source_reader.close();
 
     var segment = Self.init(std.testing.allocator, .{ .dir = tmp_dir.dir });
-    defer segment.deinit();
+    defer segment.deinit(.delete);
 
     try segment.build(&source_reader);
 

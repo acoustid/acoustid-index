@@ -199,7 +199,7 @@ pub fn encodeBlock(data: []u8, reader: anytype) !u16 {
 
 test "writeBlock/readBlock/readFirstItemFromBlock" {
     var segment = MemorySegment.init(std.testing.allocator, .{});
-    defer segment.deinit();
+    defer segment.deinit(.delete);
 
     try segment.items.append(.{ .hash = 1, .id = 1 });
     try segment.items.append(.{ .hash = 2, .id = 1 });
@@ -457,7 +457,7 @@ test "writeFile/readFile" {
 
     {
         var in_memory_segment = MemorySegment.init(testing.allocator, .{});
-        defer in_memory_segment.deinit();
+        defer in_memory_segment.deinit(.delete);
 
         in_memory_segment.id = version;
 
@@ -473,7 +473,7 @@ test "writeFile/readFile" {
 
     {
         var segment = FileSegment.init(testing.allocator, .{ .dir = tmp.dir });
-        defer segment.deinit();
+        defer segment.deinit(.delete);
 
         try readSegmentFile(tmp.dir, version, &segment);
 

@@ -5,6 +5,7 @@ const SearchResults = @import("common.zig").SearchResults;
 
 const Change = @import("change.zig").Change;
 const SegmentId = @import("common.zig").SegmentId;
+const KeepOrDelete = @import("common.zig").KeepOrDelete;
 
 const Deadline = @import("utils/Deadline.zig");
 
@@ -48,9 +49,9 @@ pub fn SegmentList(Segment: type) type {
             return try SharedPtr(Self).create(allocator, self);
         }
 
-        pub fn deinit(self: *Self, allocator: Allocator) void {
+        pub fn deinit(self: *Self, allocator: Allocator, delete_files: KeepOrDelete) void {
             for (self.nodes.items) |*node| {
-                node.release(allocator, .{});
+                node.release(allocator, .{delete_files});
             }
             self.nodes.deinit(allocator);
         }
@@ -60,25 +61,11 @@ pub fn SegmentList(Segment: type) type {
         }
 
         pub fn destroySegment(allocator: Allocator, segment: *Node) void {
-            segment.releaseWithCleanup(allocator, destroySegmentCallback, .{});
+            segment.release(allocator, .{.delete});
         }
 
         pub fn destroySegments(allocator: Allocator, segments: *SharedPtr(Self)) void {
-            // we also call cleanup on these segments, to ensure that unused segments will get deleted from disk
-            segments.releaseWithCleanup(allocator, destroySegmentListCallback, .{allocator});
-        }
-
-        fn destroySegmentListCallback(segments: *Self, allocator: Allocator) void {
-            while (segments.nodes.items.len > 0) {
-                var node = segments.nodes.pop();
-                destroySegment(allocator, &node);
-            }
-            segments.deinit(allocator);
-        }
-
-        fn destroySegmentCallback(segment: *Segment) void {
-            segment.cleanup();
-            segment.deinit();
+            segments.release(allocator, .{ allocator, .delete });
         }
 
         pub fn appendSegmentInto(self: Self, copy: *Self, node: Node) void {
@@ -87,6 +74,7 @@ pub fn SegmentList(Segment: type) type {
                 copy.nodes.appendAssumeCapacity(n.acquire());
             }
             copy.nodes.appendAssumeCapacity(node.acquire());
+            std.log.debug("adding {s} {}:{}", .{ @typeName(Segment), node.value.id.version, node.value.id.included_merges });
         }
 
         pub fn removeSegmentInto(self: Self, copy: *Self, node: Node) void {
@@ -94,6 +82,8 @@ pub fn SegmentList(Segment: type) type {
             for (self.nodes.items) |n| {
                 if (n.value != node.value) {
                     copy.nodes.appendAssumeCapacity(n.acquire());
+                } else {
+                    std.log.debug("removing {s} {}:{}", .{ @typeName(Segment), n.value.id.version, n.value.id.included_merges });
                 }
             }
         }
@@ -103,9 +93,11 @@ pub fn SegmentList(Segment: type) type {
             var inserted_merged = false;
             for (self.nodes.items) |n| {
                 if (node.value.id.contains(n.value.id)) {
+                    std.log.debug("removing {s} {}:{}", .{ @typeName(Segment), n.value.id.version, n.value.id.included_merges });
                     if (!inserted_merged) {
                         copy.nodes.appendAssumeCapacity(node.acquire());
                         inserted_merged = true;
+                        std.log.debug("adding {s} {}:{}", .{ @typeName(Segment), node.value.id.version, node.value.id.included_merges });
                     }
                 } else {
                     copy.nodes.appendAssumeCapacity(n.acquire());
@@ -207,8 +199,8 @@ pub fn SegmentListManager(Segment: type) type {
             };
         }
 
-        pub fn deinit(self: *Self) void {
-            self.segments.release(self.allocator, .{self.allocator});
+        pub fn deinit(self: *Self, delete_files: KeepOrDelete) void {
+            self.segments.release(self.allocator, .{ self.allocator, delete_files });
         }
 
         pub fn count(self: Self) usize {
@@ -284,7 +276,7 @@ pub fn SegmentListManager(Segment: type) type {
             errdefer self.update_lock.unlock();
 
             var segments = try SharedPtr(List).create(self.allocator, List.initEmpty());
-            errdefer self.releaseSegments(&segments);
+            errdefer self.destroySegments(&segments);
 
             // allocate memory for one extra segment, if it's going to be unused, it's going to be unused, but we need to have it ready
             try segments.value.nodes.ensureTotalCapacity(self.allocator, self.count() + 1);

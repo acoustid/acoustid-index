@@ -3,6 +3,11 @@ const testing = std.testing;
 
 const msgpack = @import("msgpack");
 
+pub const KeepOrDelete = enum {
+    keep,
+    delete,
+};
+
 pub const Item = packed struct(u64) {
     id: u32,
     hash: u32,

@@ -134,8 +134,8 @@ pub fn deinit(self: *Self) void {
     self.stopMemorySegmentMergeThread();
     self.stopFileSegmentMergeThread();
 
-    self.memory_segments.deinit();
-    self.file_segments.deinit();
+    self.memory_segments.deinit(.keep);
+    self.file_segments.deinit(.keep);
 
     self.oplog.deinit();
     self.dir.close();
@@ -255,7 +255,7 @@ fn doCheckpoint(self: *Self) !bool {
     // build new file segment
 
     var target = try FileSegmentList.createSegment(self.allocator, .{ .dir = self.dir });
-    errdefer FileSegmentList.destroySegment(self.allocator, &target);
+    defer FileSegmentList.destroySegment(self.allocator, &target);
 
     var reader = source.value.reader();
     defer reader.close();
@@ -341,6 +341,7 @@ fn maybeMergeFileSegments(self: *Self) !bool {
     defer self.segments_lock.unlock();
 
     self.file_segments.commitUpdate(&upd);
+    log.debug("committed file segments merge", .{});
 
     return true;
 }
@@ -383,6 +384,7 @@ fn maybeMergeMemorySegments(self: *Self) !bool {
     defer self.segments_lock.unlock();
 
     self.memory_segments.commitUpdate(&upd);
+    log.debug("committed memory segments merge", .{});
 
     self.maybeScheduleCheckpoint();
 
