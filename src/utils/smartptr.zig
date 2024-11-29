@@ -71,7 +71,7 @@ pub fn SharedPtr(comptime T: type) type {
             }
         }
 
-        pub fn releaseWithCleanup(self: *Self, allocator: Allocator, cleanupFn: fn (*T) void, extra_args: anytype) void {
+        pub fn releaseWithCleanup(self: *Self, allocator: Allocator, cleanupFn: anytype, extra_args: anytype) void {
             const inner_ptr = self.getInnerPtr();
             if (inner_ptr.refs.decr()) {
                 @call(.auto, cleanupFn, .{&inner_ptr.value} ++ extra_args);

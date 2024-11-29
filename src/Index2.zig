@@ -266,54 +266,49 @@ fn loadSegments(self: *Self) !void {
 }
 
 fn doCheckpoint(self: *Self) !bool {
-    const start_time = std.time.milliTimestamp();
+    var segments = self.acquireSegments();
+    defer self.releaseSegments(&segments);
 
-    var src = self.readyForCheckpoint() orelse return false;
+    const source = segments.memory_segments.value.getFirst() orelse return false;
+    if (source.value.getSize() < self.options.min_segment_size) {
+        return false;
+    }
 
-    var src_reader = src.data.reader();
-    defer src_reader.close();
+    // build new file segment
 
-    var dest = try self.file_segments.createSegment(.{self.allocator});
-    errdefer self.file_segments.destroySegment(dest);
+    var target = try FileSegmentList.createSegment(self.allocator, .{ .dir = self.data_dir });
+    errdefer FileSegmentList.destroySegment(self.allocator, &target);
 
-    try dest.data.build(self.data_dir, &src_reader);
+    var reader = source.value.reader();
+    defer reader.close();
 
-    errdefer dest.data.delete(self.data_dir);
+    try target.value.build(&reader);
+    errdefer target.value.cleanup();
 
-    self.file_segments_lock.lock();
-    defer self.file_segments_lock.unlock();
+    // update memory segments list
 
-    var ids = try self.file_segments.getIdsAfterAppend(dest, self.allocator);
-    defer ids.deinit();
+    var memory_segments_update = try self.memory_segments.beginUpdate();
+    defer self.memory_segments.cleanupAfterUpdate(&memory_segments_update);
 
-    try filefmt.writeIndexFile(self.data_dir, ids.items);
+    memory_segments_update.removeSegment(source);
 
-    // we are about to remove segment from the memory_segments list
-    self.memory_segments_lock.lock();
-    defer self.memory_segments_lock.unlock();
+    // update file segments list
+
+    var file_segments_update = try self.file_segments.beginUpdate();
+    defer self.file_segments.cleanupAfterUpdate(&file_segments_update);
+
+    file_segments_update.appendSegment(target);
+
+    try self.writeIndexFile(file_segments_update.segments.value);
+
+    // commit updated lists
 
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
 
-    log.info("stage stats size={}, len={}", .{ self.memory_segments.getTotalSize(), self.memory_segments.segments.len });
+    self.memory_segments.commitUpdate(&memory_segments_update);
+    self.file_segments.commitUpdate(&file_segments_update);
 
-    if (src != self.memory_segments.segments.first) {
-        std.debug.panic("checkpoint node is not first in list", .{});
-    }
-
-    if (self.file_segments.segments.last) |last_file_segment| {
-        if (last_file_segment.data.id.version >= dest.data.id.version) {
-            std.debug.panic("inconsistent versions between memory and file segments", .{});
-        }
-    }
-
-    self.file_segments.appendSegment(dest);
-    self.memory_segments.removeAndDestroySegment(src);
-
-    log.info("saved changes up to commit {} to disk", .{dest.data.max_commit_id});
-
-    const end_time = std.time.milliTimestamp();
-    log.info("checkpoint took {} ms", .{end_time - start_time});
     return true;
 }
 
@@ -336,7 +331,7 @@ fn startCheckpointThread(self: *Self) !void {
     if (self.checkpoint_thread != null) return;
 
     log.info("starting checkpoint thread", .{});
-    // self.checkpoint_thread = try std.Thread.spawn(.{}, checkpointThreadFn, .{self});
+    self.checkpoint_thread = try std.Thread.spawn(.{}, checkpointThreadFn, .{self});
 }
 
 fn stopCheckpointThread(self: *Self) void {

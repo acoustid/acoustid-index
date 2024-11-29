@@ -64,35 +64,33 @@ pub fn SegmentList(Segment: type) type {
         }
 
         pub fn appendSegmentInto(self: Self, copy: *Self, node: Node) void {
+            copy.nodes.clearRetainingCapacity();
             for (self.nodes.items) |n| {
                 copy.nodes.appendAssumeCapacity(n.acquire());
             }
             copy.nodes.appendAssumeCapacity(node.acquire());
         }
 
-        pub fn appendSegment(self: *Self, allocator: Allocator, node: Node) Allocator.Error!Self {
-            var copy = try Self.init(allocator, self.nodes.items.len + 1);
-            self.appendSegmentInto(&copy, node);
-            return copy;
-        }
-
-        pub fn removeSegment(self: *Self, allocator: Allocator, idx: usize) Allocator.Error!Self {
-            var copy = try Self.init(allocator, self.nodes.items.len - 1);
-            for (self.nodes.items, 0..) |n, i| {
-                if (i != idx) {
+        pub fn removeSegmentInto(self: Self, copy: *Self, node: Node) void {
+            copy.nodes.clearRetainingCapacity();
+            for (self.nodes.items) |n| {
+                if (n.value != node.value) {
                     copy.nodes.appendAssumeCapacity(n.acquire());
                 }
             }
-            return copy;
         }
 
-        pub fn replaceSegments(self: *Self, allocator: Allocator, node: Node, start_idx: usize, end_idx: usize) Allocator.Error!Self {
-            var copy = try Self.init(allocator, self.nodes.items.len + 1 - (end_idx - start_idx));
-            for (self.nodes.items, 0..) |n, i| {
-                if (i < start_idx or i >= end_idx) {
+        pub fn replaceMergedSegmentInto(self: *Self, copy: *Self, node: Node) Self {
+            copy.nodes.clearRetainingCapacity();
+            var inserted_merged = false;
+            for (self.nodes.items) |n| {
+                if (node.value.id.contains(n.value.id)) {
+                    if (!inserted_merged) {
+                        copy.nodes.appendAssumeCapacity(node);
+                        inserted_merged = true;
+                    }
+                } else {
                     copy.nodes.appendAssumeCapacity(n.acquire());
-                } else if (i == start_idx) {
-                    copy.nodes.appendAssumeCapacity(node.acquire());
                 }
             }
             return copy;
@@ -232,8 +230,8 @@ pub fn SegmentListManager(Segment: type) type {
 
             const candidate = self.merge_policy.findSegmentsToMerge(segments.value.nodes.items) orelse return false;
 
-            var target = try List.createSegment(self.allocator, self.options);
-            errdefer List.destroySegment(self.allocator, &target);
+            var new_segment = try List.createSegment(self.allocator, self.options);
+            defer List.destroySegment(self.allocator, &new_segment);
 
             var merger = SegmentMerger(Segment).init(self.allocator, segments.value);
             defer merger.deinit();
@@ -243,64 +241,73 @@ pub fn SegmentListManager(Segment: type) type {
             }
             try merger.prepare();
 
-            try target.value.merge(&merger);
-            errdefer target.value.cleanup();
+            try new_segment.value.merge(&merger);
+            errdefer new_segment.value.cleanup();
 
-            self.update_lock.lock();
-            defer self.update_lock.unlock();
+            var update = try self.beginUpdate();
+            defer self.cleanupAfterUpdate(&update);
 
-            var new_segments = try SharedPtr(List).create(self.allocator, undefined);
-            defer new_segments.release(self.allocator, .{self.allocator});
-
-            new_segments.value.* = try List.init(self.allocator, self.segments.value.nodes.items.len);
-            defer new_segments.value.deinit(self.allocator);
-
-            var inserted_merged = false;
-            for (self.segments.value.nodes.items) |node| {
-                if (target.value.id.contains(node.value.id)) {
-                    if (!inserted_merged) {
-                        new_segments.value.nodes.appendAssumeCapacity(target);
-                        inserted_merged = true;
-                    }
-                } else {
-                    new_segments.value.nodes.appendAssumeCapacity(node.acquire());
-                }
-            }
-
-            try @call(.auto, preCommitFn, .{ ctx, new_segments.value });
+            try @call(.auto, preCommitFn, .{ ctx, update.segments.value });
 
             lock.lock();
             defer lock.unlock();
 
-            self.segments.swap(&new_segments);
+            self.commitUpdate(&update);
 
             return true;
         }
 
-        pub fn update(self: *Self, changes: []const Change, lock: *std.Thread.RwLock, preCommitFn: anytype, ctx: anytype) !bool {
-            var new_segment = try List.createSegment(self.allocator, self.options);
-            errdefer List.destroySegment(self.allocator, &new_segment);
+        pub const Update = struct {
+            manager: *Self,
+            segments: SharedPtr(List),
+            committed: bool = false,
 
-            try new_segment.value.build(changes);
-            errdefer new_segment.value.cleanup();
+            pub fn removeSegment(self: *@This(), node: List.Node) void {
+                self.manager.segments.value.removeSegmentInto(self.segments.value, node);
+            }
 
+            pub fn appendSegment(self: *@This(), node: List.Node) void {
+                self.manager.segments.value.appendSegmentInto(self.segments.value, node);
+            }
+
+            pub fn replaceMergedSegment(self: *@This(), node: List.Node) void {
+                self.manager.segments.value.replaceMergedSegmentInto(self.segments.value, node);
+            }
+        };
+
+        pub fn beginUpdate(self: *Self) !Update {
             self.update_lock.lock();
-            defer self.update_lock.unlock();
+            errdefer self.update_lock.unlock();
 
-            var new_segments_list = try self.segments.value.appendSegment(self.allocator, new_segment);
-            errdefer new_segments_list.deinit(self.allocator);
+            var segments = try SharedPtr(List).create(self.allocator, List.initEmpty());
+            errdefer self.releaseSegments(&segments);
 
-            var new_segments = try SharedPtr(List).create(self.allocator, new_segments_list);
-            defer new_segments.release(self.allocator, .{self.allocator});
+            try segments.value.nodes.ensureTotalCapacity(self.allocator, self.segments.value.nodes.items.len + 1);
 
-            try @call(.auto, preCommitFn, .{ ctx, new_segments.value });
+            return .{
+                .manager = self,
+                .segments = segments,
+            };
+        }
 
-            lock.lock();
-            defer lock.unlock();
+        pub fn commitUpdate(self: *Self, update: *Update) void {
+            self.segments.swap(&update.segments);
+            self.update_lock.unlock();
+            update.committed = true;
+        }
 
-            self.segments.swap(&new_segments);
+        pub fn cleanupAfterUpdate(self: *Self, update: *Update) void {
+            if (!update.committed) {
+                self.update_lock.unlock();
+            }
+            update.segments.releaseWithCleanup(self.allocator, destroySegmentList, .{self});
+        }
 
-            return true;
+        fn destroySegmentList(segments: *List, self: *Self) void {
+            for (segments.nodes.items) |node| {
+                node.value.cleanup();
+            }
+            segments.deinit(self.allocator);
         }
     };
 }
