@@ -8,7 +8,6 @@ const Self = @This();
 
 pub const IndexRef = struct {
     index: Index,
-    dir: std.fs.Dir,
     references: usize = 0,
     last_used_at: i64 = std.math.minInt(i64),
 };
@@ -33,7 +32,6 @@ pub fn deinit(self: *Self) void {
     var iter = self.indexes.iterator();
     while (iter.next()) |entry| {
         entry.value_ptr.index.deinit();
-        entry.value_ptr.dir.close();
     }
     self.indexes.deinit();
 }
@@ -63,10 +61,7 @@ pub fn acquireIndex(self: *Self, id: u8, create: bool) !*IndexRef {
     var sub_dir_name_buf: [max_sub_dir_name_size]u8 = undefined;
     const sub_dir_name = try std.fmt.bufPrint(&sub_dir_name_buf, sub_dir_name_fmt, .{id});
 
-    result.value_ptr.dir = try self.dir.makeOpenPath(sub_dir_name, .{ .iterate = true });
-    errdefer result.value_ptr.dir.close();
-
-    result.value_ptr.index = try Index.init(self.allocator, result.value_ptr.dir, .{ .create = create });
+    result.value_ptr.index = try Index.init(self.allocator, self.dir, sub_dir_name, .{ .create = create });
     errdefer result.value_ptr.index.deinit();
 
     try result.value_ptr.index.open();
@@ -91,7 +86,6 @@ pub fn deleteIndex(self: *Self, id: u8) !void {
 
     if (self.indexes.getEntry(id)) |entry| {
         entry.value_ptr.index.deinit();
-        entry.value_ptr.dir.close();
         self.indexes.removeByPtr(entry.key_ptr);
     }
 

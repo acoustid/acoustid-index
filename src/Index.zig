@@ -42,7 +42,7 @@ const Options = struct {
 options: Options,
 allocator: std.mem.Allocator,
 
-data_dir: std.fs.Dir,
+dir: std.fs.Dir,
 
 oplog: Oplog,
 
@@ -83,11 +83,11 @@ fn getMemorySegmentSize(segment: SharedPtr(MemorySegment)) usize {
     return segment.value.getSize();
 }
 
-pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Self {
-    var data_dir = try dir.makeOpenPath("data", .{ .iterate = true });
-    errdefer data_dir.close();
+pub fn init(allocator: std.mem.Allocator, parent_dir: std.fs.Dir, path: []const u8, options: Options) !Self {
+    var dir = try parent_dir.makeOpenPath(path, .{ .iterate = true });
+    errdefer dir.close();
 
-    var oplog = try Oplog.init(allocator, data_dir);
+    var oplog = try Oplog.init(allocator, dir);
     errdefer oplog.deinit();
 
     const memory_segments = try SegmentListManager(MemorySegment).init(
@@ -105,7 +105,7 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Se
     const file_segments = try SegmentListManager(FileSegment).init(
         allocator,
         .{
-            .dir = data_dir,
+            .dir = dir,
         },
         .{
             .min_segment_size = options.min_segment_size,
@@ -118,7 +118,7 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir, options: Options) !Se
     return .{
         .options = options,
         .allocator = allocator,
-        .data_dir = data_dir,
+        .dir = dir,
         .oplog = oplog,
         .segments_lock = .{},
         .memory_segments = memory_segments,
@@ -138,7 +138,7 @@ pub fn deinit(self: *Self) void {
     self.file_segments.deinit();
 
     self.oplog.deinit();
-    self.data_dir.close();
+    self.dir.close();
 }
 
 pub const PendingUpdate = struct {
@@ -211,7 +211,7 @@ fn cancelUpdate(self: *Self, pending_update: *PendingUpdate) void {
 }
 
 fn loadSegment(self: *Self, segment_id: SegmentId) !FileSegmentNode {
-    var node = try FileSegmentList.createSegment(self.allocator, .{ .dir = self.data_dir });
+    var node = try FileSegmentList.createSegment(self.allocator, .{ .dir = self.dir });
     errdefer FileSegmentList.destroySegment(self.allocator, &node);
 
     try node.value.open(segment_id);
@@ -223,7 +223,7 @@ fn loadSegments(self: *Self) !void {
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
 
-    const segment_ids = filefmt.readIndexFile(self.data_dir, self.allocator) catch |err| {
+    const segment_ids = filefmt.readIndexFile(self.dir, self.allocator) catch |err| {
         if (err == error.FileNotFound) {
             if (self.options.create) {
                 try self.updateIndexFile(self.file_segments.segments.value);
@@ -254,7 +254,7 @@ fn doCheckpoint(self: *Self) !bool {
 
     // build new file segment
 
-    var target = try FileSegmentList.createSegment(self.allocator, .{ .dir = self.data_dir });
+    var target = try FileSegmentList.createSegment(self.allocator, .{ .dir = self.dir });
     errdefer FileSegmentList.destroySegment(self.allocator, &target);
 
     var reader = source.value.reader();
@@ -328,7 +328,7 @@ fn updateIndexFile(self: *Self, segments: *FileSegmentList) !void {
     var ids = try segments.getIds(self.allocator);
     defer ids.deinit(self.allocator);
 
-    try filefmt.writeIndexFile(self.data_dir, ids.items);
+    try filefmt.writeIndexFile(self.dir, ids.items);
 }
 
 fn maybeMergeFileSegments(self: *Self) !bool {

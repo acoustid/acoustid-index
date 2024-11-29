@@ -19,7 +19,7 @@ test "index does not exist" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
-    var index = try Index.init(std.testing.allocator, tmp_dir.dir, .{});
+    var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{});
     defer index.deinit();
 
     const result = index.open();
@@ -30,7 +30,7 @@ test "index create, update and search" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
-    var index = try Index.init(std.testing.allocator, tmp_dir.dir, .{ .create = true });
+    var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{ .create = true });
     defer index.deinit();
 
     try index.open();
@@ -69,7 +69,7 @@ test "index create, update, reopen and search" {
     var hashes: [100]u32 = undefined;
 
     {
-        var index = try Index.init(std.testing.allocator, tmp_dir.dir, .{ .create = true });
+        var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{ .create = true });
         defer index.deinit();
 
         try index.open();
@@ -81,7 +81,7 @@ test "index create, update, reopen and search" {
     }
 
     {
-        var index = try Index.init(std.testing.allocator, tmp_dir.dir, .{ .create = false });
+        var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{ .create = false });
         defer index.deinit();
 
         try index.open();
@@ -105,7 +105,7 @@ test "index many updates" {
     var hashes: [100]u32 = undefined;
 
     {
-        var index = try Index.init(std.testing.allocator, tmp_dir.dir, .{ .create = true });
+        var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{ .create = true });
         defer index.deinit();
 
         try index.open();
@@ -118,7 +118,7 @@ test "index many updates" {
         }
     }
 
-    var index = try Index.init(std.testing.allocator, tmp_dir.dir, .{ .create = false });
+    var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{ .create = false });
     defer index.deinit();
 
     try index.open();
@@ -146,7 +146,7 @@ test "index, multiple fingerprints with the same hashes" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
-    var index = try Index.init(std.testing.allocator, tmp_dir.dir, .{ .create = true });
+    var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{ .create = true });
     defer index.deinit();
 
     try index.open();
