@@ -197,10 +197,7 @@ pub fn truncate(self: *Self, commit_id: u64) !void {
     try self.truncateNoLock(commit_id);
 }
 
-pub fn write(self: *Self, changes: []const Change, receiver: anytype) !void {
-    var pending_update = try receiver.prepareUpdate(changes);
-    defer receiver.cancelUpdate(&pending_update);
-
+pub fn write(self: *Self, changes: []const Change) !void {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
@@ -227,8 +224,6 @@ pub fn write(self: *Self, changes: []const Change, receiver: anytype) !void {
         }
         return err;
     };
-
-    receiver.commitUpdate(&pending_update, commit_id);
 }
 
 test "write entries" {
@@ -269,7 +264,7 @@ test "write entries" {
         .hashes = &[_]u32{ 1, 2, 3 },
     } }};
 
-    try oplog.write(&changes, &updater);
+    try oplog.write(&changes);
 
     var file = try oplogDir.openFile("0000000000000001.xlog", .{});
     defer file.close();

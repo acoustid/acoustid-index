@@ -306,6 +306,10 @@ fn doCheckpoint(self: *Self) !bool {
     self.memory_segments.commitUpdate(&memory_segments_update);
     self.file_segments.commitUpdate(&file_segments_update);
 
+    if (self.file_segments.needsMerge()) {
+        self.file_segment_merge_event.set();
+    }
+
     return true;
 }
 
@@ -313,7 +317,6 @@ fn checkpointThreadFn(self: *Self) void {
     while (!self.stopping.load(.acquire)) {
         if (self.doCheckpoint()) |successful| {
             if (successful) {
-                self.scheduleFileSegmentMerge();
                 continue;
             }
             self.checkpoint_event.reset();
@@ -357,6 +360,7 @@ fn maybeMergeFileSegments(self: *Self) !bool {
     defer self.segments_lock.unlock();
 
     self.file_segments.commitUpdate(&upd);
+
     return true;
 }
 
@@ -398,6 +402,9 @@ fn maybeMergeMemorySegments(self: *Self) !bool {
     defer self.segments_lock.unlock();
 
     self.memory_segments.commitUpdate(&upd);
+
+    self.maybeScheduleCheckpoint();
+
     return true;
 }
 
@@ -405,7 +412,6 @@ fn memorySegmentMergeThreadFn(self: *Self) void {
     while (!self.stopping.load(.acquire)) {
         if (self.maybeMergeMemorySegments()) |successful| {
             if (successful) {
-                self.checkpoint_event.set();
                 continue;
             }
             self.memory_segment_merge_event.reset();
@@ -445,6 +451,14 @@ const Checkpoint = struct {
     dest: ?*FileSegmentNode = null,
 };
 
+fn maybeScheduleCheckpoint(self: *Self) void {
+    if (self.memory_segments.segments.value.getFirst()) |first_node| {
+        if (first_node.value.getSize() >= self.options.min_segment_size) {
+            self.checkpoint_event.set();
+        }
+    }
+}
+
 fn readyForCheckpoint(self: *Self) ?MemorySegmentNode {
     self.segments_lock.lockShared();
     defer self.segments_lock.unlockShared();
@@ -457,32 +471,29 @@ fn readyForCheckpoint(self: *Self) ?MemorySegmentNode {
     return null;
 }
 
-fn scheduleCheckpoint(self: *Self) void {
-    self.checkpoint_event.set();
-}
+pub fn update(self: *Self, changes: []const Change) !void {
+    log.debug("update with {} changes", .{changes.len});
 
-fn scheduleMemorySegmentMerge(self: *Self) void {
-    self.segments_lock.lockShared();
-    defer self.segments_lock.unlockShared();
+    var target = try MemorySegmentList.createSegment(self.allocator, .{});
+    defer MemorySegmentList.destroySegment(self.allocator, &target);
+
+    try target.value.build(changes);
+
+    var upd = try self.memory_segments.beginUpdate();
+    defer self.memory_segments.cleanupAfterUpdate(&upd);
+
+    upd.appendSegment(target);
+
+    try self.oplog.write(changes);
+
+    self.segments_lock.lock();
+    defer self.segments_lock.unlock();
+
+    self.memory_segments.commitUpdate(&upd);
 
     if (self.memory_segments.needsMerge()) {
         self.memory_segment_merge_event.set();
     }
-}
-
-fn scheduleFileSegmentMerge(self: *Self) void {
-    self.segments_lock.lockShared();
-    defer self.segments_lock.unlockShared();
-
-    if (self.file_segments.needsMerge()) {
-        self.file_segment_merge_event.set();
-    }
-}
-
-pub fn update(self: *Self, changes: []const Change) !void {
-    log.debug("update with {} changes", .{changes.len});
-    try self.oplog.write(changes, Updater{ .index = self });
-    self.scheduleMemorySegmentMerge();
 }
 
 const SegmentsSnapshot = struct {
