@@ -80,20 +80,19 @@ pub fn SegmentList(Segment: type) type {
             }
         }
 
-        pub fn replaceMergedSegmentInto(self: *Self, copy: *Self, node: Node) Self {
+        pub fn replaceMergedSegmentInto(self: *Self, copy: *Self, node: Node) void {
             copy.nodes.clearRetainingCapacity();
             var inserted_merged = false;
             for (self.nodes.items) |n| {
                 if (node.value.id.contains(n.value.id)) {
                     if (!inserted_merged) {
-                        copy.nodes.appendAssumeCapacity(node);
+                        copy.nodes.appendAssumeCapacity(node.acquire());
                         inserted_merged = true;
                     }
                 } else {
                     copy.nodes.appendAssumeCapacity(n.acquire());
                 }
             }
-            return copy;
         }
 
         pub fn getIds(self: Self, allocator: Allocator) Allocator.Error!std.ArrayListUnmanaged(SegmentId) {
@@ -190,16 +189,16 @@ pub fn SegmentListManager(Segment: type) type {
         }
 
         pub fn deinit(self: *Self) void {
-            releaseSegments(&self.segments);
+            self.releaseSegments(&self.segments);
         }
 
         pub fn count(self: Self) usize {
             return self.segments.value.nodes.items.len;
         }
 
-        fn acquireSegments(self: Self, lock: *std.Thread.RwLock) SharedPtr(List) {
-            lock.lockShared();
-            defer lock.unlockShared();
+        fn acquireSegments(self: *Self) SharedPtr(List) {
+            self.update_lock.lock();
+            defer self.update_lock.unlock();
 
             return self.segments.acquire();
         }
@@ -212,19 +211,19 @@ pub fn SegmentListManager(Segment: type) type {
             return self.segments.value.nodes.items.len > self.num_allowed_segments.load(.acquire);
         }
 
-        pub fn merge(self: *Self, lock: *std.Thread.RwLock, preCommitFn: anytype, ctx: anytype) !bool {
-            var segments = self.acquireSegments(lock);
+        pub fn prepareMerge(self: *Self) !?Update {
+            var segments = self.acquireSegments();
             defer self.releaseSegments(&segments);
 
             self.num_allowed_segments.store(self.merge_policy.calculateBudget(segments.value.nodes.items), .release);
             if (!self.needsMerge()) {
-                return false;
+                return null;
             }
 
-            const candidate = self.merge_policy.findSegmentsToMerge(segments.value.nodes.items) orelse return false;
+            const candidate = self.merge_policy.findSegmentsToMerge(segments.value.nodes.items) orelse return null;
 
-            var new_segment = try List.createSegment(self.allocator, self.options);
-            defer List.destroySegment(self.allocator, &new_segment);
+            var target = try List.createSegment(self.allocator, self.options);
+            defer List.destroySegment(self.allocator, &target);
 
             var merger = SegmentMerger(Segment).init(self.allocator, segments.value);
             defer merger.deinit();
@@ -234,20 +233,13 @@ pub fn SegmentListManager(Segment: type) type {
             }
             try merger.prepare();
 
-            try new_segment.value.merge(&merger);
-            errdefer new_segment.value.cleanup();
+            try target.value.merge(&merger);
+            errdefer target.value.cleanup();
 
             var update = try self.beginUpdate();
-            defer self.cleanupAfterUpdate(&update);
+            update.replaceMergedSegment(target);
 
-            try @call(.auto, preCommitFn, .{ ctx, update.segments.value });
-
-            lock.lock();
-            defer lock.unlock();
-
-            self.commitUpdate(&update);
-
-            return true;
+            return update;
         }
 
         pub const Update = struct {

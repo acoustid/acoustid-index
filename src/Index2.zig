@@ -136,8 +136,8 @@ pub fn deinit(self: *Self) void {
     self.stopMemorySegmentMergeThread();
     self.stopFileSegmentMergeThread();
 
-    self.memory_segments.deinit(self.allocator);
-    self.file_segments.deinit(self.allocator);
+    self.memory_segments.deinit();
+    self.file_segments.deinit();
 
     self.oplog.deinit();
     self.oplog_dir.close();
@@ -245,7 +245,7 @@ fn loadSegments(self: *Self) !void {
     const segment_ids = filefmt.readIndexFile(self.data_dir, self.allocator) catch |err| {
         if (err == error.FileNotFound) {
             if (self.options.create) {
-                try filefmt.writeIndexFile(self.data_dir, &[_]SegmentId{});
+                try self.updateIndexFile(self.file_segments.segments.value);
                 return;
             }
             return error.IndexNotFound;
@@ -254,15 +254,12 @@ fn loadSegments(self: *Self) !void {
     };
     defer self.allocator.free(segment_ids);
 
-    var segments = try FileSegmentList.createShared(self.allocator, segment_ids.len);
-    defer segments.release(self.allocator, .{self.allocator});
+    try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, segment_ids.len);
 
     for (segment_ids) |segment_id| {
         const node = try self.loadSegment(segment_id);
-        segments.value.nodes.appendAssumeCapacity(node);
+        self.file_segments.segments.value.nodes.appendAssumeCapacity(node);
     }
-
-    self.file_segments.segments.swap(&segments);
 }
 
 fn doCheckpoint(self: *Self) !bool {
@@ -299,7 +296,7 @@ fn doCheckpoint(self: *Self) !bool {
 
     file_segments_update.appendSegment(target);
 
-    try self.writeIndexFile(file_segments_update.segments.value);
+    try self.updateIndexFile(file_segments_update.segments.value);
 
     // commit updated lists
 
@@ -343,16 +340,29 @@ fn stopCheckpointThread(self: *Self) void {
     self.checkpoint_thread = null;
 }
 
-fn writeIndexFile(self: *Self, segments: *FileSegmentList) !void {
+fn updateIndexFile(self: *Self, segments: *FileSegmentList) !void {
     var ids = try segments.getIds(self.allocator);
     defer ids.deinit(self.allocator);
 
     try filefmt.writeIndexFile(self.data_dir, ids.items);
 }
 
+fn maybeMergeFileSegments(self: *Self) !bool {
+    var upd = try self.file_segments.prepareMerge() orelse return false;
+    defer self.file_segments.cleanupAfterUpdate(&upd);
+
+    try self.updateIndexFile(upd.segments.value);
+
+    self.segments_lock.lock();
+    defer self.segments_lock.unlock();
+
+    self.file_segments.commitUpdate(&upd);
+    return true;
+}
+
 fn fileSegmentMergeThreadFn(self: *Self) void {
     while (!self.stopping.load(.acquire)) {
-        if (self.file_segments.merge(&self.segments_lock, writeIndexFile, self)) |successful| {
+        if (self.maybeMergeFileSegments()) |successful| {
             if (successful) {
                 continue;
             }
@@ -380,56 +390,20 @@ fn stopFileSegmentMergeThread(self: *Self) void {
     self.file_segment_merge_thread = null;
 }
 
-fn prepareFileSegmentMerge(self: *Self) !?FileSegmentList.PreparedMerge {
-    self.segments_lock.lockShared();
-    defer self.segments_lock.unlockShared();
+fn maybeMergeMemorySegments(self: *Self) !bool {
+    var upd = try self.memory_segments.prepareMerge() orelse return false;
+    defer self.memory_segments.cleanupAfterUpdate(&upd);
 
-    return try self.file_segments.prepareMerge();
-}
-
-fn maybeMergeFileSegments(self: *Self) !bool {
-    var merge = try self.prepareFileSegmentMerge() orelse return false;
-    defer merge.merger.deinit();
-    errdefer self.file_segments.destroySegment(merge.target);
-
-    // We are reading segment data without holding any lock here,
-    // but it's OK, because are the only ones modifying segments.
-    // The only other place with write access to the segment list is
-    // the checkpoint thread, which is only ever adding new segments.
-    try merge.target.data.build(self.data_dir, &merge.merger);
-    errdefer merge.target.data.delete(self.data_dir);
-
-    // By acquiring file_segments_lock, we make sure that the file_segments list
-    // can't be modified by other threads.
-    self.file_segments_lock.lock();
-    defer self.file_segments_lock.unlock();
-
-    var ids = try self.file_segments.getIdsAfterAppliedMerge(merge, self.allocator);
-    defer ids.deinit();
-
-    try filefmt.writeIndexFile(self.data_dir, ids.items);
-
-    // We want to do this outside of segments_lock to avoid blocking searches more than necessary
-    defer self.file_segments.cleanupAfterMerge(merge, .{self.data_dir});
-
-    // This lock allows to modify the file_segments list, it's blocking all other threads.
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
 
-    self.file_segments.applyMerge(merge);
-
-    log.info("committed merge segment {}:{}", .{ merge.target.data.id.version, merge.target.data.id.included_merges });
+    self.memory_segments.commitUpdate(&upd);
     return true;
-}
-
-fn memorySegmentMergePreCommit(self: *Self, segments: *MemorySegmentList) !void {
-    _ = self;
-    _ = segments;
 }
 
 fn memorySegmentMergeThreadFn(self: *Self) void {
     while (!self.stopping.load(.acquire)) {
-        if (self.memory_segments.merge(&self.segments_lock, memorySegmentMergePreCommit, self)) |successful| {
+        if (self.maybeMergeMemorySegments()) |successful| {
             if (successful) {
                 self.checkpoint_event.set();
                 continue;
