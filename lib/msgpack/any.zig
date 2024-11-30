@@ -76,6 +76,11 @@ pub fn packAny(writer: anytype, comptime T: type, value: T) !void {
         .Bool => return packBool(writer, T, value),
         .Int => return packInt(writer, T, value),
         .Float => return packFloat(writer, T, value),
+        .Array => |arr_info| {
+            if (arr_info.child == u8) {
+                return packString(writer, &value);
+            }
+        },
         .Pointer => |ptr_info| {
             if (ptr_info.size == .Slice) {
                 switch (ptr_info.child) {
@@ -86,6 +91,8 @@ pub fn packAny(writer: anytype, comptime T: type, value: T) !void {
                         return packArray(writer, T, value);
                     },
                 }
+            } else if (ptr_info.size == .One) {
+                return packAny(writer, ptr_info.child, value.*);
             }
         },
         .Struct => return packStruct(writer, T, value),

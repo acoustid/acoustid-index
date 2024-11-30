@@ -3,6 +3,8 @@ const httpz = @import("httpz");
 const json = std.json;
 const log = std.log.scoped(.server);
 
+const msgpack = @import("msgpack");
+
 const MultiIndex = @import("MultiIndex.zig");
 const IndexData = MultiIndex.IndexRef;
 const common = @import("common.zig");
@@ -92,6 +94,10 @@ const max_search_timeout = 10000;
 const SearchRequestJSON = struct {
     query: []const u32,
     timeout: u32 = 0,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
 };
 
 const SearchResultJSON = struct {
@@ -122,22 +128,84 @@ fn releaseIndex(ctx: *Context, index: *IndexData) void {
     ctx.indexes.releaseIndex(index);
 }
 
-fn getJsonBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !?T {
-    const body_or_null = req.json(T) catch {
+const ContentType = enum {
+    json,
+    msgpack,
+};
+
+fn parseContentTypeHeader(content_type: []const u8) !ContentType {
+    if (std.mem.eql(u8, content_type, "application/json")) {
+        return .json;
+    } else if (std.mem.eql(u8, content_type, "application/vnd.msgpack")) {
+        return .msgpack;
+    }
+    return error.InvalidContentType;
+}
+
+fn parseAcceptHeader(req: *httpz.Request) ContentType {
+    if (req.header("accept")) |accept_header| {
+        if (std.mem.eql(u8, accept_header, "application/json")) {
+            return .json;
+        } else if (std.mem.eql(u8, accept_header, "application/vnd.msgpack")) {
+            return .msgpack;
+        }
+    }
+    return .json;
+}
+
+fn writeResponse(value: anytype, req: *httpz.Request, res: *httpz.Response) !void {
+    const content_type = parseAcceptHeader(req);
+
+    switch (content_type) {
+        .json => try res.json(value, .{}),
+        .msgpack => {
+            res.header("content-type", "application/vnd.msgpack");
+            try msgpack.encode(res.writer(), @TypeOf(value), value);
+        },
+    }
+}
+
+fn getRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !?T {
+    const content = req.body() orelse {
         res.status = 400;
-        try res.json(.{ .status = "invalid body" }, .{});
+        try writeResponse(.{ .status = "no content" }, req, res);
         return null;
     };
-    if (body_or_null == null) {
-        res.status = 400;
-        try res.json(.{ .status = "invalid body" }, .{});
+
+    const content_type_name = req.header("content-type") orelse {
+        res.status = 415;
+        try writeResponse(.{ .status = "missing content type header" }, req, res);
         return null;
+    };
+    const content_type = parseContentTypeHeader(content_type_name) catch {
+        res.status = 415;
+        try writeResponse(.{ .status = "unsupported content type" }, req, res);
+        return null;
+    };
+
+    switch (content_type) {
+        .json => {
+            return json.parseFromSliceLeaky(T, req.arena, content, .{}) catch {
+                res.status = 400;
+                try writeResponse(.{ .status = "invalid body" }, req, res);
+                return null;
+            };
+        },
+        .msgpack => {
+            var stream = std.io.fixedBufferStream(content);
+            return msgpack.decode(stream.reader(), req.arena, T) catch {
+                res.status = 400;
+                try writeResponse(.{ .status = "invalid body" }, req, res);
+                return null;
+            };
+        },
     }
-    return body_or_null.?;
+
+    unreachable;
 }
 
 fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const body = try getJsonBody(SearchRequestJSON, req, res) orelse return;
+    const body = try getRequestBody(SearchRequestJSON, req, res) orelse return;
 
     const index_ref = try getIndex(ctx, req, res, true) orelse return;
     const index = &index_ref.index;
@@ -157,7 +225,7 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
     const results = index.search(body.query, req.arena, deadline) catch |err| {
         log.err("index search error: {}", .{err});
         res.status = 500;
-        return res.json(.{ .status = "internal error" }, .{});
+        return writeResponse(.{ .status = "internal error" }, req, res);
     };
 
     var results_json = SearchResultsJSON{ .results = try req.arena.alloc(SearchResultJSON, results.count()) };
@@ -166,15 +234,19 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
             results_json.results[i] = SearchResultJSON{ .id = r.id, .score = r.score };
         }
     }
-    return res.json(results_json, .{});
+    return writeResponse(results_json, req, res);
 }
 
 const UpdateRequestJSON = struct {
     changes: []Change,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
 };
 
 fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const body = try getJsonBody(UpdateRequestJSON, req, res) orelse return;
+    const body = try getRequestBody(UpdateRequestJSON, req, res) orelse return;
 
     const index_ref = try getIndex(ctx, req, res, true) orelse return;
     const index = &index_ref.index;
@@ -185,10 +257,10 @@ fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
     index.update(body.changes) catch |err| {
         log.err("index search error: {}", .{err});
         res.status = 500;
-        return res.json(.{ .status = "internal error" }, .{});
+        return writeResponse(.{ .status = "internal error" }, req, res);
     };
 
-    return res.json(.{ .status = "ok" }, .{});
+    return writeResponse(.{ .status = "ok" }, req, res);
 }
 
 fn handleHeadIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
