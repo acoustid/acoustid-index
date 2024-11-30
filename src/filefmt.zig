@@ -92,7 +92,7 @@ test "check writeVarint32" {
 
 pub const max_file_name_size = 64;
 const segment_file_name_fmt = "{x:0>16}-{x:0>8}.data";
-pub const index_file_name = "index.dat";
+pub const manifest_file_name = "manifest";
 
 pub fn buildSegmentFileName(buf: []u8, info: SegmentInfo) []u8 {
     assert(buf.len == max_file_name_size);
@@ -487,26 +487,26 @@ test "writeFile/readFile" {
     }
 }
 
-const index_header_magic_v1: u32 = 0x49445831; // "IDX1" in big endian
+const manifest_header_magic_v1: u32 = 0x49445831; // "IDX1" in big endian
 
-const IndexFileHeader = struct {
-    magic: u32 = index_header_magic_v1,
+const ManifestFileHeader = struct {
+    magic: u32 = manifest_header_magic_v1,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .field_index } };
     }
 };
 
-pub fn writeIndexFile(dir: std.fs.Dir, segments: []const SegmentInfo) !void {
-    log.info("writing index file {s}", .{index_file_name});
+pub fn writeManifestFile(dir: std.fs.Dir, segments: []const SegmentInfo) !void {
+    log.info("writing manifest file {s}", .{manifest_file_name});
 
-    var file = try dir.atomicFile(index_file_name, .{});
+    var file = try dir.atomicFile(manifest_file_name, .{});
     defer file.deinit();
 
     var buffered_writer = std.io.bufferedWriter(file.file.writer());
     const writer = buffered_writer.writer();
 
-    try msgpack.encode(IndexFileHeader{}, writer);
+    try msgpack.encode(ManifestFileHeader{}, writer);
     try msgpack.encode(segments, writer);
 
     try buffered_writer.flush();
@@ -516,23 +516,23 @@ pub fn writeIndexFile(dir: std.fs.Dir, segments: []const SegmentInfo) !void {
     try file.finish();
 
     log.info("wrote index file {s} (segments = {})", .{
-        index_file_name,
+        manifest_file_name,
         segments.len,
     });
 }
 
-pub fn readIndexFile(dir: std.fs.Dir, allocator: std.mem.Allocator) ![]SegmentInfo {
-    log.info("reading index file {s}", .{index_file_name});
+pub fn readManifestFile(dir: std.fs.Dir, allocator: std.mem.Allocator) ![]SegmentInfo {
+    log.info("reading manifest file {s}", .{manifest_file_name});
 
-    var file = try dir.openFile(index_file_name, .{});
+    var file = try dir.openFile(manifest_file_name, .{});
     defer file.close();
 
     var buffered_reader = std.io.bufferedReader(file.reader());
     const reader = buffered_reader.reader();
 
-    const header = try msgpack.decodeLeaky(IndexFileHeader, null, reader);
-    if (header.magic != index_header_magic_v1) {
-        return error.InvalidIndexfile;
+    const header = try msgpack.decodeLeaky(ManifestFileHeader, null, reader);
+    if (header.magic != manifest_header_magic_v1) {
+        return error.InvalidManifestFile;
     }
 
     return try msgpack.decodeLeaky([]SegmentInfo, allocator, reader);
@@ -548,9 +548,9 @@ test "readIndexFile/writeIndexFile" {
         .{ .version = 4, .merges = 0 },
     };
 
-    try writeIndexFile(tmp.dir, &segments);
+    try writeManifestFile(tmp.dir, &segments);
 
-    const segments2 = try readIndexFile(tmp.dir, std.testing.allocator);
+    const segments2 = try readManifestFile(tmp.dir, std.testing.allocator);
     defer std.testing.allocator.free(segments2);
 
     try testing.expectEqualSlices(SegmentInfo, &segments, segments2);

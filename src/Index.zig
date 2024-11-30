@@ -155,10 +155,10 @@ fn loadSegments(self: *Self) !u64 {
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
 
-    const segment_ids = filefmt.readIndexFile(self.dir, self.allocator) catch |err| {
+    const segment_ids = filefmt.readManifestFile(self.dir, self.allocator) catch |err| {
         if (err == error.FileNotFound) {
             if (self.options.create) {
-                try self.updateIndexFile(self.file_segments.segments.value);
+                try self.updateManifestFile(self.file_segments.segments.value);
                 return 0;
             }
             return error.IndexNotFound;
@@ -212,7 +212,7 @@ fn doCheckpoint(self: *Self) !bool {
 
     file_segments_update.appendSegment(target);
 
-    try self.updateIndexFile(file_segments_update.segments.value);
+    try self.updateManifestFile(file_segments_update.segments.value);
 
     // commit updated lists
 
@@ -259,18 +259,18 @@ fn stopCheckpointThread(self: *Self) void {
     self.checkpoint_thread = null;
 }
 
-fn updateIndexFile(self: *Self, segments: *FileSegmentList) !void {
-    var ids = try segments.getInfos(self.allocator);
-    defer ids.deinit(self.allocator);
+fn updateManifestFile(self: *Self, segments: *FileSegmentList) !void {
+    const infos = try segments.getInfos(self.allocator);
+    defer self.allocator.free(infos);
 
-    try filefmt.writeIndexFile(self.dir, ids.items);
+    try filefmt.writeManifestFile(self.dir, infos);
 }
 
 fn maybeMergeFileSegments(self: *Self) !bool {
     var upd = try self.file_segments.prepareMerge(self.allocator) orelse return false;
     defer self.file_segments.cleanupAfterUpdate(self.allocator, &upd);
 
-    try self.updateIndexFile(upd.segments.value);
+    try self.updateManifestFile(upd.segments.value);
 
     self.segments_lock.lock();
     defer self.segments_lock.unlock();

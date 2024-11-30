@@ -100,12 +100,12 @@ pub fn SegmentList(Segment: type) type {
             }
         }
 
-        pub fn getInfos(self: Self, allocator: Allocator) Allocator.Error!std.ArrayListUnmanaged(SegmentInfo) {
-            var ids = try std.ArrayListUnmanaged(SegmentInfo).initCapacity(allocator, self.nodes.items.len);
-            for (self.nodes.items) |node| {
-                ids.appendAssumeCapacity(node.value.info);
+        pub fn getInfos(self: Self, allocator: Allocator) Allocator.Error![]SegmentInfo {
+            var infos = try allocator.alloc(SegmentInfo, self.nodes.items.len);
+            for (self.nodes.items, 0..) |node, i| {
+                infos[i] = node.value.info;
             }
-            return ids;
+            return infos;
         }
 
         pub fn search(self: Self, hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
