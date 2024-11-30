@@ -4,8 +4,8 @@ const Allocator = std.mem.Allocator;
 const SearchResults = @import("common.zig").SearchResults;
 
 const Change = @import("change.zig").Change;
-const SegmentId = @import("common.zig").SegmentId;
 const KeepOrDelete = @import("common.zig").KeepOrDelete;
+const SegmentInfo = @import("segment.zig").SegmentInfo;
 
 const Deadline = @import("utils/Deadline.zig");
 
@@ -89,7 +89,7 @@ pub fn SegmentList(Segment: type) type {
             copy.nodes.clearRetainingCapacity();
             var inserted_merged = false;
             for (self.nodes.items) |n| {
-                if (node.value.id.contains(n.value.id)) {
+                if (node.value.info.contains(n.value.info)) {
                     if (!inserted_merged) {
                         copy.nodes.appendAssumeCapacity(node.acquire());
                         inserted_merged = true;
@@ -100,10 +100,10 @@ pub fn SegmentList(Segment: type) type {
             }
         }
 
-        pub fn getIds(self: Self, allocator: Allocator) Allocator.Error!std.ArrayListUnmanaged(SegmentId) {
-            var ids = try std.ArrayListUnmanaged(SegmentId).initCapacity(allocator, self.nodes.items.len);
+        pub fn getInfos(self: Self, allocator: Allocator) Allocator.Error!std.ArrayListUnmanaged(SegmentInfo) {
+            var ids = try std.ArrayListUnmanaged(SegmentInfo).initCapacity(allocator, self.nodes.items.len);
             for (self.nodes.items) |node| {
-                ids.appendAssumeCapacity(node.value.id);
+                ids.appendAssumeCapacity(node.value.info);
             }
             return ids;
         }
@@ -130,12 +130,12 @@ pub fn SegmentList(Segment: type) type {
             return lhs < rhs.value.id.version;
         }
 
-        pub fn hasNewerVersion(self: *const Self, doc_id: u32, version: u32) bool {
+        pub fn hasNewerVersion(self: *const Self, doc_id: u32, version: u64) bool {
             var i = self.nodes.items.len;
             while (i > 0) {
                 i -= 1;
                 const node = self.nodes.items[i];
-                if (node.value.id.version > version) {
+                if (node.value.info.version > version) {
                     if (node.value.docs.contains(doc_id)) {
                         return true;
                     }

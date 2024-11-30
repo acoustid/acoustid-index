@@ -2,14 +2,13 @@ const std = @import("std");
 
 const common = @import("common.zig");
 const Item = common.Item;
-const SegmentId = common.SegmentId;
+const SegmentInfo = @import("segment.zig").SegmentInfo;
 
 const SharedPtr = @import("utils/smartptr.zig").SharedPtr;
 const SegmentList = @import("segment_list.zig").SegmentList;
 
 pub const MergedSegmentInfo = struct {
-    id: SegmentId,
-    max_commit_id: u64,
+    info: SegmentInfo = .{},
     docs: std.AutoHashMap(u32, bool),
 };
 
@@ -51,9 +50,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
                 .sources = std.ArrayList(Source).init(allocator),
                 .collection = collection,
                 .segment = .{
-                    .id = .{ .version = 0, .included_merges = 0 },
                     .docs = std.AutoHashMap(u32, bool).init(allocator),
-                    .max_commit_id = 0,
                 },
             };
         }
@@ -84,11 +81,9 @@ pub fn SegmentMerger(comptime Segment: type) type {
             var total_docs: u32 = 0;
             for (sources, 0..) |source, i| {
                 if (i == 0) {
-                    self.segment.id = source.reader.segment.id;
-                    self.segment.max_commit_id = source.reader.segment.max_commit_id;
+                    self.segment.info = source.reader.segment.info;
                 } else {
-                    self.segment.id = SegmentId.merge(self.segment.id, source.reader.segment.id);
-                    self.segment.max_commit_id = @max(self.segment.max_commit_id, source.reader.segment.max_commit_id);
+                    self.segment.info = SegmentInfo.merge(self.segment.info, source.reader.segment.info);
                 }
                 total_docs += source.reader.segment.docs.count();
             }
@@ -103,7 +98,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
                     docs_found += 1;
                     const doc_id = entry.key_ptr.*;
                     const doc_status = entry.value_ptr.*;
-                    if (!self.collection.hasNewerVersion(doc_id, segment.id.version)) {
+                    if (!self.collection.hasNewerVersion(doc_id, segment.info.version)) {
                         try self.segment.docs.put(doc_id, doc_status);
                         docs_added += 1;
                     } else {
@@ -163,14 +158,9 @@ test "merge segments" {
     var node3 = try SegmentList(MemorySegment).createSegment(std.testing.allocator, .{});
     collection.nodes.appendAssumeCapacity(node3);
 
-    node1.value.id = SegmentId{ .version = 1, .included_merges = 0 };
-    node1.value.max_commit_id = 11;
-
-    node2.value.id = SegmentId{ .version = 2, .included_merges = 0 };
-    node2.value.max_commit_id = 12;
-
-    node3.value.id = SegmentId{ .version = 3, .included_merges = 0 };
-    node3.value.max_commit_id = 13;
+    node1.value.info = .{ .version = 11, .merges = 0 };
+    node2.value.info = .{ .version = 12, .merges = 0 };
+    node3.value.info = .{ .version = 13, .merges = 0 };
 
     try merger.addSource(node1.value);
     try merger.addSource(node2.value);
@@ -178,9 +168,7 @@ test "merge segments" {
 
     try merger.prepare();
 
-    try std.testing.expectEqual(1, merger.segment.id.version);
-    try std.testing.expectEqual(2, merger.segment.id.included_merges);
-    try std.testing.expectEqual(13, merger.segment.max_commit_id);
+    try std.testing.expectEqualDeep(SegmentInfo{ .version = 11, .merges = 2 }, merger.segment.info);
 
     while (true) {
         const item = try merger.read();

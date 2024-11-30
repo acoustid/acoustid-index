@@ -8,7 +8,7 @@ const Deadline = @import("utils/Deadline.zig");
 const Change = @import("change.zig").Change;
 const SearchResult = @import("common.zig").SearchResult;
 const SearchResults = @import("common.zig").SearchResults;
-const SegmentId = @import("common.zig").SegmentId;
+const SegmentInfo = @import("segment.zig").SegmentInfo;
 
 const Oplog = @import("Oplog.zig");
 
@@ -142,11 +142,11 @@ pub fn deinit(self: *Self) void {
     self.dir.close();
 }
 
-fn loadSegment(self: *Self, segment_id: SegmentId) !FileSegmentNode {
+fn loadSegment(self: *Self, info: SegmentInfo) !FileSegmentNode {
     var node = try FileSegmentList.createSegment(self.allocator, .{ .dir = self.dir });
     errdefer FileSegmentList.destroySegment(self.allocator, &node);
 
-    try node.value.open(segment_id);
+    try node.value.open(info);
 
     return node;
 }
@@ -169,13 +169,13 @@ fn loadSegments(self: *Self) !u64 {
 
     try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, segment_ids.len);
 
-    var max_commit_id: u64 = 0;
+    var last_commit_id: u64 = 0;
     for (segment_ids) |segment_id| {
         const node = try self.loadSegment(segment_id);
         self.file_segments.segments.value.nodes.appendAssumeCapacity(node);
-        max_commit_id = @max(max_commit_id, node.value.max_commit_id);
+        last_commit_id = node.value.info.getLastCommitId();
     }
-    return max_commit_id;
+    return last_commit_id;
 }
 
 fn doCheckpoint(self: *Self) !bool {
@@ -260,7 +260,7 @@ fn stopCheckpointThread(self: *Self) void {
 }
 
 fn updateIndexFile(self: *Self, segments: *FileSegmentList) !void {
-    var ids = try segments.getIds(self.allocator);
+    var ids = try segments.getInfos(self.allocator);
     defer ids.deinit(self.allocator);
 
     try filefmt.writeIndexFile(self.dir, ids.items);
@@ -359,14 +359,14 @@ fn stopMemorySegmentMergeThread(self: *Self) void {
 }
 
 pub fn open(self: *Self) !void {
-    const max_commit_id = try self.loadSegments();
+    const last_commit_id = try self.loadSegments();
 
     // start these threads after loading file segments, but before replaying oplog to memory segments
     try self.startFileSegmentMergeThread();
     try self.startMemorySegmentMergeThread();
     try self.startCheckpointThread();
 
-    try self.oplog.open(max_commit_id + 1, updateInternal, self);
+    try self.oplog.open(last_commit_id + 1, updateInternal, self);
 
     log.info("index loaded", .{});
 }
@@ -406,20 +406,10 @@ pub fn updateInternal(self: *Self, changes: []const Change, commit_id: ?u64) !vo
     var upd = try self.memory_segments.beginUpdate(self.allocator);
     defer self.memory_segments.cleanupAfterUpdate(self.allocator, &upd);
 
-    target.value.max_commit_id = commit_id orelse try self.oplog.write(changes);
+    target.value.info.version = commit_id orelse try self.oplog.write(changes);
 
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
-
-    target.value.id = blk: {
-        if (self.memory_segments.segments.value.getLast()) |n| {
-            break :blk n.value.id.next();
-        } else if (self.file_segments.segments.value.getLast()) |n| {
-            break :blk n.value.id.next();
-        } else {
-            break :blk SegmentId.first();
-        }
-    };
 
     upd.appendSegment(target);
 

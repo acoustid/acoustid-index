@@ -8,7 +8,7 @@ const SearchResults = common.SearchResults;
 const SegmentId = common.SegmentId;
 const KeepOrDelete = common.KeepOrDelete;
 
-const MemorySegment = @import("MemorySegment.zig");
+const SegmentInfo = @import("segment.zig").SegmentInfo;
 
 const filefmt = @import("filefmt.zig");
 
@@ -20,8 +20,7 @@ pub const Options = struct {
 
 allocator: std.mem.Allocator,
 dir: std.fs.Dir,
-id: SegmentId = .{ .version = 0, .included_merges = 0 },
-max_commit_id: u64 = 0,
+info: SegmentInfo = .{},
 docs: std.AutoHashMap(u32, bool),
 index: std.ArrayList(u32),
 block_size: usize = 0,
@@ -82,19 +81,19 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !
             }
             const matches = std.sort.equalRange(Item, Item{ .hash = hash, .id = 0 }, block_items.items, {}, Item.cmpByHash);
             for (matches[0]..matches[1]) |i| {
-                try results.incr(block_items.items[i].id, self.id.version);
+                try results.incr(block_items.items[i].id, self.info.version);
             }
         }
     }
 }
 
-pub fn open(self: *Self, id: SegmentId) !void {
-    try filefmt.readSegmentFile(self.dir, id, self);
+pub fn open(self: *Self, info: SegmentInfo) !void {
+    try filefmt.readSegmentFile(self.dir, info, self);
 }
 
 pub fn delete(self: *Self) void {
     var file_name_buf: [filefmt.max_file_name_size]u8 = undefined;
-    const file_name = filefmt.buildSegmentFileName(&file_name_buf, self.id);
+    const file_name = filefmt.buildSegmentFileName(&file_name_buf, self.info);
 
     log.info("deleting segment file {s}", .{file_name});
 
@@ -113,7 +112,7 @@ pub fn merge(self: *Self, source: anytype) !void {
 
 pub fn build(self: *Self, source: anytype) !void {
     var file_name_buf: [filefmt.max_file_name_size]u8 = undefined;
-    const file_name = filefmt.buildSegmentFileName(&file_name_buf, source.segment.id);
+    const file_name = filefmt.buildSegmentFileName(&file_name_buf, source.segment.info);
 
     try filefmt.writeSegmentFile(self.dir, source);
 
@@ -121,10 +120,12 @@ pub fn build(self: *Self, source: anytype) !void {
         log.err("failed to clean up segment file {s}: {}", .{ file_name, err });
     };
 
-    try filefmt.readSegmentFile(self.dir, source.segment.id, self);
+    try filefmt.readSegmentFile(self.dir, source.segment.info, self);
 }
 
 test "build" {
+    const MemorySegment = @import("MemorySegment.zig");
+
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
@@ -134,7 +135,7 @@ test "build" {
     var source = MemorySegment.init(std.testing.allocator, .{});
     defer source.deinit(.delete);
 
-    source.id.version = 1;
+    source.info = .{ .version = 1 };
     source.frozen = true;
     try source.docs.put(1, true);
     try source.items.append(.{ .id = 1, .hash = 1 });
@@ -148,8 +149,7 @@ test "build" {
 
     try segment.build(&source_reader);
 
-    try std.testing.expectEqual(1, segment.id.version);
-    try std.testing.expectEqual(0, segment.id.included_merges);
+    try std.testing.expectEqualDeep(SegmentInfo{ .version = 1, .merges = 0 }, segment.info);
     try std.testing.expectEqual(1, segment.docs.count());
     try std.testing.expectEqual(1, segment.index.items.len);
 }

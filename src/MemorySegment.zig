@@ -4,8 +4,8 @@ const log = std.log;
 const common = @import("common.zig");
 const Item = common.Item;
 const SearchResults = common.SearchResults;
-const SegmentId = common.SegmentId;
 const KeepOrDelete = common.KeepOrDelete;
+const SegmentInfo = @import("segment.zig").SegmentInfo;
 
 const Change = @import("change.zig").Change;
 
@@ -18,8 +18,7 @@ const Self = @This();
 pub const Options = struct {};
 
 allocator: std.mem.Allocator,
-id: SegmentId = .{ .version = 0, .included_merges = 0 },
-max_commit_id: u64 = 0,
+info: SegmentInfo = .{},
 docs: std.AutoHashMap(u32, bool),
 items: std.ArrayList(Item),
 frozen: bool = false,
@@ -44,7 +43,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !
     for (sorted_hashes) |hash| {
         const matches = std.sort.equalRange(Item, Item{ .hash = hash, .id = 0 }, items, {}, Item.cmpByHash);
         for (matches[0]..matches[1]) |i| {
-            try results.incr(items[i].id, self.id.version);
+            try results.incr(items[i].id, self.info.version);
         }
         items = items[matches[1]..];
     }
@@ -112,8 +111,7 @@ pub fn cleanup(self: *Self) void {
 }
 
 pub fn merge(self: *Self, merger: *SegmentMerger(Self)) !void {
-    self.id = merger.segment.id;
-    self.max_commit_id = merger.segment.max_commit_id;
+    self.info = merger.segment.info;
 
     self.docs.deinit();
     self.docs = merger.segment.docs.move();

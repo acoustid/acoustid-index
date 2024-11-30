@@ -2,6 +2,7 @@ const std = @import("std");
 const testing = std.testing;
 
 const msgpack = @import("msgpack");
+const SegmentInfo = @import("segment.zig").SegmentInfo;
 
 pub const KeepOrDelete = enum {
     keep,
@@ -59,7 +60,7 @@ test "Item array sort" {
 pub const SearchResult = struct {
     id: u32,
     score: u32,
-    version: u32,
+    version: u64,
 
     pub fn cmp(_: void, a: SearchResult, b: SearchResult) bool {
         return a.score > b.score or (a.score == b.score and a.id > b.id);
@@ -81,7 +82,7 @@ pub const SearchResults = struct {
         self.results.deinit();
     }
 
-    pub fn incr(self: *SearchResults, id: u32, version: u32) !void {
+    pub fn incr(self: *SearchResults, id: u32, version: u64) !void {
         const r = try self.results.getOrPut(id);
         if (!r.found_existing or r.value_ptr.version < version) {
             r.value_ptr.id = id;
@@ -139,74 +140,4 @@ test "sort search results" {
         SearchResult{ .id = 2, .score = 2, .version = 1 },
         SearchResult{ .id = 1, .score = 1, .version = 1 },
     }, results.values());
-}
-
-pub const SegmentId = packed struct(u64) {
-    version: u32,
-    included_merges: u32 = 0,
-
-    pub fn cmp(_: void, a: SegmentId, b: SegmentId) bool {
-        const xa: u64 = @bitCast(a);
-        const xb: u64 = @bitCast(b);
-        return xa < xb;
-    }
-
-    pub fn eq(a: SegmentId, b: SegmentId) bool {
-        const xa: u64 = @bitCast(a);
-        const xb: u64 = @bitCast(b);
-        return xa == xb;
-    }
-
-    pub fn contains(self: SegmentId, other: SegmentId) bool {
-        const start = self.version;
-        const end = self.version + self.included_merges;
-
-        const other_start = other.version;
-        const other_end = other.version + other.included_merges;
-
-        return other_start >= start and other_end <= end;
-    }
-
-    pub fn first() SegmentId {
-        return .{
-            .version = 1,
-            .included_merges = 0,
-        };
-    }
-
-    pub fn next(a: SegmentId) SegmentId {
-        return .{
-            .version = a.version + a.included_merges + 1,
-            .included_merges = 0,
-        };
-    }
-
-    pub fn merge(a: SegmentId, b: SegmentId) SegmentId {
-        return .{
-            .version = @min(a.version, b.version),
-            .included_merges = 1 + a.included_merges + b.included_merges,
-        };
-    }
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_array = .{} };
-    }
-};
-
-test "SegmentId.contains" {
-    const a = SegmentId{ .version = 1, .included_merges = 0 };
-    const b = SegmentId{ .version = 2, .included_merges = 0 };
-    const c = SegmentId{ .version = 1, .included_merges = 1 };
-
-    try std.testing.expect(a.contains(a));
-    try std.testing.expect(!a.contains(b));
-    try std.testing.expect(!a.contains(c));
-
-    try std.testing.expect(!b.contains(a));
-    try std.testing.expect(b.contains(b));
-    try std.testing.expect(!b.contains(c));
-
-    try std.testing.expect(c.contains(a));
-    try std.testing.expect(c.contains(b));
-    try std.testing.expect(c.contains(c));
 }
