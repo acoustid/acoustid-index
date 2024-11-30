@@ -358,7 +358,7 @@ pub fn readSegmentFile(dir: fs.Dir, id: SegmentId, segment: *FileSegment) !void 
     var file_name_buf: [max_file_name_size]u8 = undefined;
     const file_name = buildSegmentFileName(&file_name_buf, id);
 
-    log.info("writing segment file {s}", .{file_name});
+    log.info("reading segment file {s}", .{file_name});
 
     var file = try dir.openFile(file_name, .{});
     errdefer file.close();
