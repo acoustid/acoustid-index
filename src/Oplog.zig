@@ -312,6 +312,7 @@ pub const OplogIterator = struct {
             }
             var buf: [file_name_size]u8 = undefined;
             const file_name = try generateFileName(&buf, self.files.items[self.current_file_index].id);
+            log.info("reading oplog file {s}", .{file_name});
             const file = try self.dir.openFile(file_name, .{});
             self.current_iterator = OplogFileIterator.init(self.allocator, file);
         }
