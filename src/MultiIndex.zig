@@ -18,7 +18,7 @@ dir: std.fs.Dir,
 indexes: std.StringHashMap(IndexRef),
 
 fn isValidName(name: []const u8) bool {
-    for (name, 0) |c, i| {
+    for (name, 0..) |c, i| {
         if (i == 0) {
             switch (c) {
                 '0'...'9', 'A'...'Z', 'a'...'z' => {},
@@ -34,8 +34,16 @@ fn isValidName(name: []const u8) bool {
     return true;
 }
 
-const max_sub_dir_name_size = 10;
-const sub_dir_name_fmt = "{x:0>2}";
+test "isValidName" {
+    try std.testing.expect(isValidName("a"));
+    try std.testing.expect(isValidName("a1"));
+    try std.testing.expect(isValidName("a1-b"));
+    try std.testing.expect(isValidName("a1_b"));
+    try std.testing.expect(!isValidName("_1b2"));
+    try std.testing.expect(!isValidName("-1b2"));
+    try std.testing.expect(!isValidName("a/a"));
+    try std.testing.expect(!isValidName(".foo"));
+}
 
 pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) Self {
     return .{
