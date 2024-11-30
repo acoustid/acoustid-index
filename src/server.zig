@@ -103,22 +103,9 @@ const SearchResultsJSON = struct {
     results: []SearchResultJSON,
 };
 
-fn getIndexNo(ctx: *Context, req: *httpz.Request, res: *httpz.Response, send_body: bool) !?u8 {
-    _ = ctx;
-    const index_no_str = req.param("index") orelse "0";
-    const index_no = std.fmt.parseInt(u8, index_no_str, 10) catch {
-        res.status = 400;
-        if (send_body) {
-            try res.json(.{ .status = "invalid index number" }, .{});
-        }
-        return null;
-    };
-    return index_no;
-}
-
 fn getIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response, send_body: bool) !?*IndexData {
-    const index_no = try getIndexNo(ctx, req, res, send_body) orelse return null;
-    const index = ctx.indexes.getIndex(index_no) catch |err| {
+    const index_name = req.param("index") orelse return null;
+    const index = ctx.indexes.getIndex(index_name) catch |err| {
         if (err == error.IndexNotFound) {
             res.status = 404;
             if (send_body) {
@@ -230,9 +217,9 @@ fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
 }
 
 fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_no = try getIndexNo(ctx, req, res, true) orelse return;
+    const index_name = req.param("index") orelse return;
 
-    ctx.indexes.createIndex(index_no) catch |err| {
+    ctx.indexes.createIndex(index_name) catch |err| {
         log.err("index create error: {}", .{err});
         res.status = 500;
         return res.json(.{ .status = "internal error" }, .{});
@@ -242,9 +229,9 @@ fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
 }
 
 fn handleDeleteIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_no = try getIndexNo(ctx, req, res, true) orelse return;
+    const index_name = req.param("index") orelse return;
 
-    ctx.indexes.deleteIndex(index_no) catch |err| {
+    ctx.indexes.deleteIndex(index_name) catch |err| {
         log.err("index delete error: {}", .{err});
         res.status = 500;
         return res.json(.{ .status = "internal error" }, .{});
