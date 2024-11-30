@@ -31,6 +31,7 @@ const TieredMergePolicy = @import("segment_merge_policy.zig").TieredMergePolicy;
 
 const filefmt = @import("filefmt.zig");
 
+const metrics = @import("metrics.zig");
 const Self = @This();
 
 const Options = struct {
@@ -273,6 +274,7 @@ fn maybeMergeFileSegments(self: *Self) !bool {
 
     self.file_segments.commitUpdate(&upd);
     // log.debug("committed file segments merge", .{});
+    metrics.fileSegmentMerge();
 
     return true;
 }
@@ -316,6 +318,7 @@ fn maybeMergeMemorySegments(self: *Self) !bool {
 
     self.memory_segments.commitUpdate(&upd);
     // log.debug("committed memory segments merge", .{});
+    metrics.memorySegmentMerge();
 
     self.maybeScheduleCheckpoint();
 

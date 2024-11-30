@@ -3,8 +3,10 @@ const m = @import("metrics");
 var metrics = m.initializeNoop(Metrics);
 
 const Metrics = struct {
-    searches: m.Counter(u32),
-    updates: m.Counter(u32),
+    searches: m.Counter(u64),
+    updates: m.Counter(u64),
+    memory_segment_merges: m.Counter(u64),
+    file_segment_merges: m.Counter(u64),
 };
 
 pub fn search() void {
@@ -15,10 +17,20 @@ pub fn update(count: usize) void {
     metrics.updates.incrBy(@intCast(count));
 }
 
+pub fn memorySegmentMerge() void {
+    metrics.memory_segment_merges.incr();
+}
+
+pub fn fileSegmentMerge() void {
+    metrics.file_segment_merges.incr();
+}
+
 pub fn initializeMetrics(comptime opts: m.RegistryOpts) !void {
     metrics = .{
-        .searches = m.Counter(u32).init("searches_total", .{}, opts),
-        .updates = m.Counter(u32).init("updates_total", .{}, opts),
+        .searches = m.Counter(u64).init("searches_total", .{}, opts),
+        .updates = m.Counter(u64).init("updates_total", .{}, opts),
+        .memory_segment_merges = m.Counter(u64).init("memory_segment_merges_total", .{}, opts),
+        .file_segment_merges = m.Counter(u64).init("file_segment_merges_total", .{}, opts),
     };
 }
 
