@@ -354,10 +354,15 @@ fn stopMemorySegmentMergeThread(self: *Self) void {
 
 pub fn open(self: *Self) !void {
     try self.loadSegments();
-    try self.oplog.open(self.getMaxCommitId(), updateInternal, self);
-    try self.startCheckpointThread();
+
+    // start these threads after loading file segments, but before replaying oplog to memory segments
     try self.startFileSegmentMergeThread();
     try self.startMemorySegmentMergeThread();
+    try self.startCheckpointThread();
+
+    try self.oplog.open(self.getMaxCommitId(), updateInternal, self);
+
+    log.info("index loaded", .{});
 }
 
 const Checkpoint = struct {
