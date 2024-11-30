@@ -14,14 +14,16 @@ const Message = struct {
 var buffer = std.ArrayList(u8).init(allocator);
 defer buffer.deinit();
 
-try msgpack.encode(buffer.writer(), Message, .{
+try msgpack.encode(Message{
     .name = "John",
     .age = 20,
-});
+}, buffer.writer());
 
-var stream = std.io.fixedBufferStream(buffer.items);
-const message = try decode(stream.reader(), allocator, Message);
-defer allocator.free(message.name);
+const decoded = try msgpack.decodeFromSlice(Message, allocator, buffer.items);
+defer decoded.deinit();
+
+std.debug.assert(std.mem.eql(u8, decoded.name, "John"));
+std.debug.assert(decoded.age == 20);
 ```
 
 Change the default format from using field names to field indexes:

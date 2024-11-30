@@ -211,10 +211,10 @@ pub fn write(self: *Self, changes: []const Change) !u64 {
     var bufferred_writer = std.io.bufferedWriter(file.writer());
     const writer = bufferred_writer.writer();
 
-    try msgpack.encode(writer, Transaction, .{
+    try msgpack.encode(Transaction{
         .id = commit_id,
         .changes = changes,
-    });
+    }, writer);
 
     try bufferred_writer.flush();
 
@@ -341,7 +341,7 @@ pub const OplogFileIterator = struct {
     pub fn next(self: *OplogFileIterator) !?Transaction {
         _ = self.arena.reset(.retain_capacity);
 
-        return msgpack.decode(self.buffered_reader.reader(), self.arena.allocator(), Transaction) catch |err| {
+        return msgpack.decodeLeaky(Transaction, self.arena.allocator(), self.buffered_reader.reader()) catch |err| {
             if (err == error.EndOfStream) {
                 return null;
             }

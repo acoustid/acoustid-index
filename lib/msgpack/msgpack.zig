@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const ArenaAllocator = std.heap.ArenaAllocator;
 
 const NoAllocator = @import("utils.zig").NoAllocator;
 
@@ -245,16 +246,38 @@ pub fn unpacker(reader: anytype, allocator: ?Allocator) Unpacker(@TypeOf(reader)
     return Unpacker(@TypeOf(reader)).init(reader, allocator orelse NoAllocator.allocator());
 }
 
-pub fn unpackerNoAlloc(reader: anytype) Unpacker(@TypeOf(reader)) {
-    return Unpacker(@TypeOf(reader)).init(reader, NoAllocator.allocator());
+pub fn encode(value: anytype, writer: anytype) !void {
+    return try packer(writer).write(@TypeOf(value), value);
 }
 
-pub fn encode(writer: anytype, comptime T: type, value: T) !void {
-    return try packer(writer).write(T, value);
+pub const Decoded = std.json.Parsed;
+
+pub fn decode(comptime T: type, allocator: Allocator, reader: anytype) !Decoded(T) {
+    var parsed = Decoded(T){
+        .arena = try allocator.create(ArenaAllocator),
+        .value = undefined,
+    };
+    errdefer allocator.destroy(parsed.arena);
+    parsed.arena.* = ArenaAllocator.init(allocator);
+    errdefer parsed.arena.deinit();
+
+    parsed.value = try decodeLeaky(T, parsed.arena.allocator(), reader);
+
+    return parsed;
 }
 
-pub fn decode(reader: anytype, allocator: ?Allocator, comptime T: type) !T {
+pub fn decodeLeaky(comptime T: type, allocator: ?Allocator, reader: anytype) !T {
     return try unpacker(reader, allocator).read(T);
+}
+
+pub fn decodeFromSlice(comptime T: type, allocator: Allocator, data: []const u8) !Decoded(T) {
+    var stream = std.io.fixedBufferStream(data);
+    return try decode(T, allocator, stream.reader());
+}
+
+pub fn decodeFromSliceLeaky(comptime T: type, allocator: ?Allocator, data: []const u8) !T {
+    var stream = std.io.fixedBufferStream(data);
+    return try decodeLeaky(T, allocator, stream.reader());
 }
 
 test {

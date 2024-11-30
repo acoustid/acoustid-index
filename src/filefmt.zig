@@ -384,7 +384,7 @@ pub fn readSegmentFile(dir: fs.Dir, id: SegmentId, segment: *FileSegment) !void 
     var fixed_buffer_stream = std.io.fixedBufferStream(raw_data[0..]);
     const reader = fixed_buffer_stream.reader();
 
-    const unpacker = msgpack.unpackerNoAlloc(reader);
+    const unpacker = msgpack.unpacker(reader, null);
 
     const header = try unpacker.read(SegmentFileHeader);
 
@@ -513,8 +513,8 @@ pub fn writeIndexFile(dir: std.fs.Dir, segments: []const SegmentId) !void {
     var buffered_writer = std.io.bufferedWriter(file.file.writer());
     const writer = buffered_writer.writer();
 
-    try msgpack.encode(writer, IndexFileHeader, .{});
-    try msgpack.encode(writer, []const SegmentId, segments);
+    try msgpack.encode(IndexFileHeader{}, writer);
+    try msgpack.encode(segments, writer);
 
     try buffered_writer.flush();
 
@@ -537,12 +537,12 @@ pub fn readIndexFile(dir: std.fs.Dir, allocator: std.mem.Allocator) ![]SegmentId
     var buffered_reader = std.io.bufferedReader(file.reader());
     const reader = buffered_reader.reader();
 
-    const header = try msgpack.decode(reader, allocator, IndexFileHeader);
+    const header = try msgpack.decodeLeaky(IndexFileHeader, null, reader);
     if (header.magic != index_header_magic_v1) {
         return error.InvalidIndexfile;
     }
 
-    return try msgpack.decode(reader, allocator, []SegmentId);
+    return try msgpack.decodeLeaky([]SegmentId, allocator, reader);
 }
 
 test "readIndexFile/writeIndexFile" {

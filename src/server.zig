@@ -160,7 +160,7 @@ fn writeResponse(value: anytype, req: *httpz.Request, res: *httpz.Response) !voi
         .json => try res.json(value, .{}),
         .msgpack => {
             res.header("content-type", "application/vnd.msgpack");
-            try msgpack.encode(res.writer(), @TypeOf(value), value);
+            try msgpack.encode(value, res.writer());
         },
     }
 }
@@ -192,8 +192,7 @@ fn getRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !
             };
         },
         .msgpack => {
-            var stream = std.io.fixedBufferStream(content);
-            return msgpack.decode(stream.reader(), req.arena, T) catch {
+            return msgpack.decodeFromSliceLeaky(T, req.arena, content) catch {
                 res.status = 400;
                 try writeResponse(.{ .status = "invalid body" }, req, res);
                 return null;
