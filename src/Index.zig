@@ -151,7 +151,7 @@ fn loadSegment(self: *Self, segment_id: SegmentId) !FileSegmentNode {
     return node;
 }
 
-fn loadSegments(self: *Self) !void {
+fn loadSegments(self: *Self) !u64 {
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
 
@@ -159,7 +159,7 @@ fn loadSegments(self: *Self) !void {
         if (err == error.FileNotFound) {
             if (self.options.create) {
                 try self.updateIndexFile(self.file_segments.segments.value);
-                return;
+                return 0;
             }
             return error.IndexNotFound;
         }
@@ -169,10 +169,13 @@ fn loadSegments(self: *Self) !void {
 
     try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, segment_ids.len);
 
+    var max_commit_id: u64 = 0;
     for (segment_ids) |segment_id| {
         const node = try self.loadSegment(segment_id);
         self.file_segments.segments.value.nodes.appendAssumeCapacity(node);
+        max_commit_id = @max(max_commit_id, node.value.max_commit_id);
     }
+    return max_commit_id;
 }
 
 fn doCheckpoint(self: *Self) !bool {
@@ -356,22 +359,17 @@ fn stopMemorySegmentMergeThread(self: *Self) void {
 }
 
 pub fn open(self: *Self) !void {
-    try self.loadSegments();
+    const max_commit_id = try self.loadSegments();
 
     // start these threads after loading file segments, but before replaying oplog to memory segments
     try self.startFileSegmentMergeThread();
     try self.startMemorySegmentMergeThread();
     try self.startCheckpointThread();
 
-    try self.oplog.open(self.getMaxCommitId(), updateInternal, self);
+    try self.oplog.open(max_commit_id + 1, updateInternal, self);
 
     log.info("index loaded", .{});
 }
-
-const Checkpoint = struct {
-    src: *MemorySegmentNode,
-    dest: ?*FileSegmentNode = null,
-};
 
 fn maybeScheduleCheckpoint(self: *Self) void {
     if (self.memory_segments.segments.value.getFirst()) |first_node| {
@@ -462,22 +460,15 @@ pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, de
     var results = SearchResults.init(allocator);
     errdefer results.deinit();
 
-    var segments = self.acquireSegments();
-    defer self.releaseSegments(&segments);
+    var snapshot = self.acquireSegments();
+    defer self.releaseSegments(&snapshot); // FIXME this possibly deletes orphaned segments, do it in a separate thread
 
-    try segments.file_segments.value.search(sorted_hashes, &results, deadline);
-    try segments.memory_segments.value.search(sorted_hashes, &results, deadline);
+    try snapshot.file_segments.value.search(sorted_hashes, &results, deadline);
+    try snapshot.memory_segments.value.search(sorted_hashes, &results, deadline);
 
     results.sort();
 
     return results;
-}
-
-pub fn getMaxCommitId(self: *Self) u64 {
-    var segments = self.acquireSegments();
-    defer self.releaseSegments(&segments);
-
-    return @max(segments.file_segments.value.getMaxCommitId(), segments.memory_segments.value.getMaxCommitId());
 }
 
 test {

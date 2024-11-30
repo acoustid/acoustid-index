@@ -272,17 +272,14 @@ fn handleHeadIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !vo
 
 const GetIndexResponse = struct {
     status: []const u8,
-    max_commit_id: u64,
 };
 
 fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index_ref = try getIndex(ctx, req, res, true) orelse return;
-    const index = &index_ref.index;
     defer releaseIndex(ctx, index_ref);
 
     const response = GetIndexResponse{
         .status = "ok",
-        .max_commit_id = index.getMaxCommitId(),
     };
     return res.json(&response, .{});
 }
