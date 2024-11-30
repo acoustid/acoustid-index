@@ -36,7 +36,7 @@ const Self = @This();
 
 const Options = struct {
     create: bool = false,
-    min_segment_size: usize = 250_000,
+    min_segment_size: usize = 500_000,
     max_segment_size: usize = 500_000_000,
 };
 
