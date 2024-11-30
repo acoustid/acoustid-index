@@ -135,8 +135,8 @@ pub fn deinit(self: *Self) void {
     self.stopMemorySegmentMergeThread();
     self.stopFileSegmentMergeThread();
 
-    self.memory_segments.deinit(.keep);
-    self.file_segments.deinit(.keep);
+    self.memory_segments.deinit(self.allocator, .keep);
+    self.file_segments.deinit(self.allocator, .keep);
 
     self.oplog.deinit();
     self.dir.close();
@@ -197,15 +197,15 @@ fn doCheckpoint(self: *Self) !bool {
 
     // update memory segments list
 
-    var memory_segments_update = try self.memory_segments.beginUpdate();
-    defer self.memory_segments.cleanupAfterUpdate(&memory_segments_update);
+    var memory_segments_update = try self.memory_segments.beginUpdate(self.allocator);
+    defer self.memory_segments.cleanupAfterUpdate(self.allocator, &memory_segments_update);
 
     memory_segments_update.removeSegment(source);
 
     // update file segments list
 
-    var file_segments_update = try self.file_segments.beginUpdate();
-    defer self.file_segments.cleanupAfterUpdate(&file_segments_update);
+    var file_segments_update = try self.file_segments.beginUpdate(self.allocator);
+    defer self.file_segments.cleanupAfterUpdate(self.allocator, &file_segments_update);
 
     file_segments_update.appendSegment(target);
 
@@ -264,8 +264,8 @@ fn updateIndexFile(self: *Self, segments: *FileSegmentList) !void {
 }
 
 fn maybeMergeFileSegments(self: *Self) !bool {
-    var upd = try self.file_segments.prepareMerge() orelse return false;
-    defer self.file_segments.cleanupAfterUpdate(&upd);
+    var upd = try self.file_segments.prepareMerge(self.allocator) orelse return false;
+    defer self.file_segments.cleanupAfterUpdate(self.allocator, &upd);
 
     try self.updateIndexFile(upd.segments.value);
 
@@ -310,8 +310,8 @@ fn stopFileSegmentMergeThread(self: *Self) void {
 }
 
 fn maybeMergeMemorySegments(self: *Self) !bool {
-    var upd = try self.memory_segments.prepareMerge() orelse return false;
-    defer self.memory_segments.cleanupAfterUpdate(&upd);
+    var upd = try self.memory_segments.prepareMerge(self.allocator) orelse return false;
+    defer self.memory_segments.cleanupAfterUpdate(self.allocator, &upd);
 
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
@@ -405,8 +405,8 @@ pub fn updateInternal(self: *Self, changes: []const Change, commit_id: ?u64) !vo
 
     try target.value.build(changes);
 
-    var upd = try self.memory_segments.beginUpdate();
-    defer self.memory_segments.cleanupAfterUpdate(&upd);
+    var upd = try self.memory_segments.beginUpdate(self.allocator);
+    defer self.memory_segments.cleanupAfterUpdate(self.allocator, &upd);
 
     target.value.max_commit_id = commit_id orelse try self.oplog.write(changes);
 

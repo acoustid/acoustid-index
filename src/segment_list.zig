@@ -175,7 +175,6 @@ pub fn SegmentListManager(Segment: type) type {
         pub const List = SegmentList(Segment);
         pub const MergePolicy = TieredMergePolicy(List.Node, getSegmentSize(Segment));
 
-        allocator: Allocator,
         options: Segment.Options,
         segments: SharedPtr(List),
         merge_policy: MergePolicy,
@@ -185,7 +184,6 @@ pub fn SegmentListManager(Segment: type) type {
         pub fn init(allocator: Allocator, options: Segment.Options, merge_policy: MergePolicy) !Self {
             const segments = try SharedPtr(List).create(allocator, List.initEmpty());
             return Self{
-                .allocator = allocator,
                 .options = options,
                 .segments = segments,
                 .merge_policy = merge_policy,
@@ -194,8 +192,8 @@ pub fn SegmentListManager(Segment: type) type {
             };
         }
 
-        pub fn deinit(self: *Self, delete_files: KeepOrDelete) void {
-            self.segments.release(self.allocator, .{ self.allocator, delete_files });
+        pub fn deinit(self: *Self, allocator: Allocator, delete_files: KeepOrDelete) void {
+            self.segments.release(allocator, .{ allocator, delete_files });
         }
 
         pub fn count(self: Self) usize {
@@ -209,17 +207,17 @@ pub fn SegmentListManager(Segment: type) type {
             return self.segments.acquire();
         }
 
-        fn destroySegments(self: *Self, segments: *SharedPtr(List)) void {
-            List.destroySegments(self.allocator, segments);
+        fn destroySegments(allocator: Allocator, segments: *SharedPtr(List)) void {
+            List.destroySegments(allocator, segments);
         }
 
         pub fn needsMerge(self: Self) bool {
             return self.segments.value.nodes.items.len > self.num_allowed_segments.load(.acquire);
         }
 
-        pub fn prepareMerge(self: *Self) !?Update {
+        pub fn prepareMerge(self: *Self, allocator: Allocator) !?Update {
             var segments = self.acquireSegments();
-            defer self.destroySegments(&segments);
+            defer destroySegments(allocator, &segments);
 
             self.num_allowed_segments.store(self.merge_policy.calculateBudget(segments.value.nodes.items), .release);
             if (!self.needsMerge()) {
@@ -228,10 +226,10 @@ pub fn SegmentListManager(Segment: type) type {
 
             const candidate = self.merge_policy.findSegmentsToMerge(segments.value.nodes.items) orelse return null;
 
-            var target = try List.createSegment(self.allocator, self.options);
-            defer List.destroySegment(self.allocator, &target);
+            var target = try List.createSegment(allocator, self.options);
+            defer List.destroySegment(allocator, &target);
 
-            var merger = SegmentMerger(Segment).init(self.allocator, segments.value);
+            var merger = SegmentMerger(Segment).init(allocator, segments.value);
             defer merger.deinit();
 
             for (segments.value.nodes.items[candidate.start..candidate.end]) |segment| {
@@ -242,7 +240,7 @@ pub fn SegmentListManager(Segment: type) type {
             try target.value.merge(&merger);
             errdefer target.value.cleanup();
 
-            var update = try self.beginUpdate();
+            var update = try self.beginUpdate(allocator);
             update.replaceMergedSegment(target);
 
             return update;
@@ -266,15 +264,15 @@ pub fn SegmentListManager(Segment: type) type {
             }
         };
 
-        pub fn beginUpdate(self: *Self) !Update {
+        pub fn beginUpdate(self: *Self, allocator: Allocator) !Update {
             self.update_lock.lock();
             errdefer self.update_lock.unlock();
 
-            var segments = try SharedPtr(List).create(self.allocator, List.initEmpty());
-            errdefer self.destroySegments(&segments);
+            var segments = try SharedPtr(List).create(allocator, List.initEmpty());
+            errdefer destroySegments(allocator, &segments);
 
             // allocate memory for one extra segment, if it's going to be unused, it's going to be unused, but we need to have it ready
-            try segments.value.nodes.ensureTotalCapacity(self.allocator, self.count() + 1);
+            try segments.value.nodes.ensureTotalCapacity(allocator, self.count() + 1);
 
             return .{
                 .manager = self,
@@ -288,11 +286,11 @@ pub fn SegmentListManager(Segment: type) type {
             update.committed = true;
         }
 
-        pub fn cleanupAfterUpdate(self: *Self, update: *Update) void {
+        pub fn cleanupAfterUpdate(self: *Self, allocator: Allocator, update: *Update) void {
             if (!update.committed) {
                 self.update_lock.unlock();
             }
-            self.destroySegments(&update.segments);
+            destroySegments(allocator, &update.segments);
         }
     };
 }
