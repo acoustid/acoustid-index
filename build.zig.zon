@@ -35,6 +35,10 @@
             .url = "git+https://github.com/karlseguin/metrics.zig?ref=zig-0.13#fcf9e94fa54a20f4954e9821801c32e44d407a2f",
             .hash = "12201776681f1e5ec6df7df30786e90771c5de564c941a309c73c4299c7864ddb4c3",
         },
+        .msgpack = .{
+            .url = "git+https://github.com/lalinsky/msgpack.zig?ref=main#7c0a9846b33063199e56e50d683b4ca8785c773e",
+            .hash = "12207a2d5cff5690049e70a0ce65c8a7b67bf385abc3acf86caa42db2a921c83a269",
+        },
     },
     .paths = .{
         "build.zig",
