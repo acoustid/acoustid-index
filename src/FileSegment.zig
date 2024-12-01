@@ -154,16 +154,6 @@ test "build" {
     try std.testing.expectEqual(1, segment.index.items.len);
 }
 
-pub fn isFrozen(self: Self) bool {
-    _ = self;
-    return false;
-}
-
-pub fn canBeMerged(self: Self) bool {
-    _ = self;
-    return true;
-}
-
 pub fn getSize(self: Self) usize {
     return self.num_items;
 }
