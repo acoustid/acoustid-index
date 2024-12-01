@@ -23,7 +23,7 @@ const FileSegment = @import("FileSegment.zig");
 const FileSegmentList = SegmentList(FileSegment);
 const FileSegmentNode = FileSegmentList.Node;
 
-const SharedPtr = @import("utils/smartptr.zig").SharedPtr;
+const SharedPtr = @import("utils/shared_ptr.zig").SharedPtr;
 
 const SegmentMerger = @import("segment_merger.zig").SegmentMerger;
 

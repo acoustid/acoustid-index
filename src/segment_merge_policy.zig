@@ -1,7 +1,7 @@
 const std = @import("std");
 const log = std.log.scoped(.segment_merge_policy);
 
-const SharedPtr = @import("utils/smartptr.zig").SharedPtr;
+const SharedPtr = @import("utils/shared_ptr.zig").SharedPtr;
 
 // This code is largely based on Michael McCandless' TieredMergePolicy from Lucene:
 //   https://issues.apache.org/jira/browse/LUCENE-854

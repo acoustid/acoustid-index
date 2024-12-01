@@ -4,7 +4,7 @@ const common = @import("common.zig");
 const Item = common.Item;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
 
-const SharedPtr = @import("utils/smartptr.zig").SharedPtr;
+const SharedPtr = @import("utils/shared_ptr.zig").SharedPtr;
 const SegmentList = @import("segment_list.zig").SegmentList;
 
 pub const MergedSegmentInfo = struct {

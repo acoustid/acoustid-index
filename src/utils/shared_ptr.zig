@@ -14,11 +14,13 @@ pub fn RefCounter(comptime T: type) type {
             };
         }
 
+        // Increases the reference count.
         pub fn incr(self: *Self) void {
             const prev_ref_count = self.refs.fetchAdd(1, .monotonic);
             std.debug.assert(prev_ref_count > 0);
         }
 
+        // Decreases the reference count and returns true if it reached zero.
         pub fn decr(self: *Self) bool {
             const prev_ref_count = self.refs.fetchSub(1, .monotonic);
             if (prev_ref_count == 1) {
@@ -60,21 +62,10 @@ pub fn SharedPtr(comptime T: type) type {
             return .{ .value = &inner_ptr.value };
         }
 
-        pub fn release(self: *Self, allocator: Allocator, deinit_args: anytype) void {
+        pub fn release(self: *Self, allocator: Allocator, cleanupFn: anytype, cleanup_args: anytype) void {
             const inner_ptr = self.getInnerPtr();
             if (inner_ptr.refs.decr()) {
-                if (std.meta.hasMethod(T, "deinit")) {
-                    @call(.auto, T.deinit, .{&inner_ptr.value} ++ deinit_args);
-                }
-                allocator.destroy(inner_ptr);
-                self.value = undefined;
-            }
-        }
-
-        pub fn releaseWithCleanup(self: *Self, allocator: Allocator, cleanupFn: anytype, extra_args: anytype) void {
-            const inner_ptr = self.getInnerPtr();
-            if (inner_ptr.refs.decr()) {
-                @call(.auto, cleanupFn, .{&inner_ptr.value} ++ extra_args);
+                @call(.auto, cleanupFn, .{&inner_ptr.value} ++ cleanup_args);
                 allocator.destroy(inner_ptr);
                 self.value = undefined;
             }

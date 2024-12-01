@@ -9,7 +9,7 @@ const SegmentInfo = @import("segment.zig").SegmentInfo;
 
 const Deadline = @import("utils/Deadline.zig");
 
-const SharedPtr = @import("utils/smartptr.zig").SharedPtr;
+const SharedPtr = @import("utils/shared_ptr.zig").SharedPtr;
 const TieredMergePolicy = @import("segment_merge_policy.zig").TieredMergePolicy;
 const SegmentMerger = @import("segment_merger.zig").SegmentMerger;
 
@@ -51,7 +51,7 @@ pub fn SegmentList(Segment: type) type {
 
         pub fn deinit(self: *Self, allocator: Allocator, delete_files: KeepOrDelete) void {
             for (self.nodes.items) |*node| {
-                node.release(allocator, .{delete_files});
+                node.release(allocator, Segment.deinit, .{delete_files});
             }
             self.nodes.deinit(allocator);
         }
@@ -61,11 +61,11 @@ pub fn SegmentList(Segment: type) type {
         }
 
         pub fn destroySegment(allocator: Allocator, segment: *Node) void {
-            segment.release(allocator, .{.delete});
+            segment.release(allocator, Segment.deinit, .{.delete});
         }
 
         pub fn destroySegments(allocator: Allocator, segments: *SharedPtr(Self)) void {
-            segments.release(allocator, .{ allocator, .delete });
+            segments.release(allocator, Self.deinit, .{ allocator, .delete });
         }
 
         pub fn appendSegmentInto(self: Self, copy: *Self, node: Node) void {
@@ -173,7 +173,7 @@ pub fn SegmentListManager(Segment: type) type {
         }
 
         pub fn deinit(self: *Self, allocator: Allocator, delete_files: KeepOrDelete) void {
-            self.segments.release(allocator, .{ allocator, delete_files });
+            self.segments.release(allocator, List.deinit, .{ allocator, delete_files });
         }
 
         pub fn count(self: Self) usize {
