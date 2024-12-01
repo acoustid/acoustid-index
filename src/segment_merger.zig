@@ -1,11 +1,9 @@
 const std = @import("std");
 
-const common = @import("common.zig");
-const Item = common.Item;
+const Item = @import("segment.zig").Item;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
-
-const SharedPtr = @import("utils/shared_ptr.zig").SharedPtr;
 const SegmentList = @import("segment_list.zig").SegmentList;
+const SharedPtr = @import("utils/shared_ptr.zig").SharedPtr;
 
 pub const MergedSegmentInfo = struct {
     info: SegmentInfo = .{},

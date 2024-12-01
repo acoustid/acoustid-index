@@ -8,8 +8,7 @@ const log = std.log.scoped(.filefmt);
 
 const msgpack = @import("msgpack");
 
-const common = @import("common.zig");
-const Item = common.Item;
+const Item = @import("segment.zig").Item;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
 const MemorySegment = @import("MemorySegment.zig");
 const FileSegment = @import("FileSegment.zig");

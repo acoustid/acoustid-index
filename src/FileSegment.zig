@@ -3,11 +3,10 @@ const log = std.log.scoped(.segment);
 const assert = std.debug.assert;
 
 const common = @import("common.zig");
-const Item = common.Item;
 const SearchResults = common.SearchResults;
-const SegmentId = common.SegmentId;
 const KeepOrDelete = common.KeepOrDelete;
 
+const Item = @import("segment.zig").Item;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
 
 const filefmt = @import("filefmt.zig");

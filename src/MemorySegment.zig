@@ -2,10 +2,10 @@ const std = @import("std");
 const log = std.log;
 
 const common = @import("common.zig");
-const Item = common.Item;
 const SearchResults = common.SearchResults;
 const KeepOrDelete = common.KeepOrDelete;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
+const Item = @import("segment.zig").Item;
 
 const Change = @import("change.zig").Change;
 
