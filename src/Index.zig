@@ -260,8 +260,12 @@ fn stopCheckpointThread(self: *Self) void {
 }
 
 fn updateManifestFile(self: *Self, segments: *FileSegmentList) !void {
-    const infos = try segments.getInfos(self.allocator);
+    const infos = try self.allocator.alloc(SegmentInfo, segments.nodes.items.len);
     defer self.allocator.free(infos);
+
+    for (segments.nodes.items, 0..) |node, i| {
+        infos[i] = node.value.info;
+    }
 
     try filefmt.writeManifestFile(self.dir, infos);
 }

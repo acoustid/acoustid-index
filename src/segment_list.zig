@@ -100,14 +100,6 @@ pub fn SegmentList(Segment: type) type {
             }
         }
 
-        pub fn getInfos(self: Self, allocator: Allocator) Allocator.Error![]SegmentInfo {
-            var infos = try allocator.alloc(SegmentInfo, self.nodes.items.len);
-            for (self.nodes.items, 0..) |node, i| {
-                infos[i] = node.value.info;
-            }
-            return infos;
-        }
-
         pub fn search(self: Self, hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
             for (self.nodes.items) |node| {
                 if (deadline.isExpired()) {
@@ -116,14 +108,6 @@ pub fn SegmentList(Segment: type) type {
                 try node.value.search(hashes, results);
             }
             results.removeOutdatedResults(self);
-        }
-
-        pub fn getMaxCommitId(self: Self) u64 {
-            var max_commit_id: u64 = 0;
-            for (self.nodes.items) |node| {
-                max_commit_id = @max(max_commit_id, node.value.max_commit_id);
-            }
-            return max_commit_id;
         }
 
         fn compareByVersion(_: void, lhs: u32, rhs: Node) bool {
@@ -144,10 +128,6 @@ pub fn SegmentList(Segment: type) type {
                 }
             }
             return false;
-        }
-
-        pub fn count(self: Self) usize {
-            return self.nodes.items.len;
         }
 
         pub fn getFirst(self: Self) ?Node {
