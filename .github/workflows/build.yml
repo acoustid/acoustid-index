@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+      packages: ${{ github.event_name == 'pull_request' && 'read' || 'write' }}
     steps:
       - uses: actions/checkout@v4
 
