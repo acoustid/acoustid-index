@@ -1,4 +1,10 @@
-# Experimental version of AcoustID index
+# Next generation of AcoustID fingerprint index
+
+## Key changes from the first version
+
+- Written in Zig instead of C++
+- Supports updates and deletes
+- HTTP API that can be used for managing multiple indexes
 
 ## Building
 
