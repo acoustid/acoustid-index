@@ -4,8 +4,9 @@
 
 - Written in Zig instead of C++
 - Supports updates and deletes
-- Fast and concurrent write operations using WAL and in-memory segments
 - HTTP API that can be used for managing multiple indexes
+- Fast and concurrent write operations using WAL and in-memory segments
+- Simplified internal file format, using msgpack for serialization wherever possible
 
 ## Building
 
