@@ -9,6 +9,11 @@ pub const MergedSegmentInfo = struct {
     info: SegmentInfo = .{},
     attributes: std.AutoHashMapUnmanaged(u64, u64) = .{},
     docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
+
+    pub fn deinit(self: *MergedSegmentInfo, allocator: std.mem.Allocator) void {
+        self.attributes.deinit(allocator);
+        self.docs.deinit(allocator);
+    }
 };
 
 pub fn SegmentMerger(comptime Segment: type) type {
@@ -36,8 +41,8 @@ pub fn SegmentMerger(comptime Segment: type) type {
         };
 
         allocator: std.mem.Allocator,
-        sources: std.ArrayList(Source),
         collection: *SegmentList(Segment),
+        sources: std.ArrayListUnmanaged(Source) = .{},
         segment: MergedSegmentInfo = .{},
         estimated_size: usize = 0,
 
@@ -46,7 +51,6 @@ pub fn SegmentMerger(comptime Segment: type) type {
         pub fn init(allocator: std.mem.Allocator, collection: *SegmentList(Segment)) Self {
             return .{
                 .allocator = allocator,
-                .sources = std.ArrayList(Source).init(allocator),
                 .collection = collection,
             };
         }
@@ -56,13 +60,13 @@ pub fn SegmentMerger(comptime Segment: type) type {
                 source.reader.close();
                 source.skip_docs.deinit(self.allocator);
             }
-            self.sources.deinit();
-            self.segment.docs.deinit(self.allocator);
+            self.sources.deinit(self.allocator);
+            self.segment.deinit(self.allocator);
             self.* = undefined;
         }
 
         pub fn addSource(self: *Self, source: *Segment) !void {
-            try self.sources.append(.{
+            try self.sources.append(self.allocator, .{
                 .reader = source.reader(),
             });
         }
