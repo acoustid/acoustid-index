@@ -270,16 +270,35 @@ fn handleHeadIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !vo
     return;
 }
 
+const Attributes = struct {
+    attributes: std.AutoHashMapUnmanaged(u64, u64),
+
+    pub fn jsonStringify(self: Attributes, jws: anytype) !void {
+        try jws.beginArray();
+        var iter = self.attributes.iterator();
+        while (iter.next()) |entry| {
+            try jws.beginArray();
+            try jws.write(entry.key_ptr.*);
+            try jws.write(entry.value_ptr.*);
+            try jws.endArray();
+        }
+        try jws.endArray();
+    }
+};
+
 const GetIndexResponse = struct {
     status: []const u8,
+    attributes: Attributes,
 };
 
 fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index_ref = try getIndex(ctx, req, res, true) orelse return;
     defer releaseIndex(ctx, index_ref);
 
+    const attributes = try index_ref.index.getAttributes(req.arena);
     const response = GetIndexResponse{
         .status = "ok",
+        .attributes = .{ .attributes = attributes },
     };
     return res.json(&response, .{});
 }

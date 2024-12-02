@@ -446,6 +446,11 @@ fn releaseSegments(self: *Self, segments: *SegmentsSnapshot) void {
     FileSegmentList.destroySegments(self.allocator, &segments.file_segments);
 }
 
+const segment_lists = [_][]const u8{
+    "file_segments",
+    "memory_segments",
+};
+
 pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, deadline: Deadline) !SearchResults {
     const sorted_hashes = try allocator.dupe(u32, hashes);
     defer allocator.free(sorted_hashes);
@@ -457,12 +462,37 @@ pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, de
     var snapshot = self.acquireSegments();
     defer self.releaseSegments(&snapshot); // FIXME this possibly deletes orphaned segments, do it in a separate thread
 
-    try snapshot.file_segments.value.search(sorted_hashes, &results, deadline);
-    try snapshot.memory_segments.value.search(sorted_hashes, &results, deadline);
+    inline for (segment_lists) |n| {
+        const segments = @field(snapshot, n);
+        try segments.value.search(sorted_hashes, &results, deadline);
+    }
 
     results.sort();
 
     return results;
+}
+
+pub fn getAttributes(self: *Self, allocator: std.mem.Allocator) !std.AutoHashMapUnmanaged(u64, u64) {
+    var result: std.AutoHashMapUnmanaged(u64, u64) = .{};
+    errdefer result.deinit(allocator);
+
+    var snapshot = self.acquireSegments();
+    defer self.releaseSegments(&snapshot); // FIXME this possibly deletes orphaned segments, do it in a separate thread
+
+    var last_version: u64 = 0;
+    inline for (segment_lists) |n| {
+        const segments = @field(snapshot, n);
+        for (segments.value.nodes.items) |node| {
+            var iter = node.value.attributes.iterator();
+            while (iter.next()) |entry| {
+                try result.put(allocator, entry.key_ptr.*, entry.value_ptr.*);
+            }
+            std.debug.assert(node.value.info.version > last_version);
+            last_version = node.value.info.version;
+        }
+    }
+
+    return result;
 }
 
 test {
