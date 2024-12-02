@@ -117,7 +117,7 @@ fn getIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response, send_body:
     const index = ctx.indexes.getIndex(index_name) catch |err| {
         if (err == error.IndexNotFound) {
             if (send_body) {
-                try writeErrorResponse(400, err, req, res);
+                try writeErrorResponse(404, err, req, res);
             } else {
                 res.status = 404;
             }
@@ -246,11 +246,11 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 
     const results = try index.search(body.query, req.arena, deadline);
 
-    var results_json = SearchResultsJSON{ .results = try req.arena.alloc(SearchResultJSON, results.count()) };
+    var results_json = SearchResultsJSON{
+        .results = try req.arena.alloc(SearchResultJSON, results.count()),
+    };
     for (results.values(), 0..) |r, i| {
-        if (r.score > 0) {
-            results_json.results[i] = SearchResultJSON{ .id = r.id, .score = r.score };
-        }
+        results_json.results[i] = SearchResultJSON{ .id = r.id, .score = r.score };
     }
     return writeResponse(results_json, req, res);
 }
@@ -274,7 +274,7 @@ fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 
     try index.update(body.changes);
 
-    return writeResponse(.{ .status = "ok" }, req, res);
+    return writeResponse(EmptyResponse{}, req, res);
 }
 
 fn handleHeadIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {

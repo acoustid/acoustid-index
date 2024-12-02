@@ -49,11 +49,16 @@ pub const SearchResults = struct {
         return self.results.count();
     }
 
+    pub fn values(self: SearchResults) []SearchResult {
+        return self.results.values();
+    }
+
     pub fn get(self: SearchResults, id: u32) ?SearchResult {
         return self.results.get(id);
     }
 
     pub fn sort(self: *SearchResults) void {
+        // sort by score in descending order
         const Ctx = struct {
             values: []SearchResult,
             pub fn lessThan(ctx: @This(), a: usize, b: usize) bool {
@@ -63,16 +68,14 @@ pub const SearchResults = struct {
         self.results.sort(Ctx{ .values = self.results.values() });
     }
 
-    pub fn values(self: SearchResults) []SearchResult {
-        return self.results.values();
-    }
-
     pub fn removeOutdatedResults(self: *SearchResults, collection: anytype) void {
-        var iter = self.results.iterator();
-        while (iter.next()) |*entry| {
-            var result = entry.value_ptr;
+        var i: usize = 0;
+        while (i < self.results.count()) {
+            const result = self.results.values()[i];
             if (collection.hasNewerVersion(result.id, result.version)) {
-                result.score = 0;
+                self.results.swapRemoveAt(i);
+            } else {
+                i += 1;
             }
         }
     }
