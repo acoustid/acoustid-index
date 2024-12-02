@@ -64,7 +64,7 @@ POST /:indexname/_update
 {
   "changes": [
     {"insert": {"id": 1, "hashes": [100, 200, 300]}},
-    {"delete": {"id": 2}
+    {"delete": {"id": 2}}
   ]
 }
 ```
