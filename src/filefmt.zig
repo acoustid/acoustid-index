@@ -200,11 +200,12 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
     var segment = MemorySegment.init(std.testing.allocator, .{});
     defer segment.deinit(.delete);
 
-    try segment.items.append(.{ .hash = 1, .id = 1 });
-    try segment.items.append(.{ .hash = 2, .id = 1 });
-    try segment.items.append(.{ .hash = 3, .id = 1 });
-    try segment.items.append(.{ .hash = 3, .id = 2 });
-    try segment.items.append(.{ .hash = 4, .id = 1 });
+    try segment.items.ensureTotalCapacity(std.testing.allocator, 5);
+    segment.items.appendAssumeCapacity(.{ .hash = 1, .id = 1 });
+    segment.items.appendAssumeCapacity(.{ .hash = 2, .id = 1 });
+    segment.items.appendAssumeCapacity(.{ .hash = 3, .id = 1 });
+    segment.items.appendAssumeCapacity(.{ .hash = 3, .id = 2 });
+    segment.items.appendAssumeCapacity(.{ .hash = 4, .id = 1 });
 
     const block_size = 1024;
     var block_data: [block_size]u8 = undefined;
@@ -442,8 +443,8 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
 
     const blocks_data_start = fixed_buffer_stream.pos;
 
-    const estimated_block_count = (raw_data.len - fixed_buffer_stream.pos) / block_size;
-    try segment.index.ensureTotalCapacity(estimated_block_count);
+    const max_possible_block_count = (raw_data.len - fixed_buffer_stream.pos) / block_size;
+    try segment.index.ensureTotalCapacity(segment.allocator, max_possible_block_count);
 
     var num_items: u32 = 0;
     var num_blocks: u32 = 0;
@@ -457,7 +458,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
         if (block_header.num_items == 0) {
             break;
         }
-        try segment.index.append(block_header.first_item.hash);
+        segment.index.appendAssumeCapacity(block_header.first_item.hash);
         num_items += block_header.num_items;
         num_blocks += 1;
         crc.update(block_data[0..]);
