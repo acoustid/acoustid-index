@@ -13,6 +13,9 @@ class Client:
         self.session = session
         self.base_url = base_url
 
+    def head(self, url, **kwargs):
+        return self.session.head(urljoin(self.base_url, url), **kwargs)
+
     def get(self, url, **kwargs):
         return self.session.get(urljoin(self.base_url, url), **kwargs)
 
