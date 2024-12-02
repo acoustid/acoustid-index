@@ -238,23 +238,35 @@ const segment_file_header_magic_v1: u32 = 0x53474D31; // "SGM1" in big endian
 const segment_file_footer_magic_v1: u32 = @byteSwap(segment_file_header_magic_v1);
 
 pub const SegmentFileHeader = struct {
-    magic: u32 = segment_file_header_magic_v1,
-    block_size: u32,
+    magic: u32,
     info: SegmentInfo,
+    has_attributes: bool,
+    has_docs: bool,
+    block_size: u32,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{
             .as_map = .{
-                .key = .field_index,
+                .key = .field_index, // FIXME
                 .omit_defaults = false,
                 .omit_nulls = true,
             },
         };
     }
+
+    pub fn msgpackFieldKey(field: std.meta.FieldEnum(@This())) u8 {
+        return switch (field) {
+            .magic => 0x00,
+            .info => 0x01,
+            .has_attributes => 0x02,
+            .has_docs => 0x03,
+            .block_size => 0x04,
+        };
+    }
 };
 
 pub const SegmentFileFooter = struct {
-    magic: u32 = segment_file_footer_magic_v1,
+    magic: u32,
     num_items: u32,
     num_blocks: u32,
     checksum: u64,
@@ -262,10 +274,19 @@ pub const SegmentFileFooter = struct {
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{
             .as_map = .{
-                .key = .field_index,
+                .key = .field_index, // FIXME
                 .omit_defaults = false,
                 .omit_nulls = true,
             },
+        };
+    }
+
+    pub fn msgpackFieldKey(field: std.meta.FieldEnum(@This())) u8 {
+        return switch (field) {
+            .magic => 0x00,
+            .num_items => 0x01,
+            .num_blocks => 0x02,
+            .checksum => 0x03,
         };
     }
 };
@@ -299,11 +320,15 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
     const packer = msgpack.packer(writer);
 
     const header = SegmentFileHeader{
+        .magic = segment_file_header_magic_v1,
         .block_size = block_size,
         .info = segment.info,
+        .has_attributes = true,
+        .has_docs = true,
     };
     try packer.write(SegmentFileHeader, header);
 
+    try packer.writeMap(segment.attributes);
     try packer.writeMap(segment.docs);
 
     try buffered_writer.flush();
@@ -393,7 +418,18 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     segment.info = header.info;
     segment.block_size = header.block_size;
 
-    try unpacker.readMapInto(&segment.docs);
+    if (header.has_attributes) {
+        // FIXME nicer api in msgpack.zig
+        var attributes = std.AutoHashMap(u64, u64).init(segment.allocator);
+        defer attributes.deinit();
+        try unpacker.readMapInto(&attributes);
+        segment.attributes.deinit(segment.allocator);
+        segment.attributes = attributes.unmanaged.move();
+    }
+
+    if (header.has_docs) {
+        try unpacker.readMapInto(&segment.docs);
+    }
 
     const block_size = header.block_size;
     const padding_size = block_size - fixed_buffer_stream.pos % block_size;
