@@ -14,9 +14,13 @@ Building from source code:
 
     zig build
 
-Running tests:
+Running unit tests:
 
     zig build test --summary all
+
+Running integration tests:
+
+    pytest -vv tests/
 
 ## HTTP API
 
