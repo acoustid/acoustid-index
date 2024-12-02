@@ -22,6 +22,14 @@ jobs:
       - run: zig build test --summary all
       - run: zig build
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - run: pip install -r tests/requirements.txt
+      - run: pytest -v tests/
+
       - name: Log in to the Container registry
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
