@@ -56,6 +56,7 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) Self {
 pub fn deinit(self: *Self) void {
     var iter = self.indexes.iterator();
     while (iter.next()) |entry| {
+        self.allocator.free(entry.key_ptr.*);
         entry.value_ptr.index.deinit();
     }
     self.indexes.deinit();
