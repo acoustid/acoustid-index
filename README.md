@@ -14,6 +14,10 @@ Building from source code:
 
     zig build
 
+Running server:
+
+    zig build run -- --dir /tmp/fpindex --port 8080 --log-level debug
+
 Running unit tests:
 
     zig build test --summary all
