@@ -64,7 +64,8 @@ pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const 
     var server = try Server.init(allocator, config, &ctx);
     defer server.deinit();
 
-    server.errorHandler(errorHandler);
+    server.errorHandler(handleError);
+    server.notFound(handleNotFound);
 
     try installSignalHandlers(&server);
 
@@ -179,7 +180,11 @@ const ErrorResponse = struct {
     }
 };
 
-fn errorHandler(_: *Context, req: *httpz.Request, res: *httpz.Response, err: anyerror) void {
+fn handleNotFound(_: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    try writeErrorResponse(404, error.NotFound, req, res);
+}
+
+fn handleError(_: *Context, req: *httpz.Request, res: *httpz.Response, err: anyerror) void {
     log.err("unhandled error in {s}: {any}", .{ req.url.raw, err });
     writeErrorResponse(500, err, req, res) catch {
         res.status = 500;
