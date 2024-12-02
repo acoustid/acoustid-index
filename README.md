@@ -18,20 +18,43 @@ Running tests:
 
     zig build test --summary all
 
-## Using via HTTP API
+## HTTP API
 
-Create index:
+### Create index
 
-    curl -XPUT -v http://localhost:8080/indexname
+Creates a new index.
 
-Add a fingerprint:
+```
+PUT /:indexname
+```
 
-    curl -XPOST -d '{"changes": [{"insert": {"id": 1, "hashes": [1,2,3]}}]}' -v http://localhost:8080/indexname/_update
+### Delete index
 
-Delete a fingerprint:
+Deletes an index.
 
-    curl -XPOST -d '{"changes": [{"delete": {"id": 2}}]}' -v http://localhost:8080/indexname/_update
+```
+DELETE /:indexname
+```
 
-Search for a fingerprint:
+### Update
 
-    curl -XPOST -d '{"query": [1,2,3], "timeout": 10}' -v http://localhost:8080/indexname/_search
+Performs multiple operations on an index.
+
+```
+POST /:indexname/_update
+{
+  "changes": [
+    {"insert": {"id": 1, "hashes": [100, 200, 300]}},
+    {"delete": {"id": 2},
+  ]
+}
+```
+
+### Search
+
+Searches for a fingerprint in the index.
+
+```
+POST /:indexname/_search
+{"query": [100, 200, 300], "timeout": 10}
+```
