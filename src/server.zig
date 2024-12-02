@@ -64,6 +64,9 @@ pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const 
     var server = try Server.init(allocator, config, &ctx);
     defer server.deinit();
 
+    server.errorHandler(handleError);
+    server.notFound(handleNotFound);
+
     try installSignalHandlers(&server);
 
     var router = server.router();
@@ -113,9 +116,10 @@ fn getIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response, send_body:
     const index_name = req.param("index") orelse return null;
     const index = ctx.indexes.getIndex(index_name) catch |err| {
         if (err == error.IndexNotFound) {
-            res.status = 404;
             if (send_body) {
-                try res.json(.{ .status = "index not found" }, .{});
+                try writeErrorResponse(400, err, req, res);
+            } else {
+                res.status = 404;
             }
             return null;
         }
@@ -133,13 +137,16 @@ const ContentType = enum {
     msgpack,
 };
 
-fn parseContentTypeHeader(content_type: []const u8) !ContentType {
-    if (std.mem.eql(u8, content_type, "application/json")) {
-        return .json;
-    } else if (std.mem.eql(u8, content_type, "application/vnd.msgpack")) {
-        return .msgpack;
+fn parseContentTypeHeader(req: *httpz.Request) !ContentType {
+    if (req.header("content-type")) |content_type| {
+        if (std.mem.eql(u8, content_type, "application/json")) {
+            return .json;
+        } else if (std.mem.eql(u8, content_type, "application/vnd.msgpack")) {
+            return .msgpack;
+        }
+        return error.InvalidContentType;
     }
-    return error.InvalidContentType;
+    return .json;
 }
 
 fn parseAcceptHeader(req: *httpz.Request) ContentType {
@@ -165,36 +172,52 @@ fn writeResponse(value: anytype, req: *httpz.Request, res: *httpz.Response) !voi
     }
 }
 
+const ErrorResponse = struct {
+    @"error": []const u8,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+fn handleNotFound(_: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    try writeErrorResponse(404, error.NotFound, req, res);
+}
+
+fn handleError(_: *Context, req: *httpz.Request, res: *httpz.Response, err: anyerror) void {
+    log.err("unhandled error in {s}: {any}", .{ req.url.raw, err });
+    writeErrorResponse(500, err, req, res) catch {
+        res.status = 500;
+        res.body = "internal error";
+    };
+}
+
+fn writeErrorResponse(status: u16, err: anyerror, req: *httpz.Request, res: *httpz.Response) !void {
+    res.status = status;
+    try writeResponse(ErrorResponse{ .@"error" = @errorName(err) }, req, res);
+}
+
 fn getRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !?T {
     const content = req.body() orelse {
-        res.status = 400;
-        try writeResponse(.{ .status = "no content" }, req, res);
+        try writeErrorResponse(400, error.NoContent, req, res);
         return null;
     };
 
-    const content_type_name = req.header("content-type") orelse {
-        res.status = 415;
-        try writeResponse(.{ .status = "missing content type header" }, req, res);
-        return null;
-    };
-    const content_type = parseContentTypeHeader(content_type_name) catch {
-        res.status = 415;
-        try writeResponse(.{ .status = "unsupported content type" }, req, res);
+    const content_type = parseContentTypeHeader(req) catch {
+        try writeErrorResponse(415, error.UnsupportedContentType, req, res);
         return null;
     };
 
     switch (content_type) {
         .json => {
             return json.parseFromSliceLeaky(T, req.arena, content, .{}) catch {
-                res.status = 400;
-                try writeResponse(.{ .status = "invalid body" }, req, res);
+                try writeErrorResponse(400, error.InvalidContent, req, res);
                 return null;
             };
         },
         .msgpack => {
             return msgpack.decodeFromSliceLeaky(T, req.arena, content) catch {
-                res.status = 400;
-                try writeResponse(.{ .status = "invalid body" }, req, res);
+                try writeErrorResponse(400, error.InvalidContent, req, res);
                 return null;
             };
         },
@@ -221,11 +244,7 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 
     metrics.search();
 
-    const results = index.search(body.query, req.arena, deadline) catch |err| {
-        log.err("index search error: {}", .{err});
-        res.status = 500;
-        return writeResponse(.{ .status = "internal error" }, req, res);
-    };
+    const results = try index.search(body.query, req.arena, deadline);
 
     var results_json = SearchResultsJSON{ .results = try req.arena.alloc(SearchResultJSON, results.count()) };
     for (results.values(), 0..) |r, i| {
@@ -253,11 +272,7 @@ fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 
     metrics.update(body.changes.len);
 
-    index.update(body.changes) catch |err| {
-        log.err("index search error: {}", .{err});
-        res.status = 500;
-        return writeResponse(.{ .status = "internal error" }, req, res);
-    };
+    try index.update(body.changes);
 
     return writeResponse(.{ .status = "ok" }, req, res);
 }
@@ -265,9 +280,6 @@ fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 fn handleHeadIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index_ref = try getIndex(ctx, req, res, false) orelse return;
     defer releaseIndex(ctx, index_ref);
-
-    res.status = 200;
-    return;
 }
 
 const Attributes = struct {
@@ -284,47 +296,56 @@ const Attributes = struct {
         }
         try jws.endArray();
     }
+
+    pub fn msgpackWrite(self: Attributes, packer: anytype) !void {
+        try packer.writeMapHeader(self.attributes.count());
+        var iter = self.attributes.iterator();
+        while (iter.next()) |entry| {
+            try packer.write(@TypeOf(entry.key_ptr.*), entry.key_ptr.*);
+            try packer.write(@TypeOf(entry.value_ptr.*), entry.value_ptr.*);
+        }
+    }
 };
 
 const GetIndexResponse = struct {
-    status: []const u8,
+    version: u64,
     attributes: Attributes,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
 };
 
 fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index_ref = try getIndex(ctx, req, res, true) orelse return;
     defer releaseIndex(ctx, index_ref);
 
-    const attributes = try index_ref.index.getAttributes(req.arena);
+    const info = try index_ref.index.getInfo(req.arena);
     const response = GetIndexResponse{
-        .status = "ok",
-        .attributes = .{ .attributes = attributes },
+        .version = info.version,
+        .attributes = .{
+            .attributes = info.attributes,
+        },
     };
-    return res.json(&response, .{});
+    return writeResponse(response, req, res);
 }
+
+const EmptyResponse = struct {};
 
 fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = req.param("index") orelse return;
 
-    ctx.indexes.createIndex(index_name) catch |err| {
-        log.err("index create error: {}", .{err});
-        res.status = 500;
-        return res.json(.{ .status = "internal error" }, .{});
-    };
+    try ctx.indexes.createIndex(index_name);
 
-    return res.json(.{ .status = "ok" }, .{});
+    return writeResponse(EmptyResponse{}, req, res);
 }
 
 fn handleDeleteIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = req.param("index") orelse return;
 
-    ctx.indexes.deleteIndex(index_name) catch |err| {
-        log.err("index delete error: {}", .{err});
-        res.status = 500;
-        return res.json(.{ .status = "internal error" }, .{});
-    };
+    try ctx.indexes.deleteIndex(index_name);
 
-    return res.json(.{ .status = "ok" }, .{});
+    return writeResponse(EmptyResponse{}, req, res);
 }
 
 fn handlePing(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {

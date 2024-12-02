@@ -472,27 +472,39 @@ pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, de
     return results;
 }
 
-pub fn getAttributes(self: *Self, allocator: std.mem.Allocator) !std.AutoHashMapUnmanaged(u64, u64) {
-    var result: std.AutoHashMapUnmanaged(u64, u64) = .{};
-    errdefer result.deinit(allocator);
+pub const IndexInfo = struct {
+    version: u64,
+    attributes: std.AutoHashMapUnmanaged(u64, u64),
 
+    pub fn deinit(self: *IndexInfo, allocator: std.mem.Allocator) void {
+        self.attributes.deinit(allocator);
+    }
+};
+
+pub fn getInfo(self: *Self, allocator: std.mem.Allocator) !IndexInfo {
     var snapshot = self.acquireSegments();
     defer self.releaseSegments(&snapshot); // FIXME this possibly deletes orphaned segments, do it in a separate thread
 
-    var last_version: u64 = 0;
+    var attributes: std.AutoHashMapUnmanaged(u64, u64) = .{};
+    errdefer attributes.deinit(allocator);
+
+    var version: u64 = 0;
     inline for (segment_lists) |n| {
         const segments = @field(snapshot, n);
         for (segments.value.nodes.items) |node| {
             var iter = node.value.attributes.iterator();
             while (iter.next()) |entry| {
-                try result.put(allocator, entry.key_ptr.*, entry.value_ptr.*);
+                try attributes.put(allocator, entry.key_ptr.*, entry.value_ptr.*);
             }
-            std.debug.assert(node.value.info.version > last_version);
-            last_version = node.value.info.version;
+            std.debug.assert(node.value.info.version > version);
+            version = node.value.info.version;
         }
     }
 
-    return result;
+    return .{
+        .version = version,
+        .attributes = attributes,
+    };
 }
 
 test {
