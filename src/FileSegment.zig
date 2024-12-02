@@ -21,8 +21,8 @@ allocator: std.mem.Allocator,
 dir: std.fs.Dir,
 info: SegmentInfo = .{},
 attributes: std.AutoHashMapUnmanaged(u64, u64) = .{},
-docs: std.AutoHashMap(u32, bool),
-index: std.ArrayList(u32),
+docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
+index: std.ArrayListUnmanaged(u32) = .{},
 block_size: usize = 0,
 blocks: []const u8,
 merged: u32 = 0,
@@ -35,16 +35,14 @@ pub fn init(allocator: std.mem.Allocator, options: Options) Self {
     return Self{
         .allocator = allocator,
         .dir = options.dir,
-        .docs = std.AutoHashMap(u32, bool).init(allocator),
-        .index = std.ArrayList(u32).init(allocator),
         .blocks = undefined,
     };
 }
 
 pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
     self.attributes.deinit(self.allocator);
-    self.docs.deinit();
-    self.index.deinit();
+    self.docs.deinit(self.allocator);
+    self.index.deinit(self.allocator);
 
     if (self.raw_data) |data| {
         std.posix.munmap(data);
@@ -138,9 +136,9 @@ test "build" {
 
     source.info = .{ .version = 1 };
     source.frozen = true;
-    try source.docs.put(1, true);
-    try source.items.append(.{ .id = 1, .hash = 1 });
-    try source.items.append(.{ .id = 1, .hash = 2 });
+    try source.docs.put(source.allocator, 1, true);
+    try source.items.append(source.allocator, .{ .id = 1, .hash = 1 });
+    try source.items.append(source.allocator, .{ .id = 1, .hash = 2 });
 
     var source_reader = source.reader();
     defer source_reader.close();

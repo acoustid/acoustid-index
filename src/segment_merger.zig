@@ -8,7 +8,12 @@ const SharedPtr = @import("utils/shared_ptr.zig").SharedPtr;
 pub const MergedSegmentInfo = struct {
     info: SegmentInfo = .{},
     attributes: std.AutoHashMapUnmanaged(u64, u64) = .{},
-    docs: std.AutoHashMap(u32, bool),
+    docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
+
+    pub fn deinit(self: *MergedSegmentInfo, allocator: std.mem.Allocator) void {
+        self.attributes.deinit(allocator);
+        self.docs.deinit(allocator);
+    }
 };
 
 pub fn SegmentMerger(comptime Segment: type) type {
@@ -17,7 +22,12 @@ pub fn SegmentMerger(comptime Segment: type) type {
 
         const Source = struct {
             reader: Segment.Reader,
-            skip_docs: std.AutoHashMap(u32, void),
+            skip_docs: std.AutoHashMapUnmanaged(u32, void) = .{},
+
+            pub fn deinit(self: *Source, allocator: std.mem.Allocator) void {
+                self.reader.close();
+                self.skip_docs.deinit(allocator);
+            }
 
             pub fn read(self: *Source) !?Item {
                 while (true) {
@@ -36,38 +46,33 @@ pub fn SegmentMerger(comptime Segment: type) type {
         };
 
         allocator: std.mem.Allocator,
-        sources: std.ArrayList(Source),
         collection: *SegmentList(Segment),
-        segment: MergedSegmentInfo,
+        sources: std.ArrayListUnmanaged(Source) = .{},
+        segment: MergedSegmentInfo = .{},
         estimated_size: usize = 0,
 
         current_item: ?Item = null,
 
-        pub fn init(allocator: std.mem.Allocator, collection: *SegmentList(Segment)) Self {
+        pub fn init(allocator: std.mem.Allocator, collection: *SegmentList(Segment), num_sources: usize) !Self {
             return .{
                 .allocator = allocator,
-                .sources = std.ArrayList(Source).init(allocator),
                 .collection = collection,
-                .segment = .{
-                    .docs = std.AutoHashMap(u32, bool).init(allocator),
-                },
+                .sources = try std.ArrayListUnmanaged(Source).initCapacity(allocator, num_sources),
             };
         }
 
         pub fn deinit(self: *Self) void {
             for (self.sources.items) |*source| {
-                source.reader.close();
-                source.skip_docs.deinit();
+                source.deinit(self.allocator);
             }
-            self.sources.deinit();
-            self.segment.docs.deinit();
+            self.sources.deinit(self.allocator);
+            self.segment.deinit(self.allocator);
             self.* = undefined;
         }
 
-        pub fn addSource(self: *Self, source: *Segment) !void {
-            try self.sources.append(.{
+        pub fn addSource(self: *Self, source: *Segment) void {
+            self.sources.appendAssumeCapacity(.{
                 .reader = source.reader(),
-                .skip_docs = std.AutoHashMap(u32, void).init(self.allocator),
             });
         }
 
@@ -100,7 +105,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
                 }
             }
 
-            try self.segment.docs.ensureTotalCapacity(total_docs);
+            try self.segment.docs.ensureTotalCapacity(self.allocator, total_docs);
             for (sources) |*source| {
                 const segment = source.reader.segment;
                 var docs_added: usize = 0;
@@ -111,10 +116,10 @@ pub fn SegmentMerger(comptime Segment: type) type {
                     const doc_id = entry.key_ptr.*;
                     const doc_status = entry.value_ptr.*;
                     if (!self.collection.hasNewerVersion(doc_id, segment.info.version)) {
-                        try self.segment.docs.put(doc_id, doc_status);
+                        try self.segment.docs.put(self.allocator, doc_id, doc_status);
                         docs_added += 1;
                     } else {
-                        try source.skip_docs.put(doc_id, {});
+                        try source.skip_docs.put(self.allocator, doc_id, {});
                     }
                 }
                 if (docs_found > 0) {
@@ -158,7 +163,7 @@ test "merge segments" {
     var collection = try SegmentList(MemorySegment).init(std.testing.allocator, 3);
     defer collection.deinit(std.testing.allocator, .delete);
 
-    var merger = SegmentMerger(MemorySegment).init(std.testing.allocator, &collection);
+    var merger = try SegmentMerger(MemorySegment).init(std.testing.allocator, &collection, 3);
     defer merger.deinit();
 
     var node1 = try SegmentList(MemorySegment).createSegment(std.testing.allocator, .{});
@@ -174,9 +179,9 @@ test "merge segments" {
     node2.value.info = .{ .version = 12, .merges = 0 };
     node3.value.info = .{ .version = 13, .merges = 0 };
 
-    try merger.addSource(node1.value);
-    try merger.addSource(node2.value);
-    try merger.addSource(node3.value);
+    merger.addSource(node1.value);
+    merger.addSource(node2.value);
+    merger.addSource(node3.value);
 
     try merger.prepare();
 

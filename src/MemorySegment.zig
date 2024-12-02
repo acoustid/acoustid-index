@@ -20,16 +20,14 @@ pub const Options = struct {};
 allocator: std.mem.Allocator,
 info: SegmentInfo = .{},
 attributes: std.AutoHashMapUnmanaged(u64, u64) = .{},
-docs: std.AutoHashMap(u32, bool),
-items: std.ArrayList(Item),
+docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
+items: std.ArrayListUnmanaged(Item) = .{},
 frozen: bool = false,
 
 pub fn init(allocator: std.mem.Allocator, opts: Options) Self {
     _ = opts;
     return .{
         .allocator = allocator,
-        .docs = std.AutoHashMap(u32, bool).init(allocator),
-        .items = std.ArrayList(Item).init(allocator),
     };
 }
 
@@ -37,8 +35,8 @@ pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
     _ = delete_file;
 
     self.attributes.deinit(self.allocator);
-    self.docs.deinit();
-    self.items.deinit();
+    self.docs.deinit(self.allocator);
+    self.items.deinit(self.allocator);
 }
 
 pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !void {
@@ -76,8 +74,8 @@ pub fn build(self: *Self, changes: []const Change) !void {
     }
 
     try self.attributes.ensureTotalCapacity(self.allocator, num_attributes);
-    try self.docs.ensureTotalCapacity(num_docs);
-    try self.items.ensureTotalCapacity(num_items);
+    try self.docs.ensureTotalCapacity(self.allocator, num_docs);
+    try self.items.ensureTotalCapacity(self.allocator, num_items);
 
     var i = changes.len;
     while (i > 0) {
@@ -124,14 +122,14 @@ pub fn merge(self: *Self, merger: *SegmentMerger(Self)) !void {
     self.attributes.deinit(self.allocator);
     self.attributes = merger.segment.attributes.move();
 
-    self.docs.deinit();
+    self.docs.deinit(self.allocator);
     self.docs = merger.segment.docs.move();
 
     self.items.clearRetainingCapacity();
-    try self.items.ensureTotalCapacity(merger.estimated_size);
+    try self.items.ensureTotalCapacity(self.allocator, merger.estimated_size);
     while (true) {
         const item = try merger.read() orelse break;
-        try self.items.append(item);
+        try self.items.append(self.allocator, item);
         merger.advance();
     }
 }
