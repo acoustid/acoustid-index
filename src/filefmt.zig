@@ -428,7 +428,12 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     }
 
     if (header.has_docs) {
-        try unpacker.readMapInto(&segment.docs);
+        // FIXME nicer api in msgpack.zig
+        var docs = std.AutoHashMap(u32, bool).init(segment.allocator);
+        defer docs.deinit();
+        try unpacker.readMapInto(&docs);
+        segment.docs.deinit(segment.allocator);
+        segment.docs = docs.unmanaged.move();
     }
 
     const block_size = header.block_size;

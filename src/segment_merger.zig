@@ -8,7 +8,7 @@ const SharedPtr = @import("utils/shared_ptr.zig").SharedPtr;
 pub const MergedSegmentInfo = struct {
     info: SegmentInfo = .{},
     attributes: std.AutoHashMapUnmanaged(u64, u64) = .{},
-    docs: std.AutoHashMap(u32, bool),
+    docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
 };
 
 pub fn SegmentMerger(comptime Segment: type) type {
@@ -38,7 +38,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
         allocator: std.mem.Allocator,
         sources: std.ArrayList(Source),
         collection: *SegmentList(Segment),
-        segment: MergedSegmentInfo,
+        segment: MergedSegmentInfo = .{},
         estimated_size: usize = 0,
 
         current_item: ?Item = null,
@@ -48,9 +48,6 @@ pub fn SegmentMerger(comptime Segment: type) type {
                 .allocator = allocator,
                 .sources = std.ArrayList(Source).init(allocator),
                 .collection = collection,
-                .segment = .{
-                    .docs = std.AutoHashMap(u32, bool).init(allocator),
-                },
             };
         }
 
@@ -60,7 +57,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
                 source.skip_docs.deinit();
             }
             self.sources.deinit();
-            self.segment.docs.deinit();
+            self.segment.docs.deinit(self.allocator);
             self.* = undefined;
         }
 
@@ -100,7 +97,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
                 }
             }
 
-            try self.segment.docs.ensureTotalCapacity(total_docs);
+            try self.segment.docs.ensureTotalCapacity(self.allocator, total_docs);
             for (sources) |*source| {
                 const segment = source.reader.segment;
                 var docs_added: usize = 0;
@@ -111,7 +108,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
                     const doc_id = entry.key_ptr.*;
                     const doc_status = entry.value_ptr.*;
                     if (!self.collection.hasNewerVersion(doc_id, segment.info.version)) {
-                        try self.segment.docs.put(doc_id, doc_status);
+                        try self.segment.docs.put(self.allocator, doc_id, doc_status);
                         docs_added += 1;
                     } else {
                         try source.skip_docs.put(doc_id, {});

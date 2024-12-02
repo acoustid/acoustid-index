@@ -20,7 +20,7 @@ pub const Options = struct {};
 allocator: std.mem.Allocator,
 info: SegmentInfo = .{},
 attributes: std.AutoHashMapUnmanaged(u64, u64) = .{},
-docs: std.AutoHashMap(u32, bool),
+docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
 items: std.ArrayList(Item),
 frozen: bool = false,
 
@@ -28,7 +28,6 @@ pub fn init(allocator: std.mem.Allocator, opts: Options) Self {
     _ = opts;
     return .{
         .allocator = allocator,
-        .docs = std.AutoHashMap(u32, bool).init(allocator),
         .items = std.ArrayList(Item).init(allocator),
     };
 }
@@ -37,7 +36,7 @@ pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
     _ = delete_file;
 
     self.attributes.deinit(self.allocator);
-    self.docs.deinit();
+    self.docs.deinit(self.allocator);
     self.items.deinit();
 }
 
@@ -76,7 +75,7 @@ pub fn build(self: *Self, changes: []const Change) !void {
     }
 
     try self.attributes.ensureTotalCapacity(self.allocator, num_attributes);
-    try self.docs.ensureTotalCapacity(num_docs);
+    try self.docs.ensureTotalCapacity(self.allocator, num_docs);
     try self.items.ensureTotalCapacity(num_items);
 
     var i = changes.len;
@@ -124,7 +123,7 @@ pub fn merge(self: *Self, merger: *SegmentMerger(Self)) !void {
     self.attributes.deinit(self.allocator);
     self.attributes = merger.segment.attributes.move();
 
-    self.docs.deinit();
+    self.docs.deinit(self.allocator);
     self.docs = merger.segment.docs.move();
 
     self.items.clearRetainingCapacity();
