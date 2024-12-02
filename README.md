@@ -22,16 +22,16 @@ Running tests:
 
 Create index:
 
-    curl -XPUT -v http://localhost:8080/1/_update
+    curl -XPUT -v http://localhost:8080/indexname
 
 Add a fingerprint:
 
-    curl -XPOST -d '{"changes": [{"insert": {"id": 1, "hashes": [1,2,3]}}]}' -v http://localhost:8080/1/_update
+    curl -XPOST -d '{"changes": [{"insert": {"id": 1, "hashes": [1,2,3]}}]}' -v http://localhost:8080/indexname/_update
 
 Delete a fingerprint:
 
-    curl -XPOST -d '{"changes": [{"delete": {"id": 2}}]}' -v http://localhost:8080/1/_update
+    curl -XPOST -d '{"changes": [{"delete": {"id": 2}}]}' -v http://localhost:8080/indexname/_update
 
 Search for a fingerprint:
 
-    curl -XPOST -d '{"query": [1,2,3], "timeout": 10}' -v http://localhost:8080/_search
+    curl -XPOST -d '{"query": [1,2,3], "timeout": 10}' -v http://localhost:8080/indexname/_search
