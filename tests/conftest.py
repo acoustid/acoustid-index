@@ -1,22 +1,22 @@
 import requests
 import pytest
 import subprocess
+import time
 import socket
 from urllib.parse import urljoin
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture()
 def server_port():
     sock = socket.socket()
     sock.bind(('', 0))
     return sock.getsockname()[1]
 
 
-@pytest.fixture(scope='session')
-def server(server_port, tmp_path_factory):
-    tmp_dir = tmp_path_factory.mktemp("server")
-    data_dir = tmp_dir / 'data'
-    stderr = tmp_dir / 'server.stderr.log'
+@pytest.fixture()
+def server(server_port, tmp_path):
+    data_dir = tmp_path / 'data'
+    stderr = tmp_path / 'server.stderr.log'
     command = [
         'zig-out/bin/fpindex',
         '--dir', str(data_dir),
@@ -30,11 +30,11 @@ def server(server_port, tmp_path_factory):
         stderr=stderr.open('w'),
     )
     yield
-    process.terminate()
-    retcode = process.wait()
-    if retcode != 0:
-        for line in stderr.read_text().splitlines():
-            print(line)
+    if process.returncode is None:
+        process.terminate()
+        process.wait()
+    for line in stderr.read_text().splitlines():
+        print(line)
 
 
 @pytest.fixture
@@ -69,18 +69,22 @@ def session():
         yield session
 
 
+def check_port(port_no):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        return sock.connect_ex(('127.0.0.1', port_no)) == 0
+
+
 @pytest.fixture
 def client(session, server_port, server):
+    deadline = time.time() + 1
+    while not check_port(server_port):
+        if time.time() > deadline:
+            raise TimeoutError()
+        time.sleep(0.01)
     return Client(session, f'http://localhost:{server_port}')
 
 
-@pytest.fixture(autouse=True)
-def delete_index(client, index_name):
-    req = client.delete(f'/{index_name}')
-    req.raise_for_status()
-
-
 @pytest.fixture()
-def create_index(client, index_name, delete_index):
+def create_index(client, index_name):
     req = client.put(f'/{index_name}')
     req.raise_for_status()
