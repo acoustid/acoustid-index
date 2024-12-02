@@ -20,6 +20,7 @@ pub const Options = struct {
 allocator: std.mem.Allocator,
 dir: std.fs.Dir,
 info: SegmentInfo = .{},
+attributes: std.AutoHashMapUnmanaged(u64, u64) = .{},
 docs: std.AutoHashMap(u32, bool),
 index: std.ArrayList(u32),
 block_size: usize = 0,
@@ -41,6 +42,7 @@ pub fn init(allocator: std.mem.Allocator, options: Options) Self {
 }
 
 pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
+    self.attributes.deinit(self.allocator);
     self.docs.deinit();
     self.index.deinit();
 

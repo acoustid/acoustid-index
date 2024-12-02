@@ -19,6 +19,7 @@ pub const Options = struct {};
 
 allocator: std.mem.Allocator,
 info: SegmentInfo = .{},
+attributes: std.AutoHashMapUnmanaged(u64, u64) = .{},
 docs: std.AutoHashMap(u32, bool),
 items: std.ArrayList(Item),
 frozen: bool = false,
@@ -34,6 +35,8 @@ pub fn init(allocator: std.mem.Allocator, opts: Options) Self {
 
 pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
     _ = delete_file;
+
+    self.attributes.deinit(self.allocator);
     self.docs.deinit();
     self.items.deinit();
 }
@@ -54,6 +57,7 @@ pub fn getSize(self: Self) usize {
 }
 
 pub fn build(self: *Self, changes: []const Change) !void {
+    var num_attributes: u32 = 0;
     var num_docs: u32 = 0;
     var num_items: usize = 0;
     for (changes) |change| {
@@ -65,9 +69,13 @@ pub fn build(self: *Self, changes: []const Change) !void {
             .delete => {
                 num_docs += 1;
             },
+            .set_attribute => {
+                num_attributes += 1;
+            },
         }
     }
 
+    try self.attributes.ensureTotalCapacity(self.allocator, num_attributes);
     try self.docs.ensureTotalCapacity(num_docs);
     try self.items.ensureTotalCapacity(num_items);
 
@@ -92,6 +100,12 @@ pub fn build(self: *Self, changes: []const Change) !void {
                     result.value_ptr.* = false;
                 }
             },
+            .set_attribute => |op| {
+                const result = self.attributes.getOrPutAssumeCapacity(op.key);
+                if (!result.found_existing) {
+                    result.value_ptr.* = op.value;
+                }
+            },
         }
     }
 
@@ -103,7 +117,12 @@ pub fn cleanup(self: *Self) void {
 }
 
 pub fn merge(self: *Self, merger: *SegmentMerger(Self)) !void {
+    std.debug.assert(self.allocator.ptr == merger.allocator.ptr);
+
     self.info = merger.segment.info;
+
+    self.attributes.deinit(self.allocator);
+    self.attributes = merger.segment.attributes.move();
 
     self.docs.deinit();
     self.docs = merger.segment.docs.move();

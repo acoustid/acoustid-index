@@ -17,9 +17,19 @@ pub const Delete = struct {
     }
 };
 
+pub const SetAttribute = struct {
+    key: u64,
+    value: u64,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
 pub const Change = union(enum) {
     insert: Insert,
     delete: Delete,
+    set_attribute: SetAttribute,
 
     pub fn msgpackFormat() msgpack.UnionFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };

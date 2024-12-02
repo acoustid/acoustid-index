@@ -7,6 +7,7 @@ const SharedPtr = @import("utils/shared_ptr.zig").SharedPtr;
 
 pub const MergedSegmentInfo = struct {
     info: SegmentInfo = .{},
+    attributes: std.AutoHashMapUnmanaged(u64, u64) = .{},
     docs: std.AutoHashMap(u32, bool),
 };
 
@@ -76,6 +77,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
                 return error.NoSources;
             }
 
+            var total_attributes: u32 = 0;
             var total_docs: u32 = 0;
             for (sources, 0..) |source, i| {
                 if (i == 0) {
@@ -83,7 +85,19 @@ pub fn SegmentMerger(comptime Segment: type) type {
                 } else {
                     self.segment.info = SegmentInfo.merge(self.segment.info, source.reader.segment.info);
                 }
+                total_attributes += source.reader.segment.attributes.count();
                 total_docs += source.reader.segment.docs.count();
+            }
+
+            try self.segment.attributes.ensureTotalCapacity(self.allocator, total_attributes);
+            for (sources) |*source| {
+                const segment = source.reader.segment;
+                var iter = segment.attributes.iterator();
+                while (iter.next()) |entry| {
+                    const key = entry.key_ptr.*;
+                    const value = entry.value_ptr.*;
+                    self.segment.attributes.putAssumeCapacity(key, value);
+                }
             }
 
             try self.segment.docs.ensureTotalCapacity(total_docs);

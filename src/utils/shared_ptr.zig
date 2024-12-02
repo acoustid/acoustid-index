@@ -10,7 +10,7 @@ pub fn RefCounter(comptime T: type) type {
 
         pub fn init() Self {
             return .{
-                .refs = std.atomic.Value(u32).init(1),
+                .refs = std.atomic.Value(T).init(1),
             };
         }
 
