@@ -20,6 +20,14 @@ Running tests:
 
 ## HTTP API
 
+### Get index
+
+Returns information about an index.
+
+```
+GET /:indexname
+```
+
 ### Create index
 
 Creates a new index.
