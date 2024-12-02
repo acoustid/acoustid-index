@@ -24,6 +24,11 @@ pub fn SegmentMerger(comptime Segment: type) type {
             reader: Segment.Reader,
             skip_docs: std.AutoHashMapUnmanaged(u32, void) = .{},
 
+            pub fn deinit(self: *Source, allocator: std.mem.Allocator) void {
+                self.reader.close();
+                self.skip_docs.deinit(allocator);
+            }
+
             pub fn read(self: *Source) !?Item {
                 while (true) {
                     const item = try self.reader.read() orelse return null;
@@ -48,25 +53,25 @@ pub fn SegmentMerger(comptime Segment: type) type {
 
         current_item: ?Item = null,
 
-        pub fn init(allocator: std.mem.Allocator, collection: *SegmentList(Segment)) Self {
+        pub fn init(allocator: std.mem.Allocator, collection: *SegmentList(Segment), num_sources: usize) !Self {
             return .{
                 .allocator = allocator,
                 .collection = collection,
+                .sources = try std.ArrayListUnmanaged(Source).initCapacity(allocator, num_sources),
             };
         }
 
         pub fn deinit(self: *Self) void {
             for (self.sources.items) |*source| {
-                source.reader.close();
-                source.skip_docs.deinit(self.allocator);
+                source.deinit(self.allocator);
             }
             self.sources.deinit(self.allocator);
             self.segment.deinit(self.allocator);
             self.* = undefined;
         }
 
-        pub fn addSource(self: *Self, source: *Segment) !void {
-            try self.sources.append(self.allocator, .{
+        pub fn addSource(self: *Self, source: *Segment) void {
+            self.sources.appendAssumeCapacity(.{
                 .reader = source.reader(),
             });
         }
@@ -158,7 +163,7 @@ test "merge segments" {
     var collection = try SegmentList(MemorySegment).init(std.testing.allocator, 3);
     defer collection.deinit(std.testing.allocator, .delete);
 
-    var merger = SegmentMerger(MemorySegment).init(std.testing.allocator, &collection);
+    var merger = try SegmentMerger(MemorySegment).init(std.testing.allocator, &collection, 3);
     defer merger.deinit();
 
     var node1 = try SegmentList(MemorySegment).createSegment(std.testing.allocator, .{});
@@ -174,9 +179,9 @@ test "merge segments" {
     node2.value.info = .{ .version = 12, .merges = 0 };
     node3.value.info = .{ .version = 13, .merges = 0 };
 
-    try merger.addSource(node1.value);
-    try merger.addSource(node2.value);
-    try merger.addSource(node3.value);
+    merger.addSource(node1.value);
+    merger.addSource(node2.value);
+    merger.addSource(node3.value);
 
     try merger.prepare();
 

@@ -209,11 +209,11 @@ pub fn SegmentListManager(Segment: type) type {
             var target = try List.createSegment(allocator, self.options);
             defer List.destroySegment(allocator, &target);
 
-            var merger = SegmentMerger(Segment).init(allocator, segments.value);
+            var merger = try SegmentMerger(Segment).init(allocator, segments.value, candidate.end - candidate.start);
             defer merger.deinit();
 
             for (segments.value.nodes.items[candidate.start..candidate.end]) |segment| {
-                try merger.addSource(segment.value);
+                merger.addSource(segment.value);
             }
             try merger.prepare();
 
