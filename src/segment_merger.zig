@@ -17,7 +17,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
 
         const Source = struct {
             reader: Segment.Reader,
-            skip_docs: std.AutoHashMap(u32, void),
+            skip_docs: std.AutoHashMapUnmanaged(u32, void) = .{},
 
             pub fn read(self: *Source) !?Item {
                 while (true) {
@@ -54,7 +54,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
         pub fn deinit(self: *Self) void {
             for (self.sources.items) |*source| {
                 source.reader.close();
-                source.skip_docs.deinit();
+                source.skip_docs.deinit(self.allocator);
             }
             self.sources.deinit();
             self.segment.docs.deinit(self.allocator);
@@ -64,7 +64,6 @@ pub fn SegmentMerger(comptime Segment: type) type {
         pub fn addSource(self: *Self, source: *Segment) !void {
             try self.sources.append(.{
                 .reader = source.reader(),
-                .skip_docs = std.AutoHashMap(u32, void).init(self.allocator),
             });
         }
 
@@ -111,7 +110,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
                         try self.segment.docs.put(self.allocator, doc_id, doc_status);
                         docs_added += 1;
                     } else {
-                        try source.skip_docs.put(doc_id, {});
+                        try source.skip_docs.put(self.allocator, doc_id, {});
                     }
                 }
                 if (docs_found > 0) {
