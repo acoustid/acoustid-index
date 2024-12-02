@@ -97,16 +97,3 @@ test "Item array sort" {
         Item{ .hash = 2, .id = 200 },
     }, items);
 }
-
-pub fn SegmentBase(comptime T: type) type {
-    return struct {
-        pub fn deinitAttributes(self: *T, allocator: std.mem.Allocator) void {
-            var iter = self.attributes.iterator();
-            while (iter.next()) |entry| {
-                allocator.free(entry.key_ptr.*);
-                allocator.free(entry.value_ptr.*);
-            }
-            self.attributes.deinit(allocator);
-        }
-    };
-}

@@ -8,7 +8,6 @@ const KeepOrDelete = common.KeepOrDelete;
 
 const Item = @import("segment.zig").Item;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
-const SegmentBase = @import("segment.zig").SegmentBase;
 
 const filefmt = @import("filefmt.zig");
 
@@ -21,7 +20,7 @@ pub const Options = struct {
 allocator: std.mem.Allocator,
 dir: std.fs.Dir,
 info: SegmentInfo = .{},
-attributes: std.StringHashMapUnmanaged([]const u8) = .{},
+attributes: std.AutoHashMapUnmanaged(u64, u64) = .{},
 docs: std.AutoHashMap(u32, bool),
 index: std.ArrayList(u32),
 block_size: usize = 0,
@@ -31,8 +30,6 @@ num_items: usize = 0,
 delete_in_deinit: bool = false,
 
 raw_data: ?[]align(std.mem.page_size) u8 = null,
-
-usingnamespace SegmentBase(Self);
 
 pub fn init(allocator: std.mem.Allocator, options: Options) Self {
     return Self{
@@ -45,7 +42,7 @@ pub fn init(allocator: std.mem.Allocator, options: Options) Self {
 }
 
 pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
-    self.deinitAttributes(self.allocator);
+    self.attributes.deinit(self.allocator);
     self.docs.deinit();
     self.index.deinit();
 

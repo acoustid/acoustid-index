@@ -6,7 +6,6 @@ const SearchResults = common.SearchResults;
 const KeepOrDelete = common.KeepOrDelete;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
 const Item = @import("segment.zig").Item;
-const SegmentBase = @import("segment.zig").SegmentBase;
 
 const Change = @import("change.zig").Change;
 
@@ -20,12 +19,10 @@ pub const Options = struct {};
 
 allocator: std.mem.Allocator,
 info: SegmentInfo = .{},
-attributes: std.StringHashMapUnmanaged([]const u8) = .{},
+attributes: std.AutoHashMapUnmanaged(u64, u64) = .{},
 docs: std.AutoHashMap(u32, bool),
 items: std.ArrayList(Item),
 frozen: bool = false,
-
-usingnamespace SegmentBase(Self);
 
 pub fn init(allocator: std.mem.Allocator, opts: Options) Self {
     _ = opts;
@@ -39,7 +36,7 @@ pub fn init(allocator: std.mem.Allocator, opts: Options) Self {
 pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
     _ = delete_file;
 
-    self.deinitAttributes(self.allocator);
+    self.attributes.deinit(self.allocator);
     self.docs.deinit();
     self.items.deinit();
 }
@@ -104,13 +101,9 @@ pub fn build(self: *Self, changes: []const Change) !void {
                 }
             },
             .set_attribute => |op| {
-                const result = self.attributes.getOrPutAssumeCapacity(op.name);
+                const result = self.attributes.getOrPutAssumeCapacity(op.key);
                 if (!result.found_existing) {
-                    errdefer self.attributes.removeByPtr(result.key_ptr);
-                    result.key_ptr.* = try self.allocator.dupe(u8, op.name);
-                    errdefer self.allocator.free(result.key_ptr.*);
-                    result.value_ptr.* = try self.allocator.dupe(u8, op.value);
-                    errdefer self.allocator.free(result.value_ptr.*);
+                    result.value_ptr.* = op.value;
                 }
             },
         }
@@ -124,7 +117,12 @@ pub fn cleanup(self: *Self) void {
 }
 
 pub fn merge(self: *Self, merger: *SegmentMerger(Self)) !void {
+    std.debug.assert(self.allocator.ptr == merger.allocator.ptr);
+
     self.info = merger.segment.info;
+
+    self.attributes.deinit(self.allocator);
+    self.attributes = merger.segment.attributes.move();
 
     self.docs.deinit();
     self.docs = merger.segment.docs.move();
