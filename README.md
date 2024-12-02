@@ -58,10 +58,13 @@ Performs multiple operations on an index.
 
 ```
 POST /:indexname/_update
+```
+
+```json
 {
   "changes": [
     {"insert": {"id": 1, "hashes": [100, 200, 300]}},
-    {"delete": {"id": 2},
+    {"delete": {"id": 2}
   ]
 }
 ```
@@ -72,5 +75,8 @@ Searches for a fingerprint in the index.
 
 ```
 POST /:indexname/_search
+```
+
+```json
 {"query": [100, 200, 300], "timeout": 10}
 ```
