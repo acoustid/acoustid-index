@@ -6,6 +6,7 @@ const SearchResults = common.SearchResults;
 const KeepOrDelete = common.KeepOrDelete;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
 const Item = @import("segment.zig").Item;
+const SegmentBase = @import("segment.zig").SegmentBase;
 
 const Change = @import("change.zig").Change;
 
@@ -24,6 +25,8 @@ docs: std.AutoHashMap(u32, bool),
 items: std.ArrayList(Item),
 frozen: bool = false,
 
+usingnamespace SegmentBase(Self);
+
 pub fn init(allocator: std.mem.Allocator, opts: Options) Self {
     _ = opts;
     return .{
@@ -36,15 +39,7 @@ pub fn init(allocator: std.mem.Allocator, opts: Options) Self {
 pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
     _ = delete_file;
 
-    {
-        var iter = self.attributes.iterator();
-        while (iter.next()) |entry| {
-            self.allocator.free(entry.key_ptr.*);
-            self.allocator.free(entry.value_ptr.*);
-        }
-    }
-    self.attributes.deinit(self.allocator);
-
+    self.deinitAttributes(self.allocator);
     self.docs.deinit();
     self.items.deinit();
 }
