@@ -19,6 +19,7 @@ pub const Options = struct {};
 
 allocator: std.mem.Allocator,
 info: SegmentInfo = .{},
+attributes: std.StringHashMapUnmanaged([]const u8) = .{},
 docs: std.AutoHashMap(u32, bool),
 items: std.ArrayList(Item),
 frozen: bool = false,
@@ -34,6 +35,16 @@ pub fn init(allocator: std.mem.Allocator, opts: Options) Self {
 
 pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
     _ = delete_file;
+
+    {
+        var iter = self.attributes.iterator();
+        while (iter.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+            self.allocator.free(entry.value_ptr.*);
+        }
+    }
+    self.attributes.deinit(self.allocator);
+
     self.docs.deinit();
     self.items.deinit();
 }
@@ -54,6 +65,7 @@ pub fn getSize(self: Self) usize {
 }
 
 pub fn build(self: *Self, changes: []const Change) !void {
+    var num_attributes: u32 = 0;
     var num_docs: u32 = 0;
     var num_items: usize = 0;
     for (changes) |change| {
@@ -65,9 +77,13 @@ pub fn build(self: *Self, changes: []const Change) !void {
             .delete => {
                 num_docs += 1;
             },
+            .set_attribute => {
+                num_attributes += 1;
+            },
         }
     }
 
+    try self.attributes.ensureTotalCapacity(self.allocator, num_attributes);
     try self.docs.ensureTotalCapacity(num_docs);
     try self.items.ensureTotalCapacity(num_items);
 
@@ -90,6 +106,16 @@ pub fn build(self: *Self, changes: []const Change) !void {
                 const result = self.docs.getOrPutAssumeCapacity(op.id);
                 if (!result.found_existing) {
                     result.value_ptr.* = false;
+                }
+            },
+            .set_attribute => |op| {
+                const result = self.attributes.getOrPutAssumeCapacity(op.name);
+                if (!result.found_existing) {
+                    errdefer self.attributes.removeByPtr(result.key_ptr);
+                    result.key_ptr.* = try self.allocator.dupe(u8, op.name);
+                    errdefer self.allocator.free(result.key_ptr.*);
+                    result.value_ptr.* = try self.allocator.dupe(u8, op.value);
+                    errdefer self.allocator.free(result.value_ptr.*);
                 }
             },
         }
