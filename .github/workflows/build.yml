@@ -27,7 +27,7 @@ jobs:
           python-version: '3.13'
           cache: 'pip'
 
-      - run: pip install pytest requests
+      - run: pip install -r tests/requirements.txt
       - run: pytest -v tests/
 
       - name: Log in to the Container registry
