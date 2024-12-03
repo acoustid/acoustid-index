@@ -71,8 +71,17 @@ pub fn build(b: *std.Build) void {
     main_tests.root_module.addImport("zul", zul.module("zul"));
     main_tests.root_module.addImport("msgpack", msgpack.module("msgpack"));
 
-    const run_main_tests = b.addRunArtifact(main_tests);
+    const run_unit_tests = b.addRunArtifact(main_tests);
+    const run_integration_tests = b.addSystemCommand(&[_][]const u8{ "pytest", "-vv", "tests/" });
+    run_integration_tests.step.dependOn(&main_exe.step);
 
-    const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_main_tests.step);
+    var unit_tests_step = b.step("unit-tests", "Run unit tests");
+    unit_tests_step.dependOn(&run_unit_tests.step);
+
+    var e2e_tests_step = b.step("e2e-tests", "Run e2e tests");
+    e2e_tests_step.dependOn(&run_integration_tests.step);
+
+    const test_step = b.step("test", "Run all tests");
+    test_step.dependOn(unit_tests_step);
+    test_step.dependOn(e2e_tests_step);
 }
