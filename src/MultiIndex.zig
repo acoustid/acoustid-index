@@ -8,10 +8,45 @@ const Self = @This();
 
 pub const IndexRef = struct {
     index: Index,
+    name: []const u8,
     references: usize = 0,
     last_used_at: i64 = std.math.minInt(i64),
     is_open: bool = false,
     lock: std.Thread.Mutex = .{},
+
+    pub fn deinit(self: *IndexRef, allocator: std.mem.Allocator) void {
+        allocator.free(self.name);
+        self.index.deinit();
+    }
+
+    pub fn incRef(self: *IndexRef) void {
+        self.lock.lock();
+        defer self.lock.unlock();
+
+        self.references += 1;
+        self.last_used_at = std.time.milliTimestamp();
+    }
+
+    pub fn decRef(self: *IndexRef) bool {
+        self.lock.lock();
+        defer self.lock.unlock();
+
+        assert(self.references > 0);
+        self.references -= 1;
+        self.last_used_at = std.time.timestamp();
+
+        return self.references == 0;
+    }
+
+    pub fn ensureOpen(self: *IndexRef, create: bool) !void {
+        self.lock.lock();
+        defer self.lock.unlock();
+
+        if (self.is_open) return;
+
+        try self.index.open(create);
+        self.is_open = true;
+    }
 };
 
 lock: std.Thread.Mutex = .{},
@@ -64,13 +99,32 @@ pub fn deinit(self: *Self) void {
     self.indexes.deinit();
 }
 
-pub fn releaseIndex(self: *Self, index_data: *IndexRef) void {
-    self.lock.lock();
-    defer self.lock.unlock();
+fn deleteIndexFiles(self: *Self, name: []const u8) !void {
+    const tmp_name = try std.mem.concat(self.allocator, u8, &[_][]const u8{ name, ".delete" });
+    defer self.allocator.free(tmp_name);
+    try self.dir.rename(name, tmp_name);
+    try self.dir.deleteTree(tmp_name);
+}
 
-    assert(index_data.references > 0);
-    index_data.references -= 1;
-    index_data.last_used_at = std.time.timestamp();
+fn removeIndex(self: *Self, name: []const u8) void {
+    if (self.indexes.getEntry(name)) |entry| {
+        entry.value_ptr.deinit(self.allocator);
+        self.indexes.removeByPtr(entry.key_ptr);
+    }
+}
+
+pub fn releaseIndex(self: *Self, index_ref: *IndexRef) void {
+    if (index_ref.decRef()) {
+        self.lock.lock();
+        defer self.lock.unlock();
+
+        index_ref.lock.lock();
+        defer index_ref.lock.unlock();
+
+        if (!index_ref.is_open) {
+            self.removeIndex(index_ref.name);
+        }
+    }
 }
 
 pub fn acquireIndex(self: *Self, name: []const u8) !*IndexRef {
@@ -83,53 +137,38 @@ pub fn acquireIndex(self: *Self, name: []const u8) !*IndexRef {
 
     var result = try self.indexes.getOrPutAdapted(name, self.indexes.ctx);
     if (result.found_existing) {
-        result.value_ptr.references += 1;
-        result.value_ptr.last_used_at = std.time.timestamp();
+        result.value_ptr.incRef();
         return result.value_ptr;
     }
-
     errdefer self.indexes.removeByPtr(result.key_ptr);
 
     result.key_ptr.* = try self.allocator.dupe(u8, name);
     errdefer self.allocator.free(result.key_ptr.*);
 
-    result.value_ptr.index = try Index.init(self.allocator, self.dir, name, .{});
+    result.value_ptr.* = .{
+        .index = try Index.init(self.allocator, self.dir, name, .{}),
+        .name = result.key_ptr.*,
+    };
     errdefer result.value_ptr.index.deinit();
 
-    result.value_ptr.is_open = false;
-    result.value_ptr.references = 1;
-    result.value_ptr.last_used_at = std.time.timestamp();
+    result.value_ptr.incRef();
     return result.value_ptr;
 }
 
-fn ensureOpen(index_ref: *IndexRef, create: bool) !void {
-    index_ref.lock.lock();
-    defer index_ref.lock.unlock();
-
-    if (index_ref.is_open) return;
-
-    try index_ref.index.open(create);
-    index_ref.is_open = true;
-}
-
 pub fn getIndex(self: *Self, name: []const u8) !*IndexRef {
-    if (!isValidName(name)) {
-        return error.InvalidIndexName;
-    }
-
     const index_ref = try self.acquireIndex(name);
-    try ensureOpen(index_ref, false);
+    errdefer self.releaseIndex(index_ref);
+
+    try index_ref.ensureOpen(false);
+
     return index_ref;
 }
 
 pub fn createIndex(self: *Self, name: []const u8) !void {
-    if (!isValidName(name)) {
-        return error.InvalidIndexName;
-    }
-
     const index_ref = try self.acquireIndex(name);
-    try ensureOpen(index_ref, true);
     defer self.releaseIndex(index_ref);
+
+    try index_ref.ensureOpen(true);
 }
 
 pub fn deleteIndex(self: *Self, name: []const u8) !void {
@@ -140,11 +179,6 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
     self.lock.lock();
     defer self.lock.unlock();
 
-    if (self.indexes.getEntry(name)) |entry| {
-        self.allocator.free(entry.key_ptr.*);
-        entry.value_ptr.index.deinit();
-        self.indexes.removeByPtr(entry.key_ptr);
-    }
-
-    try self.dir.deleteTree(name);
+    self.removeIndex(name);
+    try self.deleteIndexFiles(name);
 }
