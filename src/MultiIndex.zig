@@ -10,6 +10,8 @@ pub const IndexRef = struct {
     index: Index,
     references: usize = 0,
     last_used_at: i64 = std.math.minInt(i64),
+    is_open: bool = false,
+    lock: std.Thread.Mutex = .{},
 };
 
 lock: std.Thread.Mutex = .{},
@@ -71,7 +73,7 @@ pub fn releaseIndex(self: *Self, index_data: *IndexRef) void {
     index_data.last_used_at = std.time.timestamp();
 }
 
-pub fn acquireIndex(self: *Self, name: []const u8, create: bool) !*IndexRef {
+pub fn acquireIndex(self: *Self, name: []const u8) !*IndexRef {
     if (!isValidName(name)) {
         return error.InvalidIndexName;
     }
@@ -91,14 +93,23 @@ pub fn acquireIndex(self: *Self, name: []const u8, create: bool) !*IndexRef {
     result.key_ptr.* = try self.allocator.dupe(u8, name);
     errdefer self.allocator.free(result.key_ptr.*);
 
-    result.value_ptr.index = try Index.init(self.allocator, self.dir, name, .{ .create = create });
+    result.value_ptr.index = try Index.init(self.allocator, self.dir, name, .{});
     errdefer result.value_ptr.index.deinit();
 
-    try result.value_ptr.index.open();
-
+    result.value_ptr.is_open = false;
     result.value_ptr.references = 1;
     result.value_ptr.last_used_at = std.time.timestamp();
     return result.value_ptr;
+}
+
+fn ensureOpen(index_ref: *IndexRef, create: bool) !void {
+    index_ref.lock.lock();
+    defer index_ref.lock.unlock();
+
+    if (index_ref.is_open) return;
+
+    try index_ref.index.open(create);
+    index_ref.is_open = true;
 }
 
 pub fn getIndex(self: *Self, name: []const u8) !*IndexRef {
@@ -106,7 +117,9 @@ pub fn getIndex(self: *Self, name: []const u8) !*IndexRef {
         return error.InvalidIndexName;
     }
 
-    return try self.acquireIndex(name, false);
+    const index_ref = try self.acquireIndex(name);
+    try ensureOpen(index_ref, false);
+    return index_ref;
 }
 
 pub fn createIndex(self: *Self, name: []const u8) !void {
@@ -114,7 +127,8 @@ pub fn createIndex(self: *Self, name: []const u8) !void {
         return error.InvalidIndexName;
     }
 
-    const index_ref = try self.acquireIndex(name, true);
+    const index_ref = try self.acquireIndex(name);
+    try ensureOpen(index_ref, true);
     defer self.releaseIndex(index_ref);
 }
 

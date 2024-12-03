@@ -22,7 +22,7 @@ test "index does not exist" {
     var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{});
     defer index.deinit();
 
-    const result = index.open();
+    const result = index.open(false);
     try std.testing.expectError(error.IndexNotFound, result);
 }
 
@@ -30,10 +30,10 @@ test "index create, update and search" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
-    var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{ .create = true });
+    var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{});
     defer index.deinit();
 
-    try index.open();
+    try index.open(true);
 
     var hashes: [100]u32 = undefined;
 
@@ -69,10 +69,10 @@ test "index create, update, reopen and search" {
     var hashes: [100]u32 = undefined;
 
     {
-        var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{ .create = true });
+        var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{});
         defer index.deinit();
 
-        try index.open();
+        try index.open(true);
 
         try index.update(&[_]Change{.{ .insert = .{
             .id = 1,
@@ -81,10 +81,10 @@ test "index create, update, reopen and search" {
     }
 
     {
-        var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{ .create = false });
+        var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{});
         defer index.deinit();
 
-        try index.open();
+        try index.open(false);
 
         var results = try index.search(generateRandomHashes(&hashes, 1), std.testing.allocator, .{});
         defer results.deinit();
@@ -105,10 +105,10 @@ test "index many updates" {
     var hashes: [100]u32 = undefined;
 
     {
-        var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{ .create = true });
+        var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{});
         defer index.deinit();
 
-        try index.open();
+        try index.open(true);
 
         for (0..100) |i| {
             try index.update(&[_]Change{.{ .insert = .{
@@ -118,10 +118,10 @@ test "index many updates" {
         }
     }
 
-    var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{ .create = false });
+    var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{});
     defer index.deinit();
 
-    try index.open();
+    try index.open(false);
 
     {
         var results = try index.search(generateRandomHashes(&hashes, 0), std.testing.allocator, .{});
@@ -146,10 +146,10 @@ test "index, multiple fingerprints with the same hashes" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
-    var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{ .create = true });
+    var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{});
     defer index.deinit();
 
-    try index.open();
+    try index.open(true);
 
     var hashes: [100]u32 = undefined;
 

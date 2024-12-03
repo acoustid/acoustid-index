@@ -35,7 +35,6 @@ const metrics = @import("metrics.zig");
 const Self = @This();
 
 const Options = struct {
-    create: bool = false,
     min_segment_size: usize = 500_000,
     max_segment_size: usize = 500_000_000,
 };
@@ -151,13 +150,13 @@ fn loadSegment(self: *Self, info: SegmentInfo) !FileSegmentNode {
     return node;
 }
 
-fn loadSegments(self: *Self) !u64 {
+fn loadSegments(self: *Self, create: bool) !u64 {
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
 
     const segment_ids = filefmt.readManifestFile(self.dir, self.allocator) catch |err| {
         if (err == error.FileNotFound) {
-            if (self.options.create) {
+            if (create) {
                 try self.updateManifestFile(self.file_segments.segments.value);
                 return 0;
             }
@@ -362,8 +361,8 @@ fn stopMemorySegmentMergeThread(self: *Self) void {
     self.memory_segment_merge_thread = null;
 }
 
-pub fn open(self: *Self) !void {
-    const last_commit_id = try self.loadSegments();
+pub fn open(self: *Self, create: bool) !void {
+    const last_commit_id = try self.loadSegments(create);
 
     // start these threads after loading file segments, but before replaying oplog to memory segments
     try self.startFileSegmentMergeThread();
