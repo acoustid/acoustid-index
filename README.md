@@ -14,17 +14,13 @@ Building from source code:
 
     zig build
 
-Running server:
-
-    zig build run -- --dir /tmp/fpindex --port 8080 --log-level debug
-
-Running unit tests:
+Running tests:
 
     zig build test --summary all
 
-Running integration tests:
+Running server:
 
-    pytest -vv tests/
+    zig build run -- --dir /tmp/fpindex --port 8080 --log-level debug
 
 ## HTTP API
 

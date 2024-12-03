@@ -19,13 +19,13 @@ jobs:
 
       - uses: mlugg/setup-zig@v1
 
-      - run: zig build test --summary all
-      - run: zig build
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
           cache: 'pip'
+
+      - run: zig build
+      - run: zig build unit-tests --summary all
 
       - run: pip install -r tests/requirements.txt
       - run: pytest -v tests/
