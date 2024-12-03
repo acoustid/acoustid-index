@@ -102,7 +102,12 @@ pub fn deinit(self: *Self) void {
 fn deleteIndexFiles(self: *Self, name: []const u8) !void {
     const tmp_name = try std.mem.concat(self.allocator, u8, &[_][]const u8{ name, ".delete" });
     defer self.allocator.free(tmp_name);
-    try self.dir.rename(name, tmp_name);
+    self.dir.rename(name, tmp_name) catch |err| {
+        if (err == error.FileNotFound) {
+            return;
+        }
+        return err;
+    };
     try self.dir.deleteTree(tmp_name);
 }
 
@@ -118,12 +123,12 @@ pub fn releaseIndex(self: *Self, index_ref: *IndexRef) void {
         self.lock.lock();
         defer self.lock.unlock();
 
-        index_ref.lock.lock();
-        defer index_ref.lock.unlock();
+        // index_ref.lock.lock();
+        // defer index_ref.lock.unlock();
 
-        if (!index_ref.is_open) {
-            self.removeIndex(index_ref.name);
-        }
+        // if (!index_ref.is_open) {
+        //     self.removeIndex(index_ref.name);
+        // }
     }
 }
 
