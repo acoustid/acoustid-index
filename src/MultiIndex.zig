@@ -84,6 +84,9 @@ pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) Self {
 }
 
 pub fn deinit(self: *Self) void {
+    self.lock.lock();
+    defer self.lock.unlock();
+
     var iter = self.indexes.iterator();
     while (iter.next()) |entry| {
         self.allocator.free(entry.key_ptr.*);
