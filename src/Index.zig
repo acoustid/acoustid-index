@@ -128,6 +128,7 @@ pub fn init(allocator: std.mem.Allocator, parent_dir: std.fs.Dir, path: []const 
 }
 
 pub fn deinit(self: *Self) void {
+    log.info("closing index {}", .{@intFromPtr(self)});
     self.stopping.store(true, .release);
 
     self.stopCheckpointThread();
@@ -229,6 +230,7 @@ fn doCheckpoint(self: *Self) !bool {
 }
 
 fn checkpointThreadFn(self: *Self) void {
+    log.debug("checkpoint thread started", .{});
     while (!self.stopping.load(.acquire)) {
         if (self.doCheckpoint()) |successful| {
             if (successful) {
@@ -238,8 +240,10 @@ fn checkpointThreadFn(self: *Self) void {
         } else |err| {
             log.err("checkpoint failed: {}", .{err});
         }
+        log.debug("waiting for checkpoint event", .{});
         self.checkpoint_event.timedWait(std.time.ns_per_min) catch continue;
     }
+    log.debug("checkpoint thread stopped", .{});
 }
 
 fn startCheckpointThread(self: *Self) !void {
@@ -253,8 +257,10 @@ fn stopCheckpointThread(self: *Self) void {
     log.info("stopping checkpoint thread", .{});
     if (self.checkpoint_thread) |thread| {
         self.checkpoint_event.set();
+        log.debug("waiting for checkpoint thread to exit", .{});
         thread.join();
     }
+    log.debug("checkpoint thread stopped", .{});
     self.checkpoint_thread = null;
 }
 

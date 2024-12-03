@@ -20,21 +20,14 @@ pub const IndexRef = struct {
     }
 
     pub fn incRef(self: *IndexRef) void {
-        self.lock.lock();
-        defer self.lock.unlock();
-
         self.references += 1;
         self.last_used_at = std.time.milliTimestamp();
     }
 
     pub fn decRef(self: *IndexRef) bool {
-        self.lock.lock();
-        defer self.lock.unlock();
-
         assert(self.references > 0);
         self.references -= 1;
-        self.last_used_at = std.time.timestamp();
-
+        self.last_used_at = std.time.milliTimestamp();
         return self.references == 0;
     }
 
@@ -119,17 +112,10 @@ fn removeIndex(self: *Self, name: []const u8) void {
 }
 
 pub fn releaseIndex(self: *Self, index_ref: *IndexRef) void {
-    if (index_ref.decRef()) {
-        self.lock.lock();
-        defer self.lock.unlock();
+    self.lock.lock();
+    defer self.lock.unlock();
 
-        // index_ref.lock.lock();
-        // defer index_ref.lock.unlock();
-
-        // if (!index_ref.is_open) {
-        //     self.removeIndex(index_ref.name);
-        // }
-    }
+    _ = index_ref.decRef();
 }
 
 pub fn acquireIndex(self: *Self, name: []const u8) !*IndexRef {
@@ -170,6 +156,8 @@ pub fn getIndex(self: *Self, name: []const u8) !*IndexRef {
 }
 
 pub fn createIndex(self: *Self, name: []const u8) !void {
+    log.info("creating index {s}", .{name});
+
     const index_ref = try self.acquireIndex(name);
     defer self.releaseIndex(index_ref);
 
@@ -177,6 +165,8 @@ pub fn createIndex(self: *Self, name: []const u8) !void {
 }
 
 pub fn deleteIndex(self: *Self, name: []const u8) !void {
+    log.info("deleting index {s}", .{name});
+
     if (!isValidName(name)) {
         return error.InvalidIndexName;
     }
@@ -184,6 +174,11 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
     self.lock.lock();
     defer self.lock.unlock();
 
-    self.removeIndex(name);
+    if (self.indexes.getEntry(name)) |entry| {
+        entry.value_ptr.index.deinit();
+        self.allocator.free(entry.key_ptr.*);
+        self.indexes.removeByPtr(entry.key_ptr);
+    }
+
     try self.deleteIndexFiles(name);
 }
