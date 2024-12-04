@@ -4,6 +4,11 @@ const testing = std.testing;
 const msgpack = @import("msgpack");
 const SegmentInfo = @import("segment.zig").SegmentInfo;
 
+pub const DocInfo = struct {
+    version: u64,
+    deleted: bool,
+};
+
 pub const KeepOrDelete = enum {
     keep,
     delete,

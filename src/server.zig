@@ -82,6 +82,12 @@ pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const 
     // Bulk API
     router.post("/:index/_update", handleUpdate);
 
+    // Fingerprint API
+    router.head("/:index/:id", handleHeadFingerprint);
+    router.get("/:index/:id", handleGetFingerprint);
+    router.put("/:index/:id", handlePutFingerprint);
+    router.delete("/:index/:id", handleDeleteFingerprint);
+
     // Index API
     router.head("/:index", handleHeadIndex);
     router.get("/:index", handleGetIndex);
@@ -113,8 +119,34 @@ const SearchResultsJSON = struct {
     results: []SearchResultJSON,
 };
 
+fn getId(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?u32 {
+    const id_str = req.param("id") orelse {
+        if (send_body) {
+            try writeErrorResponse(400, error.MissingId, req, res);
+        } else {
+            res.status = 400;
+        }
+        return null;
+    };
+    return std.fmt.parseInt(u32, id_str, 10) catch |err| {
+        if (send_body) {
+            try writeErrorResponse(400, err, req, res);
+        } else {
+            res.status = 400;
+        }
+        return null;
+    };
+}
+
 fn getIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response, send_body: bool) !?*IndexData {
-    const index_name = req.param("index") orelse return null;
+    const index_name = req.param("index") orelse {
+        if (send_body) {
+            try writeErrorResponse(400, error.MissingIndexName, req, res);
+        } else {
+            res.status = 400;
+        }
+        return null;
+    };
     const index = ctx.indexes.getIndex(index_name) catch |err| {
         if (err == error.IndexNotFound) {
             if (send_body) {
@@ -274,6 +306,83 @@ fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
     metrics.update(body.changes.len);
 
     try index.update(body.changes);
+
+    return writeResponse(EmptyResponse{}, req, res);
+}
+
+fn handleHeadFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    const index_ref = try getIndex(ctx, req, res, false) orelse return;
+    const index = &index_ref.index;
+    defer releaseIndex(ctx, index_ref);
+
+    const id = try getId(req, res, false) orelse return;
+    const info = try index.getDocInfo(id);
+
+    res.status = if (info == null) 404 else 200;
+}
+
+const GetFingerprintResponse = struct {
+    version: u64,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+fn handleGetFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    const index_ref = try getIndex(ctx, req, res, true) orelse return;
+    const index = &index_ref.index;
+    defer releaseIndex(ctx, index_ref);
+
+    const id = try getId(req, res, true) orelse return;
+    const info = try index.getDocInfo(id) orelse {
+        return writeErrorResponse(404, error.FingerprintNotFound, req, res);
+    };
+
+    return writeResponse(GetFingerprintResponse{ .version = info.version }, req, res);
+}
+
+const PutFingerprintRequest = struct {
+    hashes: []u32,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+fn handlePutFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    const body = try getRequestBody(PutFingerprintRequest, req, res) orelse return;
+
+    const index_ref = try getIndex(ctx, req, res, true) orelse return;
+    const index = &index_ref.index;
+    defer releaseIndex(ctx, index_ref);
+
+    const id = try getId(req, res, true) orelse return;
+    const change: Change = .{ .insert = .{
+        .id = id,
+        .hashes = body.hashes,
+    } };
+
+    metrics.update(1);
+
+    try index.update(&[_]Change{change});
+
+    return writeResponse(EmptyResponse{}, req, res);
+}
+
+fn handleDeleteFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    const index_ref = try getIndex(ctx, req, res, true) orelse return;
+    const index = &index_ref.index;
+    defer releaseIndex(ctx, index_ref);
+
+    const id = try getId(req, res, true) orelse return;
+    const change: Change = .{ .delete = .{
+        .id = id,
+    } };
+
+    metrics.update(1);
+
+    try index.update(&[_]Change{change});
 
     return writeResponse(EmptyResponse{}, req, res);
 }

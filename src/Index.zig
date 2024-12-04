@@ -9,6 +9,7 @@ const Change = @import("change.zig").Change;
 const SearchResult = @import("common.zig").SearchResult;
 const SearchResults = @import("common.zig").SearchResults;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
+const DocInfo = @import("common.zig").DocInfo;
 
 const Oplog = @import("Oplog.zig");
 
@@ -473,6 +474,25 @@ pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, de
     results.sort();
 
     return results;
+}
+
+pub fn getDocInfo(self: *Self, doc_id: u32) !?DocInfo {
+    var snapshot = self.acquireSegments();
+    defer self.releaseSegments(&snapshot); // FIXME this possibly deletes orphaned segments, do it in a separate thread
+
+    var result: ?DocInfo = null;
+    inline for (segment_lists) |n| {
+        const segments = @field(snapshot, n);
+        if (segments.value.getDocInfo(doc_id)) |res| {
+            result = res;
+        }
+    }
+    if (result) |res| {
+        if (!res.deleted) {
+            return res;
+        }
+    }
+    return null;
 }
 
 pub const IndexInfo = struct {

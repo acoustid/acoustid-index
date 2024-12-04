@@ -6,6 +6,7 @@ const SearchResults = @import("common.zig").SearchResults;
 const Change = @import("change.zig").Change;
 const KeepOrDelete = @import("common.zig").KeepOrDelete;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
+const DocInfo = @import("common.zig").DocInfo;
 
 const Deadline = @import("utils/Deadline.zig");
 
@@ -98,6 +99,15 @@ pub fn SegmentList(Segment: type) type {
                     copy.nodes.appendAssumeCapacity(n.acquire());
                 }
             }
+        }
+
+        pub fn getDocInfo(self: Self, doc_id: u32) ?DocInfo {
+            var result: ?DocInfo = null;
+            for (self.nodes.items) |node| {
+                const active = node.value.docs.get(doc_id) orelse continue;
+                result = .{ .version = node.value.info.version, .deleted = !active };
+            }
+            return result;
         }
 
         pub fn search(self: Self, hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {

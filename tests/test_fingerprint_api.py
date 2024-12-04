@@ -20,6 +20,13 @@ def test_insert(client, index_name, create_index):
         'results': [{'id': 1, 'score': 3}]
     }
 
+    # verify we can get id
+    req = client.get(f'/{index_name}/1')
+    assert req.status_code == 200, req.content
+    assert json.loads(req.content) == {
+        'version': 1,
+    }
+
 
 def test_update_full(client, index_name, create_index):
     # insert fingerprint
@@ -56,6 +63,13 @@ def test_update_full(client, index_name, create_index):
     assert req.status_code == 200, req.content
     assert json.loads(req.content) == {
         'results': [{'id': 1, 'score': 3}]
+    }
+
+    # verify we can get id
+    req = client.get(f'/{index_name}/1')
+    assert req.status_code == 200, req.content
+    assert json.loads(req.content) == {
+        'version': 2,
     }
 
 
@@ -96,6 +110,13 @@ def test_update_partial(client, index_name, create_index):
         'results': [{'id': 1, 'score': 3}]
     }
 
+    # verify we can get id
+    req = client.get(f'/{index_name}/1')
+    assert req.status_code == 200, req.content
+    assert json.loads(req.content) == {
+        'version': 2,
+    }
+
 
 def test_delete(client, index_name, create_index):
     # insert fingerprint
@@ -125,6 +146,13 @@ def test_delete(client, index_name, create_index):
         'results': []
     }
 
+    # verify we can get id
+    req = client.get(f'/{index_name}/1')
+    assert req.status_code == 404, req.content
+    assert json.loads(req.content) == {
+        'error': 'FingerprintNotFound',
+    }
+
 
 def test_persistence_after_soft_restart(server, client, index_name, create_index):
     # insert fingerprint
@@ -148,6 +176,13 @@ def test_persistence_after_soft_restart(server, client, index_name, create_index
     assert req.status_code == 200, req.content
     assert json.loads(req.content) == {
         'results': [{'id': 1, 'score': 3}]
+    }
+
+    # verify we can get id
+    req = client.get(f'/{index_name}/1')
+    assert req.status_code == 200, req.content
+    assert json.loads(req.content) == {
+        'version': 100,
     }
 
 
@@ -177,3 +212,9 @@ def test_persistence_after_hard_restart(server, client, index_name, create_index
         'results': [{'id': 1, 'score': 3}]
     }
 
+    # verify we can get id
+    req = client.get(f'/{index_name}/1')
+    assert req.status_code == 200, req.content
+    assert json.loads(req.content) == {
+        'version': 100,
+    }
