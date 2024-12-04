@@ -26,7 +26,7 @@ files: std.ArrayList(FileInfo),
 
 current_file: ?std.fs.File = null,
 current_file_size: usize = 0,
-max_file_size: usize = 1_000_000,
+max_file_size: usize = 16 * 1024 * 1024,
 
 next_commit_id: u64 = 1,
 
@@ -208,7 +208,8 @@ pub fn write(self: *Self, changes: []const Change) !u64 {
     const commit_id = self.next_commit_id;
 
     const file = try self.getFile(commit_id);
-    var bufferred_writer = std.io.bufferedWriter(file.writer());
+    var counting_writer = std.io.countingWriter(file.writer());
+    var bufferred_writer = std.io.bufferedWriter(counting_writer.writer());
     const writer = bufferred_writer.writer();
 
     try msgpack.encode(Transaction{
@@ -218,7 +219,7 @@ pub fn write(self: *Self, changes: []const Change) !u64 {
 
     try bufferred_writer.flush();
 
-    self.current_file_size += changes.len;
+    self.current_file_size += counting_writer.bytes_written;
     self.next_commit_id += 1;
 
     file.sync() catch |err| {
