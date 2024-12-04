@@ -19,7 +19,18 @@ pub fn logHandler(
     args: anytype,
 ) void {
     if (@intFromEnum(level) <= @intFromEnum(current_log_level)) {
-        std.log.defaultLog(level, scope, format, args);
+        const level_txt = comptime level.asText();
+        const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
+        const stderr = std.io.getStdErr().writer();
+        var bw = std.io.bufferedWriter(stderr);
+        const writer = bw.writer();
+
+        std.debug.lockStdErr();
+        defer std.debug.unlockStdErr();
+        nosuspend {
+            writer.print("{d:.3} " ++ level_txt ++ prefix2 ++ format ++ "\n", .{@as(f64, @floatFromInt(std.time.milliTimestamp())) / 1000.0} ++ args) catch return;
+            bw.flush() catch return;
+        }
     }
 }
 
