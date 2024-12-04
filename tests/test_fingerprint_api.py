@@ -1,11 +1,36 @@
 import json
 
 
-def test_insert(client, index_name, create_index):
+def test_insert_single(client, index_name, create_index):
+    # insert fingerprint
+    req = client.put(f'/{index_name}/1', json={'hashes': [101, 201, 301]})
+    assert req.status_code == 200, req.content
+    assert json.loads(req.content) == {}
+
+    # verify we can find it
+    req = client.post(f'/{index_name}/_search', json={
+        'query': [101, 201, 301]
+    })
+    assert req.status_code == 200, req.content
+    assert json.loads(req.content) == {
+        'results': [
+            {'id': 1, 'score': 3},
+        ],
+    }
+
+    req = client.get(f'/{index_name}/1')
+    assert req.status_code == 200, req.content
+    assert json.loads(req.content) == {
+        'version': 1,
+    }
+
+
+def test_insert_multi(client, index_name, create_index):
     # insert fingerprint
     req = client.post(f'/{index_name}/_update', json={
         'changes': [
-            {'insert': {'id': 1, 'hashes': [100, 200, 300]}}
+            {'insert': {'id': 1, 'hashes': [101, 201, 301]}},
+            {'insert': {'id': 2, 'hashes': [102, 202, 302]}},
         ],
     })
     assert req.status_code == 200, req.content
@@ -13,15 +38,23 @@ def test_insert(client, index_name, create_index):
 
     # verify we can find it
     req = client.post(f'/{index_name}/_search', json={
-        'query': [100, 200, 300]
+        'query': [101, 201, 301, 102, 202, 302]
     })
     assert req.status_code == 200, req.content
     assert json.loads(req.content) == {
-        'results': [{'id': 1, 'score': 3}]
+        'results': [
+            {'id': 1, 'score': 3},
+            {'id': 2, 'score': 3},
+        ],
     }
 
-    # verify we can get id
     req = client.get(f'/{index_name}/1')
+    assert req.status_code == 200, req.content
+    assert json.loads(req.content) == {
+        'version': 1,
+    }
+
+    req = client.get(f'/{index_name}/2')
     assert req.status_code == 200, req.content
     assert json.loads(req.content) == {
         'version': 1,
@@ -118,22 +151,57 @@ def test_update_partial(client, index_name, create_index):
     }
 
 
-def test_delete(client, index_name, create_index):
-    # insert fingerprint
+def test_delete_multi(client, index_name, create_index):
+    # insert fingerprints
     req = client.post(f'/{index_name}/_update', json={
         'changes': [
-            {'insert': {'id': 1, 'hashes': [100, 200, 300]}}
+            {'insert': {'id': 1, 'hashes': [101, 201, 301]}},
+            {'insert': {'id': 2, 'hashes': [102, 202, 302]}},
         ],
     })
     assert req.status_code == 200, req.content
     assert json.loads(req.content) == {}
 
-    # delete fingerprint
+    # delete fingerprints
     req = client.post(f'/{index_name}/_update', json={
         'changes': [
-            {'delete': {'id': 1}}
+            {'delete': {'id': 1}},
+            {'delete': {'id': 2}},
         ],
     })
+    assert req.status_code == 200, req.content
+    assert json.loads(req.content) == {}
+
+    # verify we can't find it
+    req = client.post(f'/{index_name}/_search', json={
+        'query': [101, 201, 301, 102, 202, 302]
+    })
+    assert req.status_code == 200, req.content
+    assert json.loads(req.content) == {
+        'results': []
+    }
+
+    req = client.get(f'/{index_name}/1')
+    assert req.status_code == 404, req.content
+    assert json.loads(req.content) == {
+        'error': 'FingerprintNotFound',
+    }
+
+    req = client.get(f'/{index_name}/2')
+    assert req.status_code == 404, req.content
+    assert json.loads(req.content) == {
+        'error': 'FingerprintNotFound',
+    }
+
+
+def test_delete_single(client, index_name, create_index):
+    # insert fingerprint
+    req = client.put(f'/{index_name}/1', json={'hashes': [100, 200, 300]})
+    assert req.status_code == 200, req.content
+    assert json.loads(req.content) == {}
+
+    # delete fingerprint
+    req = client.delete(f'/{index_name}/1')
     assert req.status_code == 200, req.content
     assert json.loads(req.content) == {}
 

@@ -20,7 +20,7 @@ pub const SearchResult = struct {
     version: u64,
 
     pub fn cmp(_: void, a: SearchResult, b: SearchResult) bool {
-        return a.score > b.score or (a.score == b.score and a.id > b.id);
+        return a.score > b.score or (a.score == b.score and b.id > a.id);
     }
 };
 
@@ -91,6 +91,8 @@ test "sort search results" {
     defer results.deinit();
 
     try results.incr(1, 1);
+    try results.incr(3, 1);
+    try results.incr(3, 1);
     try results.incr(2, 1);
     try results.incr(2, 1);
 
@@ -98,6 +100,7 @@ test "sort search results" {
 
     try testing.expectEqualSlices(SearchResult, &[_]SearchResult{
         SearchResult{ .id = 2, .score = 2, .version = 1 },
+        SearchResult{ .id = 3, .score = 2, .version = 1 },
         SearchResult{ .id = 1, .score = 1, .version = 1 },
     }, results.values());
 }
