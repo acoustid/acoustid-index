@@ -24,14 +24,21 @@ Running server:
 
 ## HTTP API
 
-### Get index
+### Check if index exists
+
+Returns HTTP status 200 if the index exists.
+
+```
+HEAD /:indexname
+```
+
+### Get index info
 
 Returns information about an index.
 
 ```
 GET /:indexname
 ```
-
 ### Create index
 
 Creates a new index.
@@ -76,3 +83,40 @@ POST /:indexname/_search
 ```json
 {"query": [100, 200, 300], "timeout": 10}
 ```
+
+### Check if fingerprint exists
+
+Returns HTTP status 200 if the fingerprint exists.
+
+```
+HEAD /:indexname/:fpid
+```
+
+### Get fingerprint info
+
+```
+GET /:indexname/:fpid
+```
+
+### Update fingerprint
+
+```
+PUT /:indexname/:fpid
+```
+
+```json
+{"hashes": [100, 200, 300]}
+```
+
+Prefer using `/_update` for bulk operations.
+
+### Delete fingerprint
+
+Deletes a single fingerprint.
+
+```
+DELETE /:indexname/:fpid
+```
+
+Prefer using `/_update` for bulk operations.
+
