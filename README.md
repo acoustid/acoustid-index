@@ -94,11 +94,19 @@ HEAD /:indexname/:fpid
 
 ### Get fingerprint info
 
+Gets information about a fingeprint.
+
+There is no way to get back the original hashes, they are not stored in a way that makes it possible to retrieve them.
+
 ```
 GET /:indexname/:fpid
 ```
 
 ### Update fingerprint
+
+Updates a single fingerprint.
+
+Prefer using `/_update` for bulk operations.
 
 ```
 PUT /:indexname/:fpid
@@ -108,15 +116,13 @@ PUT /:indexname/:fpid
 {"hashes": [100, 200, 300]}
 ```
 
-Prefer using `/_update` for bulk operations.
-
 ### Delete fingerprint
 
 Deletes a single fingerprint.
 
+Prefer using `/_update` for bulk operations.
+
 ```
 DELETE /:indexname/:fpid
 ```
-
-Prefer using `/_update` for bulk operations.
 
