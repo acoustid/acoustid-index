@@ -405,8 +405,6 @@ pub fn update(self: *Self, changes: []const Change) !void {
 }
 
 pub fn updateInternal(self: *Self, changes: []const Change, commit_id: ?u64) !void {
-    // log.debug("update with {} changes", .{changes.len});
-
     var target = try MemorySegmentList.createSegment(self.allocator, .{});
     defer MemorySegmentList.destroySegment(self.allocator, &target);
 

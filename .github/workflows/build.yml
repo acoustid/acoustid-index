@@ -24,8 +24,6 @@ jobs:
           python-version: '3.13'
           cache: 'pip'
 
-      - run: sudo apt install -y valgrind
-
       - run: zig build
       - run: zig build unit-tests --summary all
 

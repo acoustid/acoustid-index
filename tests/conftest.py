@@ -2,7 +2,6 @@ import requests
 import pytest
 import subprocess
 import time
-import socket
 from urllib.parse import urljoin
 
 
@@ -16,7 +15,6 @@ class ServerManager:
 
     def start(self):
         command = [
-            'valgrind',
             'zig-out/bin/fpindex',
             '--dir', str(self.data_dir),
             '--port', str(self.port),
@@ -26,18 +24,43 @@ class ServerManager:
             command,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
-            stderr=self.log_file.open('w'),
+            stderr=self.log_file.open('a'),
         )
+        self.wait_for_ready()
 
-    def stop(self):
+    def stop(self, kill=False):
         if self.process is not None:
             if self.process.returncode is None:
-                self.process.terminate()
+                if kill:
+                    self.process.kill()
+                else:
+                    self.process.terminate()
                 try:
                     self.process.wait(timeout=1.0)
                 except subprocess.TimeoutExpired:
                     self.process.kill()
                     self.process.wait()
+
+    def restart(self, kill=True):
+        self.stop(kill=kill)
+        self.start()
+
+    def wait_for_ready(self, index_name=None, timeout=10.0):
+        deadline = time.time() + timeout
+        while True:
+            if index_name:
+                url = f'http://localhost:{self.port}/{index_name}/_ping'
+            else:
+                url = f'http://localhost:{self.port}/_ping'
+            try:
+                with requests.get(url) as res:
+                    res.raise_for_status()
+            except Exception:
+                if time.time() > deadline:
+                    raise TimeoutError()
+                time.sleep(timeout / 100.0)
+            else:
+                break
 
     def error_log(self):
         for line in self.log_file.read_text().splitlines():
@@ -48,10 +71,12 @@ class ServerManager:
 def server(tmp_path_factory):
     srv = ServerManager(base_dir=tmp_path_factory.mktemp('srv'), port=14502)
     srv.start()
-    yield srv
-    srv.stop()
-    for line in srv.error_log():
-        print(line)
+    try:
+        yield srv
+    finally:
+        srv.stop()
+        for line in srv.error_log():
+            print(line)
 
 
 index_no = 1
@@ -96,22 +121,8 @@ def session():
         yield session
 
 
-def check_port(port_no):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        return sock.connect_ex(('127.0.0.1', port_no)) == 0
-
-
-def wait_for_ready(port, timeout):
-    deadline = time.time() + timeout
-    while not check_port(port):
-        if time.time() > deadline:
-            raise TimeoutError()
-        time.sleep(timeout / 100.0)
-
-
 @pytest.fixture
 def client(session, server):
-    wait_for_ready(server.port, 1)
     return Client(session, f'http://localhost:{server.port}')
 
 

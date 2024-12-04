@@ -1,4 +1,5 @@
 const std = @import("std");
+const log = std.log.scoped(.main);
 const zul = @import("zul");
 
 const MultiIndex = @import("MultiIndex.zig");
@@ -51,8 +52,12 @@ pub fn main() !void {
         }
     }
 
-    const dir_path = args.get("dir") orelse ".";
+    const dir_path_relative = args.get("dir") orelse "/tmp/fpindex";
+    const dir_path = try std.fs.cwd().realpathAlloc(allocator, dir_path_relative);
+    defer allocator.free(dir_path);
+
     const dir = try std.fs.cwd().makeOpenPath(dir_path, .{ .iterate = true });
+    log.info("using directory {s}", .{dir_path});
 
     const address = args.get("address") orelse "127.0.0.1";
 
@@ -66,6 +71,7 @@ pub fn main() !void {
     if (threads == 0) {
         threads = @intCast(try std.Thread.getCpuCount());
     }
+    log.info("using {} threads", .{threads});
 
     try metrics.initializeMetrics(.{ .prefix = "aindex_" });
 

@@ -124,3 +124,56 @@ def test_delete(client, index_name, create_index):
     assert json.loads(req.content) == {
         'results': []
     }
+
+
+def test_persistence_after_soft_restart(server, client, index_name, create_index):
+    # insert fingerprint
+    for i in range(100):
+        body = {
+            'changes': [
+                {'insert': {'id': 1, 'hashes': [100+i, 200+i, 300+i]}}
+            ],
+        }
+        with client.post(f'/{index_name}/_update', json=body) as req:
+            assert req.status_code == 200, req.content
+            assert json.loads(req.content) == {}
+
+    server.restart()
+    server.wait_for_ready(index_name, timeout=10.0)
+
+    # verify we can find it
+    req = client.post(f'/{index_name}/_search', json={
+        'query': [199, 299, 399]
+    })
+    assert req.status_code == 200, req.content
+    assert json.loads(req.content) == {
+        'results': [{'id': 1, 'score': 3}]
+    }
+
+
+def test_persistence_after_hard_restart(server, client, index_name, create_index):
+    # insert fingerprint
+    for i in range(100):
+        body = {
+            'changes': [
+                {'insert': {'id': 1, 'hashes': [100+i, 200+i, 300+i]}}
+            ],
+        }
+        with client.post(f'/{index_name}/_update', json=body) as req:
+            assert req.status_code == 200, req.content
+            assert json.loads(req.content) == {}
+    assert req.status_code == 200, req.content
+    assert json.loads(req.content) == {}
+
+    server.restart(kill=True)
+    server.wait_for_ready(index_name, timeout=10.0)
+
+    # verify we can find it
+    req = client.post(f'/{index_name}/_search', json={
+        'query': [199, 299, 399]
+    })
+    assert req.status_code == 200, req.content
+    assert json.loads(req.content) == {
+        'results': [{'id': 1, 'score': 3}]
+    }
+

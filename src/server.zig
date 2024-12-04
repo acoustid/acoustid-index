@@ -72,8 +72,9 @@ pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const 
     var router = server.router();
 
     // Monitoring API
-    router.get("/_ping", handlePing);
     router.get("/_metrics", handleMetrics);
+    router.get("/_ping", handlePing);
+    router.get("/:index/_ping", handlePingIndex);
 
     // Search API
     router.post("/:index/_search", handleSearch);
@@ -277,11 +278,6 @@ fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
     return writeResponse(EmptyResponse{}, req, res);
 }
 
-fn handleHeadIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_ref = try getIndex(ctx, req, res, false) orelse return;
-    defer releaseIndex(ctx, index_ref);
-}
-
 const Attributes = struct {
     attributes: std.AutoHashMapUnmanaged(u64, u64),
 
@@ -346,6 +342,18 @@ fn handleDeleteIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !
     try ctx.indexes.deleteIndex(index_name);
 
     return writeResponse(EmptyResponse{}, req, res);
+}
+
+fn handleHeadIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    const index_ref = try getIndex(ctx, req, res, false) orelse return;
+    defer releaseIndex(ctx, index_ref);
+}
+
+fn handlePingIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    const index_ref = try getIndex(ctx, req, res, false) orelse return;
+    defer releaseIndex(ctx, index_ref);
+
+    try handlePing(ctx, req, res);
 }
 
 fn handlePing(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
