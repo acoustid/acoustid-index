@@ -215,6 +215,10 @@ fn doCheckpoint(self: *Self) !bool {
 
     try self.updateManifestFile(file_segments_update.segments.value);
 
+    defer self.oplog.truncate(target.value.info.getLastCommitId()) catch |err| {
+        log.warn("failed to truncate oplog: {}", .{err});
+    };
+
     // commit updated lists
 
     self.segments_lock.lock();

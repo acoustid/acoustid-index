@@ -187,10 +187,11 @@ fn truncateNoLock(self: *Self, commit_id: u64) !void {
     var buf: [file_name_size]u8 = undefined;
     while (pos > 0) {
         pos -= 1;
-        const file_info = self.files.orderedRemove(pos);
+        const file_info = self.files.items[pos];
         const file_name = try generateFileName(&buf, file_info.id);
         log.info("deleting oplog file {s}", .{file_name});
         try self.dir.deleteFile(file_name);
+        _ = self.files.orderedRemove(pos);
     }
 }
 
