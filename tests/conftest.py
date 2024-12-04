@@ -5,6 +5,14 @@ import time
 from urllib.parse import urljoin
 
 
+class ServerNotReady(Exception):
+    pass
+
+
+class ServerDied(Exception):
+    pass
+
+
 class ServerManager:
 
     def __init__(self, base_dir, port):
@@ -45,6 +53,10 @@ class ServerManager:
         self.stop(kill=kill)
         self.start()
 
+    def print_error_log(self):
+        for line in self.error_log():
+            print(line)
+
     def wait_for_ready(self, index_name=None, timeout=10.0):
         deadline = time.time() + timeout
         while True:
@@ -55,12 +67,18 @@ class ServerManager:
             try:
                 with requests.get(url) as res:
                     res.raise_for_status()
+                    return
             except Exception:
                 if time.time() > deadline:
-                    raise TimeoutError()
-                time.sleep(timeout / 100.0)
-            else:
-                break
+                    self.print_error_log()
+                    raise ServerNotReady()
+                try:
+                    self.process.wait(timeout / 100.0)
+                except subprocess.TimeoutExpired:
+                    continue
+                else:
+                    self.print_error_log()
+                    raise ServerDied()
 
     def error_log(self):
         for line in self.log_file.read_text().splitlines():
@@ -75,8 +93,7 @@ def server(tmp_path_factory):
         yield srv
     finally:
         srv.stop()
-        for line in srv.error_log():
-            print(line)
+        srv.print_error_log()
 
 
 index_no = 1

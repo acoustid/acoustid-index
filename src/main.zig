@@ -53,10 +53,11 @@ pub fn main() !void {
     }
 
     const dir_path_relative = args.get("dir") orelse "/tmp/fpindex";
-    const dir_path = try std.fs.cwd().realpathAlloc(allocator, dir_path_relative);
+    const dir = try std.fs.cwd().makeOpenPath(dir_path_relative, .{ .iterate = true });
+
+    const dir_path = try dir.realpathAlloc(allocator, ".");
     defer allocator.free(dir_path);
 
-    const dir = try std.fs.cwd().makeOpenPath(dir_path, .{ .iterate = true });
     log.info("using directory {s}", .{dir_path});
 
     const address = args.get("address") orelse "127.0.0.1";
