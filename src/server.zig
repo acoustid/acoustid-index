@@ -6,7 +6,7 @@ const log = std.log.scoped(.server);
 const msgpack = @import("msgpack");
 
 const MultiIndex = @import("MultiIndex.zig");
-const IndexData = MultiIndex.IndexRef;
+const Index = @import("Index.zig");
 const common = @import("common.zig");
 const SearchResults = common.SearchResults;
 const Change = @import("change.zig").Change;
@@ -138,7 +138,7 @@ fn getId(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?u32 {
     };
 }
 
-fn getIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response, send_body: bool) !?*IndexData {
+fn getIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response, send_body: bool) !?*Index {
     const index_name = req.param("index") orelse {
         if (send_body) {
             try writeErrorResponse(400, error.MissingIndexName, req, res);
@@ -161,7 +161,7 @@ fn getIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response, send_body:
     return index;
 }
 
-fn releaseIndex(ctx: *Context, index: *IndexData) void {
+fn releaseIndex(ctx: *Context, index: *Index) void {
     ctx.indexes.releaseIndex(index);
 }
 
@@ -262,9 +262,8 @@ fn getRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !
 fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const body = try getRequestBody(SearchRequestJSON, req, res) orelse return;
 
-    const index_ref = try getIndex(ctx, req, res, true) orelse return;
-    const index = &index_ref.index;
-    defer releaseIndex(ctx, index_ref);
+    const index = try getIndex(ctx, req, res, true) orelse return;
+    defer releaseIndex(ctx, index);
 
     var timeout = body.timeout;
     if (timeout == 0) {
@@ -299,9 +298,8 @@ const UpdateRequestJSON = struct {
 fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const body = try getRequestBody(UpdateRequestJSON, req, res) orelse return;
 
-    const index_ref = try getIndex(ctx, req, res, true) orelse return;
-    const index = &index_ref.index;
-    defer releaseIndex(ctx, index_ref);
+    const index = try getIndex(ctx, req, res, true) orelse return;
+    defer releaseIndex(ctx, index);
 
     metrics.update(body.changes.len);
 
@@ -311,12 +309,14 @@ fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 }
 
 fn handleHeadFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_ref = try getIndex(ctx, req, res, false) orelse return;
-    const index = &index_ref.index;
-    defer releaseIndex(ctx, index_ref);
+    const index = try getIndex(ctx, req, res, false) orelse return;
+    defer releaseIndex(ctx, index);
+
+    var index_reader = index.acquireReader();
+    defer index.releaseReader(&index_reader);
 
     const id = try getId(req, res, false) orelse return;
-    const info = try index.getDocInfo(id);
+    const info = try index_reader.getDocInfo(id);
 
     res.status = if (info == null) 404 else 200;
 }
@@ -330,12 +330,14 @@ const GetFingerprintResponse = struct {
 };
 
 fn handleGetFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_ref = try getIndex(ctx, req, res, true) orelse return;
-    const index = &index_ref.index;
-    defer releaseIndex(ctx, index_ref);
+    const index = try getIndex(ctx, req, res, true) orelse return;
+    defer releaseIndex(ctx, index);
+
+    var index_reader = index.acquireReader();
+    defer index.releaseReader(&index_reader);
 
     const id = try getId(req, res, true) orelse return;
-    const info = try index.getDocInfo(id) orelse {
+    const info = try index_reader.getDocInfo(id) orelse {
         return writeErrorResponse(404, error.FingerprintNotFound, req, res);
     };
 
@@ -353,9 +355,8 @@ const PutFingerprintRequest = struct {
 fn handlePutFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const body = try getRequestBody(PutFingerprintRequest, req, res) orelse return;
 
-    const index_ref = try getIndex(ctx, req, res, true) orelse return;
-    const index = &index_ref.index;
-    defer releaseIndex(ctx, index_ref);
+    const index = try getIndex(ctx, req, res, true) orelse return;
+    defer releaseIndex(ctx, index);
 
     const id = try getId(req, res, true) orelse return;
     const change: Change = .{ .insert = .{
@@ -371,9 +372,8 @@ fn handlePutFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response
 }
 
 fn handleDeleteFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_ref = try getIndex(ctx, req, res, true) orelse return;
-    const index = &index_ref.index;
-    defer releaseIndex(ctx, index_ref);
+    const index = try getIndex(ctx, req, res, true) orelse return;
+    defer releaseIndex(ctx, index);
 
     const id = try getId(req, res, true) orelse return;
     const change: Change = .{ .delete = .{
@@ -420,14 +420,16 @@ const GetIndexResponse = struct {
 };
 
 fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_ref = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index_ref);
+    const index = try getIndex(ctx, req, res, true) orelse return;
+    defer releaseIndex(ctx, index);
 
-    const info = try index_ref.index.getInfo(req.arena);
+    var index_reader = index.acquireReader();
+    defer index.releaseReader(&index_reader);
+
     const response = GetIndexResponse{
-        .version = info.version,
+        .version = index_reader.getVersion(),
         .attributes = .{
-            .attributes = info.attributes,
+            .attributes = try index_reader.getAttributes(req.arena),
         },
     };
     return writeResponse(response, req, res);
@@ -452,13 +454,13 @@ fn handleDeleteIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !
 }
 
 fn handleHeadIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_ref = try getIndex(ctx, req, res, false) orelse return;
-    defer releaseIndex(ctx, index_ref);
+    const index = try getIndex(ctx, req, res, false) orelse return;
+    defer releaseIndex(ctx, index);
 }
 
 fn handlePingIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_ref = try getIndex(ctx, req, res, false) orelse return;
-    defer releaseIndex(ctx, index_ref);
+    const index = try getIndex(ctx, req, res, false) orelse return;
+    defer releaseIndex(ctx, index);
 
     try handlePing(ctx, req, res);
 }
