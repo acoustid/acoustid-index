@@ -501,7 +501,7 @@ pub fn getDocInfo(self: *Self, doc_id: u32) !?DocInfo {
 
 pub const IndexInfo = struct {
     version: u64,
-    attributes: std.AutoHashMapUnmanaged(u64, u64),
+    attributes: std.StringHashMapUnmanaged(u64),
 
     pub fn deinit(self: *IndexInfo, allocator: std.mem.Allocator) void {
         self.attributes.deinit(allocator);
@@ -512,7 +512,7 @@ pub fn getInfo(self: *Self, allocator: std.mem.Allocator) !IndexInfo {
     var snapshot = self.acquireSegments();
     defer self.releaseSegments(&snapshot); // FIXME this possibly deletes orphaned segments, do it in a separate thread
 
-    var attributes: std.AutoHashMapUnmanaged(u64, u64) = .{};
+    var attributes: std.StringHashMapUnmanaged(u64) = .{};
     errdefer attributes.deinit(allocator);
 
     var version: u64 = 0;

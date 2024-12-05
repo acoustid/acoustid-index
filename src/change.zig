@@ -18,7 +18,7 @@ pub const Delete = struct {
 };
 
 pub const SetAttribute = struct {
-    key: u64,
+    name: []const u8,
     value: u64,
 
     pub fn msgpackFormat() msgpack.StructFormat {

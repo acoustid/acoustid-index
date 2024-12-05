@@ -421,7 +421,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
 
     if (header.has_attributes) {
         // FIXME nicer api in msgpack.zig
-        var attributes = std.AutoHashMap(u64, u64).init(segment.allocator);
+        var attributes = std.StringHashMap(u64).init(segment.allocator);
         defer attributes.deinit();
         try unpacker.readMapInto(&attributes);
         segment.attributes.deinit(segment.allocator);

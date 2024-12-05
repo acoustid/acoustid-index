@@ -23,13 +23,19 @@ def test_get_index_not_found(client, index_name):
 
 @pytest.mark.parametrize('fmt', ['json', 'msgpack'])
 def test_get_index(client, index_name, create_index, fmt):
-    req = client.get(f'/{index_name}', headers=headers(fmt))
+    req = client.post(f'/{index_name}/_update', json={
+        'changes': [
+            {'set_attribute': {'name': 'foo', 'value': 1234}},
+        ],
+    })
     assert req.status_code == 200, req.content
 
+    req = client.get(f'/{index_name}', headers=headers(fmt))
+    assert req.status_code == 200, req.content
     if fmt == 'json':
-        expected = {'version': 0, 'attributes': []}
+         expected = {'version': 1, 'attributes': {'foo': 1234}}
     else:
-        expected = {'v': 0, 'a': {}}
+         expected = {'v': 1, 'a': {'foo': 1234}}
     assert decode(fmt, req.content) == expected
 
 

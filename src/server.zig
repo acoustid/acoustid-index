@@ -243,14 +243,14 @@ fn getRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !
 
     switch (content_type) {
         .json => {
-            return json.parseFromSliceLeaky(T, req.arena, content, .{}) catch {
-                try writeErrorResponse(400, error.InvalidContent, req, res);
+            return json.parseFromSliceLeaky(T, req.arena, content, .{}) catch |err| {
+                try writeErrorResponse(400, err, req, res);
                 return null;
             };
         },
         .msgpack => {
-            return msgpack.decodeFromSliceLeaky(T, req.arena, content) catch {
-                try writeErrorResponse(400, error.InvalidContent, req, res);
+            return msgpack.decodeFromSliceLeaky(T, req.arena, content) catch |err| {
+                try writeErrorResponse(400, err, req, res);
                 return null;
             };
         },
@@ -388,18 +388,16 @@ fn handleDeleteFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Respo
 }
 
 const Attributes = struct {
-    attributes: std.AutoHashMapUnmanaged(u64, u64),
+    attributes: std.StringHashMapUnmanaged(u64),
 
     pub fn jsonStringify(self: Attributes, jws: anytype) !void {
-        try jws.beginArray();
+        try jws.beginObject();
         var iter = self.attributes.iterator();
         while (iter.next()) |entry| {
-            try jws.beginArray();
-            try jws.write(entry.key_ptr.*);
+            try jws.objectField(entry.key_ptr.*);
             try jws.write(entry.value_ptr.*);
-            try jws.endArray();
         }
-        try jws.endArray();
+        try jws.endObject();
     }
 
     pub fn msgpackWrite(self: Attributes, packer: anytype) !void {

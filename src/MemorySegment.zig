@@ -19,7 +19,7 @@ pub const Options = struct {};
 
 allocator: std.mem.Allocator,
 info: SegmentInfo = .{},
-attributes: std.AutoHashMapUnmanaged(u64, u64) = .{},
+attributes: std.StringHashMapUnmanaged(u64) = .{},
 docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
 items: std.ArrayListUnmanaged(Item) = .{},
 frozen: bool = false,
@@ -34,6 +34,10 @@ pub fn init(allocator: std.mem.Allocator, opts: Options) Self {
 pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
     _ = delete_file;
 
+    var iter = self.attributes.iterator();
+    while (iter.next()) |e| {
+        self.allocator.free(e.key_ptr.*);
+    }
     self.attributes.deinit(self.allocator);
     self.docs.deinit(self.allocator);
     self.items.deinit(self.allocator);
@@ -99,8 +103,10 @@ pub fn build(self: *Self, changes: []const Change) !void {
                 }
             },
             .set_attribute => |op| {
-                const result = self.attributes.getOrPutAssumeCapacity(op.key);
+                const result = self.attributes.getOrPutAssumeCapacity(op.name);
                 if (!result.found_existing) {
+                    errdefer self.attributes.removeByPtr(result.key_ptr);
+                    result.key_ptr.* = try self.allocator.dupe(u8, op.name);
                     result.value_ptr.* = op.value;
                 }
             },
