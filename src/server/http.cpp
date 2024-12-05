@@ -263,7 +263,7 @@ static HttpResponse handleUpdateRequest(const HttpRequest &request, const QShare
                 return errNotImplemented("not implemented in this version of acoustid-index");
             }
             if (changeObj.contains("set_attribute")) {
-                auto attrObj = changeObj.value("set").toObject();
+                auto attrObj = changeObj.value("set_attribute").toObject();
                 auto name = attrObj.value("name").toString();
                 auto value = attrObj.value("value").toString();
                 writer->setAttribute(name, value);
