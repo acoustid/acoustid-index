@@ -24,6 +24,7 @@ const FileSegment = @import("FileSegment.zig");
 const FileSegmentList = SegmentList(FileSegment);
 const FileSegmentNode = FileSegmentList.Node;
 
+const IndexReader = @import("IndexReader.zig");
 const SharedPtr = @import("utils/shared_ptr.zig").SharedPtr;
 
 const SegmentMerger = @import("segment_merger.zig").SegmentMerger;
@@ -180,8 +181,8 @@ fn loadSegments(self: *Self, create: bool) !u64 {
 }
 
 fn doCheckpoint(self: *Self) !bool {
-    var snapshot = self.acquireSegments();
-    defer self.releaseSegments(&snapshot);
+    var snapshot = self.acquireReader();
+    defer self.releaseReader(&snapshot);
 
     const source = snapshot.memory_segments.value.getFirst() orelse return false;
     if (source.value.getSize() < self.options.min_segment_size) {
@@ -432,117 +433,26 @@ pub fn updateInternal(self: *Self, changes: []const Change, commit_id: ?u64) !vo
     }
 }
 
-const SegmentsSnapshot = struct {
-    file_segments: SharedPtr(FileSegmentList),
-    memory_segments: SharedPtr(MemorySegmentList),
-};
-
-// Get the current segments lists and make sure they won't get deleted.
-fn acquireSegments(self: *Self) SegmentsSnapshot {
+pub fn acquireReader(self: *Self) IndexReader {
     self.segments_lock.lockShared();
     defer self.segments_lock.unlockShared();
 
-    return .{
+    return IndexReader{
         .file_segments = self.file_segments.segments.acquire(),
         .memory_segments = self.memory_segments.segments.acquire(),
     };
 }
 
-// Release the previously acquired segments lists, they will get deleted if no longer needed.
-fn releaseSegments(self: *Self, segments: *SegmentsSnapshot) void {
-    MemorySegmentList.destroySegments(self.allocator, &segments.memory_segments);
-    FileSegmentList.destroySegments(self.allocator, &segments.file_segments);
+pub fn releaseReader(self: *Self, reader: *IndexReader) void {
+    MemorySegmentList.destroySegments(self.allocator, &reader.memory_segments);
+    FileSegmentList.destroySegments(self.allocator, &reader.file_segments);
 }
-
-const segment_lists = [_][]const u8{
-    "file_segments",
-    "memory_segments",
-};
 
 pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, deadline: Deadline) !SearchResults {
-    const sorted_hashes = try allocator.dupe(u32, hashes);
-    defer allocator.free(sorted_hashes);
-    std.sort.pdq(u32, sorted_hashes, {}, std.sort.asc(u32));
+    var reader = self.acquireReader();
+    defer self.releaseReader(&reader);
 
-    var results = SearchResults.init(allocator);
-    errdefer results.deinit();
-
-    var snapshot = self.acquireSegments();
-    defer self.releaseSegments(&snapshot); // FIXME this possibly deletes orphaned segments, do it in a separate thread
-
-    inline for (segment_lists) |n| {
-        const segments = @field(snapshot, n);
-        try segments.value.search(sorted_hashes, &results, deadline);
-    }
-
-    results.sort();
-
-    return results;
-}
-
-pub fn getDocInfo(self: *Self, doc_id: u32) !?DocInfo {
-    var snapshot = self.acquireSegments();
-    defer self.releaseSegments(&snapshot); // FIXME this possibly deletes orphaned segments, do it in a separate thread
-
-    var result: ?DocInfo = null;
-    inline for (segment_lists) |n| {
-        const segments = @field(snapshot, n);
-        if (segments.value.getDocInfo(doc_id)) |res| {
-            result = res;
-        }
-    }
-    if (result) |res| {
-        if (!res.deleted) {
-            return res;
-        }
-    }
-    return null;
-}
-
-pub const IndexInfo = struct {
-    version: u64,
-    attributes: std.StringHashMapUnmanaged(u64),
-
-    pub fn deinit(self: *IndexInfo, allocator: std.mem.Allocator) void {
-        self.attributes.deinit(allocator);
-    }
-};
-
-pub fn getInfo(self: *Self, allocator: std.mem.Allocator) !IndexInfo {
-    var snapshot = self.acquireSegments();
-    defer self.releaseSegments(&snapshot); // FIXME this possibly deletes orphaned segments, do it in a separate thread
-
-    var attributes: std.StringHashMapUnmanaged(u64) = .{};
-    errdefer {
-        var iter = attributes.iterator();
-        while (iter.next()) |e| {
-            allocator.free(e.key_ptr.*);
-        }
-        attributes.deinit(allocator);
-    }
-
-    var version: u64 = 0;
-    inline for (segment_lists) |n| {
-        const segments = @field(snapshot, n);
-        for (segments.value.nodes.items) |node| {
-            var iter = node.value.attributes.iterator();
-            while (iter.next()) |entry| {
-                const result = try attributes.getOrPut(allocator, entry.key_ptr.*);
-                if (!result.found_existing) {
-                    errdefer attributes.removeByPtr(entry.key_ptr);
-                    result.key_ptr.* = try allocator.dupe(u8, entry.key_ptr.*);
-                }
-                result.value_ptr.* = entry.value_ptr.*;
-            }
-            std.debug.assert(node.value.info.version > version);
-            version = node.value.info.version;
-        }
-    }
-
-    return .{
-        .version = version,
-        .attributes = attributes,
-    };
+    return reader.search(hashes, allocator, deadline);
 }
 
 test {

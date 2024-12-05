@@ -315,8 +315,11 @@ fn handleHeadFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Respons
     const index = &index_ref.index;
     defer releaseIndex(ctx, index_ref);
 
+    var index_reader = index.acquireReader();
+    defer index.releaseReader(&index_reader);
+
     const id = try getId(req, res, false) orelse return;
-    const info = try index.getDocInfo(id);
+    const info = try index_reader.getDocInfo(id);
 
     res.status = if (info == null) 404 else 200;
 }
@@ -334,8 +337,11 @@ fn handleGetFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response
     const index = &index_ref.index;
     defer releaseIndex(ctx, index_ref);
 
+    var index_reader = index.acquireReader();
+    defer index.releaseReader(&index_reader);
+
     const id = try getId(req, res, true) orelse return;
-    const info = try index.getDocInfo(id) orelse {
+    const info = try index_reader.getDocInfo(id) orelse {
         return writeErrorResponse(404, error.FingerprintNotFound, req, res);
     };
 
@@ -421,13 +427,16 @@ const GetIndexResponse = struct {
 
 fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index_ref = try getIndex(ctx, req, res, true) orelse return;
+    const index = &index_ref.index;
     defer releaseIndex(ctx, index_ref);
 
-    const info = try index_ref.index.getInfo(req.arena);
+    var index_reader = index.acquireReader();
+    defer index.releaseReader(&index_reader);
+
     const response = GetIndexResponse{
-        .version = info.version,
+        .version = index_reader.getVersion(),
         .attributes = .{
-            .attributes = info.attributes,
+            .attributes = try index_reader.getAttributes(req.arena),
         },
     };
     return writeResponse(response, req, res);
