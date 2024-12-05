@@ -65,6 +65,15 @@ pub fn SegmentList(Segment: type) type {
             segment.release(allocator, Segment.deinit, .{.delete});
         }
 
+        pub fn loadSegment(allocator: Allocator, info: SegmentInfo, options: Segment.Options) !Node {
+            var node = try createSegment(allocator, options);
+            errdefer destroySegment(allocator, &node);
+
+            try node.value.load(info);
+
+            return node;
+        }
+
         pub fn destroySegments(allocator: Allocator, segments: *SharedPtr(Self)) void {
             segments.release(allocator, Self.deinit, .{ allocator, .delete });
         }

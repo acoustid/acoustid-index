@@ -144,15 +144,6 @@ pub fn deinit(self: *Self) void {
     self.dir.close();
 }
 
-fn loadSegment(self: *Self, info: SegmentInfo) !FileSegmentNode {
-    var node = try FileSegmentList.createSegment(self.allocator, .{ .dir = self.dir });
-    errdefer FileSegmentList.destroySegment(self.allocator, &node);
-
-    try node.value.open(info);
-
-    return node;
-}
-
 fn loadSegments(self: *Self, create: bool) !u64 {
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
@@ -168,14 +159,15 @@ fn loadSegments(self: *Self, create: bool) !u64 {
         return err;
     };
     defer self.allocator.free(segment_ids);
+    log.info("found {} segments in manifest", .{segment_ids.len});
 
     try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, segment_ids.len);
-
     var last_commit_id: u64 = 0;
-    for (segment_ids) |segment_id| {
-        const node = try self.loadSegment(segment_id);
+    for (segment_ids, 1..) |segment_id, i| {
+        const node = try FileSegmentList.loadSegment(self.allocator, segment_id, .{ .dir = self.dir });
         self.file_segments.segments.value.nodes.appendAssumeCapacity(node);
         last_commit_id = node.value.info.getLastCommitId();
+        log.info("loaded segment {} ({}/{})", .{ last_commit_id, i, segment_ids.len });
     }
     return last_commit_id;
 }

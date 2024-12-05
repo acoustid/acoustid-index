@@ -90,7 +90,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !
     }
 }
 
-pub fn open(self: *Self, info: SegmentInfo) !void {
+pub fn load(self: *Self, info: SegmentInfo) !void {
     try filefmt.readSegmentFile(self.dir, info, self);
 }
 
