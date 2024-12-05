@@ -87,16 +87,16 @@ TEST_F(HttpTest, TestGetIndexNotFound) {
 }
 
 TEST_F(HttpTest, TestPutDocumentStringTerms) {
-    auto request = HttpRequest(HTTP_PUT, QUrl("/main/_doc/111"));
-    request.setBody(QJsonDocument(QJsonObject{{"terms", "1,2,3"}}));
+    auto request = HttpRequest(HTTP_PUT, QUrl("/main/111"));
+    request.setBody(QJsonDocument(QJsonObject{{"hashes", "1,2,3"}}));
     auto response = handler->router().handle(request);
     ASSERT_EQ(response.status(), HTTP_OK);
     ASSERT_EQ(response.body().toStdString(), "{}");
 }
 
 TEST_F(HttpTest, TestPutDocumentArrayTerms) {
-    auto request = HttpRequest(HTTP_PUT, QUrl("/main/_doc/111"));
-    request.setBody(QJsonDocument(QJsonObject{{"terms", QJsonArray{1, 2, 3}}}));
+    auto request = HttpRequest(HTTP_PUT, QUrl("/main/111"));
+    request.setBody(QJsonDocument(QJsonObject{{"hashes", QJsonArray{1, 2, 3}}}));
     auto response = handler->router().handle(request);
     ASSERT_EQ(response.status(), HTTP_OK);
     ASSERT_EQ(response.body().toStdString(), "{}");
@@ -159,12 +159,12 @@ TEST_F(HttpTest, TestBulkArray) {
 }*/
 
 TEST_F(HttpTest, TestBulkObject) {
-    auto request = HttpRequest(HTTP_POST, QUrl("/main/_bulk"));
+    auto request = HttpRequest(HTTP_POST, QUrl("/main/_update"));
     request.setBody(QJsonDocument(QJsonObject{
-        {"operations", QJsonArray{
-            QJsonObject{{"upsert", QJsonObject{{"id", 111}, {"terms", QJsonArray{1, 2, 3}}}}},
-            QJsonObject{{"upsert", QJsonObject{{"id", 112}, {"terms", QJsonArray{3, 4, 5}}}}},
-            QJsonObject{{"set", QJsonObject{{"name", "foo"}, {"value", "bar"}}}},
+        {"changes", QJsonArray{
+            QJsonObject{{"insert", QJsonObject{{"id", 111}, {"hashes", QJsonArray{1, 2, 3}}}}},
+            QJsonObject{{"insert", QJsonObject{{"id", 112}, {"hashes", QJsonArray{3, 4, 5}}}}},
+            QJsonObject{{"set_attribute", QJsonObject{{"name", "foo"}, {"value", "bar"}}}},
         }},
     }));
 
