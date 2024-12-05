@@ -52,7 +52,7 @@ static HttpResponse errInvalidParameter(const QString &description) {
     return errBadRequest("invalid_parameter", description);
 }
 
-static HttpResponse errInvalidTerms() { return errBadRequest("invalid_terms", "invalid terms"); }
+static HttpResponse errInvalidTerms() { return errBadRequest("invalid_hashes", "invalid hashes"); }
 
 static QString getIndexName(const HttpRequest &request) {
     auto indexName = request.param(":index");
@@ -170,7 +170,7 @@ static HttpResponse handlePutDocumentRequest(const HttpRequest &request, const Q
     if (body.isEmpty()) {
         return errInvalidTerms();
     }
-    auto terms = parseTerms(body.value("terms"));
+    auto terms = parseTerms(body.value("hashes"));
 
     try {
         auto writer = index->openWriter(true, 1000);
@@ -222,8 +222,8 @@ static HttpResponse handleSearchRequest(const HttpRequest &request, const QShare
     return HttpResponse(HTTP_OK, QJsonDocument(responseJson));
 }
 
-// Handle bulk requests.
-static HttpResponse handleBulkRequest(const HttpRequest &request, const QSharedPointer<Index> &indexes) {
+// Handle bulk update requests.
+static HttpResponse handleUpdateRequest(const HttpRequest &request, const QSharedPointer<Index> &indexes) {
     auto index = getIndex(request, indexes);
 
     QJsonArray opsJsonArray;
@@ -231,39 +231,39 @@ static HttpResponse handleBulkRequest(const HttpRequest &request, const QSharedP
     auto doc = request.json();
     if (doc.isObject()) {
         auto obj = doc.object();
-        if (obj.contains("operations")) {
-            auto value = obj.value("operations");
+        if (obj.contains("changes")) {
+            auto value = obj.value("changes");
             if (value.isArray()) {
                 opsJsonArray = value.toArray();
             } else {
-                return errBadRequest("invalid_bulk_operation", "'operations' must be an array");
+                return errBadRequest("invalid_bulk_update", "'changes' must be an array");
             }
         }
     } else if (doc.isArray()) {
         opsJsonArray = doc.array();
     } else {
-        return errBadRequest("invalid_bulk_operation",
-                             "request body must be either an array or an object with 'operations' key in it");
+        return errBadRequest("invalid_bulk_update",
+                             "request body must be either an array or an object with 'changes' key in it");
     }
 
     try {
         auto writer = index->openWriter(true, 1000);
-        for (auto operation : opsJsonArray) {
-            if (!operation.isObject()) {
-                return errBadRequest("invalid_bulk_operation", "operation must be an object");
+        for (auto change : opsJsonArray) {
+            if (!change.isObject()) {
+                return errBadRequest("invalid_bulk_update", "change must be an object");
             }
-            auto operationObj = operation.toObject();
-            if (operationObj.contains("upsert")) {
-                auto docObj = operationObj.value("upsert").toObject();
+            auto changeObj = change.toObject();
+            if (changeObj.contains("insert")) {
+                auto docObj = changeObj.value("insert").toObject();
                 auto docId = docObj.value("id").toInt();
-                auto terms = parseTerms(docObj.value("terms"));
+                auto terms = parseTerms(docObj.value("hashes"));
                 writer->addDocument(docId, terms.data(), terms.size());
             }
-            if (operationObj.contains("delete")) {
+            if (changeObj.contains("delete")) {
                 return errNotImplemented("not implemented in this version of acoustid-index");
             }
-            if (operationObj.contains("set")) {
-                auto attrObj = operationObj.value("set").toObject();
+            if (changeObj.contains("set_attribute")) {
+                auto attrObj = changeObj.value("set").toObject();
                 auto name = attrObj.value("name").toString();
                 auto value = attrObj.value("value").toString();
                 writer->setAttribute(name, value);
@@ -294,22 +294,22 @@ HttpRequestHandler::HttpRequestHandler(QSharedPointer<Index> indexes, QSharedPoi
     });
 
     // Document API
-    m_router.route(HTTP_HEAD, "/:index/_doc/:docId", [=](auto req) {
+    m_router.route(HTTP_HEAD, "/:index/:docId", [=](auto req) {
         return handleHeadDocumentRequest(req, m_indexes);
     });
-    m_router.route(HTTP_GET, "/:index/_doc/:docId", [=](auto req) {
+    m_router.route(HTTP_GET, "/:index/:docId", [=](auto req) {
         return handleGetDocumentRequest(req, m_indexes);
     });
-    m_router.route(HTTP_PUT, "/:index/_doc/:docId", [=](auto req) {
+    m_router.route(HTTP_PUT, "/:index/:docId", [=](auto req) {
         return handlePutDocumentRequest(req, m_indexes);
     });
-    m_router.route(HTTP_DELETE, "/:index/_doc/:docId", [=](auto req) {
+    m_router.route(HTTP_DELETE, "/:index/:docId", [=](auto req) {
         return handleDeleteDocumentRequest(req, m_indexes);
     });
 
-    // Bulk API
-    m_router.route(HTTP_POST, "/:index/_bulk", [=](auto req) {
-        return handleBulkRequest(req, m_indexes);
+    // Update API
+    m_router.route(HTTP_POST, "/:index/_update", [=](auto req) {
+        return handleUpdateRequest(req, m_indexes);
     });
 
     // Search API
