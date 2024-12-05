@@ -501,7 +501,7 @@ pub fn getDocInfo(self: *Self, doc_id: u32) !?DocInfo {
 
 pub const IndexInfo = struct {
     version: u64,
-    attributes: std.AutoHashMapUnmanaged(u64, u64),
+    attributes: std.StringHashMapUnmanaged(u64),
 
     pub fn deinit(self: *IndexInfo, allocator: std.mem.Allocator) void {
         self.attributes.deinit(allocator);
@@ -512,8 +512,14 @@ pub fn getInfo(self: *Self, allocator: std.mem.Allocator) !IndexInfo {
     var snapshot = self.acquireSegments();
     defer self.releaseSegments(&snapshot); // FIXME this possibly deletes orphaned segments, do it in a separate thread
 
-    var attributes: std.AutoHashMapUnmanaged(u64, u64) = .{};
-    errdefer attributes.deinit(allocator);
+    var attributes: std.StringHashMapUnmanaged(u64) = .{};
+    errdefer {
+        var iter = attributes.iterator();
+        while (iter.next()) |e| {
+            allocator.free(e.key_ptr.*);
+        }
+        attributes.deinit(allocator);
+    }
 
     var version: u64 = 0;
     inline for (segment_lists) |n| {
@@ -521,7 +527,12 @@ pub fn getInfo(self: *Self, allocator: std.mem.Allocator) !IndexInfo {
         for (segments.value.nodes.items) |node| {
             var iter = node.value.attributes.iterator();
             while (iter.next()) |entry| {
-                try attributes.put(allocator, entry.key_ptr.*, entry.value_ptr.*);
+                const result = try attributes.getOrPut(allocator, entry.key_ptr.*);
+                if (!result.found_existing) {
+                    errdefer attributes.removeByPtr(entry.key_ptr);
+                    result.key_ptr.* = try allocator.dupe(u8, entry.key_ptr.*);
+                }
+                result.value_ptr.* = entry.value_ptr.*;
             }
             std.debug.assert(node.value.info.version > version);
             version = node.value.info.version;
