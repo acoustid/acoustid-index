@@ -114,14 +114,18 @@ fn removeIndex(self: *Self, name: []const u8) void {
     }
 }
 
-pub fn releaseIndex(self: *Self, index_ref: *IndexRef) void {
+fn releaseIndexRef(self: *Self, index_ref: *IndexRef) void {
     self.lock.lock();
     defer self.lock.unlock();
 
     _ = index_ref.decRef();
 }
 
-pub fn acquireIndex(self: *Self, name: []const u8) !*IndexRef {
+pub fn releaseIndex(self: *Self, index: *Index) void {
+    self.releaseIndexRef(@fieldParentPtr("index", index));
+}
+
+fn acquireIndex(self: *Self, name: []const u8) !*IndexRef {
     if (!isValidName(name)) {
         return error.InvalidIndexName;
     }
@@ -149,20 +153,20 @@ pub fn acquireIndex(self: *Self, name: []const u8) !*IndexRef {
     return result.value_ptr;
 }
 
-pub fn getIndex(self: *Self, name: []const u8) !*IndexRef {
+pub fn getIndex(self: *Self, name: []const u8) !*Index {
     const index_ref = try self.acquireIndex(name);
-    errdefer self.releaseIndex(index_ref);
+    errdefer self.releaseIndexRef(index_ref);
 
     try index_ref.ensureOpen(false);
 
-    return index_ref;
+    return &index_ref.index;
 }
 
 pub fn createIndex(self: *Self, name: []const u8) !void {
     log.info("creating index {s}", .{name});
 
     const index_ref = try self.acquireIndex(name);
-    defer self.releaseIndex(index_ref);
+    defer self.releaseIndexRef(index_ref);
 
     try index_ref.ensureOpen(true);
 }
