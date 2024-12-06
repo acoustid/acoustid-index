@@ -1,6 +1,6 @@
 FROM python:3
 
-RUN pip install --no-cache-dir aiohttp
+RUN pip install --no-cache-dir aiohttp msgpack
 
 ADD proxy.py /usr/src/fpindex-proxy.py
 
