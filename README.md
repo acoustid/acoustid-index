@@ -24,7 +24,9 @@ Running server:
 
 ## HTTP API
 
-### Check if index exists
+### Index management
+
+#### Check if index exists
 
 Returns HTTP status 200 if the index exists.
 
@@ -32,14 +34,14 @@ Returns HTTP status 200 if the index exists.
 HEAD /:indexname
 ```
 
-### Get index info
+#### Get index info
 
 Returns information about an index.
 
 ```
 GET /:indexname
 ```
-### Create index
+#### Create index
 
 Creates a new index.
 
@@ -47,7 +49,7 @@ Creates a new index.
 PUT /:indexname
 ```
 
-### Delete index
+#### Delete index
 
 Deletes an index.
 
@@ -55,7 +57,9 @@ Deletes an index.
 DELETE /:indexname
 ```
 
-### Update
+### Fingerprint management
+
+#### Update
 
 Performs multiple operations on an index.
 
@@ -72,7 +76,7 @@ POST /:indexname/_update
 }
 ```
 
-### Search
+#### Search
 
 Searches for a fingerprint in the index.
 
@@ -84,7 +88,7 @@ POST /:indexname/_search
 {"query": [100, 200, 300], "timeout": 10}
 ```
 
-### Check if fingerprint exists
+#### Check if fingerprint exists
 
 Returns HTTP status 200 if the fingerprint exists.
 
@@ -92,7 +96,7 @@ Returns HTTP status 200 if the fingerprint exists.
 HEAD /:indexname/:fpid
 ```
 
-### Get fingerprint info
+#### Get fingerprint info
 
 Gets information about a fingeprint.
 
@@ -102,7 +106,7 @@ There is no way to get back the original hashes, they are not stored in a way th
 GET /:indexname/:fpid
 ```
 
-### Update fingerprint
+#### Update single fingerprint
 
 Updates a single fingerprint.
 
@@ -116,7 +120,7 @@ PUT /:indexname/:fpid
 {"hashes": [100, 200, 300]}
 ```
 
-### Delete fingerprint
+#### Delete single fingerprint
 
 Deletes a single fingerprint.
 
@@ -126,3 +130,17 @@ Prefer using `/_update` for bulk operations.
 DELETE /:indexname/:fpid
 ```
 
+### System utilities
+
+#### Healhcheck
+
+```
+GET /_health
+GET /:indexname/_health
+```
+
+#### Prometheus metrics
+
+```
+GET /_metrics
+```
