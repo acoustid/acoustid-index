@@ -44,7 +44,7 @@ pub fn deinit(self: *Self) void {
     std.debug.assert(self.num_tasks == 0);
 }
 
-pub fn createTask(self: *Self, priority: Priority, func: anytype, ctx: anytype) !*Queue.Node {
+pub fn createTask(self: *Self, priority: Priority, func: anytype, ctx: anytype) !Task {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
@@ -71,7 +71,7 @@ pub fn createTask(self: *Self, priority: Priority, func: anytype, ctx: anytype) 
     return task;
 }
 
-pub fn destroyTask(self: *Self, task: *Queue.Node) void {
+pub fn destroyTask(self: *Self, task: Task) void {
     self.queue_mutex.lock();
     if (task.data.scheduled) {
         self.queue.remove(task);
@@ -86,7 +86,7 @@ pub fn destroyTask(self: *Self, task: *Queue.Node) void {
     self.num_tasks -= 1;
 }
 
-pub fn scheduleTask(self: *Self, task: *Queue.Node) void {
+pub fn scheduleTask(self: *Self, task: Task) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
@@ -98,7 +98,7 @@ pub fn scheduleTask(self: *Self, task: *Queue.Node) void {
     self.addToQueue(task);
 }
 
-pub fn addToQueue(self: *Self, task: *Queue.Node) void {
+fn addToQueue(self: *Self, task: *Queue.Node) void {
     task.data.scheduled = true;
     self.queue.prepend(task);
     self.queue_not_empty.signal();
