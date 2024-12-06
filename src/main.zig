@@ -2,6 +2,7 @@ const std = @import("std");
 const log = std.log.scoped(.main);
 const zul = @import("zul");
 
+const Scheduler = @import("utils/Scheduler.zig");
 const MultiIndex = @import("MultiIndex.zig");
 const server = @import("server.zig");
 const metrics = @import("metrics.zig");
@@ -76,8 +77,13 @@ pub fn main() !void {
 
     try metrics.initializeMetrics(.{ .prefix = "aindex_" });
 
-    var indexes = MultiIndex.init(allocator, dir);
+    var scheduler = Scheduler.init(allocator);
+    defer scheduler.deinit();
+
+    var indexes = MultiIndex.init(allocator, &scheduler, dir);
     defer indexes.deinit();
+
+    try scheduler.start(threads);
 
     try server.run(allocator, &indexes, address, port, threads);
 }

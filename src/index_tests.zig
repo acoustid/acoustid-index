@@ -3,6 +3,7 @@ const std = @import("std");
 const common = @import("common.zig");
 const Change = @import("change.zig").Change;
 const SearchResults = common.SearchResults;
+const Scheduler = @import("utils/Scheduler.zig");
 
 const Index = @import("Index.zig");
 
@@ -19,7 +20,10 @@ test "index does not exist" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
-    var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{});
+    var scheduler = Scheduler.init(std.testing.allocator);
+    defer scheduler.deinit();
+
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
     defer index.deinit();
 
     const result = index.open(false);
@@ -30,7 +34,10 @@ test "index create, update and search" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
-    var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{});
+    var scheduler = Scheduler.init(std.testing.allocator);
+    defer scheduler.deinit();
+
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
     defer index.deinit();
 
     try index.open(true);
@@ -66,10 +73,13 @@ test "index create, update, reopen and search" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
+    var scheduler = Scheduler.init(std.testing.allocator);
+    defer scheduler.deinit();
+
     var hashes: [100]u32 = undefined;
 
     {
-        var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{});
+        var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
         defer index.deinit();
 
         try index.open(true);
@@ -81,7 +91,7 @@ test "index create, update, reopen and search" {
     }
 
     {
-        var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{});
+        var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
         defer index.deinit();
 
         try index.open(false);
@@ -102,10 +112,13 @@ test "index many updates" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
+    var scheduler = Scheduler.init(std.testing.allocator);
+    defer scheduler.deinit();
+
     var hashes: [100]u32 = undefined;
 
     {
-        var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{});
+        var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
         defer index.deinit();
 
         try index.open(true);
@@ -118,7 +131,7 @@ test "index many updates" {
         }
     }
 
-    var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{});
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
     defer index.deinit();
 
     try index.open(false);
@@ -146,7 +159,10 @@ test "index, multiple fingerprints with the same hashes" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
-    var index = try Index.init(std.testing.allocator, tmp_dir.dir, "idx", .{});
+    var scheduler = Scheduler.init(std.testing.allocator);
+    defer scheduler.deinit();
+
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
     defer index.deinit();
 
     try index.open(true);

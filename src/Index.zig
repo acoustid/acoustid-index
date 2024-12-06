@@ -5,6 +5,7 @@ const log = std.log.scoped(.index);
 const zul = @import("zul");
 
 const Deadline = @import("utils/Deadline.zig");
+const Scheduler = @import("utils/Scheduler.zig");
 const Change = @import("change.zig").Change;
 const SearchResult = @import("common.zig").SearchResult;
 const SearchResults = @import("common.zig").SearchResults;
@@ -43,6 +44,7 @@ const Options = struct {
 
 options: Options,
 allocator: std.mem.Allocator,
+scheduler: *Scheduler,
 
 dir: std.fs.Dir,
 
@@ -66,16 +68,9 @@ memory_segments_lock: std.Thread.Mutex = .{},
 // Mutex used to control linearity of updates.
 update_lock: std.Thread.Mutex = .{},
 
-stopping: std.atomic.Value(bool),
-
-checkpoint_event: std.Thread.ResetEvent = .{},
-checkpoint_thread: ?std.Thread = null,
-
-file_segment_merge_event: std.Thread.ResetEvent = .{},
-file_segment_merge_thread: ?std.Thread = null,
-
-memory_segment_merge_event: std.Thread.ResetEvent = .{},
-memory_segment_merge_thread: ?std.Thread = null,
+checkpoint_task: ?Scheduler.Task = null,
+file_segment_merge_task: ?Scheduler.Task = null,
+memory_segment_merge_task: ?Scheduler.Task = null,
 
 fn getFileSegmentSize(segment: SharedPtr(FileSegment)) usize {
     return segment.value.getSize();
@@ -85,7 +80,7 @@ fn getMemorySegmentSize(segment: SharedPtr(MemorySegment)) usize {
     return segment.value.getSize();
 }
 
-pub fn init(allocator: std.mem.Allocator, parent_dir: std.fs.Dir, path: []const u8, options: Options) !Self {
+pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, parent_dir: std.fs.Dir, path: []const u8, options: Options) !Self {
     var dir = try parent_dir.makeOpenPath(path, .{ .iterate = true });
     errdefer dir.close();
 
@@ -120,22 +115,29 @@ pub fn init(allocator: std.mem.Allocator, parent_dir: std.fs.Dir, path: []const 
     return .{
         .options = options,
         .allocator = allocator,
+        .scheduler = scheduler,
         .dir = dir,
         .oplog = oplog,
         .segments_lock = .{},
         .memory_segments = memory_segments,
         .file_segments = file_segments,
-        .stopping = std.atomic.Value(bool).init(false),
     };
 }
 
 pub fn deinit(self: *Self) void {
     log.info("closing index {}", .{@intFromPtr(self)});
-    self.stopping.store(true, .release);
 
-    self.stopCheckpointThread();
-    self.stopMemorySegmentMergeThread();
-    self.stopFileSegmentMergeThread();
+    if (self.checkpoint_task) |task| {
+        self.scheduler.destroyTask(task);
+    }
+
+    if (self.memory_segment_merge_task) |task| {
+        self.scheduler.destroyTask(task);
+    }
+
+    if (self.file_segment_merge_task) |task| {
+        self.scheduler.destroyTask(task);
+    }
 
     self.memory_segments.deinit(self.allocator, .keep);
     self.file_segments.deinit(self.allocator, .keep);
@@ -221,45 +223,30 @@ fn doCheckpoint(self: *Self) !bool {
     self.file_segments.commitUpdate(&file_segments_update);
 
     if (self.file_segments.needsMerge()) {
-        self.file_segment_merge_event.set();
+        if (self.file_segment_merge_task) |task| {
+            self.scheduler.scheduleTask(task);
+        }
     }
 
     return true;
 }
 
-fn checkpointThreadFn(self: *Self) void {
-    log.debug("checkpoint thread started", .{});
-    while (!self.stopping.load(.acquire)) {
-        if (self.doCheckpoint()) |successful| {
-            if (successful) {
-                continue;
-            }
-            self.checkpoint_event.reset();
-        } else |err| {
-            log.err("checkpoint failed: {}", .{err});
-        }
-        log.debug("waiting for checkpoint event", .{});
-        self.checkpoint_event.timedWait(std.time.ns_per_min) catch continue;
-    }
-    log.debug("checkpoint thread stopped", .{});
+fn checkpointTask(self: *Self) void {
+    _ = self.doCheckpoint() catch |err| {
+        log.err("checkpoint failed: {}", .{err});
+    };
 }
 
-fn startCheckpointThread(self: *Self) !void {
-    if (self.checkpoint_thread != null) return;
-
-    log.info("starting checkpoint thread", .{});
-    self.checkpoint_thread = try std.Thread.spawn(.{}, checkpointThreadFn, .{self});
+fn memorySegmentMergeTask(self: *Self) void {
+    _ = self.maybeMergeMemorySegments() catch |err| {
+        log.err("memory segment merge failed: {}", .{err});
+    };
 }
 
-fn stopCheckpointThread(self: *Self) void {
-    log.info("stopping checkpoint thread", .{});
-    if (self.checkpoint_thread) |thread| {
-        self.checkpoint_event.set();
-        log.debug("waiting for checkpoint thread to exit", .{});
-        thread.join();
-    }
-    log.debug("checkpoint thread stopped", .{});
-    self.checkpoint_thread = null;
+fn fileSegmentMergeTask(self: *Self) void {
+    _ = self.maybeMergeFileSegments() catch |err| {
+        log.err("file segment merge failed: {}", .{err});
+    };
 }
 
 fn updateManifestFile(self: *Self, segments: *FileSegmentList) !void {
@@ -303,22 +290,6 @@ fn fileSegmentMergeThreadFn(self: *Self) void {
     }
 }
 
-fn startFileSegmentMergeThread(self: *Self) !void {
-    if (self.file_segment_merge_thread != null) return;
-
-    log.info("starting file segment merge thread", .{});
-    self.file_segment_merge_thread = try std.Thread.spawn(.{}, fileSegmentMergeThreadFn, .{self});
-}
-
-fn stopFileSegmentMergeThread(self: *Self) void {
-    log.info("stopping file segment merge thread", .{});
-    if (self.file_segment_merge_thread) |thread| {
-        self.file_segment_merge_event.set();
-        thread.join();
-    }
-    self.file_segment_merge_thread = null;
-}
-
 fn maybeMergeMemorySegments(self: *Self) !bool {
     var upd = try self.memory_segments.prepareMerge(self.allocator) orelse return false;
     defer self.memory_segments.cleanupAfterUpdate(self.allocator, &upd);
@@ -335,43 +306,12 @@ fn maybeMergeMemorySegments(self: *Self) !bool {
     return true;
 }
 
-fn memorySegmentMergeThreadFn(self: *Self) void {
-    while (!self.stopping.load(.acquire)) {
-        if (self.maybeMergeMemorySegments()) |successful| {
-            if (successful) {
-                continue;
-            }
-            self.memory_segment_merge_event.reset();
-        } else |err| {
-            log.err("memory segment merge failed: {}", .{err});
-        }
-        self.memory_segment_merge_event.timedWait(std.time.ns_per_min) catch continue;
-    }
-}
-
-fn startMemorySegmentMergeThread(self: *Self) !void {
-    if (self.memory_segment_merge_thread != null) return;
-
-    log.info("starting memory segment merge thread", .{});
-    self.memory_segment_merge_thread = try std.Thread.spawn(.{}, memorySegmentMergeThreadFn, .{self});
-}
-
-fn stopMemorySegmentMergeThread(self: *Self) void {
-    log.info("stopping memory segment merge thread", .{});
-    if (self.memory_segment_merge_thread) |thread| {
-        self.memory_segment_merge_event.set();
-        thread.join();
-    }
-    self.memory_segment_merge_thread = null;
-}
-
 pub fn open(self: *Self, create: bool) !void {
     const last_commit_id = try self.loadSegments(create);
 
-    // start these threads after loading file segments, but before replaying oplog to memory segments
-    try self.startFileSegmentMergeThread();
-    try self.startMemorySegmentMergeThread();
-    try self.startCheckpointThread();
+    self.checkpoint_task = try self.scheduler.createTask(.medium, checkpointTask, self);
+    self.memory_segment_merge_task = try self.scheduler.createTask(.high, memorySegmentMergeTask, self);
+    self.file_segment_merge_task = try self.scheduler.createTask(.low, fileSegmentMergeTask, self);
 
     try self.oplog.open(last_commit_id + 1, updateInternal, self);
 
@@ -381,7 +321,9 @@ pub fn open(self: *Self, create: bool) !void {
 fn maybeScheduleCheckpoint(self: *Self) void {
     if (self.memory_segments.segments.value.getFirst()) |first_node| {
         if (first_node.value.getSize() >= self.options.min_segment_size) {
-            self.checkpoint_event.set();
+            if (self.checkpoint_task) |task| {
+                self.scheduler.scheduleTask(task);
+            }
         }
     }
 }
@@ -421,7 +363,9 @@ pub fn updateInternal(self: *Self, changes: []const Change, commit_id: ?u64) !vo
     self.memory_segments.commitUpdate(&upd);
 
     if (self.memory_segments.needsMerge()) {
-        self.memory_segment_merge_event.set();
+        if (self.memory_segment_merge_task) |task| {
+            self.scheduler.scheduleTask(task);
+        }
     }
 }
 
