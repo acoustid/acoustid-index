@@ -61,9 +61,9 @@ class ServerManager:
         deadline = time.time() + timeout
         while True:
             if index_name:
-                url = f'http://localhost:{self.port}/{index_name}/_ping'
+                url = f'http://localhost:{self.port}/{index_name}/_health'
             else:
-                url = f'http://localhost:{self.port}/_ping'
+                url = f'http://localhost:{self.port}/_health'
             try:
                 with requests.get(url) as res:
                     res.raise_for_status()

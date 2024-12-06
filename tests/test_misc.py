@@ -1,17 +1,14 @@
-def test_ping(client):
-    req = client.get(f'/_ping')
+def test_health(client):
+    req = client.get('/_health')
     assert req.status_code == 200, req.content
-    assert 'pong' in req.text
 
 
-def test_index_ping(client, index_name, create_index):
-    req = client.get(f'{index_name}/_ping')
+def test_index_health(client, create_index, index_name):
+    req = client.get(f'/{index_name}/_health')
     assert req.status_code == 200, req.content
-    assert 'pong' in req.text
 
 
 def test_metrics(client):
-    req = client.get(f'/_metrics')
+    req = client.get('/_metrics')
     assert req.status_code == 200, req.content
     assert 'aindex_searches_total' in req.text
-

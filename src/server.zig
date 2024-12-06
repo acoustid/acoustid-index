@@ -73,8 +73,8 @@ pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const 
 
     // Monitoring API
     router.get("/_metrics", handleMetrics);
-    router.get("/_ping", handlePing);
-    router.get("/:index/_ping", handlePingIndex);
+    router.get("/_health", handleHealth);
+    router.get("/:index/_health", handleIndexHealth);
 
     // Search API
     router.post("/:index/_search", handleSearch);
@@ -458,18 +458,18 @@ fn handleHeadIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !vo
     defer releaseIndex(ctx, index);
 }
 
-fn handlePingIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn handleIndexHealth(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index = try getIndex(ctx, req, res, false) orelse return;
     defer releaseIndex(ctx, index);
 
-    try handlePing(ctx, req, res);
+    try res.writer().writeAll("OK\n");
 }
 
-fn handlePing(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn handleHealth(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     _ = ctx;
     _ = req;
 
-    try res.writer().writeAll("pong\n");
+    try res.writer().writeAll("OK\n");
 }
 
 fn handleMetrics(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
