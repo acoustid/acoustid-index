@@ -113,9 +113,15 @@ class Server:
         self.index_name = "main"
         self.index_url = target
 
+    async def create_index(self):
+        url = self.index_url + f"/{self.index_name}"
+        async with self.session.put(url) as resp:
+            resp.raise_for_status()
+
     async def serve(self, listen_host, listen_port):
         async with aiohttp.ClientSession() as session:
             self.session = session
+            await self.create_index()
             server = await asyncio.start_server(
                 self.handle_connection, listen_host, listen_port
             )
