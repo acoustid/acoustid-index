@@ -39,6 +39,25 @@ class Protocol:
             body = await resp.content.read()
             resp.raise_for_status()
 
+    async def get_attribute(self, name):
+        url = self.index_url + f"/{self.index_name}"
+        headers = {
+            "Content-Type": "application/vnd.msgpack",
+            "Accept": "application/vnd.msgpack",
+        }
+        async with self.session.get(url, headers=headers) as resp:
+            resp.raise_for_status()
+            body = msgpack.loads(await resp.content.read())
+            return body['a'].get(name, 0)
+
+    async def set_attribute(self, name, value):
+        changes = [
+            {
+                's': {'n': name, 'v': value}
+            }
+        ]
+        await self.update(changes)
+
     async def handle_request(self, request):
         if not request:
             raise ProtocolError("invalid command")
@@ -71,6 +90,22 @@ class Protocol:
                 }
             )
             return ""
+
+        if request[0] == 'get':
+            if len(request) == 3 and request[1] == 'attribute':
+                value = await self.get_attribute(request[2])
+                return str(value)
+            elif len(request) == 2:
+                value = await self.get_attribute(request[1])
+                return str(value)
+
+        if request[0] == 'set':
+            if len(request) == 4 and request[1] == 'attribute':
+                await self.set_attribute(request[2], int(request[3]))
+                return ''
+            elif len(request) == 3:
+                await self.set_attribute(request[1], int(request[2]))
+                return ''
 
         raise ProtocolError("invalid command")
 
