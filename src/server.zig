@@ -113,10 +113,18 @@ const SearchRequestJSON = struct {
 const SearchResultJSON = struct {
     id: u32,
     score: u32,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
 };
 
 const SearchResultsJSON = struct {
     results: []SearchResultJSON,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
 };
 
 fn getId(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?u32 {
