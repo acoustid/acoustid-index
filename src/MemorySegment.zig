@@ -21,6 +21,7 @@ allocator: std.mem.Allocator,
 info: SegmentInfo = .{},
 attributes: std.StringHashMapUnmanaged(u64) = .{},
 docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
+max_doc_id: u32 = 0,
 items: std.ArrayListUnmanaged(Item) = .{},
 frozen: bool = false,
 
@@ -81,6 +82,7 @@ pub fn build(self: *Self, changes: []const Change) !void {
     try self.docs.ensureTotalCapacity(self.allocator, num_docs);
     try self.items.ensureTotalCapacity(self.allocator, num_items);
 
+    self.max_doc_id = 0;
     var i = changes.len;
     while (i > 0) {
         i -= 1;
@@ -94,6 +96,7 @@ pub fn build(self: *Self, changes: []const Change) !void {
                     for (op.hashes, 0..) |hash, j| {
                         items[j] = .{ .hash = hash, .id = op.id };
                     }
+                    self.max_doc_id = @max(self.max_doc_id, op.id);
                 }
             },
             .delete => |op| {
@@ -130,6 +133,8 @@ pub fn merge(self: *Self, merger: *SegmentMerger(Self)) !void {
 
     self.docs.deinit(self.allocator);
     self.docs = merger.segment.docs.move();
+
+    self.max_doc_id = merger.segment.max_doc_id;
 
     self.items.clearRetainingCapacity();
     try self.items.ensureTotalCapacity(self.allocator, merger.estimated_size);

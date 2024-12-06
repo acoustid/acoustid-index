@@ -58,6 +58,15 @@ pub fn getDocInfo(self: *Self, doc_id: u32) !?DocInfo {
     return null;
 }
 
+pub fn getMaxDocId(self: *Self) u32 {
+    var result: u32 = 0;
+    inline for (segment_lists) |n| {
+        const segments = @field(self, n);
+        result = @max(result, segments.value.getMaxDocId());
+    }
+    return result;
+}
+
 pub fn getVersion(self: *Self) u64 {
     if (self.memory_segments.value.getLast()) |node| {
         return node.value.info.version;
@@ -85,6 +94,9 @@ pub fn getAttributes(self: *Self, allocator: std.mem.Allocator) !std.StringHashM
             }
         }
     }
+
+    // builtin attributes
+    try attributes.put(allocator, "max_document_id", self.getMaxDocId());
 
     return attributes;
 }

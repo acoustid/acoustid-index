@@ -9,6 +9,7 @@ pub const MergedSegmentInfo = struct {
     info: SegmentInfo = .{},
     attributes: std.StringHashMapUnmanaged(u64) = .{},
     docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
+    max_doc_id: u32 = 0,
 
     pub fn deinit(self: *MergedSegmentInfo, allocator: std.mem.Allocator) void {
         var iter = self.attributes.iterator();
@@ -115,6 +116,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
             }
 
             try self.segment.docs.ensureTotalCapacity(self.allocator, total_docs);
+            self.segment.max_doc_id = 0;
             for (sources) |*source| {
                 const segment = source.reader.segment;
                 var docs_added: usize = 0;
@@ -127,6 +129,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
                     if (!self.collection.hasNewerVersion(doc_id, segment.info.version)) {
                         try self.segment.docs.put(self.allocator, doc_id, doc_status);
                         docs_added += 1;
+                        self.segment.max_doc_id = @max(self.segment.max_doc_id, doc_id);
                     } else {
                         try source.skip_docs.put(self.allocator, doc_id, {});
                     }

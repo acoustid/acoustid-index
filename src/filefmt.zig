@@ -435,6 +435,12 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
         try unpacker.readMapInto(&docs);
         segment.docs.deinit(segment.allocator);
         segment.docs = docs.unmanaged.move();
+
+        var iter = segment.docs.keyIterator();
+        segment.max_doc_id = 0;
+        while (iter.next()) |key_ptr| {
+            segment.max_doc_id = @max(segment.max_doc_id, key_ptr.*);
+        }
     }
 
     const block_size = header.block_size;
