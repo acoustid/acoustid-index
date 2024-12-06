@@ -149,6 +149,10 @@ pub fn SegmentList(Segment: type) type {
             return false;
         }
 
+        pub fn count(self: Self) usize {
+            return self.nodes.items.len;
+        }
+
         pub fn getFirst(self: Self) ?Node {
             return if (self.nodes.items.len > 0) self.nodes.items[0] else null;
         }

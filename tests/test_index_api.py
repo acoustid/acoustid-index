@@ -33,9 +33,9 @@ def test_get_index(client, index_name, create_index, fmt):
     req = client.get(f'/{index_name}', headers=headers(fmt))
     assert req.status_code == 200, req.content
     if fmt == 'json':
-        expected = {'version': 1, 'attributes': {'foo': 1234}}
+        expected = {'version': 1, 'segments': 1, 'attributes': {'foo': 1234}}
     else:
-        expected = {'v': 1, 'a': {'foo': 1234}}
+        expected = {'v': 1, 's': 1, 'a': {'foo': 1234}}
     assert decode(fmt, req.content) == expected
 
 

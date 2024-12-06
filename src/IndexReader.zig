@@ -68,6 +68,10 @@ pub fn getVersion(self: *Self) u64 {
     return 0;
 }
 
+pub fn getSegmentCount(self: *Self) usize {
+    return self.memory_segments.value.count() + self.file_segments.value.count();
+}
+
 pub fn getAttributes(self: *Self, allocator: std.mem.Allocator) !std.StringHashMapUnmanaged(u64) {
     var attributes: std.StringHashMapUnmanaged(u64) = .{};
     errdefer attributes.deinit(allocator);
