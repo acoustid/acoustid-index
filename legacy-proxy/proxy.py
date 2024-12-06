@@ -1,6 +1,7 @@
 import asyncio
 import aiohttp
 import msgpack
+import argparse
 import traceback
 
 
@@ -48,14 +49,10 @@ class Protocol:
         async with self.session.get(url, headers=headers) as resp:
             resp.raise_for_status()
             body = msgpack.loads(await resp.content.read())
-            return body['a'].get(name, 0)
+            return body["a"].get(name, 0)
 
     async def set_attribute(self, name, value):
-        changes = [
-            {
-                's': {'n': name, 'v': value}
-            }
-        ]
+        changes = [{"s": {"n": name, "v": value}}]
         await self.update(changes)
 
     async def handle_request(self, request):
@@ -91,38 +88,36 @@ class Protocol:
             )
             return ""
 
-        if request[0] == 'get':
-            if len(request) == 3 and request[1] == 'attribute':
+        if request[0] == "get":
+            if len(request) == 3 and request[1] == "attribute":
                 value = await self.get_attribute(request[2])
                 return str(value)
             elif len(request) == 2:
                 value = await self.get_attribute(request[1])
                 return str(value)
 
-        if request[0] == 'set':
-            if len(request) == 4 and request[1] == 'attribute':
+        if request[0] == "set":
+            if len(request) == 4 and request[1] == "attribute":
                 await self.set_attribute(request[2], int(request[3]))
-                return ''
+                return ""
             elif len(request) == 3:
                 await self.set_attribute(request[1], int(request[2]))
-                return ''
+                return ""
 
         raise ProtocolError("invalid command")
 
 
 class Server:
 
-    def __init__(self):
-        self.host = "127.0.0.1"
-        self.port = 6080
+    def __init__(self, target):
         self.index_name = "main"
-        self.index_url = "http://localhost:8080"
+        self.index_url = target
 
-    async def run(self):
+    async def serve(self, listen_host, listen_port):
         async with aiohttp.ClientSession() as session:
             self.session = session
             server = await asyncio.start_server(
-                self.handle_connection, self.host, self.port
+                self.handle_connection, listen_host, listen_port
             )
             async with server:
                 await server.serve_forever()
@@ -155,8 +150,13 @@ class Server:
 
 
 async def main():
-    srv = Server()
-    await srv.run()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--listen-host", default="127.0.0.1")
+    parser.add_argument("--listen-port", default=6080, type=int)
+    parser.add_argument("--target", default="http://127.0.0.1:4502")
+    args = parser.parse_args()
+    srv = Server(target=args.target)
+    await srv.serve(args.listen_host, args.listen_port)
 
 
 if __name__ == "__main__":
