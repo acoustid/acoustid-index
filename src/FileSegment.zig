@@ -107,7 +107,9 @@ pub fn delete(self: *Self) void {
     log.info("deleting segment file {s}", .{file_name});
 
     self.dir.deleteFile(file_name) catch |err| {
-        log.err("failed to clean up segment file {s}: {}", .{ file_name, err });
+        if (err != error.FileNotFound) {
+            log.err("failed to clean up segment file {s}: {}", .{ file_name, err });
+        }
     };
 }
 
@@ -126,7 +128,9 @@ pub fn build(self: *Self, source: anytype) !void {
     try filefmt.writeSegmentFile(self.dir, source);
 
     errdefer self.dir.deleteFile(file_name) catch |err| {
-        log.err("failed to clean up segment file {s}: {}", .{ file_name, err });
+        if (err != error.FileNotFound) {
+            log.err("failed to clean up segment file {s}: {}", .{ file_name, err });
+        }
     };
 
     try filefmt.readSegmentFile(self.dir, source.segment.info, self);
