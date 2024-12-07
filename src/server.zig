@@ -59,6 +59,9 @@ pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const 
             .request = 60,
             .keepalive = 300,
         },
+        .request = .{
+            .max_body_size = 16 * 1024 * 1024,
+        },
     };
 
     var server = try Server.init(allocator, config, &ctx);
