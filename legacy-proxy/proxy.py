@@ -83,7 +83,7 @@ class Protocol:
                 {
                     "i": {
                         "i": int(request[1]),
-                        "h": [int(v) for v in request[2].split(",")],
+                        "h": [int(v)&0xffffffff for v in request[2].split(",")],
                     }
                 }
             )
