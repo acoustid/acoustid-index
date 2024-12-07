@@ -73,7 +73,7 @@ pub fn build(b: *std.Build) void {
 
     const run_unit_tests = b.addRunArtifact(main_tests);
     const run_integration_tests = b.addSystemCommand(&[_][]const u8{ "pytest", "-vv", "tests/" });
-    run_integration_tests.step.dependOn(&main_exe.step);
+    run_integration_tests.step.dependOn(b.getInstallStep());
 
     var unit_tests_step = b.step("unit-tests", "Run unit tests");
     unit_tests_step.dependOn(&run_unit_tests.step);
