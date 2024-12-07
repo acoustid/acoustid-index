@@ -24,7 +24,7 @@ jobs:
           python-version: '3.13'
           cache: 'pip'
 
-      - run: zig build
+      - run: zig build --release=fast
       - run: zig build unit-tests --summary all
 
       - run: pip install -r tests/requirements.txt
