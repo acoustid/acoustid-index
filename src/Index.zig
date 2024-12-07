@@ -351,8 +351,8 @@ fn maybeScheduleFileSegmentMerge(self: *Self) void {
 
 fn maybeScheduleCheckpoint(self: *Self) void {
     if (self.memory_segments.segments.value.getFirst()) |first_node| {
-        log.debug("the first memory segment is too big, scheduling checkpoint", .{});
         if (first_node.value.getSize() >= self.options.min_segment_size) {
+            log.debug("the first memory segment is too big, scheduling checkpoint", .{});
             if (self.checkpoint_task) |task| {
                 self.scheduler.scheduleTask(task);
             }
