@@ -31,7 +31,7 @@ jobs:
         run: zig build test --summary all
 
       - name: Build release binary
-        run: zig build --release=fast --summary all
+        run: zig build --debug --summary all
 
       - name: Log in to the Container registry
         if: github.event_name != 'pull_request'
