@@ -11,6 +11,7 @@ const Priority = enum(u8) {
 const TaskStatus = struct {
     reschedule: usize = 0,
     scheduled: bool = false,
+    running: bool = false,
     done: std.Thread.ResetEvent = .{},
     priority: Priority,
     ctx: *anyopaque,
@@ -88,12 +89,22 @@ pub fn createTask(self: *Self, priority: Priority, comptime func: anytype, args:
     return task;
 }
 
-pub fn destroyTask(self: *Self, task: Task) void {
+fn dequeue(self: *Self, task: Task) void {
     self.queue_mutex.lock();
+    defer self.queue_mutex.unlock();
+
     if (task.data.scheduled) {
         self.queue.remove(task);
+        task.next = null;
+        task.prev = null;
+        task.data.scheduled = false;
     }
-    self.queue_mutex.unlock();
+
+    task.data.reschedule = 0;
+}
+
+pub fn destroyTask(self: *Self, task: Task) void {
+    self.dequeue(task);
 
     task.data.done.wait();
 
@@ -108,15 +119,14 @@ pub fn scheduleTask(self: *Self, task: Task) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
-    if (task.data.scheduled) {
+    if (task.data.scheduled or task.data.running) {
         task.data.reschedule += 1;
-        return;
+    } else {
+        self.enqueue(task);
     }
-
-    self.addToQueue(task);
 }
 
-fn addToQueue(self: *Self, task: *Queue.Node) void {
+fn enqueue(self: *Self, task: *Queue.Node) void {
     task.data.scheduled = true;
     self.queue.prepend(task);
     self.queue_not_empty.signal();
@@ -133,6 +143,8 @@ fn getTaskToRun(self: *Self) ?*Queue.Node {
         };
         task.prev = null;
         task.next = null;
+        task.data.scheduled = false;
+        task.data.running = true;
         task.data.done.reset();
         return task;
     }
@@ -145,11 +157,10 @@ fn markAsDone(self: *Self, task: *Queue.Node) void {
 
     if (task.data.reschedule > 0) {
         task.data.reschedule -= 1;
-        self.addToQueue(task);
-    } else {
-        task.data.scheduled = false;
+        self.enqueue(task);
     }
 
+    task.data.running = false;
     task.data.done.set();
 }
 
@@ -207,7 +218,7 @@ test "Scheduler: smoke test" {
     };
     var counter: Counter = .{};
 
-    const task = try scheduler.createTask(.high, Counter.incr, &counter);
+    const task = try scheduler.createTask(.high, Counter.incr, .{&counter});
     defer scheduler.destroyTask(task);
 
     for (0..3) |_| {

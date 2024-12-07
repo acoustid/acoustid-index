@@ -4,6 +4,7 @@ const common = @import("common.zig");
 const Change = @import("change.zig").Change;
 const SearchResults = common.SearchResults;
 const Scheduler = @import("utils/Scheduler.zig");
+const Deadline = @import("utils/Deadline.zig");
 
 const Index = @import("Index.zig");
 
@@ -76,6 +77,8 @@ test "index create, update, reopen and search" {
     var scheduler = Scheduler.init(std.testing.allocator);
     defer scheduler.deinit();
 
+    try scheduler.start(2);
+
     var hashes: [100]u32 = undefined;
 
     {
@@ -95,6 +98,7 @@ test "index create, update, reopen and search" {
         defer index.deinit();
 
         try index.open(false);
+        try index.waitForReady(10000);
 
         var results = try index.search(generateRandomHashes(&hashes, 1), std.testing.allocator, .{});
         defer results.deinit();
@@ -114,6 +118,8 @@ test "index many updates" {
 
     var scheduler = Scheduler.init(std.testing.allocator);
     defer scheduler.deinit();
+
+    try scheduler.start(2);
 
     var hashes: [100]u32 = undefined;
 
@@ -135,6 +141,7 @@ test "index many updates" {
     defer index.deinit();
 
     try index.open(false);
+    try index.waitForReady(100000);
 
     {
         var results = try index.search(generateRandomHashes(&hashes, 0), std.testing.allocator, .{});

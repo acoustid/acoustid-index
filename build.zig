@@ -72,8 +72,11 @@ pub fn build(b: *std.Build) void {
     main_tests.root_module.addImport("msgpack", msgpack.module("msgpack"));
 
     const run_unit_tests = b.addRunArtifact(main_tests);
+    run_unit_tests.has_side_effects = true;
+
     const run_integration_tests = b.addSystemCommand(&[_][]const u8{ "pytest", "-vv", "tests/" });
     run_integration_tests.step.dependOn(b.getInstallStep());
+    run_integration_tests.has_side_effects = true;
 
     var unit_tests_step = b.step("unit-tests", "Run unit tests");
     unit_tests_step.dependOn(&run_unit_tests.step);

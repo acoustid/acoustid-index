@@ -230,6 +230,7 @@ pub fn SegmentListManager(Segment: type) type {
         }
 
         pub fn count(self: Self) usize {
+            // std.debug.print("count {}\n", .{self.segments.value.nodes});
             return self.segments.value.nodes.items.len;
         }
 

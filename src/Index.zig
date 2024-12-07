@@ -52,7 +52,7 @@ dir: std.fs.Dir,
 oplog: Oplog,
 
 open_lock: std.Thread.Mutex = .{},
-is_ready: std.atomic.Value(bool),
+is_ready: std.Thread.ResetEvent = .{},
 load_task: ?Scheduler.Task = null,
 
 segments_lock: std.Thread.RwLock = .{},
@@ -113,7 +113,6 @@ pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, parent_dir: std
         .segments_lock = .{},
         .memory_segments = memory_segments,
         .file_segments = file_segments,
-        .is_ready = std.atomic.Value(bool).init(false),
     };
 }
 
@@ -287,12 +286,12 @@ fn maybeMergeMemorySegments(self: *Self) !bool {
 }
 
 pub fn open(self: *Self, create: bool) !void {
-    self.open_lock.lock();
-    defer self.open_lock.unlock();
-
-    if (self.is_ready.load(.monotonic)) {
+    if (self.is_ready.isSet()) {
         return;
     }
+
+    self.open_lock.lock();
+    defer self.open_lock.unlock();
 
     if (self.load_task != null) {
         return error.AlreadyOpening;
@@ -333,11 +332,11 @@ fn load(self: *Self, manifest: []SegmentInfo) !void {
     self.checkpoint_task = try self.scheduler.createTask(.medium, checkpointTask, .{self});
     self.file_segment_merge_task = try self.scheduler.createTask(.low, fileSegmentMergeTask, .{self});
 
-    try self.oplog.open(1, updateInternal, self);
+    try self.oplog.open(last_commit_id + 1, updateInternal, self);
 
     log.info("index loaded", .{});
 
-    self.is_ready.store(true, .monotonic);
+    self.is_ready.set();
 }
 
 fn loadTask(self: *Self, manifest: []SegmentInfo) void {
@@ -390,14 +389,18 @@ fn readyForCheckpoint(self: *Self) ?MemorySegmentNode {
     return null;
 }
 
-fn checkIfReady(self: Self) !void {
-    if (!self.is_ready.load(.monotonic)) {
+pub fn waitForReady(self: *Self, timeout_ms: u32) !void {
+    try self.is_ready.timedWait(timeout_ms * std.time.us_per_ms);
+}
+
+pub fn checkReady(self: *Self) !void {
+    if (!self.is_ready.isSet()) {
         return error.IndexNotReady;
     }
 }
 
 pub fn update(self: *Self, changes: []const Change) !void {
-    try self.checkIfReady();
+    try self.checkReady();
     try self.updateInternal(changes, null);
 }
 
@@ -426,7 +429,7 @@ fn updateInternal(self: *Self, changes: []const Change, commit_id: ?u64) !void {
 }
 
 pub fn acquireReader(self: *Self) !IndexReader {
-    try self.checkIfReady();
+    try self.checkReady();
 
     self.segments_lock.lockShared();
     defer self.segments_lock.unlockShared();

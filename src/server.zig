@@ -233,11 +233,21 @@ fn handleNotFound(_: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 }
 
 fn handleError(_: *Context, req: *httpz.Request, res: *httpz.Response, err: anyerror) void {
-    log.err("unhandled error in {s}: {any}", .{ req.url.raw, err });
-    writeErrorResponse(500, err, req, res) catch {
-        res.status = 500;
-        res.body = "internal error";
-    };
+    switch (err) {
+        error.IndexNotReady => {
+            writeErrorResponse(503, err, req, res) catch {
+                res.status = 503;
+                res.body = "not ready yet";
+            };
+        },
+        else => {
+            log.err("unhandled error in {s}: {any}", .{ req.url.raw, err });
+            writeErrorResponse(500, err, req, res) catch {
+                res.status = 500;
+                res.body = "internal error";
+            };
+        },
+    }
 }
 
 fn writeErrorResponse(status: u16, err: anyerror, req: *httpz.Request, res: *httpz.Response) !void {
@@ -483,6 +493,8 @@ fn handleHeadIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !vo
 fn handleIndexHealth(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index = try getIndex(ctx, req, res, false) orelse return;
     defer releaseIndex(ctx, index);
+
+    try index.checkReady();
 
     try res.writer().writeAll("OK\n");
 }
