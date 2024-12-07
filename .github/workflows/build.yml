@@ -24,11 +24,14 @@ jobs:
           python-version: '3.13'
           cache: 'pip'
 
-      - run: zig build --release=fast
-      - run: zig build unit-tests --summary all
+      - name: Install e2e test requirements
+        run: pip install -r tests/requirements.txt
 
-      - run: pip install -r tests/requirements.txt
-      - run: pytest -v tests/
+      - name: Run tests
+        run: zig build test --summary all
+
+      - name: Build release binary
+        run: zig build --release=fast
 
       - name: Log in to the Container registry
         if: github.event_name != 'pull_request'
