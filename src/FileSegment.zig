@@ -31,7 +31,8 @@ merged: u32 = 0,
 num_items: usize = 0,
 delete_in_deinit: bool = false,
 
-raw_data: ?[]align(std.mem.page_size) u8 = null,
+mmaped_file: ?std.fs.File = null,
+mmaped_data: ?[]align(std.mem.page_size) u8 = null,
 
 pub fn init(allocator: std.mem.Allocator, options: Options) Self {
     return Self{
@@ -50,9 +51,12 @@ pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
     self.docs.deinit(self.allocator);
     self.index.deinit(self.allocator);
 
-    if (self.raw_data) |data| {
+    if (self.mmaped_data) |data| {
         std.posix.munmap(data);
-        self.raw_data = null;
+    }
+
+    if (self.mmaped_file) |file| {
+        file.close();
     }
 
     if (delete_file == .delete) {

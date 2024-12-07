@@ -310,7 +310,7 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
     log.info("writing segment file {s}", .{file_name});
 
     var file = try dir.atomicFile(file_name, .{});
-    errdefer file.deinit();
+    defer file.deinit();
 
     const block_size = default_block_size;
 
@@ -394,7 +394,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
         file.handle,
         0,
     );
-    segment.raw_data = raw_data;
+    segment.mmaped_data = raw_data;
 
     try std.posix.madvise(
         raw_data.ptr,
@@ -494,6 +494,8 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     if (footer.checksum != crc.final()) {
         return error.InvalidSegment;
     }
+
+    segment.mmaped_file = file;
 }
 
 test "writeFile/readFile" {
