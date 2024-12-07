@@ -223,6 +223,7 @@ fn doCheckpoint(self: *Self) !bool {
     self.file_segments.commitUpdate(&file_segments_update);
 
     if (self.file_segments.needsMerge()) {
+        log.debug("too many file segments, scheduling merging", .{});
         if (self.file_segment_merge_task) |task| {
             self.scheduler.scheduleTask(task);
         }
@@ -363,6 +364,7 @@ pub fn updateInternal(self: *Self, changes: []const Change, commit_id: ?u64) !vo
     self.memory_segments.commitUpdate(&upd);
 
     if (self.memory_segments.needsMerge()) {
+        log.debug("too many memory segments, scheduling merging", .{});
         if (self.memory_segment_merge_task) |task| {
             self.scheduler.scheduleTask(task);
         }
