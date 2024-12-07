@@ -159,8 +159,10 @@ pub fn SegmentList(Segment: type) type {
                 i -= 1;
                 const node = self.nodes.items[i];
                 if (node.value.info.version > version) {
-                    if (node.value.docs.contains(doc_id)) {
-                        return true;
+                    if (doc_id >= node.value.min_doc_id and doc_id <= node.value.max_doc_id) {
+                        if (node.value.docs.contains(doc_id)) {
+                            return true;
+                        }
                     }
                 } else {
                     break;
