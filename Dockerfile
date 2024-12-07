@@ -1,5 +1,7 @@
 FROM ubuntu:24.04
 
+RUN apt-get update && apt-get install -y glibc-tools
+
 RUN useradd -m -s /bin/bash -u 6081 acoustid
 
 ADD zig-out/bin/fpindex /usr/bin
