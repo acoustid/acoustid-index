@@ -76,8 +76,9 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !
     defer block_items.deinit();
 
     for (sorted_hashes) |hash| {
-        var block_no = std.sort.lowerBound(u32, hash, self.index.items, {}, std.sort.asc(u32));
+        var block_no = std.sort.lowerBound(u32, hash, self.index.items[prev_block_range_start..], {}, std.sort.asc(u32)) + prev_block_range_start;
         if (block_no == self.index.items.len) {
+            // TODO this can be handled more efficiently
             block_no = prev_block_range_start;
         }
         prev_block_range_start = block_no;
