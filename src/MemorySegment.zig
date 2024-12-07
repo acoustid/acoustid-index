@@ -21,6 +21,7 @@ allocator: std.mem.Allocator,
 info: SegmentInfo = .{},
 attributes: std.StringHashMapUnmanaged(u64) = .{},
 docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
+min_doc_id: u32 = 0,
 max_doc_id: u32 = 0,
 items: std.ArrayListUnmanaged(Item) = .{},
 frozen: bool = false,
@@ -82,6 +83,7 @@ pub fn build(self: *Self, changes: []const Change) !void {
     try self.docs.ensureTotalCapacity(self.allocator, num_docs);
     try self.items.ensureTotalCapacity(self.allocator, num_items);
 
+    self.min_doc_id = 0;
     self.max_doc_id = 0;
     var i = changes.len;
     while (i > 0) {
@@ -96,7 +98,12 @@ pub fn build(self: *Self, changes: []const Change) !void {
                     for (op.hashes, 0..) |hash, j| {
                         items[j] = .{ .hash = hash, .id = op.id };
                     }
-                    self.max_doc_id = @max(self.max_doc_id, op.id);
+                    if (self.min_doc_id == 0 or op.id < self.min_doc_id) {
+                        self.min_doc_id = op.id;
+                    }
+                    if (self.max_doc_id == 0 or op.id > self.max_doc_id) {
+                        self.max_doc_id = op.id;
+                    }
                 }
             },
             .delete => |op| {

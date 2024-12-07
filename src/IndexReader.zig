@@ -58,11 +58,26 @@ pub fn getDocInfo(self: *Self, doc_id: u32) !?DocInfo {
     return null;
 }
 
+pub fn getMinDocId(self: *Self) u32 {
+    var result: u32 = 0;
+    inline for (segment_lists) |n| {
+        const segments = @field(self, n);
+        const doc_id = segments.value.getMinDocId();
+        if (result == 0 or doc_id < result) {
+            result = doc_id;
+        }
+    }
+    return result;
+}
+
 pub fn getMaxDocId(self: *Self) u32 {
     var result: u32 = 0;
     inline for (segment_lists) |n| {
         const segments = @field(self, n);
-        result = @max(result, segments.value.getMaxDocId());
+        const doc_id = segments.value.getMaxDocId();
+        if (result == 0 or doc_id > result) {
+            result = doc_id;
+        }
     }
     return result;
 }
@@ -96,6 +111,7 @@ pub fn getAttributes(self: *Self, allocator: std.mem.Allocator) !std.StringHashM
     }
 
     // builtin attributes
+    try attributes.put(allocator, "min_document_id", self.getMinDocId());
     try attributes.put(allocator, "max_document_id", self.getMaxDocId());
 
     return attributes;

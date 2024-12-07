@@ -110,10 +110,22 @@ pub fn SegmentList(Segment: type) type {
             }
         }
 
+        pub fn getMinDocId(self: Self) u32 {
+            var result: u32 = 0;
+            for (self.nodes.items) |node| {
+                if (result == 0 or node.value.min_doc_id < result) {
+                    result = node.value.min_doc_id;
+                }
+            }
+            return result;
+        }
+
         pub fn getMaxDocId(self: Self) u32 {
             var result: u32 = 0;
             for (self.nodes.items) |node| {
-                result = @max(result, node.value.max_doc_id);
+                if (result == 0 or node.value.max_doc_id > result) {
+                    result = node.value.max_doc_id;
+                }
             }
             return result;
         }

@@ -437,9 +437,15 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
         segment.docs = docs.unmanaged.move();
 
         var iter = segment.docs.keyIterator();
+        segment.min_doc_id = 0;
         segment.max_doc_id = 0;
         while (iter.next()) |key_ptr| {
-            segment.max_doc_id = @max(segment.max_doc_id, key_ptr.*);
+            if (segment.min_doc_id == 0 or key_ptr.* < segment.min_doc_id) {
+                segment.min_doc_id = key_ptr.*;
+            }
+            if (segment.max_doc_id == 0 or key_ptr.* > segment.max_doc_id) {
+                segment.max_doc_id = key_ptr.*;
+            }
         }
     }
 
