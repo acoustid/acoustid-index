@@ -45,6 +45,7 @@ const Options = struct {
 options: Options,
 allocator: std.mem.Allocator,
 scheduler: *Scheduler,
+name: []const u8,
 
 dir: std.fs.Dir,
 
@@ -117,6 +118,7 @@ pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, parent_dir: std
         .allocator = allocator,
         .scheduler = scheduler,
         .dir = dir,
+        .name = path,
         .oplog = oplog,
         .segments_lock = .{},
         .memory_segments = memory_segments,
@@ -214,6 +216,8 @@ fn doCheckpoint(self: *Self) !bool {
         log.warn("failed to truncate oplog: {}", .{err});
     };
 
+    defer self.updateDocsMetrics();
+
     // commit updated lists
 
     self.segments_lock.lock();
@@ -227,6 +231,13 @@ fn doCheckpoint(self: *Self) !bool {
     self.maybeScheduleFileSegmentMerge();
 
     return true;
+}
+
+fn updateDocsMetrics(self: *Self) void {
+    var snapshot = self.acquireReader();
+    defer self.releaseReader(&snapshot);
+
+    metrics.docs(self.name, snapshot.getNumDocs());
 }
 
 fn checkpointTask(self: *Self) void {
@@ -264,6 +275,8 @@ fn maybeMergeFileSegments(self: *Self) !bool {
 
     try self.updateManifestFile(upd.segments.value);
 
+    defer self.updateDocsMetrics();
+
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
 
@@ -291,6 +304,8 @@ fn fileSegmentMergeThreadFn(self: *Self) void {
 fn maybeMergeMemorySegments(self: *Self) !bool {
     var upd = try self.memory_segments.prepareMerge(self.allocator) orelse return false;
     defer self.memory_segments.cleanupAfterUpdate(self.allocator, &upd);
+
+    defer self.updateDocsMetrics();
 
     self.segments_lock.lock();
     defer self.segments_lock.unlock();
@@ -371,6 +386,8 @@ pub fn updateInternal(self: *Self, changes: []const Change, commit_id: ?u64) !vo
     defer self.memory_segments.cleanupAfterUpdate(self.allocator, &upd);
 
     target.value.info.version = commit_id orelse try self.oplog.write(changes);
+
+    defer self.updateDocsMetrics();
 
     self.segments_lock.lock();
     defer self.segments_lock.unlock();

@@ -110,6 +110,14 @@ pub fn SegmentList(Segment: type) type {
             }
         }
 
+        pub fn getNumDocs(self: Self) u32 {
+            var result: u32 = 0;
+            for (self.nodes.items) |node| {
+                result += node.value.docs.count();
+            }
+            return result;
+        }
+
         pub fn getMinDocId(self: Self) u32 {
             var result: u32 = 0;
             for (self.nodes.items) |node| {

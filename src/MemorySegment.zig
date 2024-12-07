@@ -110,6 +110,12 @@ pub fn build(self: *Self, changes: []const Change) !void {
                 const result = self.docs.getOrPutAssumeCapacity(op.id);
                 if (!result.found_existing) {
                     result.value_ptr.* = false;
+                    if (self.min_doc_id == 0 or op.id < self.min_doc_id) {
+                        self.min_doc_id = op.id;
+                    }
+                    if (self.max_doc_id == 0 or op.id > self.max_doc_id) {
+                        self.max_doc_id = op.id;
+                    }
                 }
             },
             .set_attribute => |op| {

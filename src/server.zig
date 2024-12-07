@@ -431,6 +431,7 @@ const Attributes = struct {
 const GetIndexResponse = struct {
     version: u64,
     segments: usize,
+    docs: usize,
     attributes: Attributes,
 
     pub fn msgpackFormat() msgpack.StructFormat {
@@ -447,7 +448,8 @@ fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
 
     const response = GetIndexResponse{
         .version = index_reader.getVersion(),
-        .segments = index_reader.getSegmentCount(),
+        .segments = index_reader.getNumSegments(),
+        .docs = index_reader.getNumDocs(),
         .attributes = .{
             .attributes = try index_reader.getAttributes(req.arena),
         },

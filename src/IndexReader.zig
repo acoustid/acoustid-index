@@ -41,6 +41,15 @@ pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, de
     return results;
 }
 
+pub fn getNumDocs(self: *Self) u32 {
+    var result: u32 = 0;
+    inline for (segment_lists) |n| {
+        const segments = @field(self, n);
+        result += segments.value.getNumDocs();
+    }
+    return result;
+}
+
 pub fn getDocInfo(self: *Self, doc_id: u32) !?DocInfo {
     // TODO optimize, read from the end
     var result: ?DocInfo = null;
@@ -92,7 +101,7 @@ pub fn getVersion(self: *Self) u64 {
     return 0;
 }
 
-pub fn getSegmentCount(self: *Self) usize {
+pub fn getNumSegments(self: *Self) usize {
     return self.memory_segments.value.count() + self.file_segments.value.count();
 }
 
