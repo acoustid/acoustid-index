@@ -87,7 +87,7 @@ class ServerManager:
 
 @pytest.fixture(scope='session')
 def server(tmp_path_factory):
-    srv = ServerManager(base_dir=tmp_path_factory.mktemp('srv'), port=14502)
+    srv = ServerManager(base_dir=tmp_path_factory.mktemp('srv'), port=26081)
     srv.start()
     try:
         yield srv

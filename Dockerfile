@@ -1,13 +1,13 @@
 FROM ubuntu:24.04
 
-RUN useradd -m -s /bin/bash -u 4502 acoustid
+RUN useradd -m -s /bin/bash -u 6081 acoustid
 
 ADD zig-out/bin/fpindex /usr/bin
 
-RUN mkdir -p /var/lib/acoustid/fpindex && chown -R acoustid /var/lib/acoustid/fpindex
-VOLUME ["/var/lib/acoustid/fpindex"]
+RUN mkdir -p /var/lib/acoustid-index && chown -R acoustid /var/lib/acoustid-index
+VOLUME ["/var/lib/acoustid-index"]
 
 USER acoustid
-EXPOSE 4502
+EXPOSE 6081
 
-CMD ["fpindex", "--dir", "/var/lib/acoustid/fpindex", "--address", "0.0.0.0", "--port", "4502"]
+CMD ["fpindex", "--dir", "/var/lib/acoustid-index", "--address", "0.0.0.0", "--port", "6081"]

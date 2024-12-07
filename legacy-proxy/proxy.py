@@ -159,7 +159,7 @@ async def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--listen-host", default="127.0.0.1")
     parser.add_argument("--listen-port", default=6080, type=int)
-    parser.add_argument("--target", default="http://127.0.0.1:4502")
+    parser.add_argument("--target", default="http://127.0.0.1:6081")
     args = parser.parse_args()
     srv = Server(target=args.target)
     await srv.serve(args.listen_host, args.listen_port)
