@@ -75,11 +75,19 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !
     var block_items = std.ArrayList(Item).init(results.results.allocator);
     defer block_items.deinit();
 
+    // Let's say we have blocks like this:
+    //
+    // |4.......|6.......|9.......|
+    //
+    // We want to find hash=2, lowerBound returns block=0 (4), so we start at that block.
+    // We want to find hash=6, lowerBound returns block=1 (6), but block=0 could still contain hash=6, so we go one back.
+    // We want to find hash=7, lowerBound returns block=2 (9), but block=1 could still contain hash=6, so we go one back.
+    // We want to find hash=10, lowerBound returns block=3 (EOF), but block=2 could still contain hash=6, so we go one back.
+
     for (sorted_hashes) |hash| {
         var block_no = std.sort.lowerBound(u32, hash, self.index.items[prev_block_range_start..], {}, std.sort.asc(u32)) + prev_block_range_start;
-        if (block_no == self.index.items.len) {
-            // TODO this can be handled more efficiently
-            block_no = prev_block_range_start;
+        if (block_no > 0) {
+            block_no -= 1;
         }
         prev_block_range_start = block_no;
 
