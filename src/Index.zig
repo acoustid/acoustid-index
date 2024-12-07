@@ -222,12 +222,7 @@ fn doCheckpoint(self: *Self) !bool {
     self.memory_segments.commitUpdate(&memory_segments_update);
     self.file_segments.commitUpdate(&file_segments_update);
 
-    if (self.file_segments.needsMerge()) {
-        log.debug("too many file segments, scheduling merging", .{});
-        if (self.file_segment_merge_task) |task| {
-            self.scheduler.scheduleTask(task);
-        }
-    }
+    self.maybeScheduleFileSegmentMerge();
 
     return true;
 }
@@ -319,8 +314,27 @@ pub fn open(self: *Self, create: bool) !void {
     log.info("index loaded", .{});
 }
 
+fn maybeScheduleMemorySegmentMerge(self: *Self) void {
+    if (self.memory_segments.needsMerge()) {
+        log.debug("too many memory segments, scheduling merging", .{});
+        if (self.memory_segment_merge_task) |task| {
+            self.scheduler.scheduleTask(task);
+        }
+    }
+}
+
+fn maybeScheduleFileSegmentMerge(self: *Self) void {
+    if (self.file_segments.needsMerge()) {
+        log.debug("too many file segments, scheduling merging", .{});
+        if (self.file_segment_merge_task) |task| {
+            self.scheduler.scheduleTask(task);
+        }
+    }
+}
+
 fn maybeScheduleCheckpoint(self: *Self) void {
     if (self.memory_segments.segments.value.getFirst()) |first_node| {
+        log.debug("the first memory segment is too big, scheduling checkpoint", .{});
         if (first_node.value.getSize() >= self.options.min_segment_size) {
             if (self.checkpoint_task) |task| {
                 self.scheduler.scheduleTask(task);
@@ -363,12 +377,8 @@ pub fn updateInternal(self: *Self, changes: []const Change, commit_id: ?u64) !vo
 
     self.memory_segments.commitUpdate(&upd);
 
-    if (self.memory_segments.needsMerge()) {
-        log.debug("too many memory segments, scheduling merging", .{});
-        if (self.memory_segment_merge_task) |task| {
-            self.scheduler.scheduleTask(task);
-        }
-    }
+    self.maybeScheduleMemorySegmentMerge();
+    self.maybeScheduleCheckpoint();
 }
 
 pub fn acquireReader(self: *Self) IndexReader {
