@@ -322,9 +322,9 @@ fn maybeMergeMemorySegments(self: *Self) !bool {
 pub fn open(self: *Self, create: bool) !void {
     const last_commit_id = try self.loadSegments(create);
 
-    self.checkpoint_task = try self.scheduler.createTask(.medium, checkpointTask, self);
-    self.memory_segment_merge_task = try self.scheduler.createTask(.high, memorySegmentMergeTask, self);
-    self.file_segment_merge_task = try self.scheduler.createTask(.low, fileSegmentMergeTask, self);
+    self.checkpoint_task = try self.scheduler.createTask(.medium, checkpointTask, .{self});
+    self.memory_segment_merge_task = try self.scheduler.createTask(.high, memorySegmentMergeTask, .{self});
+    self.file_segment_merge_task = try self.scheduler.createTask(.low, fileSegmentMergeTask, .{self});
 
     try self.oplog.open(last_commit_id + 1, updateInternal, self);
 

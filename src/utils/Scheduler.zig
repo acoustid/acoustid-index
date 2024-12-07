@@ -14,7 +14,8 @@ const TaskStatus = struct {
     done: std.Thread.ResetEvent = .{},
     priority: Priority,
     ctx: *anyopaque,
-    func: *const fn (ctx: *anyopaque) void,
+    runFn: *const fn (ctx: *anyopaque) void,
+    deinitFn: *const fn (ctx: *anyopaque, allocator: std.mem.Allocator) void,
 };
 
 const Queue = std.DoublyLinkedList(TaskStatus);
@@ -45,24 +46,37 @@ pub fn deinit(self: *Self) void {
     std.debug.assert(self.num_tasks == 0);
 }
 
-pub fn createTask(self: *Self, priority: Priority, func: anytype, ctx: anytype) !Task {
+pub fn createTask(self: *Self, priority: Priority, comptime func: anytype, args: anytype) !Task {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
     const task = try self.allocator.create(Queue.Node);
     errdefer self.allocator.destroy(task);
 
-    const Wrapper = struct {
-        pub fn run(c: *anyopaque) void {
-            @call(.auto, func, .{@as(@TypeOf(ctx), @ptrCast(@alignCast(c)))});
+    const Args = @TypeOf(args);
+    const Closure = struct {
+        arguments: Args,
+
+        fn deinit(ctx: *anyopaque, allocator: std.mem.Allocator) void {
+            const closure: *@This() = @ptrCast(@alignCast(ctx));
+            allocator.destroy(closure);
+        }
+
+        fn run(ctx: *anyopaque) void {
+            const closure: *@This() = @ptrCast(@alignCast(ctx));
+            @call(.auto, func, closure.arguments);
         }
     };
+
+    const closure = try self.allocator.create(Closure);
+    errdefer self.allocator.destroy(closure);
 
     task.* = .{
         .data = .{
             .priority = priority,
-            .ctx = ctx,
-            .func = Wrapper.run,
+            .ctx = closure,
+            .runFn = Closure.run,
+            .deinitFn = Closure.deinit,
         },
     };
     task.data.done.set();
@@ -81,6 +95,7 @@ pub fn destroyTask(self: *Self, task: Task) void {
 
     task.data.done.wait();
 
+    task.data.deinitFn(task.data.ctx, self.allocator);
     self.allocator.destroy(task);
 
     std.debug.assert(self.num_tasks > 0);
@@ -141,7 +156,7 @@ fn workerThreadFunc(self: *Self) void {
         const task = self.getTaskToRun() orelse break;
         defer self.markAsDone(task);
 
-        task.data.func(task.data.ctx);
+        task.data.runFn(task.data.ctx);
     }
 }
 
