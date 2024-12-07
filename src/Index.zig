@@ -222,6 +222,8 @@ fn doCheckpoint(self: *Self) !bool {
     self.memory_segments.commitUpdate(&memory_segments_update);
     self.file_segments.commitUpdate(&file_segments_update);
 
+    metrics.checkpoint();
+
     self.maybeScheduleFileSegmentMerge();
 
     return true;
@@ -266,7 +268,7 @@ fn maybeMergeFileSegments(self: *Self) !bool {
     defer self.segments_lock.unlock();
 
     self.file_segments.commitUpdate(&upd);
-    // log.debug("committed file segments merge", .{});
+
     metrics.fileSegmentMerge();
 
     return true;
@@ -294,7 +296,7 @@ fn maybeMergeMemorySegments(self: *Self) !bool {
     defer self.segments_lock.unlock();
 
     self.memory_segments.commitUpdate(&upd);
-    // log.debug("committed memory segments merge", .{});
+
     metrics.memorySegmentMerge();
 
     self.maybeScheduleCheckpoint();
