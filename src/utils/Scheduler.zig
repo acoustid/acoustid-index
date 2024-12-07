@@ -110,7 +110,6 @@ fn getTaskToRun(self: *Self) ?*Queue.Node {
     defer self.queue_mutex.unlock();
 
     while (!self.stopping) {
-        log.info("thread {} is looking for work", .{std.Thread.getCurrentId()});
         const task = self.queue.popFirst() orelse {
             self.queue_not_empty.timedWait(&self.queue_mutex, std.time.us_per_min) catch {};
             continue;
