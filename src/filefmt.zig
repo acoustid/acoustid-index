@@ -103,7 +103,7 @@ const BlockHeader = struct {
     first_item: Item,
 };
 
-pub fn decodeBlockHeader(data: []const u8) !BlockHeader {
+pub fn decodeBlockHeader(data: []const u8, min_doc_id: u32) !BlockHeader {
     assert(data.len >= min_block_size);
 
     const num_items = std.mem.readInt(u16, data[0..2], .little);
@@ -119,11 +119,11 @@ pub fn decodeBlockHeader(data: []const u8) !BlockHeader {
 
     return .{
         .num_items = num_items,
-        .first_item = Item{ .hash = hash.value, .id = id.value },
+        .first_item = Item{ .hash = hash.value, .id = id.value + min_doc_id },
     };
 }
 
-pub fn readBlock(data: []const u8, items: *std.ArrayList(Item)) !void {
+pub fn readBlock(data: []const u8, items: *std.ArrayList(Item), min_doc_id: u32) !void {
     var ptr: usize = 0;
 
     if (data.len < 2) {
@@ -149,7 +149,7 @@ pub fn readBlock(data: []const u8, items: *std.ArrayList(Item)) !void {
         ptr += diff_doc_id.size;
 
         last_hash += diff_hash.value;
-        last_doc_id = if (diff_hash.value > 0) diff_doc_id.value else last_doc_id + diff_doc_id.value;
+        last_doc_id = if (diff_hash.value > 0) diff_doc_id.value + min_doc_id else last_doc_id + diff_doc_id.value;
 
         const item = items.addOneAssumeCapacity();
         item.* = .{ .hash = last_hash, .id = last_doc_id };
@@ -161,7 +161,7 @@ pub fn readBlock(data: []const u8, items: *std.ArrayList(Item)) !void {
     }
 }
 
-pub fn encodeBlock(data: []u8, reader: anytype) !u16 {
+pub fn encodeBlock(data: []u8, reader: anytype, min_doc_id: u32) !u16 {
     assert(data.len >= 2);
 
     var ptr: usize = 2;
@@ -174,7 +174,7 @@ pub fn encodeBlock(data: []u8, reader: anytype) !u16 {
         assert(item.hash > last_hash or (item.hash == last_hash and item.id >= last_doc_id));
 
         const diff_hash = item.hash - last_hash;
-        const diff_doc_id = if (diff_hash > 0) item.id else item.id - last_doc_id;
+        const diff_doc_id = if (diff_hash > 0) item.id - min_doc_id else item.id - last_doc_id;
 
         if (ptr + varint32Size(diff_hash) + varint32Size(diff_doc_id) > data.len) {
             break;
@@ -211,13 +211,13 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
     var block_data: [block_size]u8 = undefined;
 
     var reader = segment.reader();
-    const num_items = try encodeBlock(block_data[0..], &reader);
+    const num_items = try encodeBlock(block_data[0..], &reader, 0);
     try testing.expectEqual(segment.items.items.len, num_items);
 
     var items = std.ArrayList(Item).init(std.testing.allocator);
     defer items.deinit();
 
-    try readBlock(block_data[0..], &items);
+    try readBlock(block_data[0..], &items, 0);
     try testing.expectEqualSlices(
         Item,
         &[_]Item{
@@ -230,7 +230,7 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
         items.items,
     );
 
-    const header = try decodeBlockHeader(block_data[0..]);
+    const header = try decodeBlockHeader(block_data[0..], 0);
     try testing.expectEqual(items.items.len, header.num_items);
     try testing.expectEqual(items.items[0], header.first_item);
 }
@@ -343,7 +343,7 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
 
     var block_data: [block_size]u8 = undefined;
     while (true) {
-        const n = try encodeBlock(block_data[0..], reader);
+        const n = try encodeBlock(block_data[0..], reader, segment.min_doc_id);
         try writer.writeAll(block_data[0..]);
         if (n == 0) {
             break;
@@ -466,7 +466,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     var block_data = block_data_buffer[0..block_size];
     while (true) {
         try reader.readNoEof(block_data);
-        const block_header = try decodeBlockHeader(block_data);
+        const block_header = try decodeBlockHeader(block_data, segment.min_doc_id);
         if (block_header.num_items == 0) {
             break;
         }
@@ -534,7 +534,7 @@ test "writeFile/readFile" {
         var items = std.ArrayList(Item).init(testing.allocator);
         defer items.deinit();
 
-        try readBlock(segment.getBlockData(0), &items);
+        try readBlock(segment.getBlockData(0), &items, segment.min_doc_id);
         try std.testing.expectEqualSlices(Item, &[_]Item{
             Item{ .hash = 1, .id = 1 },
             Item{ .hash = 2, .id = 1 },

@@ -86,7 +86,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !
             if (block_no != prev_block_no) {
                 prev_block_no = block_no;
                 const block_data = self.getBlockData(block_no);
-                try filefmt.readBlock(block_data, &block_items);
+                try filefmt.readBlock(block_data, &block_items, self.min_doc_id);
             }
             const matches = std.sort.equalRange(Item, Item{ .hash = hash, .id = 0 }, block_items.items, {}, Item.cmpByHash);
             for (matches[0]..matches[1]) |i| {
@@ -197,7 +197,7 @@ pub const Reader = struct {
             self.index = 0;
             const block_data = self.segment.getBlockData(self.block_no);
             self.block_no += 1;
-            try filefmt.readBlock(block_data, &self.items);
+            try filefmt.readBlock(block_data, &self.items, self.segment.min_doc_id);
         }
         return self.items.items[self.index];
     }
