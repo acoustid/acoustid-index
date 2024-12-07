@@ -51,23 +51,13 @@ dir: std.fs.Dir,
 
 oplog: Oplog,
 
+open_lock: std.Thread.Mutex = .{},
+is_ready: std.atomic.Value(bool),
+load_task: ?Scheduler.Task = null,
+
+segments_lock: std.Thread.RwLock = .{},
 memory_segments: SegmentListManager(MemorySegment),
 file_segments: SegmentListManager(FileSegment),
-
-// These segments are owned by the index and can't be accessed without acquiring segments_lock.
-// They can never be modified, only replaced.
-segments_lock: std.Thread.RwLock = .{},
-
-// These locks give partial access to the respective segments list.
-//   1) For memory_segments, new segment can be appended to the list without this lock.
-//   2) For file_segments, no write operation can happen without this lock.
-// These lock can be only acquired before segments_lock, never after, to avoid deadlock situatons.
-// They are mostly useful to allowing read access to segments during merge/checkpoint, without blocking real-time update.
-file_segments_lock: std.Thread.Mutex = .{},
-memory_segments_lock: std.Thread.Mutex = .{},
-
-// Mutex used to control linearity of updates.
-update_lock: std.Thread.Mutex = .{},
 
 checkpoint_task: ?Scheduler.Task = null,
 file_segment_merge_task: ?Scheduler.Task = null,
@@ -123,11 +113,16 @@ pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, parent_dir: std
         .segments_lock = .{},
         .memory_segments = memory_segments,
         .file_segments = file_segments,
+        .is_ready = std.atomic.Value(bool).init(false),
     };
 }
 
 pub fn deinit(self: *Self) void {
     log.info("closing index {}", .{@intFromPtr(self)});
+
+    if (self.load_task) |task| {
+        self.scheduler.destroyTask(task);
+    }
 
     if (self.checkpoint_task) |task| {
         self.scheduler.destroyTask(task);
@@ -148,36 +143,8 @@ pub fn deinit(self: *Self) void {
     self.dir.close();
 }
 
-fn loadSegments(self: *Self, create: bool) !u64 {
-    self.segments_lock.lock();
-    defer self.segments_lock.unlock();
-
-    const segment_ids = filefmt.readManifestFile(self.dir, self.allocator) catch |err| {
-        if (err == error.FileNotFound) {
-            if (create) {
-                try self.updateManifestFile(self.file_segments.segments.value);
-                return 0;
-            }
-            return error.IndexNotFound;
-        }
-        return err;
-    };
-    defer self.allocator.free(segment_ids);
-    log.info("found {} segments in manifest", .{segment_ids.len});
-
-    try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, segment_ids.len);
-    var last_commit_id: u64 = 0;
-    for (segment_ids, 1..) |segment_id, i| {
-        const node = try FileSegmentList.loadSegment(self.allocator, segment_id, .{ .dir = self.dir });
-        self.file_segments.segments.value.nodes.appendAssumeCapacity(node);
-        last_commit_id = node.value.info.getLastCommitId();
-        log.info("loaded segment {} ({}/{})", .{ last_commit_id, i, segment_ids.len });
-    }
-    return last_commit_id;
-}
-
 fn doCheckpoint(self: *Self) !bool {
-    var snapshot = self.acquireReader();
+    var snapshot = try self.acquireReader();
     defer self.releaseReader(&snapshot);
 
     const source = snapshot.memory_segments.value.getFirst() orelse return false;
@@ -234,7 +201,7 @@ fn doCheckpoint(self: *Self) !bool {
 }
 
 fn updateDocsMetrics(self: *Self) void {
-    var snapshot = self.acquireReader();
+    var snapshot = self.acquireReader() catch return;
     defer self.releaseReader(&snapshot);
 
     metrics.docs(self.name, snapshot.getNumDocs());
@@ -320,21 +287,72 @@ fn maybeMergeMemorySegments(self: *Self) !bool {
 }
 
 pub fn open(self: *Self, create: bool) !void {
-    const last_commit_id = try self.loadSegments(create);
+    self.open_lock.lock();
+    defer self.open_lock.unlock();
 
-    self.checkpoint_task = try self.scheduler.createTask(.medium, checkpointTask, .{self});
+    if (self.is_ready.load(.monotonic)) {
+        return;
+    }
+
+    if (self.load_task != null) {
+        return error.AlreadyOpening;
+    }
+
+    const manifest = filefmt.readManifestFile(self.dir, self.allocator) catch |err| {
+        if (err == error.FileNotFound) {
+            if (create) {
+                try self.updateManifestFile(self.file_segments.segments.value);
+                try self.load(&.{});
+                return;
+            }
+            return error.IndexNotFound;
+        }
+        return err;
+    };
+    errdefer self.allocator.free(manifest);
+
+    self.load_task = try self.scheduler.createTask(.medium, loadTask, .{ self, manifest });
+    self.scheduler.scheduleTask(self.load_task.?);
+}
+
+fn load(self: *Self, manifest: []SegmentInfo) !void {
+    defer self.allocator.free(manifest);
+
+    log.info("found {} segments in manifest", .{manifest.len});
+
+    try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, manifest.len);
+    var last_commit_id: u64 = 0;
+    for (manifest, 1..) |segment_id, i| {
+        const node = try FileSegmentList.loadSegment(self.allocator, segment_id, .{ .dir = self.dir });
+        self.file_segments.segments.value.nodes.appendAssumeCapacity(node);
+        last_commit_id = node.value.info.getLastCommitId();
+        log.info("loaded segment {} ({}/{})", .{ last_commit_id, i, manifest.len });
+    }
+
     self.memory_segment_merge_task = try self.scheduler.createTask(.high, memorySegmentMergeTask, .{self});
+    self.checkpoint_task = try self.scheduler.createTask(.medium, checkpointTask, .{self});
     self.file_segment_merge_task = try self.scheduler.createTask(.low, fileSegmentMergeTask, .{self});
 
-    try self.oplog.open(last_commit_id + 1, updateInternal, self);
+    try self.oplog.open(1, updateInternal, self);
 
     log.info("index loaded", .{});
+
+    self.is_ready.store(true, .monotonic);
+}
+
+fn loadTask(self: *Self, manifest: []SegmentInfo) void {
+    self.open_lock.lock();
+    defer self.open_lock.unlock();
+
+    self.load(manifest) catch |err| {
+        log.err("load failed: {}", .{err});
+    };
 }
 
 fn maybeScheduleMemorySegmentMerge(self: *Self) void {
     if (self.memory_segments.needsMerge()) {
-        log.debug("too many memory segments, scheduling merging", .{});
         if (self.memory_segment_merge_task) |task| {
+            log.debug("too many memory segments, scheduling merging", .{});
             self.scheduler.scheduleTask(task);
         }
     }
@@ -342,8 +360,8 @@ fn maybeScheduleMemorySegmentMerge(self: *Self) void {
 
 fn maybeScheduleFileSegmentMerge(self: *Self) void {
     if (self.file_segments.needsMerge()) {
-        log.debug("too many file segments, scheduling merging", .{});
         if (self.file_segment_merge_task) |task| {
+            log.debug("too many file segments, scheduling merging", .{});
             self.scheduler.scheduleTask(task);
         }
     }
@@ -352,8 +370,8 @@ fn maybeScheduleFileSegmentMerge(self: *Self) void {
 fn maybeScheduleCheckpoint(self: *Self) void {
     if (self.memory_segments.segments.value.getFirst()) |first_node| {
         if (first_node.value.getSize() >= self.options.min_segment_size) {
-            log.debug("the first memory segment is too big, scheduling checkpoint", .{});
             if (self.checkpoint_task) |task| {
+                log.debug("the first memory segment is too big, scheduling checkpoint", .{});
                 self.scheduler.scheduleTask(task);
             }
         }
@@ -372,11 +390,18 @@ fn readyForCheckpoint(self: *Self) ?MemorySegmentNode {
     return null;
 }
 
+fn checkIfReady(self: Self) !void {
+    if (!self.is_ready.load(.monotonic)) {
+        return error.IndexNotReady;
+    }
+}
+
 pub fn update(self: *Self, changes: []const Change) !void {
+    try self.checkIfReady();
     try self.updateInternal(changes, null);
 }
 
-pub fn updateInternal(self: *Self, changes: []const Change, commit_id: ?u64) !void {
+fn updateInternal(self: *Self, changes: []const Change, commit_id: ?u64) !void {
     var target = try MemorySegmentList.createSegment(self.allocator, .{});
     defer MemorySegmentList.destroySegment(self.allocator, &target);
 
@@ -400,7 +425,9 @@ pub fn updateInternal(self: *Self, changes: []const Change, commit_id: ?u64) !vo
     self.maybeScheduleCheckpoint();
 }
 
-pub fn acquireReader(self: *Self) IndexReader {
+pub fn acquireReader(self: *Self) !IndexReader {
+    try self.checkIfReady();
+
     self.segments_lock.lockShared();
     defer self.segments_lock.unlockShared();
 
@@ -416,7 +443,7 @@ pub fn releaseReader(self: *Self, reader: *IndexReader) void {
 }
 
 pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, deadline: Deadline) !SearchResults {
-    var reader = self.acquireReader();
+    var reader = try self.acquireReader();
     defer self.releaseReader(&reader);
 
     return reader.search(hashes, allocator, deadline);

@@ -49,6 +49,10 @@ pub fn initializeMetrics(allocator: std.mem.Allocator, comptime opts: m.Registry
     };
 }
 
+pub fn deinitMetrics() void {
+    metrics.docs.deinit();
+}
+
 pub fn writeMetrics(writer: anytype) !void {
     return m.write(&metrics, writer);
 }

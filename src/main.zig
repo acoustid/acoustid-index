@@ -76,6 +76,7 @@ pub fn main() !void {
     log.info("using {} threads", .{threads});
 
     try metrics.initializeMetrics(allocator, .{ .prefix = "aindex_" });
+    defer metrics.deinitMetrics();
 
     var scheduler = Scheduler.init(allocator);
     defer scheduler.deinit();

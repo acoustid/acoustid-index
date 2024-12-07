@@ -71,6 +71,8 @@ pub fn createTask(self: *Self, priority: Priority, comptime func: anytype, args:
     const closure = try self.allocator.create(Closure);
     errdefer self.allocator.destroy(closure);
 
+    closure.arguments = args;
+
     task.* = .{
         .data = .{
             .priority = priority,

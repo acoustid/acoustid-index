@@ -330,7 +330,7 @@ fn handleHeadFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Respons
     const index = try getIndex(ctx, req, res, false) orelse return;
     defer releaseIndex(ctx, index);
 
-    var index_reader = index.acquireReader();
+    var index_reader = try index.acquireReader();
     defer index.releaseReader(&index_reader);
 
     const id = try getId(req, res, false) orelse return;
@@ -351,7 +351,7 @@ fn handleGetFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response
     const index = try getIndex(ctx, req, res, true) orelse return;
     defer releaseIndex(ctx, index);
 
-    var index_reader = index.acquireReader();
+    var index_reader = try index.acquireReader();
     defer index.releaseReader(&index_reader);
 
     const id = try getId(req, res, true) orelse return;
@@ -443,7 +443,7 @@ fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
     const index = try getIndex(ctx, req, res, true) orelse return;
     defer releaseIndex(ctx, index);
 
-    var index_reader = index.acquireReader();
+    var index_reader = try index.acquireReader();
     defer index.releaseReader(&index_reader);
 
     const response = GetIndexResponse{

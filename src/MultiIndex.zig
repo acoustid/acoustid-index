@@ -12,8 +12,6 @@ pub const IndexRef = struct {
     name: []const u8,
     references: usize = 0,
     last_used_at: i64 = std.math.minInt(i64),
-    is_open: bool = false,
-    lock: std.Thread.Mutex = .{},
 
     pub fn deinit(self: *IndexRef, allocator: std.mem.Allocator) void {
         allocator.free(self.name);
@@ -30,16 +28,6 @@ pub const IndexRef = struct {
         self.references -= 1;
         self.last_used_at = std.time.milliTimestamp();
         return self.references == 0;
-    }
-
-    pub fn ensureOpen(self: *IndexRef, create: bool) !void {
-        self.lock.lock();
-        defer self.lock.unlock();
-
-        if (self.is_open) return;
-
-        try self.index.open(create);
-        self.is_open = true;
     }
 };
 
@@ -128,7 +116,7 @@ pub fn releaseIndex(self: *Self, index: *Index) void {
     self.releaseIndexRef(@fieldParentPtr("index", index));
 }
 
-fn acquireIndex(self: *Self, name: []const u8) !*IndexRef {
+fn acquireIndex(self: *Self, name: []const u8, create: bool) !*IndexRef {
     if (!isValidName(name)) {
         return error.InvalidIndexName;
     }
@@ -152,15 +140,15 @@ fn acquireIndex(self: *Self, name: []const u8) !*IndexRef {
     };
     errdefer result.value_ptr.index.deinit();
 
+    try result.value_ptr.index.open(create);
+
     result.value_ptr.incRef();
     return result.value_ptr;
 }
 
 pub fn getIndex(self: *Self, name: []const u8) !*Index {
-    const index_ref = try self.acquireIndex(name);
+    const index_ref = try self.acquireIndex(name, false);
     errdefer self.releaseIndexRef(index_ref);
-
-    try index_ref.ensureOpen(false);
 
     return &index_ref.index;
 }
@@ -168,10 +156,8 @@ pub fn getIndex(self: *Self, name: []const u8) !*Index {
 pub fn createIndex(self: *Self, name: []const u8) !void {
     log.info("creating index {s}", .{name});
 
-    const index_ref = try self.acquireIndex(name);
+    const index_ref = try self.acquireIndex(name, true);
     defer self.releaseIndexRef(index_ref);
-
-    try index_ref.ensureOpen(true);
 }
 
 pub fn deleteIndex(self: *Self, name: []const u8) !void {
