@@ -30,6 +30,7 @@ class Protocol:
             return [(r["i"], r["s"]) for r in body["r"]]
 
     async def update(self, changes):
+        print(f'sending update with {len(changes)} changes')
         url = self.index_url + f"/{self.index_name}/_update"
         data = msgpack.dumps({"c": changes})
         headers = {
