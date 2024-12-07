@@ -132,6 +132,7 @@ const SearchResultsJSON = struct {
 
 fn getId(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?u32 {
     const id_str = req.param("id") orelse {
+        log.warn("missing id parameter", .{});
         if (send_body) {
             try writeErrorResponse(400, error.MissingId, req, res);
         } else {
@@ -140,6 +141,7 @@ fn getId(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?u32 {
         return null;
     };
     return std.fmt.parseInt(u32, id_str, 10) catch |err| {
+        log.warn("invalid id parameter: {}", .{err});
         if (send_body) {
             try writeErrorResponse(400, err, req, res);
         } else {
@@ -151,6 +153,7 @@ fn getId(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?u32 {
 
 fn getIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response, send_body: bool) !?*Index {
     const index_name = req.param("index") orelse {
+        log.warn("missing index parameter", .{});
         if (send_body) {
             try writeErrorResponse(400, error.MissingIndexName, req, res);
         } else {
@@ -159,6 +162,7 @@ fn getIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response, send_body:
         return null;
     };
     const index = ctx.indexes.getIndex(index_name) catch |err| {
+        log.warn("error during getIndex: {}", .{err});
         if (err == error.IndexNotFound) {
             if (send_body) {
                 try writeErrorResponse(404, err, req, res);
@@ -243,6 +247,7 @@ fn writeErrorResponse(status: u16, err: anyerror, req: *httpz.Request, res: *htt
 
 fn getRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !?T {
     const content = req.body() orelse {
+        log.warn("no body", .{});
         try writeErrorResponse(400, error.NoContent, req, res);
         return null;
     };
@@ -255,12 +260,14 @@ fn getRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !
     switch (content_type) {
         .json => {
             return json.parseFromSliceLeaky(T, req.arena, content, .{}) catch |err| {
+                log.warn("json error: {}", .{err});
                 try writeErrorResponse(400, err, req, res);
                 return null;
             };
         },
         .msgpack => {
             return msgpack.decodeFromSliceLeaky(T, req.arena, content) catch |err| {
+                log.warn("msgpack error: {}", .{err});
                 try writeErrorResponse(400, err, req, res);
                 return null;
             };
