@@ -1,4 +1,5 @@
 const std = @import("std");
+const log = std.log.scoped(.scheduler);
 
 const Priority = enum(u8) {
     high = 0,
@@ -109,6 +110,7 @@ fn getTaskToRun(self: *Self) ?*Queue.Node {
     defer self.queue_mutex.unlock();
 
     while (!self.stopping) {
+        log.info("thread {} is looking for work", .{std.Thread.getCurrentId()});
         const task = self.queue.popFirst() orelse {
             self.queue_not_empty.timedWait(&self.queue_mutex, std.time.us_per_min) catch {};
             continue;
@@ -157,6 +159,8 @@ pub fn start(self: *Self, thread_count: usize) !void {
         const thread = try std.Thread.spawn(.{}, workerThreadFunc, .{self});
         self.threads.appendAssumeCapacity(thread);
     }
+
+    log.info("started {} worker threads", .{thread_count});
 }
 
 pub fn stop(self: *Self) void {
