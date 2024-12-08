@@ -65,6 +65,10 @@ pub const Item = packed struct(u64) {
     }
 };
 
+pub const SegmentStatus = struct {
+    frozen: bool = false,
+};
+
 test "Item binary" {
     try std.testing.expectEqual(8, @sizeOf(Item));
     try std.testing.expectEqual(64, @bitSizeOf(Item));

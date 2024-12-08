@@ -193,7 +193,7 @@ pub fn SegmentList(Segment: type) type {
     };
 }
 
-fn getSegmentSize(comptime T: type) fn (SharedPtr(T)) usize {
+fn getSizeFn(comptime T: type) fn (SharedPtr(T)) usize {
     const tmp = struct {
         fn getSize(segment: SharedPtr(T)) usize {
             return segment.value.getSize();
@@ -202,17 +202,27 @@ fn getSegmentSize(comptime T: type) fn (SharedPtr(T)) usize {
     return tmp.getSize;
 }
 
+fn isFrozenFn(comptime T: type) fn (SharedPtr(T)) bool {
+    const tmp = struct {
+        fn isFrozen(segment: SharedPtr(T)) bool {
+            return segment.value.status.frozen;
+        }
+    };
+    return tmp.isFrozen;
+}
+
 pub fn SegmentListManager(Segment: type) type {
     return struct {
         pub const Self = @This();
         pub const List = SegmentList(Segment);
-        pub const MergePolicy = TieredMergePolicy(List.Node, getSegmentSize(Segment));
+        pub const MergePolicy = TieredMergePolicy(List.Node, getSizeFn(Segment), isFrozenFn(Segment));
 
         options: Segment.Options,
         segments: SharedPtr(List),
         merge_policy: MergePolicy,
         num_allowed_segments: std.atomic.Value(usize),
         update_lock: std.Thread.Mutex,
+        status_update_lock: std.Thread.Mutex,
 
         pub fn init(allocator: Allocator, options: Segment.Options, merge_policy: MergePolicy) !Self {
             const segments = try SharedPtr(List).create(allocator, List.initEmpty());
@@ -222,6 +232,7 @@ pub fn SegmentListManager(Segment: type) type {
                 .merge_policy = merge_policy,
                 .num_allowed_segments = std.atomic.Value(usize).init(0),
                 .update_lock = .{},
+                .status_update_lock = .{},
             };
         }
 
@@ -249,16 +260,49 @@ pub fn SegmentListManager(Segment: type) type {
             return self.segments.value.nodes.items.len > self.num_allowed_segments.load(.acquire);
         }
 
+        pub fn prepareCheckpoint(self: *Self, allocator: Allocator) ?List.Node {
+            var segments = self.acquireSegments();
+            defer destroySegments(allocator, &segments);
+
+            self.status_update_lock.lock();
+            defer self.status_update_lock.unlock();
+
+            if (segments.value.getFirst()) |node| {
+                if (node.value.status.frozen) {
+                    return node.acquire();
+                }
+            }
+            return null;
+        }
+
         pub fn prepareMerge(self: *Self, allocator: Allocator) !?Update {
             var segments = self.acquireSegments();
             defer destroySegments(allocator, &segments);
 
-            self.num_allowed_segments.store(self.merge_policy.calculateBudget(segments.value.nodes.items), .release);
-            if (!self.needsMerge()) {
-                return null;
-            }
+            const candidate = blk: {
+                self.status_update_lock.lock();
+                defer self.status_update_lock.unlock();
 
-            const candidate = self.merge_policy.findSegmentsToMerge(segments.value.nodes.items) orelse return null;
+                // Check for a degenerate case:
+                //   - we have a small segment in the front of list and then an oversized one right next to it
+                //   - such a segment could never be merged
+                //   - but it would also never be considered for checkpoint, so it would be stuck there, blocking checkpoints
+                if (segments.value.nodes.items.len >= 2) {
+                    const node0 = segments.value.nodes.items[0];
+                    const node1 = segments.value.nodes.items[1];
+
+                    if (node1.value.status.frozen and !node0.value.status.frozen) {
+                        node0.value.status.frozen = true;
+                    }
+                }
+
+                self.num_allowed_segments.store(self.merge_policy.calculateBudget(segments.value.nodes.items), .release);
+                if (!self.needsMerge()) {
+                    return null;
+                }
+
+                break :blk self.merge_policy.findSegmentsToMerge(segments.value.nodes.items) orelse return null;
+            };
 
             var target = try List.createSegment(allocator, self.options);
             defer List.destroySegment(allocator, &target);
@@ -273,6 +317,11 @@ pub fn SegmentListManager(Segment: type) type {
 
             try target.value.merge(&merger);
             errdefer target.value.cleanup();
+
+            if (target.value.getSize() > self.merge_policy.max_segment_size) {
+                // we can do this without a lock, because we are the only ones knowing about this new segment
+                target.value.status.frozen = true;
+            }
 
             var update = try self.beginUpdate(allocator);
             update.replaceMergedSegment(target);

@@ -36,7 +36,15 @@ pub const MergeCandidate = struct {
     score: f64 = 0.0,
 };
 
-pub fn TieredMergePolicy(comptime Segment: type, comptime getSizeFn: anytype) type {
+pub fn GetSizeFn(comptime S: type) type {
+    return fn (S) usize;
+}
+
+pub fn IsFrozenFn(comptime S: type) type {
+    return fn (S) bool;
+}
+
+pub fn TieredMergePolicy(comptime Segment: type, comptime getSizeFn: GetSizeFn(Segment), comptime isFrozenFn: IsFrozenFn(Segment)) type {
     return struct {
         max_segments: ?usize = null,
 
@@ -53,6 +61,9 @@ pub fn TieredMergePolicy(comptime Segment: type, comptime getSizeFn: anytype) ty
             var num_oversized_segments: usize = 0;
 
             for (segments) |segment| {
+                if (isFrozenFn(segment)) {
+                    continue;
+                }
                 const size = getSizeFn(segment);
                 if (size > self.max_segment_size) {
                     num_oversized_segments += 1;
@@ -97,6 +108,10 @@ pub fn TieredMergePolicy(comptime Segment: type, comptime getSizeFn: anytype) ty
 
             var start: usize = 0;
             while (start + 1 < segments.len) : (start += 1) {
+                if (isFrozenFn(segments[start])) {
+                    // Skip frozen segments
+                    continue;
+                }
                 const start_size = getSizeFn(segments[start]);
                 if (start_size > self.max_segment_size) {
                     // Skip oversized segments that can't be further merged
@@ -110,10 +125,21 @@ pub fn TieredMergePolicy(comptime Segment: type, comptime getSizeFn: anytype) ty
                 };
 
                 while (candidate.end < segments.len) {
-                    candidate.size += getSizeFn(segments[candidate.end]);
+                    if (isFrozenFn(segments[candidate.end])) {
+                        // Can't include frozen segments
+                        break;
+                    }
+                    const size = getSizeFn(segments[candidate.end]);
+                    if (size > self.max_segment_size) {
+                        // Can't include oversized segments
+                        continue;
+                    }
+
+                    candidate.size += size;
                     candidate.end += 1;
 
                     if (candidate.end - candidate.start > self.segments_per_merge or candidate.size > max_merge_size) {
+                        // Too many seegments to merge in one pass, or the result would be too big
                         break;
                     }
 
@@ -170,6 +196,11 @@ const MockSegment = struct {
     pub fn getSize(self: @This()) usize {
         return self.size;
     }
+
+    pub fn isFrozen(self: @This()) bool {
+        _ = self;
+        return false;
+    }
 };
 
 fn applyMerge(segments: *std.ArrayList(MockSegment), merge: MergeCandidate) !void {
@@ -183,7 +214,7 @@ test "TieredMergePolicy" {
     var segments = std.ArrayList(MockSegment).init(std.testing.allocator);
     defer segments.deinit();
 
-    const policy = TieredMergePolicy(MockSegment, MockSegment.getSize){
+    const policy = TieredMergePolicy(MockSegment, MockSegment.getSize, MockSegment.isFrozen){
         .min_segment_size = 100,
         .max_segment_size = 100000,
         .segments_per_merge = 10,

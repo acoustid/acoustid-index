@@ -5,6 +5,7 @@ const common = @import("common.zig");
 const SearchResults = common.SearchResults;
 const KeepOrDelete = common.KeepOrDelete;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
+const SegmentStatus = @import("segment.zig").SegmentStatus;
 const Item = @import("segment.zig").Item;
 
 const Change = @import("change.zig").Change;
@@ -19,12 +20,12 @@ pub const Options = struct {};
 
 allocator: std.mem.Allocator,
 info: SegmentInfo = .{},
+status: SegmentStatus = .{},
 attributes: std.StringHashMapUnmanaged(u64) = .{},
 docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
 min_doc_id: u32 = 0,
 max_doc_id: u32 = 0,
 items: std.ArrayListUnmanaged(Item) = .{},
-frozen: bool = false,
 
 pub fn init(allocator: std.mem.Allocator, opts: Options) Self {
     _ = opts;

@@ -8,6 +8,7 @@ const KeepOrDelete = common.KeepOrDelete;
 
 const Item = @import("segment.zig").Item;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
+const SegmentStatus = @import("segment.zig").SegmentStatus;
 
 const filefmt = @import("filefmt.zig");
 
@@ -20,6 +21,7 @@ pub const Options = struct {
 allocator: std.mem.Allocator,
 dir: std.fs.Dir,
 info: SegmentInfo = .{},
+status: SegmentStatus = .{},
 attributes: std.StringHashMapUnmanaged(u64) = .{},
 docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
 min_doc_id: u32 = 0,
@@ -158,7 +160,7 @@ test "build" {
     defer source.deinit(.delete);
 
     source.info = .{ .version = 1 };
-    source.frozen = true;
+    source.status.frozen = true;
     try source.docs.put(source.allocator, 1, true);
     try source.items.append(source.allocator, .{ .id = 1, .hash = 1 });
     try source.items.append(source.allocator, .{ .id = 1, .hash = 2 });

@@ -142,14 +142,9 @@ pub fn deinit(self: *Self) void {
     self.dir.close();
 }
 
-fn doCheckpoint(self: *Self) !bool {
-    var snapshot = try self.acquireReader();
-    defer self.releaseReader(&snapshot);
-
-    const source = snapshot.memory_segments.value.getFirst() orelse return false;
-    if (source.value.getSize() < self.options.min_segment_size) {
-        return false;
-    }
+fn checkpoint(self: *Self) !bool {
+    var source = self.memory_segments.prepareCheckpoint(self.allocator) orelse return false;
+    defer MemorySegmentList.destroySegment(self.allocator, &source);
 
     // build new file segment
 
@@ -207,7 +202,7 @@ fn updateDocsMetrics(self: *Self) void {
 }
 
 fn checkpointTask(self: *Self) void {
-    _ = self.doCheckpoint() catch |err| {
+    _ = self.checkpoint() catch |err| {
         log.err("checkpoint failed: {}", .{err});
     };
 }
@@ -375,18 +370,6 @@ fn maybeScheduleCheckpoint(self: *Self) void {
             }
         }
     }
-}
-
-fn readyForCheckpoint(self: *Self) ?MemorySegmentNode {
-    self.segments_lock.lockShared();
-    defer self.segments_lock.unlockShared();
-
-    if (self.segments.memory_segments.value.getFirstOrNull()) |first_node| {
-        if (first_node.value.getSize() > self.options.min_segment_size) {
-            return first_node.acquire();
-        }
-    }
-    return null;
 }
 
 pub fn waitForReady(self: *Self, timeout_ms: u32) !void {
