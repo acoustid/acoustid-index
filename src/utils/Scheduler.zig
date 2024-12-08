@@ -8,6 +8,101 @@ const Priority = enum(u8) {
     do_not_run = 3,
 };
 
+pub fn Future(comptime T: type) type {
+    const Started = enum(u8) {
+        not_started,
+        started,
+        cancelled,
+    };
+
+    return struct {
+        result: ?T = null,
+        cancelled: std.atomic.Value(bool),
+        started: std.atomic.Value(Started),
+        finished: std.Thread.ResetEvent,
+
+        pub fn init() @This() {
+            return .{
+                .cancelled = std.atomic.Value(bool).init(false),
+                .started = std.atomic.Value(Started).init(.not_started),
+                .finished = .{},
+            };
+        }
+
+        pub fn cancel(self: *@This()) void {
+            self.markAsCancelled() catch return;
+            self.markAsStarted(.cancelled) catch return;
+            self.markAsFinished(null);
+        }
+
+        pub fn isCancelled(self: @This()) bool {
+            return self.cancelled.load(.acquire);
+        }
+
+        pub fn isStarted(self: @This()) bool {
+            return self.started.load(.acquire) == .started;
+        }
+
+        pub fn isRunning(self: @This()) bool {
+            return self.isStarted() and !self.isFinished();
+        }
+
+        pub fn isFinished(self: @This()) bool {
+            return self.finished.isSet();
+        }
+
+        pub fn waitForFinished(self: *@This()) void {
+            self.finished.wait();
+        }
+
+        pub fn getResult(self: @This()) ?T {
+            if (self.isFinished()) {
+                return self.result;
+            }
+            return null;
+        }
+
+        fn markAsCancelled(self: *@This()) !void {
+            const res = self.cancelled.cmpxchgStrong(false, true, .seq_cst, .seq_cst);
+            if (res != null) {
+                return error.AlreadyCancelled;
+            }
+        }
+
+        fn markAsStarted(self: *@This(), status: Started) !void {
+            std.debug.assert(status != .not_started);
+            const res = self.started.cmpxchgStrong(.not_started, status, .seq_cst, .seq_cst);
+            if (res != null) {
+                return error.AlreadyStarted;
+            }
+        }
+
+        fn markAsFinished(self: *@This(), result: ?T) void {
+            std.debug.assert(!self.finished.isSet());
+            self.result = result;
+            self.finished.set();
+        }
+    };
+}
+
+test "Future" {
+    var fut = Future(u8).init();
+    try std.testing.expectEqual(false, fut.isStarted());
+    try std.testing.expectEqual(false, fut.isRunning());
+    try std.testing.expectEqual(false, fut.isFinished());
+    try std.testing.expectEqual(false, fut.isCancelled());
+    try std.testing.expectEqual(null, fut.getResult());
+
+    fut.cancel();
+    fut.waitForFinished();
+
+    try std.testing.expectEqual(false, fut.isStarted());
+    try std.testing.expectEqual(false, fut.isRunning());
+    try std.testing.expectEqual(true, fut.isFinished());
+    try std.testing.expectEqual(true, fut.isCancelled());
+    try std.testing.expectEqual(null, fut.getResult());
+}
+
 const TaskStatus = struct {
     reschedule: usize = 0,
     scheduled: bool = false,
