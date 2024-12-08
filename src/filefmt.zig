@@ -451,7 +451,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
 
     const block_size = header.block_size;
     const padding_size = block_size - fixed_buffer_stream.pos % block_size;
-    try reader.skipBytes(padding_size, .{});
+    try fixed_buffer_stream.seekBy(@intCast(padding_size));
 
     const blocks_data_start = fixed_buffer_stream.pos;
 
@@ -462,10 +462,10 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     var num_blocks: u32 = 0;
     var crc = std.hash.crc.Crc64Xz.init();
 
-    var block_data_buffer: [max_block_size]u8 = undefined;
-    var block_data = block_data_buffer[0..block_size];
-    while (true) {
-        try reader.readNoEof(block_data);
+    var ptr = blocks_data_start;
+    while (ptr + block_size <= raw_data.len) {
+        const block_data = raw_data[ptr .. ptr + block_size];
+        ptr += block_size;
         const block_header = try decodeBlockHeader(block_data, segment.min_doc_id);
         if (block_header.num_items == 0) {
             break;
@@ -473,11 +473,12 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
         segment.index.appendAssumeCapacity(block_header.first_item.hash);
         num_items += block_header.num_items;
         num_blocks += 1;
-        crc.update(block_data[0..]);
+        crc.update(block_data);
     }
-
-    const blocks_data_end = fixed_buffer_stream.pos;
+    const blocks_data_end = ptr;
     segment.blocks = raw_data[blocks_data_start..blocks_data_end];
+
+    try fixed_buffer_stream.seekBy(@intCast(segment.blocks.len));
 
     const footer = try unpacker.read(SegmentFileFooter);
     if (footer.magic != segment_file_footer_magic_v1) {
