@@ -6,6 +6,8 @@ var metrics = m.initializeNoop(Metrics);
 const WithIndex = struct { index: []const u8 };
 
 const Metrics = struct {
+    search_hits: m.Counter(u64),
+    search_misses: m.Counter(u64),
     searches: m.Counter(u64),
     updates: m.Counter(u64),
     checkpoints: m.Counter(u64),
@@ -16,6 +18,14 @@ const Metrics = struct {
 
 pub fn search() void {
     metrics.searches.incr();
+}
+
+pub fn searchHit() void {
+    metrics.search_hits.incr();
+}
+
+pub fn searchMiss() void {
+    metrics.search_misses.incr();
 }
 
 pub fn update(count: usize) void {
@@ -40,6 +50,8 @@ pub fn docs(index_name: []const u8, value: u32) void {
 
 pub fn initializeMetrics(allocator: std.mem.Allocator, comptime opts: m.RegistryOpts) !void {
     metrics = .{
+        .search_hits = m.Counter(u64).init("search_hits_total", .{}, opts),
+        .search_misses = m.Counter(u64).init("search_misses_total", .{}, opts),
         .searches = m.Counter(u64).init("searches_total", .{}, opts),
         .updates = m.Counter(u64).init("updates_total", .{}, opts),
         .checkpoints = m.Counter(u64).init("checkpoints_total", .{}, opts),

@@ -2,6 +2,7 @@ const std = @import("std");
 
 const Self = @This();
 
+const metrics = @import("metrics.zig");
 const Deadline = @import("utils/Deadline.zig");
 const SearchResults = @import("common.zig").SearchResults;
 const SharedPtr = @import("utils/shared_ptr.zig").SharedPtr;
@@ -37,6 +38,12 @@ pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, de
     }
 
     results.sort();
+
+    if (results.count() == 0) {
+        metrics.searchMiss();
+    } else {
+        metrics.searchHit();
+    }
 
     return results;
 }

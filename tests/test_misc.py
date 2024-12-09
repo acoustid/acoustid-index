@@ -12,3 +12,5 @@ def test_metrics(client):
     req = client.get('/_metrics')
     assert req.status_code == 200, req.content
     assert 'aindex_searches_total' in req.text
+    assert 'aindex_search_hits_total' in req.text
+    assert 'aindex_search_misses_total' in req.text
