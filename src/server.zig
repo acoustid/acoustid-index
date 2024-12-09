@@ -288,6 +288,9 @@ fn getRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !
 }
 
 fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    const start_time = std.time.milliTimestamp();
+    defer metrics.searchDuration(std.time.milliTimestamp() - start_time);
+
     const body = try getRequestBody(SearchRequestJSON, req, res) orelse return;
 
     const index = try getIndex(ctx, req, res, true) orelse return;
@@ -305,6 +308,12 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
     metrics.search();
 
     const results = try index.search(body.query, req.arena, deadline);
+
+    if (results.count() == 0) {
+        metrics.searchMiss();
+    } else {
+        metrics.searchHit();
+    }
 
     var results_json = SearchResultsJSON{
         .results = try req.arena.alloc(SearchResultJSON, results.count()),

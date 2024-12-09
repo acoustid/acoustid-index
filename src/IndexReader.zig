@@ -39,12 +39,6 @@ pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, de
 
     results.sort();
 
-    if (results.count() == 0) {
-        metrics.searchMiss();
-    } else {
-        metrics.searchHit();
-    }
-
     return results;
 }
 
