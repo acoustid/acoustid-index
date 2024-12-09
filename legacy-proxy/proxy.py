@@ -11,6 +11,10 @@ class ProtocolError(Exception):
         self.msg = msg
 
 
+def parse_hashes(src):
+    return [int(v)&0xffffffff for v in src.split(",")]
+
+
 class Protocol:
 
     def __init__(self, session):
@@ -61,7 +65,7 @@ class Protocol:
             raise ProtocolError("invalid command")
 
         if request[0] == "search":
-            query = list(map(int, request[1].split(",")))
+            query = parse_hashes(request[1])
             results = await self.search(query)
             return " ".join(f"{docid}:{hits}" for (docid, hits) in results)
 
@@ -83,7 +87,7 @@ class Protocol:
                 {
                     "i": {
                         "i": int(request[1]),
-                        "h": [int(v)&0xffffffff for v in request[2].split(",")],
+                        "h": parse_hashes(request[2]),
                     }
                 }
             )
