@@ -189,7 +189,7 @@ static HttpResponse handleDeleteDocumentRequest(const HttpRequest &request, cons
 }
 
 // Handle search requests.
-static HttpResponse handleSearchRequest(const HttpRequest &request, const QSharedPointer<Index> &indexes) {
+static HttpResponse handleSearchRequest(const HttpRequest &request, const QSharedPointer<Index> &indexes, const QSharedPointer<Metrics> &metrics) {
     auto index = getIndex(request, indexes);
 
     auto query = parseTerms(request.param("query"));
@@ -208,6 +208,7 @@ static HttpResponse handleSearchRequest(const HttpRequest &request, const QShare
         reader->search(query.data(), query.size(), collector.data());
     }
     auto results = collector->topResults();
+    metrics->onSearchRequest(results.size());
 
     QJsonArray resultsJson;
     for (auto &result : results) {
@@ -314,7 +315,7 @@ HttpRequestHandler::HttpRequestHandler(QSharedPointer<Index> indexes, QSharedPoi
 
     // Search API
     m_router.route(HTTP_GET, "/:index/_search", [=](auto req) {
-        return handleSearchRequest(req, m_indexes);
+        return handleSearchRequest(req, m_indexes, m_metrics);
     });
 
     // Index API

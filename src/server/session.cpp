@@ -3,6 +3,7 @@
 
 #include "session.h"
 #include "errors.h"
+#include "metrics.h"
 #include "index/index.h"
 #include "index/index_writer.h"
 #include "index/top_hits_collector.h"
@@ -112,5 +113,7 @@ QList<Result> Session::search(const QVector<uint32_t> &hashes) {
     } catch (TimeoutExceeded) {
         throw HandlerException("timeout exceeded");
     }
-    return collector.topResults();
+    const auto results = collector.topResults();
+    m_metrics->onSearchRequest(results.size());
+    return results;
 }
