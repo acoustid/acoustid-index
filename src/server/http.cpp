@@ -294,20 +294,6 @@ HttpRequestHandler::HttpRequestHandler(QSharedPointer<Index> indexes, QSharedPoi
         return handleMetricsRequest(req, m_metrics);
     });
 
-    // Document API
-    m_router.route(HTTP_HEAD, "/:index/:docId", [=](auto req) {
-        return handleHeadDocumentRequest(req, m_indexes);
-    });
-    m_router.route(HTTP_GET, "/:index/:docId", [=](auto req) {
-        return handleGetDocumentRequest(req, m_indexes);
-    });
-    m_router.route(HTTP_PUT, "/:index/:docId", [=](auto req) {
-        return handlePutDocumentRequest(req, m_indexes);
-    });
-    m_router.route(HTTP_DELETE, "/:index/:docId", [=](auto req) {
-        return handleDeleteDocumentRequest(req, m_indexes);
-    });
-
     // Update API
     m_router.route(HTTP_POST, "/:index/_update", [=](auto req) {
         return handleUpdateRequest(req, m_indexes);
@@ -330,6 +316,20 @@ HttpRequestHandler::HttpRequestHandler(QSharedPointer<Index> indexes, QSharedPoi
     });
     m_router.route(HTTP_DELETE, "/:index", [=](auto req) {
         return handleDeleteIndexRequest(req, m_indexes);
+    });
+
+    // Document API
+    m_router.route(HTTP_HEAD, "/:index/:docId", [=](auto req) {
+        return handleHeadDocumentRequest(req, m_indexes);
+    });
+    m_router.route(HTTP_GET, "/:index/:docId", [=](auto req) {
+        return handleGetDocumentRequest(req, m_indexes);
+    });
+    m_router.route(HTTP_PUT, "/:index/:docId", [=](auto req) {
+        return handlePutDocumentRequest(req, m_indexes);
+    });
+    m_router.route(HTTP_DELETE, "/:index/:docId", [=](auto req) {
+        return handleDeleteDocumentRequest(req, m_indexes);
     });
 }
 
