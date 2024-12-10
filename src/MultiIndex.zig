@@ -135,7 +135,7 @@ fn acquireIndex(self: *Self, name: []const u8, create: bool) !*IndexRef {
     errdefer self.allocator.free(result.key_ptr.*);
 
     result.value_ptr.* = .{
-        .index = try Index.init(self.allocator, self.scheduler, self.dir, name, .{}),
+        .index = try Index.init(self.allocator, self.scheduler, self.dir, result.key_ptr.*, .{}),
         .name = result.key_ptr.*,
     };
     errdefer result.value_ptr.index.deinit();
