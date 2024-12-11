@@ -149,10 +149,8 @@ pub fn SegmentList(Segment: type) type {
 
         pub fn search(self: Self, hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
             for (self.nodes.items) |node| {
-                if (deadline.isExpired()) {
-                    return error.Timeout;
-                }
-                try node.value.search(hashes, results);
+                try deadline.check();
+                try node.value.search(hashes, results, deadline);
             }
             results.removeOutdatedResults(self);
         }

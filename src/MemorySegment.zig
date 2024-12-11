@@ -46,7 +46,7 @@ pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
     self.items.deinit(self.allocator);
 }
 
-pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !void {
+pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
     var items = self.items.items;
     for (sorted_hashes) |hash| {
         const matches = std.sort.equalRange(Item, Item{ .hash = hash, .id = 0 }, items, {}, Item.cmpByHash);
@@ -55,6 +55,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !
         }
         items = items[matches[1]..];
     }
+    _ = deadline;
 }
 
 pub fn getSize(self: Self) usize {

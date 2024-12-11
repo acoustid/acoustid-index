@@ -5,6 +5,7 @@ const assert = std.debug.assert;
 const common = @import("common.zig");
 const SearchResults = common.SearchResults;
 const KeepOrDelete = common.KeepOrDelete;
+const Deadline = @import("utils/Deadline.zig");
 
 const Item = @import("segment.zig").Item;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
@@ -70,7 +71,7 @@ pub fn getBlockData(self: Self, block: usize) []const u8 {
     return self.blocks[block * self.block_size .. (block + 1) * self.block_size];
 }
 
-pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !void {
+pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
     var prev_block_no: usize = std.math.maxInt(usize);
     var prev_block_range_start: usize = 0;
 
@@ -86,7 +87,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !
     // We want to find hash=7, lowerBound returns block=2 (9), but block=1 could still contain hash=6, so we go one back.
     // We want to find hash=10, lowerBound returns block=3 (EOF), but block=2 could still contain hash=6, so we go one back.
 
-    for (sorted_hashes) |hash| {
+    for (sorted_hashes, 1..) |hash, i| {
         var block_no = std.sort.lowerBound(u32, hash, self.index.items[prev_block_range_start..], {}, std.sort.asc(u32)) + prev_block_range_start;
         if (block_no > 0) {
             block_no -= 1;
@@ -100,9 +101,13 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !
                 try filefmt.readBlock(block_data, &block_items, self.min_doc_id);
             }
             const matches = std.sort.equalRange(Item, Item{ .hash = hash, .id = 0 }, block_items.items, {}, Item.cmpByHash);
-            for (matches[0]..matches[1]) |i| {
-                try results.incr(block_items.items[i].id, self.info.version);
+            for (matches[0]..matches[1]) |j| {
+                try results.incr(block_items.items[j].id, self.info.version);
             }
+        }
+
+        if (i % 10 == 0) {
+            try deadline.check();
         }
     }
 }

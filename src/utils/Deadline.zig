@@ -16,3 +16,9 @@ pub fn setTimeout(self: *Self, timeout_ms: i64) void {
 pub fn isExpired(self: *const Self) bool {
     return self.deadline_ms > 0 and time.milliTimestamp() >= self.deadline_ms;
 }
+
+pub fn check(self: Self) !void {
+    if (self.isExpired()) {
+        return error.Timeout;
+    }
+}
