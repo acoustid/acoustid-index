@@ -56,7 +56,7 @@ pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const 
             .count = threads,
         },
         .timeout = .{
-            .request = 60,
+            .request = null,
             .keepalive = 300,
         },
         .request = .{
