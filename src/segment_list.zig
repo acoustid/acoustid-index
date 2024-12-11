@@ -316,11 +316,6 @@ pub fn SegmentListManager(Segment: type) type {
             try target.value.merge(&merger);
             errdefer target.value.cleanup();
 
-            if (target.value.getSize() > self.merge_policy.max_segment_size) {
-                // we can do this without a lock, because we are the only ones knowing about this new segment
-                target.value.status.frozen = true;
-            }
-
             var update = try self.beginUpdate(allocator);
             update.replaceMergedSegment(target);
 
@@ -337,10 +332,16 @@ pub fn SegmentListManager(Segment: type) type {
             }
 
             pub fn appendSegment(self: *@This(), node: List.Node) void {
+                if (node.value.getSize() > self.manager.merge_policy.max_segment_size) {
+                    node.value.status.frozen = true;
+                }
                 self.manager.segments.value.appendSegmentInto(self.segments.value, node);
             }
 
             pub fn replaceMergedSegment(self: *@This(), node: List.Node) void {
+                if (node.value.getSize() > self.manager.merge_policy.max_segment_size) {
+                    node.value.status.frozen = true;
+                }
                 self.manager.segments.value.replaceMergedSegmentInto(self.segments.value, node);
             }
         };
