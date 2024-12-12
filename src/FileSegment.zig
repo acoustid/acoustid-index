@@ -75,7 +75,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
     var prev_block_no: usize = std.math.maxInt(usize);
     var prev_block_range_start: usize = 0;
 
-    var block_items = std.ArrayList(Item).init(results.results.allocator);
+    var block_items = std.ArrayList(Item).init(results.allocator);
     defer block_items.deinit();
 
     // Let's say we have blocks like this:
@@ -106,6 +106,9 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
                 try results.incr(block_items.items[j].id, self.info.version);
             }
             num_docs += matches[1] - matches[0];
+            if (num_docs > 1000) {
+                break; // XXX explain why
+            }
         }
 
         if (num_docs > 1000) {

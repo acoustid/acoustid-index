@@ -428,11 +428,11 @@ pub fn releaseReader(self: *Self, reader: *IndexReader) void {
     FileSegmentList.destroySegments(self.allocator, &reader.file_segments);
 }
 
-pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, deadline: Deadline) !SearchResults {
+pub fn search(self: *Self, hashes: []u32, results: *SearchResults, deadline: Deadline) !void {
     var reader = try self.acquireReader();
     defer self.releaseReader(&reader);
 
-    return reader.search(hashes, allocator, deadline);
+    try reader.search(hashes, results, deadline);
 }
 
 test {

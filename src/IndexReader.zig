@@ -5,6 +5,7 @@ const Self = @This();
 const metrics = @import("metrics.zig");
 const Deadline = @import("utils/Deadline.zig");
 const SearchResults = @import("common.zig").SearchResults;
+const SearchOptions = @import("common.zig").SearchOptions;
 const SharedPtr = @import("utils/shared_ptr.zig").SharedPtr;
 const DocInfo = @import("common.zig").DocInfo;
 
@@ -34,22 +35,15 @@ pub fn hasNewerVersion(self: *const Self, doc_id: u32, version: u64) bool {
     return false;
 }
 
-pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, deadline: Deadline) !SearchResults {
-    const sorted_hashes = try allocator.dupe(u32, hashes);
-    defer allocator.free(sorted_hashes);
-    std.sort.pdq(u32, sorted_hashes, {}, std.sort.asc(u32));
-
-    var results = SearchResults.init(allocator);
-    errdefer results.deinit();
+pub fn search(self: *Self, hashes: []u32, results: *SearchResults, deadline: Deadline) !void {
+    std.sort.pdq(u32, hashes, {}, std.sort.asc(u32));
 
     inline for (segment_lists) |n| {
         const segments = @field(self, n);
-        try segments.value.search(sorted_hashes, &results, self, deadline);
+        try segments.value.search(hashes, results, deadline);
     }
 
-    results.sort();
-
-    return results;
+    try results.finish(self);
 }
 
 pub fn getNumDocs(self: *Self) u32 {

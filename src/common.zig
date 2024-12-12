@@ -17,14 +17,7 @@ pub const KeepOrDelete = enum {
 pub const SearchResult = struct {
     id: u32,
     score: u32,
-    version: u64,
-
-    pub fn cmp(_: void, a: SearchResult, b: SearchResult) bool {
-        return a.score > b.score or (a.score == b.score and b.id > a.id);
-    }
 };
-
-pub const SearchResultHashMap = std.AutoArrayHashMap(u32, SearchResult);
 
 pub const SearchOptions = struct {
     max_results: u32 = 10,
@@ -33,22 +26,31 @@ pub const SearchOptions = struct {
 };
 
 pub const SearchResults = struct {
-    results: SearchResultHashMap,
+    allocator: std.mem.Allocator,
+    options: SearchOptions,
+    results: std.ArrayListUnmanaged(SearchResult) = .{},
+    hits: std.AutoHashMapUnmanaged(u32, Hit) = .{},
 
-    pub fn init(allocator: std.mem.Allocator) SearchResults {
+    const Hit = packed struct {
+        version: u64,
+        score: u32,
+    };
+
+    pub fn init(allocator: std.mem.Allocator, options: SearchOptions) SearchResults {
         return SearchResults{
-            .results = SearchResultHashMap.init(allocator),
+            .allocator = allocator,
+            .options = options,
         };
     }
 
     pub fn deinit(self: *SearchResults) void {
-        self.results.deinit();
+        self.hits.deinit(self.allocator);
+        self.results.deinit(self.allocator);
     }
 
     pub fn incr(self: *SearchResults, id: u32, version: u64) !void {
-        const r = try self.results.getOrPut(id);
+        const r = try self.hits.getOrPut(self.allocator, id);
         if (!r.found_existing or r.value_ptr.version < version) {
-            r.value_ptr.id = id;
             r.value_ptr.score = 1;
             r.value_ptr.version = version;
         } else if (r.value_ptr.version == version) {
@@ -56,57 +58,61 @@ pub const SearchResults = struct {
         }
     }
 
-    pub fn count(self: SearchResults) usize {
-        return self.results.count();
-    }
-
-    pub fn values(self: SearchResults) []SearchResult {
-        return self.results.values();
-    }
-
     pub fn get(self: SearchResults, id: u32) ?SearchResult {
-        return self.results.get(id);
-    }
-
-    pub fn sort(self: *SearchResults) void {
-        // sort by score in descending order
-        const Ctx = struct {
-            values: []SearchResult,
-            pub fn lessThan(ctx: @This(), a: usize, b: usize) bool {
-                return SearchResult.cmp({}, ctx.values[a], ctx.values[b]);
-            }
+        const hit = self.hits.get(id) orelse return null;
+        return .{
+            .id = id,
+            .score = hit.score,
+            .version = hit.version,
         };
-        self.results.sort(Ctx{ .values = self.results.values() });
     }
 
-    pub fn removeOutdatedResults(self: *SearchResults, collection: anytype) void {
-        var i: usize = 0;
-        while (i < self.results.count()) {
-            const result = self.results.values()[i];
-            if (collection.hasNewerVersion(result.id, result.version)) {
-                self.results.swapRemoveAt(i);
-            } else {
-                i += 1;
+    pub fn finish(self: *SearchResults, collection: anytype) !void {
+        var ids = try std.ArrayListUnmanaged(u32).initCapacity(self.allocator, self.hits.count());
+        defer ids.deinit(self.allocator);
+
+        var min_score = self.options.min_score;
+
+        var iter = self.hits.iterator();
+        while (iter.next()) |entry| {
+            if (entry.value_ptr.*.score >= min_score) {
+                ids.appendAssumeCapacity(entry.key_ptr.*);
             }
         }
+
+        std.sort.pdq(u32, ids.items, self, compareResults);
+
+        self.results.clearRetainingCapacity();
+        try self.results.ensureTotalCapacity(self.allocator, self.options.max_results);
+
+        for (ids.items) |id| {
+            if (self.results.items.len == self.options.max_results) {
+                break;
+            }
+            const hit = self.hits.get(id) orelse unreachable;
+            if (collection.hasNewerVersion(id, hit.version)) {
+                continue;
+            }
+            if (hit.score < min_score) {
+                break;
+            }
+            if (self.results.items.len == 0) {
+                min_score = @max(min_score, hit.score * self.options.min_score_pct / 100);
+            }
+            self.results.appendAssumeCapacity(.{
+                .id = id,
+                .score = hit.score,
+            });
+        }
+    }
+
+    pub fn compareResults(self: *SearchResults, a: u32, b: u32) bool {
+        const a_hit = self.hits.get(a) orelse unreachable;
+        const b_hit = self.hits.get(b) orelse unreachable;
+        return a_hit.score > b_hit.score or (a_hit.score == b_hit.score and a < b);
+    }
+
+    pub fn getResults(self: *SearchResults) []SearchResult {
+        return self.results.items;
     }
 };
-
-test "sort search results" {
-    var results = SearchResults.init(testing.allocator);
-    defer results.deinit();
-
-    try results.incr(1, 1);
-    try results.incr(3, 1);
-    try results.incr(3, 1);
-    try results.incr(2, 1);
-    try results.incr(2, 1);
-
-    results.sort();
-
-    try testing.expectEqualSlices(SearchResult, &[_]SearchResult{
-        SearchResult{ .id = 2, .score = 2, .version = 1 },
-        SearchResult{ .id = 3, .score = 2, .version = 1 },
-        SearchResult{ .id = 1, .score = 1, .version = 1 },
-    }, results.values());
-}

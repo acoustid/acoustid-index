@@ -109,7 +109,7 @@ const min_search_limit = 1;
 const max_search_limit = 100;
 
 const SearchRequestJSON = struct {
-    query: []const u32,
+    query: []u32,
     timeout: u32 = default_search_timeout,
     limit: u32 = default_search_limit,
 
@@ -311,23 +311,26 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 
     metrics.search();
 
-    const results = try index.search(body.query, req.arena, deadline);
+    var collector = SearchResults.init(req.arena, .{
+        .max_results = limit,
+        .min_score = @intCast(body.query.len / 20),
+        .min_score_pct = 10,
+    });
 
-    if (results.count() == 0) {
+    try index.search(body.query, &collector, deadline);
+
+    const results = collector.getResults();
+
+    if (results.len == 0) {
         metrics.searchMiss();
     } else {
         metrics.searchHit();
     }
 
-    const num_results = @min(results.count(), limit);
-
     var results_json = SearchResultsJSON{
-        .results = try req.arena.alloc(SearchResultJSON, num_results),
+        .results = try req.arena.alloc(SearchResultJSON, results.len),
     };
-    for (results.values(), 0..) |r, i| {
-        if (i >= num_results) {
-            break;
-        }
+    for (results, 0..) |r, i| {
         results_json.results[i] = SearchResultJSON{ .id = r.id, .score = r.score };
     }
     return writeResponse(results_json, req, res);

@@ -3,6 +3,7 @@ const std = @import("std");
 const common = @import("common.zig");
 const Change = @import("change.zig").Change;
 const SearchResults = common.SearchResults;
+const SearchResult = common.SearchResult;
 const Scheduler = @import("utils/Scheduler.zig");
 const Deadline = @import("utils/Deadline.zig");
 
@@ -51,22 +52,21 @@ test "index create, update and search" {
     } }});
 
     {
-        var results = try index.search(generateRandomHashes(&hashes, 1), std.testing.allocator, .{});
-        defer results.deinit();
+        var collector = SearchResults.init(std.testing.allocator, .{});
+        defer collector.deinit();
 
-        try std.testing.expectEqual(1, results.count());
+        try index.search(generateRandomHashes(&hashes, 1), &collector, .{});
 
-        const result = results.get(1);
-        try std.testing.expect(result != null);
-        try std.testing.expectEqual(1, result.?.id);
-        try std.testing.expectEqual(hashes.len, result.?.score);
+        try std.testing.expectEqualSlices(SearchResult, &.{.{ .id = 1, .score = hashes.len }}, collector.getResults());
     }
 
     {
-        var results = try index.search(generateRandomHashes(&hashes, 999), std.testing.allocator, .{});
-        defer results.deinit();
+        var collector = SearchResults.init(std.testing.allocator, .{});
+        defer collector.deinit();
 
-        try std.testing.expectEqual(0, results.count());
+        try index.search(generateRandomHashes(&hashes, 999), &collector, .{});
+
+        try std.testing.expectEqualSlices(SearchResult, &.{}, collector.getResults());
     }
 }
 
@@ -100,15 +100,12 @@ test "index create, update, reopen and search" {
         try index.open(false);
         try index.waitForReady(10000);
 
-        var results = try index.search(generateRandomHashes(&hashes, 1), std.testing.allocator, .{});
-        defer results.deinit();
+        var collector = SearchResults.init(std.testing.allocator, .{});
+        defer collector.deinit();
 
-        try std.testing.expectEqual(1, results.count());
+        try index.search(generateRandomHashes(&hashes, 1), &collector, .{});
 
-        const result = results.get(1);
-        try std.testing.expect(result != null);
-        try std.testing.expectEqual(1, result.?.id);
-        try std.testing.expectEqual(hashes.len, result.?.score);
+        try std.testing.expectEqualSlices(SearchResult, &.{.{ .id = 1, .score = hashes.len }}, collector.getResults());
     }
 }
 
@@ -144,21 +141,21 @@ test "index many updates" {
     try index.waitForReady(100000);
 
     {
-        var results = try index.search(generateRandomHashes(&hashes, 0), std.testing.allocator, .{});
-        defer results.deinit();
+        var collector = SearchResults.init(std.testing.allocator, .{});
+        defer collector.deinit();
 
-        const result = results.get(1);
-        try std.testing.expect(result == null or result.?.score == 0);
+        try index.search(generateRandomHashes(&hashes, 0), &collector, .{});
+
+        try std.testing.expectEqualSlices(SearchResult, &.{}, collector.getResults());
     }
 
     {
-        var results = try index.search(generateRandomHashes(&hashes, 80), std.testing.allocator, .{});
-        defer results.deinit();
+        var collector = SearchResults.init(std.testing.allocator, .{});
+        defer collector.deinit();
 
-        const result = results.get(1);
-        try std.testing.expect(result != null);
-        try std.testing.expectEqual(1, result.?.id);
-        try std.testing.expectEqual(hashes.len, result.?.score);
+        try index.search(generateRandomHashes(&hashes, 80), &collector, .{});
+
+        try std.testing.expectEqualSlices(SearchResult, &.{.{ .id = 1, .score = hashes.len }}, collector.getResults());
     }
 }
 
@@ -186,22 +183,19 @@ test "index, multiple fingerprints with the same hashes" {
         .hashes = generateRandomHashes(&hashes, 1),
     } }});
 
-    var results = try index.search(generateRandomHashes(&hashes, 1), std.testing.allocator, .{});
-    defer results.deinit();
+    var collector = SearchResults.init(std.testing.allocator, .{});
+    defer collector.deinit();
 
-    try std.testing.expectEqual(2, results.count());
+    try index.search(generateRandomHashes(&hashes, 1), &collector, .{});
 
-    if (results.get(1)) |result| {
-        try std.testing.expectEqual(1, result.id);
-        try std.testing.expectEqual(hashes.len, result.score);
-    } else {
-        try std.testing.expect(false);
-    }
-
-    if (results.get(2)) |result| {
-        try std.testing.expectEqual(2, result.id);
-        try std.testing.expectEqual(hashes.len, result.score);
-    } else {
-        try std.testing.expect(false);
-    }
+    try std.testing.expectEqualSlices(SearchResult, &.{
+        .{
+            .id = 1,
+            .score = hashes.len,
+        },
+        .{
+            .id = 2,
+            .score = hashes.len,
+        },
+    }, collector.getResults());
 }
