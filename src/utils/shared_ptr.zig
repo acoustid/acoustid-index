@@ -65,7 +65,9 @@ pub fn SharedPtr(comptime T: type) type {
         pub fn release(self: *Self, allocator: Allocator, cleanupFn: anytype, cleanup_args: anytype) void {
             const inner_ptr = self.getInnerPtr();
             if (inner_ptr.refs.decr()) {
-                @call(.auto, cleanupFn, .{&inner_ptr.value} ++ cleanup_args);
+                if (@TypeOf(cleanupFn) != @TypeOf(null)) {
+                    @call(.auto, cleanupFn, .{&inner_ptr.value} ++ cleanup_args);
+                }
                 allocator.destroy(inner_ptr);
                 self.value = undefined;
             }
