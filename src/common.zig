@@ -26,6 +26,12 @@ pub const SearchResult = struct {
 
 pub const SearchResultHashMap = std.AutoArrayHashMap(u32, SearchResult);
 
+pub const SearchOptions = struct {
+    max_results: u32 = 10,
+    min_score: u32 = 1,
+    min_score_pct: u32 = 10,
+};
+
 pub const SearchResults = struct {
     results: SearchResultHashMap,
 
