@@ -94,6 +94,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
         }
         prev_block_range_start = block_no;
 
+        var num_docs: usize = 0;
         while (block_no < self.index.items.len and self.index.items[block_no] <= hash) : (block_no += 1) {
             if (block_no != prev_block_no) {
                 prev_block_no = block_no;
@@ -104,6 +105,11 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
             for (matches[0]..matches[1]) |j| {
                 try results.incr(block_items.items[j].id, self.info.version);
             }
+            num_docs += matches[1] - matches[0];
+        }
+
+        if (num_docs > 1000) {
+            log.warn("found {} docs for hash {}", .{ num_docs, hash });
         }
 
         if (i % 10 == 0) {
