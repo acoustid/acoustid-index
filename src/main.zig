@@ -63,7 +63,7 @@ pub fn main() !void {
 
     const address = args.get("address") orelse "127.0.0.1";
 
-    const port_str = args.get("port") orelse "8080";
+    const port_str = args.get("port") orelse "6081";
     const port = try std.fmt.parseInt(u16, port_str, 10);
 
     _ = try std.net.Address.parseIp(address, port);
