@@ -65,7 +65,7 @@ class Protocol:
             raise ProtocolError("invalid command")
 
         if request[0] == "echo":
-            return " ".join(request[1:]
+            return " ".join(request[1:])
 
         if request[0] == "search":
             query = parse_hashes(request[1])
