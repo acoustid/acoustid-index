@@ -147,12 +147,15 @@ pub fn SegmentList(Segment: type) type {
             return result;
         }
 
-        pub fn search(self: Self, hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
-            for (self.nodes.items) |node| {
+        pub fn search(self: Self, hashes: []const u32, results: *SearchResults, collection: anytype, deadline: Deadline) !void {
+            var i: usize = self.nodes.items.len;
+            while (i > 0) {
+                i -= 1;
+                const node = self.nodes.items[i];
                 try deadline.check();
                 try node.value.search(hashes, results, deadline);
+                results.removeOutdatedResults(collection);
             }
-            results.removeOutdatedResults(self);
         }
 
         fn compareByVersion(_: void, lhs: u32, rhs: Node) bool {
