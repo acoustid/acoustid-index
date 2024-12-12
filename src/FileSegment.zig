@@ -111,10 +111,6 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
             }
         }
 
-        if (num_docs > 1000) {
-            log.warn("found {} docs for hash {}", .{ num_docs, hash });
-        }
-
         if (i % 10 == 0) {
             try deadline.check();
         }
