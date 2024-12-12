@@ -104,9 +104,14 @@ pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const 
 const default_search_timeout = 500;
 const max_search_timeout = 10000;
 
+const default_search_limit = 10;
+const min_search_limit = 1;
+const max_search_limit = 100;
+
 const SearchRequestJSON = struct {
     query: []const u32,
-    timeout: u32 = 0,
+    timeout: u32 = default_search_timeout,
+    limit: u32 = default_search_limit,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
@@ -296,10 +301,9 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
     const index = try getIndex(ctx, req, res, true) orelse return;
     defer releaseIndex(ctx, index);
 
+    const limit = @max(@min(body.limit, max_search_limit), min_search_limit);
+
     var timeout = body.timeout;
-    if (timeout == 0) {
-        timeout = default_search_timeout;
-    }
     if (timeout > max_search_timeout) {
         timeout = max_search_timeout;
     }
@@ -315,10 +319,15 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
         metrics.searchHit();
     }
 
+    const num_results = @min(results.count(), limit);
+
     var results_json = SearchResultsJSON{
-        .results = try req.arena.alloc(SearchResultJSON, results.count()),
+        .results = try req.arena.alloc(SearchResultJSON, num_results),
     };
     for (results.values(), 0..) |r, i| {
+        if (i >= num_results) {
+            break;
+        }
         results_json.results[i] = SearchResultJSON{ .id = r.id, .score = r.score };
     }
     return writeResponse(results_json, req, res);
