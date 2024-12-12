@@ -64,6 +64,9 @@ class Protocol:
         if not request:
             raise ProtocolError("invalid command")
 
+        if request[0] == "echo":
+            return " ".join(request[1:]
+
         if request[0] == "search":
             query = parse_hashes(request[1])
             results = await self.search(query)
