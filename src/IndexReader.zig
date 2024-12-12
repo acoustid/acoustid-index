@@ -24,6 +24,16 @@ const segment_lists = [_][]const u8{
 file_segments: SharedPtr(FileSegmentList),
 memory_segments: SharedPtr(MemorySegmentList),
 
+pub fn hasNewerVersion(self: *const Self, doc_id: u32, version: u64) bool {
+    inline for (segment_lists) |n| {
+        const segments = @field(self, n);
+        if (segments.value.hasNewerVersion(doc_id, version)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, deadline: Deadline) !SearchResults {
     const sorted_hashes = try allocator.dupe(u32, hashes);
     defer allocator.free(sorted_hashes);
@@ -34,7 +44,7 @@ pub fn search(self: *Self, hashes: []const u32, allocator: std.mem.Allocator, de
 
     inline for (segment_lists) |n| {
         const segments = @field(self, n);
-        try segments.value.search(sorted_hashes, &results, deadline);
+        try segments.value.search(sorted_hashes, &results, self, deadline);
     }
 
     results.sort();
