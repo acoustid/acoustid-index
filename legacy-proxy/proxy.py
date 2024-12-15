@@ -149,6 +149,8 @@ class Server:
 
             await self.create_index()
 
+            CRLF = b"\r\n"
+
             while True:
                 try:
                     line = await reader.readuntil(b"\n")
@@ -157,12 +159,12 @@ class Server:
 
                 try:
                     response = await proto.handle_request(line.decode("ascii").split())
-                    writer.write(b"OK " + response.encode("ascii") + b"\n")
+                    writer.write(b"OK " + response.encode("ascii") + CRLF)
                 except ProtocolError as ex:
-                    writer.write(b"ERR " + ex.msg.encode("ascii") + b"\n")
+                    writer.write(b"ERR " + ex.msg.encode("ascii") + CRLF)
                 except Exception:
                     traceback.print_exc()
-                    writer.write(b"ERR internal error\n")
+                    writer.write(b"ERR internal error" + CRLF)
 
                 await writer.drain()
         finally:
