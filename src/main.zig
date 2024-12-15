@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const log = std.log.scoped(.main);
 const zul = @import("zul");
@@ -37,10 +38,10 @@ pub fn logHandler(
 }
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
     defer _ = gpa.deinit();
 
-    const allocator = gpa.allocator();
+    const allocator = if (builtin.mode == .ReleaseFast and !builtin.is_test) std.heap.c_allocator else gpa.allocator();
 
     var args = try zul.CommandLineArgs.parse(allocator);
     defer args.deinit();

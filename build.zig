@@ -42,6 +42,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    if (optimize == .ReleaseFast) {
+        main_exe.linkLibC();
+    }
     main_exe.root_module.addImport("httpz", httpz.module("httpz"));
     main_exe.root_module.addImport("metrics", metrics.module("metrics"));
     main_exe.root_module.addImport("zul", zul.module("zul"));
