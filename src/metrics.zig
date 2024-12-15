@@ -11,6 +11,16 @@ const SearchDuration = m.Histogram(
     &.{ 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10 },
 );
 
+const ScannedDocsPerHash = m.Histogram(
+    u64,
+    &.{ 1, 2, 3, 5, 10, 50, 100, 500, 1000 },
+);
+
+const ScannedBlocksPerHash = m.Histogram(
+    u64,
+    &.{ 1, 2, 3, 5, 10 },
+);
+
 const Metrics = struct {
     search_hits: m.Counter(u64),
     search_misses: m.Counter(u64),
@@ -21,6 +31,8 @@ const Metrics = struct {
     memory_segment_merges: m.Counter(u64),
     file_segment_merges: m.Counter(u64),
     docs: m.GaugeVec(u32, WithIndex),
+    scanned_docs_per_hash: ScannedDocsPerHash,
+    scanned_blocks_per_hash: ScannedBlocksPerHash,
 };
 
 pub fn search() void {
@@ -37,6 +49,14 @@ pub fn searchMiss() void {
 
 pub fn searchDuration(duration_ms: i64) void {
     metrics.search_duration.observe(@as(f64, @floatFromInt(duration_ms)) / 1000.0);
+}
+
+pub fn scannedDocsPerHash(num_docs: u64) void {
+    metrics.scanned_docs_per_hash.observe(num_docs);
+}
+
+pub fn scannedBlocksPerHash(num_blocks: u64) void {
+    metrics.scanned_blocks_per_hash.observe(num_blocks);
 }
 
 pub fn update(count: usize) void {
@@ -73,6 +93,8 @@ pub fn initializeMetrics(allocator: std.mem.Allocator, comptime opts: m.Registry
         .memory_segment_merges = m.Counter(u64).init("memory_segment_merges_total", .{}, opts),
         .file_segment_merges = m.Counter(u64).init("file_segment_merges_total", .{}, opts),
         .docs = try m.GaugeVec(u32, WithIndex).init(alloc, "docs", .{}, opts),
+        .scanned_docs_per_hash = ScannedDocsPerHash.init("scanned_docs_per_hash", .{}, opts),
+        .scanned_blocks_per_hash = ScannedBlocksPerHash.init("scanned_blocks_per_hash", .{}, opts),
     };
 }
 

@@ -10,6 +10,7 @@ const Deadline = @import("utils/Deadline.zig");
 const Item = @import("segment.zig").Item;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
 const SegmentStatus = @import("segment.zig").SegmentStatus;
+const metrics = @import("metrics.zig");
 
 const filefmt = @import("filefmt.zig");
 
@@ -95,6 +96,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
         prev_block_range_start = block_no;
 
         var num_docs: usize = 0;
+        var num_blocks: u64 = 0;
         while (block_no < self.index.items.len and self.index.items[block_no] <= hash) : (block_no += 1) {
             if (block_no != prev_block_no) {
                 prev_block_no = block_no;
@@ -109,7 +111,11 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
             if (num_docs > 1000) {
                 break; // XXX explain why
             }
+            num_blocks += 1;
         }
+
+        metrics.scannedDocsPerHash(num_docs);
+        metrics.scannedBlocksPerHash(num_blocks);
 
         if (i % 10 == 0) {
             try deadline.check();
