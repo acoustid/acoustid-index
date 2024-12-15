@@ -30,7 +30,7 @@ jobs:
       - name: Run tests
         run: zig build test --summary all
 
-      - run: apt-get update && apt-get install -y libjemalloc-dev
+      - run: sudo apt-get update && sudo apt-get install -y libjemalloc-dev
 
       - name: Build release binary
         run: zig build --release=fast --summary all
