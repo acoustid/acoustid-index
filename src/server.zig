@@ -104,7 +104,7 @@ pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const 
 const default_search_timeout = 500;
 const max_search_timeout = 10000;
 
-const default_search_limit = 10;
+const default_search_limit = 40;
 const min_search_limit = 1;
 const max_search_limit = 100;
 
@@ -313,7 +313,7 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 
     var collector = SearchResults.init(req.arena, .{
         .max_results = limit,
-        .min_score = @intCast(body.query.len / 20),
+        .min_score = @intCast((body.query.len + 19) / 20),
         .min_score_pct = 10,
     });
 
