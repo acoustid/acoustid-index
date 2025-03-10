@@ -36,7 +36,7 @@ num_items: usize = 0,
 delete_in_deinit: bool = false,
 
 mmaped_file: ?std.fs.File = null,
-mmaped_data: ?[]align(std.mem.page_size) u8 = null,
+mmaped_data: ?[]align(std.heap.page_size_min) u8 = null,
 
 pub fn init(allocator: std.mem.Allocator, options: Options) Self {
     return Self{
@@ -72,6 +72,10 @@ pub fn getBlockData(self: Self, block: usize) []const u8 {
     return self.blocks[block * self.block_size .. (block + 1) * self.block_size];
 }
 
+fn compareHashes(a: u32, b: u32) std.math.Order {
+    return std.math.order(a, b);
+}
+
 pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
     var prev_block_no: usize = std.math.maxInt(usize);
     var prev_block_range_start: usize = 0;
@@ -89,7 +93,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
     // We want to find hash=10, lowerBound returns block=3 (EOF), but block=2 could still contain hash=6, so we go one back.
 
     for (sorted_hashes, 1..) |hash, i| {
-        var block_no = std.sort.lowerBound(u32, hash, self.index.items[prev_block_range_start..], {}, std.sort.asc(u32)) + prev_block_range_start;
+        var block_no = std.sort.lowerBound(u32, self.index.items[prev_block_range_start..], hash, compareHashes) + prev_block_range_start;
         if (block_no > 0) {
             block_no -= 1;
         }
@@ -103,7 +107,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
                 const block_data = self.getBlockData(block_no);
                 try filefmt.readBlock(block_data, &block_items, self.min_doc_id);
             }
-            const matches = std.sort.equalRange(Item, Item{ .hash = hash, .id = 0 }, block_items.items, {}, Item.cmpByHash);
+            const matches = std.sort.equalRange(Item, block_items.items, Item{ .hash = hash, .id = 0 }, Item.orderByHash);
             for (matches[0]..matches[1]) |j| {
                 try results.incr(block_items.items[j].id, self.info.version);
             }

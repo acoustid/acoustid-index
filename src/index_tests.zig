@@ -10,10 +10,10 @@ const Deadline = @import("utils/Deadline.zig");
 const Index = @import("Index.zig");
 
 fn generateRandomHashes(buf: []u32, seed: u64) []u32 {
-    var prng = std.rand.DefaultPrng.init(seed);
+    var prng = std.Random.DefaultPrng.init(seed);
     const rand = prng.random();
     for (buf) |*h| {
-        h.* = std.rand.int(rand, u32);
+        h.* = rand.int(u32);
     }
     return buf;
 }

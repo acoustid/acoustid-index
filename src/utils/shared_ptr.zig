@@ -24,7 +24,7 @@ pub fn RefCounter(comptime T: type) type {
         pub fn decr(self: *Self) bool {
             const prev_ref_count = self.refs.fetchSub(1, .monotonic);
             if (prev_ref_count == 1) {
-                self.refs.fence(.acquire);
+                _ = self.refs.load(.acquire);
                 return true;
             }
             return false;

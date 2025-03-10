@@ -1,23 +1,24 @@
 .{
-    .name = "fpindex",
+    .name = .fpindex,
     .version = "2.0.0",
-    .minimum_zig_version = "0.13.0",
+    .minimum_zig_version = "0.14.0",
+    .fingerprint = 0x38793b7ca08220b7,
     .dependencies = .{
         .httpz = .{
-            .url = "git+https://github.com/karlseguin/http.zig?ref=zig-0.13#7d2ddae87af9b110783085c0ea6b03985faa4584",
-            .hash = "12208c1f2c5f730c4c03aabeb0632ade7e21914af03e6510311b449458198d0835d6",
+            .url = "git+https://github.com/karlseguin/http.zig?ref=master#56258131ef4505543fef5484451867c13c5ff322",
+            .hash = "httpz-0.0.0-PNVzrJSuBgDFvO7mtd2qDzaq8_hXIu1BqFuL1jwAV8Ac",
         },
         .zul = .{
-            .url = "git+https://github.com/karlseguin/zul.git#df74463d223810a720f37db9dac3b160efbb9d4b",
-            .hash = "122012992f8502acdcb69ae0f35682850b5c57abe892b1c717bc6dba65d05653fa76",
+            .url = "git+https://github.com/karlseguin/zul.git?ref=master#d9142c73aedc5698beba58b3fbf2bcfe69864778",
+            .hash = "zul-0.0.0-1oDot0BCBwA9cUo5OOrPs5NGmvoM7sk1ztfbdfL7mh4P",
         },
         .metrics = .{
-            .url = "git+https://github.com/karlseguin/metrics.zig?ref=zig-0.13#fcf9e94fa54a20f4954e9821801c32e44d407a2f",
-            .hash = "12201776681f1e5ec6df7df30786e90771c5de564c941a309c73c4299c7864ddb4c3",
+            .url = "git+https://github.com/karlseguin/metrics.zig?ref=master#cf2797bcb3aea7e5cdaf4de39c5550c70796e7b1",
+            .hash = "122061f30077ef518dd435d397598ab3c45daa3d2c25e6b45383fb94d0bd2c3af1af",
         },
         .msgpack = .{
-            .url = "git+https://github.com/lalinsky/msgpack.zig?ref=v0.1.0#d141ef4e1f585fecbbcdac9a9f85e41b5759182c",
-            .hash = "1220cb5fbd418638a830cb3c8a47d95d766d5ec1904631a14cde18cad89047165404",
+            .url = "git+https://github.com/lalinsky/msgpack.zig?ref=v0.2.0#964ed489cf663fd3d7b79fe328300a71d3ab12d5",
+            .hash = "msgpack-0.1.0-ZOu9PHimAQCfeM27BhUPC1NY6ZXjMlL2_ZEkjWRDldrT",
         },
     },
     .paths = .{

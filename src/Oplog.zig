@@ -12,8 +12,12 @@ const Self = @This();
 pub const FileInfo = struct {
     id: u64 = 0,
 
-    fn cmp(_: void, a: FileInfo, b: FileInfo) bool {
+    fn lessThan(_: void, a: FileInfo, b: FileInfo) bool {
         return a.id < b.id;
+    }
+
+    fn order(a: FileInfo, b: FileInfo) std.math.Order {
+        return std.math.order(a.id, b.id);
     }
 };
 
@@ -70,7 +74,7 @@ pub fn open(self: *Self, first_commit_id: u64, receiver: anytype, ctx: anytype) 
         }
     }
 
-    std.sort.pdq(FileInfo, self.files.items, {}, FileInfo.cmp);
+    std.sort.pdq(FileInfo, self.files.items, {}, FileInfo.lessThan);
 
     try self.truncateNoLock(first_commit_id);
 
@@ -177,9 +181,9 @@ fn getFile(self: *Self, commit_id: u64) !std.fs.File {
 }
 
 fn truncateNoLock(self: *Self, commit_id: u64) !void {
-    assert(std.sort.isSorted(FileInfo, self.files.items, {}, FileInfo.cmp));
+    assert(std.sort.isSorted(FileInfo, self.files.items, {}, FileInfo.lessThan));
 
-    var pos = std.sort.lowerBound(FileInfo, FileInfo{ .id = commit_id }, self.files.items, {}, FileInfo.cmp);
+    var pos = std.sort.lowerBound(FileInfo, self.files.items, FileInfo{ .id = commit_id }, FileInfo.order);
     if (pos > 0) {
         pos -= 1;
     }

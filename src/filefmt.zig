@@ -327,7 +327,7 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
         .has_attributes = true,
         .has_docs = true,
     };
-    try packer.write(SegmentFileHeader, header);
+    try packer.write(header);
 
     try packer.writeMap(segment.attributes);
     try packer.writeMap(segment.docs);
@@ -359,7 +359,7 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
         .num_blocks = num_blocks,
         .checksum = crc.final(),
     };
-    try packer.write(SegmentFileFooter, footer);
+    try packer.write(footer);
 
     try buffered_writer.flush();
 
