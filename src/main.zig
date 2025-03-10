@@ -8,7 +8,7 @@ const MultiIndex = @import("MultiIndex.zig");
 const server = @import("server.zig");
 const metrics = @import("metrics.zig");
 
-pub const std_options = .{
+pub const std_options = std.Options{
     .log_level = .debug,
     .logFn = logHandler,
 };

@@ -155,7 +155,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
 
                 for (self.sources.items, 0..) |*source, i| {
                     if (try source.read()) |item| {
-                        if (min_item == null or Item.cmp({}, item, min_item.?)) {
+                        if (min_item == null or Item.order(item, min_item.?) == .lt) {
                             min_item = item;
                             min_item_index = i;
                         }

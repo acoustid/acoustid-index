@@ -16,9 +16,17 @@ const metrics = @import("metrics.zig");
 
 const Context = struct {
     indexes: *MultiIndex,
+
+    pub fn notFound(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+        return handleNotFound(ctx, req, res);
+    }
+
+    pub fn uncaughtError(ctx: *Context, req: *httpz.Request, res: *httpz.Response, err: anyerror) void {
+        return handleError(ctx, req, res, err);
+    }
 };
 
-const Server = httpz.ServerApp(*Context);
+const Server = httpz.Server(*Context);
 
 var global_server: ?*Server = null;
 
@@ -30,16 +38,16 @@ fn shutdown(_: c_int) callconv(.C) void {
     }
 }
 
-fn installSignalHandlers(server: *Server) !void {
+fn installSignalHandlers(server: *Server) void {
     global_server = server;
 
-    try std.posix.sigaction(std.posix.SIG.INT, &.{
+    std.posix.sigaction(std.posix.SIG.INT, &.{
         .handler = .{ .handler = shutdown },
         .mask = std.posix.empty_sigset,
         .flags = 0,
     }, null);
 
-    try std.posix.sigaction(std.posix.SIG.TERM, &.{
+    std.posix.sigaction(std.posix.SIG.TERM, &.{
         .handler = .{ .handler = shutdown },
         .mask = std.posix.empty_sigset,
         .flags = 0,
@@ -67,35 +75,32 @@ pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const 
     var server = try Server.init(allocator, config, &ctx);
     defer server.deinit();
 
-    server.errorHandler(handleError);
-    server.notFound(handleNotFound);
+    installSignalHandlers(&server);
 
-    try installSignalHandlers(&server);
-
-    var router = server.router();
+    var router = try server.router(.{});
 
     // Monitoring API
-    router.get("/_metrics", handleMetrics);
-    router.get("/_health", handleHealth);
-    router.get("/:index/_health", handleIndexHealth);
+    router.get("/_metrics", handleMetrics, .{});
+    router.get("/_health", handleHealth, .{});
+    router.get("/:index/_health", handleIndexHealth, .{});
 
     // Search API
-    router.post("/:index/_search", handleSearch);
+    router.post("/:index/_search", handleSearch, .{});
 
     // Bulk API
-    router.post("/:index/_update", handleUpdate);
+    router.post("/:index/_update", handleUpdate, .{});
 
     // Fingerprint API
-    router.head("/:index/:id", handleHeadFingerprint);
-    router.get("/:index/:id", handleGetFingerprint);
-    router.put("/:index/:id", handlePutFingerprint);
-    router.delete("/:index/:id", handleDeleteFingerprint);
+    router.head("/:index/:id", handleHeadFingerprint, .{});
+    router.get("/:index/:id", handleGetFingerprint, .{});
+    router.put("/:index/:id", handlePutFingerprint, .{});
+    router.delete("/:index/:id", handleDeleteFingerprint, .{});
 
     // Index API
-    router.head("/:index", handleHeadIndex);
-    router.get("/:index", handleGetIndex);
-    router.put("/:index", handlePutIndex);
-    router.delete("/:index", handleDeleteIndex);
+    router.head("/:index", handleHeadIndex, .{});
+    router.get("/:index", handleGetIndex, .{});
+    router.put("/:index", handlePutIndex, .{});
+    router.delete("/:index", handleDeleteIndex, .{});
 
     log.info("listening on {s}:{d}", .{ address, port });
     try server.listen();
@@ -453,8 +458,8 @@ const Attributes = struct {
         try packer.writeMapHeader(self.attributes.count());
         var iter = self.attributes.iterator();
         while (iter.next()) |entry| {
-            try packer.write(@TypeOf(entry.key_ptr.*), entry.key_ptr.*);
-            try packer.write(@TypeOf(entry.value_ptr.*), entry.value_ptr.*);
+            try packer.write(entry.key_ptr.*);
+            try packer.write(entry.value_ptr.*);
         }
     }
 };

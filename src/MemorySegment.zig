@@ -49,7 +49,7 @@ pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
 pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
     var items = self.items.items;
     for (sorted_hashes) |hash| {
-        const matches = std.sort.equalRange(Item, Item{ .hash = hash, .id = 0 }, items, {}, Item.cmpByHash);
+        const matches = std.sort.equalRange(Item, items, Item{ .hash = hash, .id = 0 }, Item.orderByHash);
         for (matches[0]..matches[1]) |i| {
             try results.incr(items[i].id, self.info.version);
         }
@@ -131,7 +131,7 @@ pub fn build(self: *Self, changes: []const Change) !void {
         }
     }
 
-    std.sort.pdq(Item, self.items.items, {}, Item.cmp);
+    std.sort.pdq(Item, self.items.items, {}, Item.lessThan);
 }
 
 pub fn cleanup(self: *Self) void {

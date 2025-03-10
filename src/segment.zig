@@ -54,14 +54,20 @@ pub const Item = packed struct(u64) {
     id: u32,
     hash: u32,
 
-    pub fn cmp(_: void, a: Item, b: Item) bool {
+    pub fn lessThan(_: void, a: Item, b: Item) bool {
         const xa: u64 = @bitCast(a);
         const xb: u64 = @bitCast(b);
         return xa < xb;
     }
 
-    pub fn cmpByHash(_: void, a: Item, b: Item) bool {
-        return a.hash < b.hash;
+    pub fn order(a: Item, b: Item) std.math.Order {
+        const xa: u64 = @bitCast(a);
+        const xb: u64 = @bitCast(b);
+        return std.math.order(xa, xb);
+    }
+
+    pub fn orderByHash(a: Item, b: Item) std.math.Order {
+        return std.math.order(a.hash, b.hash);
     }
 };
 
