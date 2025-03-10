@@ -99,7 +99,7 @@ test "Item array sort" {
     items[1] = Item{ .hash = 2, .id = 100 };
     items[2] = Item{ .hash = 1, .id = 300 };
 
-    std.sort.insertion(Item, items, {}, Item.cmp);
+    std.sort.insertion(Item, items, {}, Item.lessThan);
 
     try std.testing.expectEqualSlices(Item, &[_]Item{
         Item{ .hash = 1, .id = 300 },
