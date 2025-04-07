@@ -149,6 +149,7 @@ pub fn merge(self: *Self, merger: *SegmentMerger(Self)) !void {
     self.docs.deinit(self.allocator);
     self.docs = merger.segment.docs.move();
 
+    self.min_doc_id = merger.segment.min_doc_id;
     self.max_doc_id = merger.segment.max_doc_id;
 
     self.items.clearRetainingCapacity();
