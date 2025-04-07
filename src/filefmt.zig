@@ -210,14 +210,16 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
     const block_size = 1024;
     var block_data: [block_size]u8 = undefined;
 
+    const min_doc_id: u32 = 1;
+
     var reader = segment.reader();
-    const num_items = try encodeBlock(block_data[0..], &reader, 0);
+    const num_items = try encodeBlock(block_data[0..], &reader, min_doc_id);
     try testing.expectEqual(segment.items.items.len, num_items);
 
     var items = std.ArrayList(Item).init(std.testing.allocator);
     defer items.deinit();
 
-    try readBlock(block_data[0..], &items, 0);
+    try readBlock(block_data[0..], &items, min_doc_id);
     try testing.expectEqualSlices(
         Item,
         &[_]Item{
@@ -230,7 +232,7 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
         items.items,
     );
 
-    const header = try decodeBlockHeader(block_data[0..], 0);
+    const header = try decodeBlockHeader(block_data[0..], min_doc_id);
     try testing.expectEqual(items.items.len, header.num_items);
     try testing.expectEqual(items.items[0], header.first_item);
 }
