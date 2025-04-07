@@ -1,4 +1,5 @@
 import json
+import random
 
 
 def test_insert_single(client, index_name, create_index):
@@ -59,6 +60,45 @@ def test_insert_multi(client, index_name, create_index):
     assert json.loads(req.content) == {
         'version': 1,
     }
+
+
+def test_insert_many(client, index_name, create_index):
+    # insert fingerprints
+    batch = []
+    batch_size = 1000
+    for i in range(1, 10000 + 1):
+        rng = random.Random(i)
+        hashes = [rng.randint(0, 2**32) for _ in range(100)]
+        batch.append({'insert': {'id': i, 'hashes': hashes}})
+        if len(batch) == batch_size:
+            req = client.post(f'/{index_name}/_update', json={
+                'changes': batch,
+            })
+            assert req.status_code == 200, req.content
+            batch = []
+    if batch:
+        ent.post(f'/{index_name}/_update', json={
+            'changes': batch,
+        })
+        assert req.status_code == 200, req.content
+
+    # verify we can find it
+    rng = random.Random(100)
+    hashes = [rng.randint(0, 2**32) for _ in range(100)]
+    req = client.post(f'/{index_name}/_search', json={
+        'query': hashes
+    })
+    assert req.status_code == 200, req.content
+    try:
+        assert json.loads(req.content) == {
+            'results': [
+                {'id': 100, 'score': 100},
+            ],
+        }
+    except AssertionError:
+        import time
+        time.sleep(10000000)
+        raise
 
 
 def test_update_full(client, index_name, create_index):
