@@ -101,6 +101,7 @@ pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const 
     router.get("/:index", handleGetIndex, .{});
     router.put("/:index", handlePutIndex, .{});
     router.delete("/:index", handleDeleteIndex, .{});
+    router.get("/:index/_segments", handleGetSegments, .{});
 
     log.info("listening on {s}:{d}", .{ address, port });
     try server.listen();
@@ -523,6 +524,58 @@ fn handleIndexHealth(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !
     try index.checkReady();
 
     try res.writer().writeAll("OK\n");
+}
+
+const MEMORY_SEGMENT = "memory";
+const FILE_SEGMENT = "file";
+
+pub const GetSegmentResponse = struct {
+    kind: []const u8,
+    version: u64,
+    merges: u64,
+    min_doc_id: u32,
+    max_doc_id: u32,
+};
+
+pub const GetSegmentsResponse = struct {
+    segments: []GetSegmentResponse,
+};
+
+fn handleGetSegments(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    const index = try getIndex(ctx, req, res, true) orelse return;
+    defer releaseIndex(ctx, index);
+
+    var reader = try index.acquireReader();
+    defer index.releaseReader(&reader);
+
+    const num_segments = reader.file_segments.value.count() + reader.memory_segments.value.count();
+    const segments = try req.arena.alloc(GetSegmentResponse, num_segments);
+
+    var i: usize = 0;
+
+    for (reader.file_segments.value.nodes.items) |segment| {
+        segments[i] = .{
+            .kind = FILE_SEGMENT,
+            .version = segment.value.info.version,
+            .merges = segment.value.info.merges,
+            .min_doc_id = segment.value.min_doc_id,
+            .max_doc_id = segment.value.max_doc_id,
+        };
+        i += 1;
+    }
+
+    for (reader.memory_segments.value.nodes.items) |segment| {
+        segments[i] = .{
+            .kind = MEMORY_SEGMENT,
+            .version = segment.value.info.version,
+            .merges = segment.value.info.merges,
+            .min_doc_id = segment.value.min_doc_id,
+            .max_doc_id = segment.value.max_doc_id,
+        };
+        i += 1;
+    }
+
+    return writeResponse(GetSegmentsResponse{ .segments = segments }, req, res);
 }
 
 fn handleHealth(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
