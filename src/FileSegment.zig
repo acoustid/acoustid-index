@@ -224,7 +224,6 @@ pub const Reader = struct {
             if (self.block_no >= self.segment.index.items.len) {
                 return null;
             }
-            self.items.clearRetainingCapacity();
             self.index = 0;
             const block_data = self.segment.getBlockData(self.block_no);
             self.block_no += 1;

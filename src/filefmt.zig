@@ -133,6 +133,7 @@ pub fn readBlock(data: []const u8, items: *std.ArrayList(Item), min_doc_id: u32)
     const total_items = std.mem.readInt(u16, data[0..2], .little);
     ptr += 2;
 
+    items.clearRetainingCapacity();
     try items.ensureUnusedCapacity(total_items);
 
     var last_hash: u32 = 0;
