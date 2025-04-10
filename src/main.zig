@@ -37,6 +37,18 @@ pub fn logHandler(
     }
 }
 
+fn printHelp() !void {
+    const stdout = std.io.getStdOut().writer();
+    try stdout.print("Usage: aindex [options]\n", .{});
+    try stdout.print("Options:\n", .{});
+    try stdout.print("  --help       Show this help message and exit\n", .{});
+    try stdout.print("  --dir        Directory to index\n", .{});
+    try stdout.print("  --address    Address to listen on\n", .{});
+    try stdout.print("  --port       Port to listen on\n", .{});
+    try stdout.print("  --threads    Number of threads to use\n", .{});
+    try stdout.print("  --log-level  Log level (debug, info, warn, error)\n", .{});
+}
+
 pub fn main() !void {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = .{};
     defer _ = gpa.deinit();
@@ -45,6 +57,11 @@ pub fn main() !void {
 
     var args = try zul.CommandLineArgs.parse(allocator);
     defer args.deinit();
+
+    if (args.contains("help") or args.contains("h")) {
+        try printHelp();
+        return;
+    }
 
     if (args.get("log-level")) |log_level_name| {
         if (std.meta.stringToEnum(std.log.Level, log_level_name)) |log_level| {
