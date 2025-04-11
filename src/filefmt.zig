@@ -390,10 +390,8 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
 
     const file_size = try file.getEndPos();
 
-    const mmap_flags: std.c.MAP = .{
-        .TYPE = .PRIVATE,
-    };
-    if (builtin.os.tag == .emscripten) {
+    const mmap_flags: std.c.MAP = .{ .TYPE = .PRIVATE };
+    if (builtin.os.tag == .linux or builtin.os.tag == .emscripten) {
         mmap_flags |= .{ .POPULATE = true };
     }
 
