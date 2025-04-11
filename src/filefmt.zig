@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const testing = std.testing;
 const assert = std.debug.assert;
 const math = std.math;
@@ -389,11 +390,16 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
 
     const file_size = try file.getEndPos();
 
+    var mmap_flags: std.c.MAP = .{ .TYPE = .PRIVATE };
+    if (@hasField(std.c.MAP, "POPULATE")) {
+        mmap_flags.POPULATE = true;
+    }
+
     var raw_data = try std.posix.mmap(
         null,
         file_size,
         std.posix.PROT.READ,
-        .{ .TYPE = .PRIVATE, .POPULATE = true },
+        mmap_flags,
         file.handle,
         0,
     );
