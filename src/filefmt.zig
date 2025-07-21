@@ -25,7 +25,7 @@ pub fn maxItemsPerBlock(block_size: usize) usize {
     const header_size = 4; // num_items + docid_offset
     const available_space = block_size - header_size;
     // Conservative estimate: 2.5 bytes per value (docid + hash)
-    return available_space / 3;
+    return available_space * 2 / 5; // equivalent to dividing by 2.5
 }
 
 const min_varint32_size = 1;
