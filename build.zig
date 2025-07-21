@@ -43,6 +43,7 @@ pub fn build(b: *std.Build) void {
     });
 
     main_exe.linkLibC();
+    main_exe.linkSystemLibrary("gcc");
     main_exe.addCSourceFile(.{
         .file = b.path("src/streamvbyte_block.c"),
         .flags = &[_][]const u8{
@@ -79,6 +80,7 @@ pub fn build(b: *std.Build) void {
     });
 
     main_tests.linkLibC();
+    main_tests.linkSystemLibrary("gcc");
     main_tests.addCSourceFile(.{
         .file = b.path("src/streamvbyte_block.c"),
         .flags = &[_][]const u8{
