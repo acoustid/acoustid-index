@@ -153,7 +153,7 @@ pub fn readBlock(data: []const u8, items: *std.ArrayList(Item), min_doc_id: u32)
     }
 }
 
-pub fn readBlockDocidsOnly(data: []const u8, docids: []u32, min_doc_id: u32) !u32 {
+pub fn readBlockDocidsOnly(data: []const u8, hashes: []const u32, docids: []u32, min_doc_id: u32) !u32 {
     if (data.len < 4) {
         return error.InvalidBlock;
     }
@@ -163,11 +163,11 @@ pub fn readBlockDocidsOnly(data: []const u8, docids: []u32, min_doc_id: u32) !u3
         return 0;
     }
 
-    if (docids.len < header.num_items) {
+    if (docids.len < header.num_items or hashes.len < header.num_items) {
         return error.BufferTooSmall;
     }
 
-    return streamvbyte.decodeBlockDocidsOnly(data, docids, min_doc_id);
+    return streamvbyte.decodeBlockDocidsOnly(data, hashes[0..header.num_items], docids, min_doc_id);
 }
 
 pub fn readBlockHashesOnly(data: []const u8, hashes: []u32) !u32 {

@@ -505,7 +505,7 @@ uint32_t decode_block_hashes_only(const uint8_t* block, uint32_t* hashes) {
     return num_items;
 }
 
-uint32_t decode_block_docids_only(const uint8_t* block, uint32_t* docids, uint32_t min_doc_id) {
+uint32_t decode_block_docids_only(const uint8_t* block, const uint32_t* hashes, uint32_t* docids, uint32_t min_doc_id) {
     uint16_t num_items, docid_offset;
     memcpy(&num_items, block, 2);
     memcpy(&docid_offset, block + 2, 2);
@@ -514,23 +514,18 @@ uint32_t decode_block_docids_only(const uint8_t* block, uint32_t* docids, uint32
         return 0;
     }
     
-    // We need both streams to properly reconstruct docids due to the encoding scheme
-    // where docid encoding depends on hash deltas
-    uint32_t* hash_deltas = (uint32_t*)alloca(num_items * sizeof(uint32_t));
+    // Decode only docid deltas
     uint32_t* docid_deltas = (uint32_t*)alloca(num_items * sizeof(uint32_t));
-    
-    streamvbyte_decode_deltas(block + 4, hash_deltas, num_items);
     streamvbyte_decode_deltas(block + docid_offset, docid_deltas, num_items);
     
     // Convert deltas back to absolute docid values
-    uint32_t current_hash = 0;
     uint32_t last_docid = 0;
+    uint32_t last_hash = 0;
     
     for (uint32_t i = 0; i < num_items; i++) {
-        current_hash += hash_deltas[i];
-        
-        if (hash_deltas[i] > 0) {
+        if (hashes[i] != last_hash) {
             last_docid = docid_deltas[i] + min_doc_id;
+            last_hash = hashes[i];
         } else {
             last_docid += docid_deltas[i];
         }

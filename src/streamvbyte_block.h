@@ -45,6 +45,7 @@ uint32_t decode_block_streamvbyte(
 // Returns number of items decoded
 uint32_t decode_block_docids_only(
     const uint8_t* block,
+    const uint32_t* hashes,
     uint32_t* docids,
     uint32_t min_doc_id
 );

@@ -56,11 +56,14 @@ pub fn decodeBlock(
 
 pub fn decodeBlockDocidsOnly(
     block: []const u8,
+    hashes: []const u32,
     docids: []u32,
     min_doc_id: u32,
 ) u32 {
+    std.debug.assert(hashes.len == docids.len);
     return c.decode_block_docids_only(
         block.ptr,
+        hashes.ptr,
         docids.ptr,
         min_doc_id,
     );
@@ -112,4 +115,15 @@ test "basic encode/decode" {
     const hash_count = decodeBlockHashesOnly(block[0..encoded_size], &decoded_hashes_only);
     try testing.expectEqual(@as(u32, 5), hash_count);
     try testing.expectEqualSlices(u32, &hashes, &decoded_hashes_only);
+    
+    // Test docid-only decoding (using pre-decoded hashes)
+    var decoded_docids_only: [5]u32 = undefined;
+    const docid_count = decodeBlockDocidsOnly(
+        block[0..encoded_size], 
+        &decoded_hashes_only, 
+        &decoded_docids_only, 
+        min_doc_id
+    );
+    try testing.expectEqual(@as(u32, 5), docid_count);
+    try testing.expectEqualSlices(u32, &docids, &decoded_docids_only);
 }
