@@ -28,6 +28,8 @@ pub fn maxItemsPerBlock(block_size: usize) usize {
     return available_space * 2 / 5; // equivalent to dividing by 2.5
 }
 
+pub const max_items_per_block = maxItemsPerBlock(max_block_size);
+
 const min_varint32_size = 1;
 const max_varint32_size = 5;
 
@@ -110,11 +112,11 @@ const BlockHeader = struct {
     first_item: Item,
 };
 
-pub fn decodeBlockHeader(data: []const u8, min_doc_id: u32) !BlockHeader {
+pub fn decodeBlockHeader(data: []const u8) !BlockHeader {
     assert(data.len >= min_block_size);
 
-    const header = streamvbyte.decodeBlockHeader(data, min_doc_id);
-    
+    const header = streamvbyte.decodeBlockHeader(data);
+
     return .{
         .num_items = header.num_items,
         .first_item = Item{ .hash = header.first_hash, .id = 0 }, // DocID not available in header
@@ -126,7 +128,7 @@ pub fn readBlock(data: []const u8, items: *std.ArrayList(Item), min_doc_id: u32)
         return error.InvalidBlock;
     }
 
-    const header = streamvbyte.decodeBlockHeader(data, min_doc_id);
+    const header = streamvbyte.decodeBlockHeader(data);
     if (header.num_items == 0) {
         items.clearRetainingCapacity();
         return;
@@ -153,31 +155,35 @@ pub fn readBlock(data: []const u8, items: *std.ArrayList(Item), min_doc_id: u32)
     }
 }
 
-pub fn readBlockDocidsOnly(data: []const u8, hashes: []const u32, docids: []u32, min_doc_id: u32) !u32 {
+pub fn readBlockDocidsOnly(data: []const u8, hashes: []const u32, docids: []u32, min_doc_id: u32) ![]const u32 {
     if (data.len < 4) {
         return error.InvalidBlock;
     }
 
-    const header = streamvbyte.decodeBlockHeader(data, min_doc_id);
+    const header = streamvbyte.decodeBlockHeader(data);
     if (header.num_items == 0) {
-        return 0;
+        return docids[0..0];
     }
 
-    if (docids.len < header.num_items or hashes.len < header.num_items) {
+    if (docids.len < header.num_items) {
         return error.BufferTooSmall;
     }
 
-    return streamvbyte.decodeBlockDocidsOnly(data, hashes[0..header.num_items], docids, min_doc_id);
+    if (hashes.len != header.num_items) {
+        return error.HashCountMismatch;
+    }
+
+    return streamvbyte.decodeBlockDocidsOnly(data, hashes, docids, min_doc_id);
 }
 
-pub fn readBlockHashesOnly(data: []const u8, hashes: []u32) !u32 {
+pub fn readBlockHashesOnly(data: []const u8, hashes: []u32) ![]const u32 {
     if (data.len < 4) {
         return error.InvalidBlock;
     }
 
-    const header = streamvbyte.decodeBlockHeader(data, 0); // min_doc_id not needed for hashes
+    const header = streamvbyte.decodeBlockHeader(data);
     if (header.num_items == 0) {
-        return 0;
+        return hashes[0..0];
     }
 
     if (hashes.len < header.num_items) {
@@ -198,11 +204,11 @@ pub fn encodeBlock(data: []u8, reader: anytype, min_doc_id: u32) !u16 {
 
     while (true) {
         const item = try reader.read() orelse break;
-        
+
         // Estimate if we can fit this item
         try temp_hashes.append(item.hash);
         try temp_docids.append(item.id);
-        
+
         // Check if the encoded size would exceed block size
         const estimated_size = streamvbyte.maxCompressedSize(@intCast(temp_hashes.items.len)) * 2 + 4;
         if (estimated_size > data.len) {
@@ -211,7 +217,7 @@ pub fn encodeBlock(data: []u8, reader: anytype, min_doc_id: u32) !u16 {
             _ = temp_docids.pop();
             break;
         }
-        
+
         reader.advance();
     }
 
@@ -277,10 +283,9 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
         items.items,
     );
 
-    const header = try decodeBlockHeader(block_data[0..], min_doc_id);
+    const header = try decodeBlockHeader(block_data[0..]);
     try testing.expectEqual(items.items.len, header.num_items);
-    // TODO: Fix StreamVByte first value decoding bug - should be 1 but is 0  
-    // try testing.expectEqual(items.items[0].hash, header.first_item.hash);
+    try testing.expectEqual(items.items[0].hash, header.first_item.hash);
 }
 
 const segment_file_header_magic_v1: u32 = 0x53474D31; // "SGM1" in big endian
@@ -519,12 +524,11 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     while (ptr + block_size <= raw_data.len) {
         const block_data = raw_data[ptr .. ptr + block_size];
         ptr += block_size;
-        const block_header = try decodeBlockHeader(block_data, segment.min_doc_id);
+        const block_header = try decodeBlockHeader(block_data);
         if (block_header.num_items == 0) {
             break;
         }
-        
-        // Use the first hash from the header (much more efficient!)
+
         segment.index.appendAssumeCapacity(block_header.first_item.hash);
         num_items += block_header.num_items;
         num_blocks += 1;

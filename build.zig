@@ -97,6 +97,8 @@ pub fn build(b: *std.Build) void {
     main_tests.root_module.addImport("zul", zul.module("zul"));
     main_tests.root_module.addImport("msgpack", msgpack.module("msgpack"));
 
+    b.installArtifact(main_tests);
+
     const run_unit_tests = b.addRunArtifact(main_tests);
     run_unit_tests.has_side_effects = true;
 

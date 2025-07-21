@@ -80,8 +80,12 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
     var prev_block_no: usize = std.math.maxInt(usize);
     var prev_block_range_start: usize = 0;
 
-    var block_items = std.ArrayList(Item).init(results.allocator);
-    defer block_items.deinit();
+    const max_items_per_block = comptime filefmt.maxItemsPerBlock(filefmt.max_block_size);
+    var block_hashes_buf: [max_items_per_block]u32 = undefined;
+    var block_docids_buf: [max_items_per_block]u32 = undefined;
+
+    var block_hashes: []const u32 = undefined;
+    var block_docids: []const u32 = undefined;
 
     // Let's say we have blocks like this:
     //
@@ -102,18 +106,24 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
         var num_docs: usize = 0;
         var num_blocks: u64 = 0;
         while (block_no < self.index.items.len and self.index.items[block_no] <= hash) : (block_no += 1) {
-            if (block_no != prev_block_no) {
-                prev_block_no = block_no;
-                const block_data = self.getBlockData(block_no);
-                try filefmt.readBlock(block_data, &block_items, self.min_doc_id);
+            const is_new_block = block_no != prev_block_no;
+            prev_block_no = block_no;
+            const block_data = self.getBlockData(block_no);
+            if (is_new_block) {
+                block_hashes = try filefmt.readBlockHashesOnly(block_data, &block_hashes_buf);
             }
-            const matches = std.sort.equalRange(Item, block_items.items, Item{ .hash = hash, .id = 0 }, Item.orderByHash);
-            for (matches[0]..matches[1]) |j| {
-                try results.incr(block_items.items[j].id, self.info.version);
-            }
-            num_docs += matches[1] - matches[0];
-            if (num_docs > 1000) {
-                break; // XXX explain why
+            const matches = std.sort.equalRange(u32, block_hashes, hash, compareHashes);
+            if (matches[0] != matches[1]) {
+                if (is_new_block) {
+                    block_docids = try filefmt.readBlockDocidsOnly(block_data, block_hashes, &block_docids_buf, self.min_doc_id);
+                }
+                for (matches[0]..matches[1]) |j| {
+                    try results.incr(block_docids[j], self.info.version);
+                }
+                num_docs += matches[1] - matches[0];
+                if (num_docs > 1000) {
+                    break; // XXX explain why
+                }
             }
             num_blocks += 1;
         }
@@ -205,35 +215,44 @@ pub fn getSize(self: Self) usize {
 pub fn reader(self: *const Self) Reader {
     return .{
         .segment = self,
-        .items = std.ArrayList(Item).init(self.allocator),
     };
 }
 
 pub const Reader = struct {
     segment: *const Self,
-    items: std.ArrayList(Item),
+    hashes_buf: [filefmt.max_items_per_block]u32 = undefined,
+    docids_buf: [filefmt.max_items_per_block]u32 = undefined,
+    hashes: []const u32 = undefined,
+    docids: []const u32 = undefined,
     index: usize = 0,
     block_no: usize = 0,
 
     pub fn close(self: *Reader) void {
-        self.items.deinit();
+        _ = self;
     }
 
     pub fn read(self: *Reader) !?Item {
-        while (self.index >= self.items.items.len) {
+        while (self.index >= self.hashes.len) {
             if (self.block_no >= self.segment.index.items.len) {
                 return null;
             }
             self.index = 0;
+
             const block_data = self.segment.getBlockData(self.block_no);
             self.block_no += 1;
-            try filefmt.readBlock(block_data, &self.items, self.segment.min_doc_id);
+
+            self.hashes = try filefmt.readBlockHashesOnly(block_data, &self.hashes_buf);
+            self.docids = try filefmt.readBlockDocidsOnly(block_data, self.hashes, &self.docids_buf, self.segment.min_doc_id);
         }
-        return self.items.items[self.index];
+
+        return .{
+            .hash = self.hashes[self.index],
+            .id = self.docids[self.index],
+        };
     }
 
     pub fn advance(self: *Reader) void {
-        if (self.index < self.items.items.len) {
+        if (self.index < self.hashes.len) {
             self.index += 1;
         }
     }

@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <sys/types.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,14 +59,14 @@ uint32_t decode_block_hashes_only(
 );
 
 // Get block header without full decode
-block_header_t decode_block_header_streamvbyte(
+void decode_block_header_streamvbyte(
     const uint8_t* block,
-    uint32_t min_doc_id
+    block_header_t *header
 );
 
 // Internal functions for StreamVByte encoding/decoding
 size_t streamvbyte_encode_deltas(const uint32_t* in, uint32_t length, uint8_t* out);
-size_t streamvbyte_decode_deltas(const uint8_t* in, uint32_t* out, uint32_t length);
+ssize_t streamvbyte_decode_deltas(const uint8_t* in, size_t in_len, uint32_t* out, uint32_t count);
 
 #ifdef __cplusplus
 }
