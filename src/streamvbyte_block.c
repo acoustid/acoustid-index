@@ -7,9 +7,6 @@
 #if defined(__x86_64__) || defined(_M_X64)
 #define STREAMVBYTE_X64 1
 #include <immintrin.h>
-#elif defined(__aarch64__) || defined(_M_ARM64)
-#define STREAMVBYTE_ARM64 1
-#include <arm_neon.h>
 #endif
 
 #include "streamvbyte_tables.h"
@@ -145,132 +142,7 @@ static size_t streamvbyte_decode_sse41(const uint8_t* in, uint32_t* out, uint32_
 }
 #endif
 
-#ifdef STREAMVBYTE_ARM64
-// ARM64 NEON optimized encode using VTBL shuffle and lookup tables
-static size_t streamvbyte_encode_neon(const uint32_t* in, uint32_t count, uint8_t* out) {
-    uint32_t control_bytes = (count + 3) / 4; // 1 control byte per 4 values
-    uint8_t* control_ptr = out;
-    uint8_t* data_ptr = out + control_bytes;
-    
-    uint32_t processed = 0;
-    
-    // Process 4 values at a time using NEON
-    while (processed + 4 <= count) {
-        uint32x4_t values = vld1q_u32(in + processed);
-        
-        // Use efficient method similar to streamvbyte reference library
-        // Calculate lane codes using CLZ (count leading zeros)
-        uint32x4_t clzbytes = vshrq_n_u32(vclzq_u32(values), 3);
-        uint32x4_t lanecodes = vqsubq_u32(vdupq_n_u32(3), clzbytes);
-        
-        // Extract lane codes to construct control byte
-        uint32_t val[4];
-        vst1q_u32(val, lanecodes);
-        uint32_t control_byte = (val[0] & 3) | ((val[1] & 3) << 2) | 
-                               ((val[2] & 3) << 4) | ((val[3] & 3) << 6);
-        
-        // Store control byte
-        *control_ptr++ = control_byte;
-        
-        // Use NEON vector table lookup to pack data efficiently - compact table format
-        uint8x16_t shuffle_mask = vld1q_u8(&encode_shuffle_table[(control_byte & 0x3F) * 16]);
-        uint8x16_t byte_values = vreinterpretq_u8_u32(values);
-        
-        // Use NEON table lookup (vqtbl1q_u8 is more efficient than vtbl1_u8 for AArch64)
-        uint8x16_t shuffled = vqtbl1q_u8(byte_values, shuffle_mask);
-        
-        // Store packed data
-        vst1q_u8(data_ptr, shuffled);
-        data_ptr += length_table[control_byte];
-        
-        processed += 4;
-    }
-    
-    // Handle remaining values (less than 4)
-    if (processed < count) {
-        uint32_t remaining = count - processed;
-        uint32_t control_byte = 0;
-        
-        for (uint32_t i = 0; i < remaining; i++) {
-            uint32_t val = in[processed + i];
-            uint32_t bytes_needed;
-            
-            if (val < 0x100) bytes_needed = 1;
-            else if (val < 0x10000) bytes_needed = 2;
-            else if (val < 0x1000000) bytes_needed = 3;
-            else bytes_needed = 4;
-            
-            control_byte |= ((bytes_needed - 1) << (i * 2));
-            
-            // Store data bytes
-            for (uint32_t b = 0; b < bytes_needed; b++) {
-                *data_ptr++ = (val >> (b * 8)) & 0xFF;
-            }
-        }
-        
-        *control_ptr++ = control_byte;
-    }
-    
-    return data_ptr - out;
-}
 
-// ARM64 NEON optimized decode using VTBL shuffle and lookup tables
-static size_t streamvbyte_decode_neon(const uint8_t* in, uint32_t* out, uint32_t count) {
-    uint32_t control_bytes = (count + 3) / 4; // 1 control byte per 4 values
-    const uint8_t* control_ptr = in;
-    const uint8_t* data_ptr = in + control_bytes;
-    
-    uint32_t processed = 0;
-    
-    // Process 4 values at a time using NEON
-    while (processed + 4 <= count) {
-        uint8_t control_byte = *control_ptr++;
-        
-        // Use NEON vector table lookup to unpack data efficiently
-        // Load compressed data (up to 16 bytes needed for 4x4-byte values)
-        uint8x16_t compressed = vld1q_u8(data_ptr);
-        
-        // Load decoding shuffle mask from lookup table (full 256-entry table)
-        uint8x16_t decoding_shuffle = vld1q_u8(&decode_shuffle_table[control_byte * 16]);
-        
-        // Use NEON table lookup to unpack data according to shuffle mask
-        // Note: vqtbl1q_u8 will return 0 for indices that are 255
-        uint8x16_t unpacked = vqtbl1q_u8(compressed, decoding_shuffle);
-        
-        // Store the 4 unpacked 32-bit values
-        vst1q_u8((uint8_t*)(out + processed), unpacked);
-        
-        data_ptr += length_table[control_byte];
-        processed += 4;
-    }
-    
-    // Handle remaining values
-    if (processed < count) {
-        uint8_t control_byte = *control_ptr++;
-        uint32_t remaining = count - processed;
-        
-        for (uint32_t i = 0; i < remaining; i++) {
-            uint32_t bytes_needed = ((control_byte >> (i * 2)) & 3) + 1;
-            uint32_t val = 0;
-            for (uint32_t b = 0; b < bytes_needed; b++) {
-                val |= ((uint32_t)*data_ptr++) << (b * 8);
-            }
-            out[processed + i] = val;
-        }
-    }
-    
-    return data_ptr - in;
-}
-
-// ARM64 always has NEON - no runtime detection needed
-size_t streamvbyte_encode_deltas(const uint32_t* in, uint32_t count, uint8_t* out) {
-    return streamvbyte_encode_neon(in, count, out);
-}
-
-size_t streamvbyte_decode_deltas(const uint8_t* in, uint32_t* out, uint32_t count) {
-    return streamvbyte_decode_neon(in, out, count);
-}
-#endif
 
 #ifdef STREAMVBYTE_X64
 // ifunc resolvers for optimal runtime dispatch
@@ -300,7 +172,7 @@ size_t streamvbyte_decode_deltas(const uint8_t* in, uint32_t* out, uint32_t coun
     __attribute__((ifunc("resolve_decode")));
 #endif
 
-#if !defined(STREAMVBYTE_ARM64) && !defined(STREAMVBYTE_X64)
+#if !defined(STREAMVBYTE_X64)
 // Non-SIMD platforms: use generic implementation directly
 size_t streamvbyte_encode_deltas(const uint32_t* in, uint32_t count, uint8_t* out) {
     return streamvbyte_encode_generic(in, count, out);
