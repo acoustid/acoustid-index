@@ -149,18 +149,20 @@ static size_t streamvbyte_decode_sse41(const uint8_t* in, uint32_t* out, uint32_
 #include <cpuid.h>
 
 static size_t (*resolve_encode(void))(const uint32_t*, uint32_t, uint8_t*) {
-    unsigned int eax, ebx, ecx, edx;
-    if (__get_cpuid(1, &eax, &ebx, &ecx, &edx) && (ecx & bit_SSE4_1)) {
-        return streamvbyte_encode_sse41;
-    }
+    // SIMD disabled - always use generic implementation
+    // unsigned int eax, ebx, ecx, edx;
+    // if (__get_cpuid(1, &eax, &ebx, &ecx, &edx) && (ecx & bit_SSE4_1)) {
+    //     return streamvbyte_encode_sse41;
+    // }
     return streamvbyte_encode_generic;
 }
 
 static size_t (*resolve_decode(void))(const uint8_t*, uint32_t*, uint32_t) {
-    unsigned int eax, ebx, ecx, edx;
-    if (__get_cpuid(1, &eax, &ebx, &ecx, &edx) && (ecx & bit_SSE4_1)) {
-        return streamvbyte_decode_sse41;
-    }
+    // SIMD disabled - always use generic implementation
+    // unsigned int eax, ebx, ecx, edx;
+    // if (__get_cpuid(1, &eax, &ebx, &ecx, &edx) && (ecx & bit_SSE4_1)) {
+    //     return streamvbyte_decode_sse41;
+    // }
     return streamvbyte_decode_generic;
 }
 
