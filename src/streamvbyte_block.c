@@ -29,8 +29,7 @@ size_t streamvbyte_max_compressed_size(uint32_t count) {
 
 #ifdef STREAMVBYTE_X64
 // SSE4.1 optimized encode using PSHUFB shuffle and lookup tables
-__attribute__((target("sse4.1")))
-size_t streamvbyte_encode_deltas(const uint32_t* in, uint32_t count, uint8_t* out) {
+static size_t streamvbyte_encode_sse41(const uint32_t* in, uint32_t count, uint8_t* out) {
     uint32_t control_bytes = (count + 3) / 4; // 1 control byte per 4 values
     uint8_t* control_ptr = out;
     uint8_t* data_ptr = out + control_bytes;
@@ -99,8 +98,7 @@ size_t streamvbyte_encode_deltas(const uint32_t* in, uint32_t count, uint8_t* ou
 }
 
 // SSE4.1 optimized decode using PSHUFB shuffle and lookup tables
-__attribute__((target("sse4.1")))
-size_t streamvbyte_decode_deltas(const uint8_t* in, uint32_t* out, uint32_t count) {
+static size_t streamvbyte_decode_sse41(const uint8_t* in, uint32_t* out, uint32_t count) {
     uint32_t control_bytes = (count + 3) / 4; // 1 control byte per 4 values
     const uint8_t* control_ptr = in;
     const uint8_t* data_ptr = in + control_bytes;
@@ -149,7 +147,6 @@ size_t streamvbyte_decode_deltas(const uint8_t* in, uint32_t* out, uint32_t coun
 
 #ifdef STREAMVBYTE_ARM64
 // ARM64 NEON optimized encode using VTBL shuffle and lookup tables
-__attribute__((target("+neon")))
 static size_t streamvbyte_encode_neon(const uint32_t* in, uint32_t count, uint8_t* out) {
     uint32_t control_bytes = (count + 3) / 4; // 1 control byte per 4 values
     uint8_t* control_ptr = out;
@@ -218,7 +215,6 @@ static size_t streamvbyte_encode_neon(const uint32_t* in, uint32_t count, uint8_
 }
 
 // ARM64 NEON optimized decode using VTBL shuffle and lookup tables
-__attribute__((target("+neon")))
 static size_t streamvbyte_decode_neon(const uint8_t* in, uint32_t* out, uint32_t count) {
     uint32_t control_bytes = (count + 3) / 4; // 1 control byte per 4 values
     const uint8_t* control_ptr = in;
@@ -277,16 +273,31 @@ size_t streamvbyte_decode_deltas(const uint8_t* in, uint32_t* out, uint32_t coun
 #endif
 
 #ifdef STREAMVBYTE_X64
-// x86_64 versions using GCC function multiversioning
-__attribute__((target("default")))
-size_t streamvbyte_encode_deltas(const uint32_t* in, uint32_t count, uint8_t* out) {
-    return streamvbyte_encode_generic(in, count, out);
+// ifunc resolvers for optimal runtime dispatch
+#include <cpuid.h>
+
+static size_t (*resolve_encode(void))(const uint32_t*, uint32_t, uint8_t*) {
+    unsigned int eax, ebx, ecx, edx;
+    if (__get_cpuid(1, &eax, &ebx, &ecx, &edx) && (ecx & bit_SSE4_1)) {
+        return streamvbyte_encode_sse41;
+    }
+    return streamvbyte_encode_generic;
 }
 
-__attribute__((target("default")))
-size_t streamvbyte_decode_deltas(const uint8_t* in, uint32_t* out, uint32_t count) {
-    return streamvbyte_decode_generic(in, out, count);
+static size_t (*resolve_decode(void))(const uint8_t*, uint32_t*, uint32_t) {
+    unsigned int eax, ebx, ecx, edx;
+    if (__get_cpuid(1, &eax, &ebx, &ecx, &edx) && (ecx & bit_SSE4_1)) {
+        return streamvbyte_decode_sse41;
+    }
+    return streamvbyte_decode_generic;
 }
+
+// Use ifuncs for zero-overhead runtime dispatch
+size_t streamvbyte_encode_deltas(const uint32_t* in, uint32_t count, uint8_t* out)
+    __attribute__((ifunc("resolve_encode")));
+
+size_t streamvbyte_decode_deltas(const uint8_t* in, uint32_t* out, uint32_t count)
+    __attribute__((ifunc("resolve_decode")));
 #endif
 
 #if !defined(STREAMVBYTE_ARM64) && !defined(STREAMVBYTE_X64)
