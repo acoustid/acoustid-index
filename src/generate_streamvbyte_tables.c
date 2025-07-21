@@ -7,8 +7,8 @@ int main() {
     printf("// DO NOT EDIT - regenerate with generate_streamvbyte_tables.c\n\n");
     
     // Generate encoding shuffle table
-    printf("// Generated shuffle table for StreamVByte encoding (PSHUFB/VTBL)\n");
-    printf("static const uint8_t encode_shuffle_table[256][16] = {\n");
+    printf("// Generated shuffle table for StreamVByte encoding (PSHUFB/VTBL) - flattened\n");
+    printf("static const uint8_t encode_shuffle_table[4096] = {\n");
     
     for (int control_byte = 0; control_byte < 256; control_byte++) {
         uint8_t cb = (uint8_t)control_byte;
@@ -18,8 +18,6 @@ int main() {
         uint8_t bytes1 = ((cb >> 2) & 3) + 1;
         uint8_t bytes2 = ((cb >> 4) & 3) + 1;
         uint8_t bytes3 = ((cb >> 6) & 3) + 1;
-        
-        printf("    [0x%02x] = {", cb);
         
         uint8_t pos = 0;
         uint8_t shuffle[16];
@@ -49,21 +47,21 @@ int main() {
             shuffle[pos++] = 12 + i;
         }
         
+        printf("    ");
+        
         for (int i = 0; i < 16; i++) {
-            if (i > 0) printf(",");
-            printf("%d", shuffle[i]);
+            int element_idx = control_byte * 16 + i;
+            printf("%d, ", shuffle[i]);
         }
         
-        printf("},    // %d%d%d%d (%d%d%d%d bytes)\n", 
-               (cb >> 6) & 3, (cb >> 4) & 3, (cb >> 2) & 3, cb & 3,
-               bytes3, bytes2, bytes1, bytes0);
+        printf("  // 0x%02x\n", control_byte);
     }
     
-    printf("};\n\n");
+    printf("\n};\n\n");
     
     // Generate decoding shuffle table
-    printf("// Generated shuffle table for StreamVByte decoding (VTBL)\n");
-    printf("static const uint8_t decode_shuffle_table[256][16] = {\n");
+    printf("// Generated shuffle table for StreamVByte decoding (VTBL) - flattened\n");
+    printf("static const uint8_t decode_shuffle_table[4096] = {\n");
     
     for (int control_byte = 0; control_byte < 256; control_byte++) {
         uint8_t cb = (uint8_t)control_byte;
@@ -73,8 +71,6 @@ int main() {
         uint8_t bytes1 = ((cb >> 2) & 3) + 1;
         uint8_t bytes2 = ((cb >> 4) & 3) + 1;
         uint8_t bytes3 = ((cb >> 6) & 3) + 1;
-        
-        printf("    [0x%02x] = {", cb);
         
         uint8_t shuffle[16];
         uint8_t packed_pos = 0;
@@ -105,17 +101,17 @@ int main() {
             shuffle[12 + i] = packed_pos++;
         }
         
+        printf("    ");
+
         for (int i = 0; i < 16; i++) {
-            if (i > 0) printf(",");
-            printf("%d", shuffle[i]);
+            int element_idx = control_byte * 16 + i;
+            printf("%d, ", shuffle[i]);
         }
         
-        printf("},    // %d%d%d%d (%d%d%d%d bytes)\n", 
-               (cb >> 6) & 3, (cb >> 4) & 3, (cb >> 2) & 3, cb & 3,
-               bytes3, bytes2, bytes1, bytes0);
+        printf("  // 0x%02x\n", control_byte);
     }
     
-    printf("};\n\n");
+    printf("\n};\n\n");
     
     // Generate length table
     printf("// Generated length table for StreamVByte\n");
