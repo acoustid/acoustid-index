@@ -42,9 +42,18 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    if (optimize == .ReleaseFast) {
-        main_exe.linkLibC();
-    }
+    main_exe.linkLibC();
+    main_exe.addCSourceFile(.{
+        .file = b.path("src/streamvbyte_block.c"),
+        .flags = &[_][]const u8{
+            "-std=c99",
+            "-O3",
+            "-march=native",
+            "-Wall",
+            "-Wextra",
+        },
+    });
+    main_exe.addIncludePath(b.path("src"));
     main_exe.root_module.addImport("httpz", httpz.module("httpz"));
     main_exe.root_module.addImport("metrics", metrics.module("metrics"));
     main_exe.root_module.addImport("zul", zul.module("zul"));
@@ -69,6 +78,18 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    main_tests.linkLibC();
+    main_tests.addCSourceFile(.{
+        .file = b.path("src/streamvbyte_block.c"),
+        .flags = &[_][]const u8{
+            "-std=c99",
+            "-O3",
+            "-march=native",
+            "-Wall",
+            "-Wextra",
+        },
+    });
+    main_tests.addIncludePath(b.path("src"));
     main_tests.root_module.addImport("httpz", httpz.module("httpz"));
     main_tests.root_module.addImport("metrics", metrics.module("metrics"));
     main_tests.root_module.addImport("zul", zul.module("zul"));
