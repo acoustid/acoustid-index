@@ -62,8 +62,8 @@ size_t streamvbyte_encode_deltas(const uint32_t* in, uint32_t count, uint8_t* ou
         // Store control byte
         *control_ptr++ = control_byte;
         
-        // Use shuffle table to pack the data
-        __m128i shuffled = _mm_shuffle_epi8(values, _mm_loadu_si128((const __m128i*)&encode_shuffle_table[control_byte * 16]));
+        // Use shuffle table to pack the data - table is now compact 64-entry format
+        __m128i shuffled = _mm_shuffle_epi8(values, _mm_loadu_si128((const __m128i*)&encode_shuffle_table[(control_byte & 0x3F) * 16]));
         _mm_storeu_si128((__m128i*)data_ptr, shuffled);
         data_ptr += length_table[control_byte];
         
@@ -115,7 +115,7 @@ size_t streamvbyte_decode_deltas(const uint8_t* in, uint32_t* out, uint32_t coun
         __m128i packed_data = _mm_loadu_si128((const __m128i*)data_ptr);
         
         // Use SSE4.1 shuffle to unpack data efficiently
-        // Load decoding shuffle mask from lookup table
+        // Load decoding shuffle mask from lookup table (full 256-entry table)
         __m128i decode_shuffle = _mm_loadu_si128((const __m128i*)&decode_shuffle_table[control_byte * 16]);
         
         // Use PSHUFB to unpack data according to shuffle mask
@@ -175,8 +175,8 @@ static size_t streamvbyte_encode_neon(const uint32_t* in, uint32_t count, uint8_
         // Store control byte
         *control_ptr++ = control_byte;
         
-        // Use NEON vector table lookup to pack data efficiently
-        uint8x16_t shuffle_mask = vld1q_u8(&encode_shuffle_table[control_byte * 16]);
+        // Use NEON vector table lookup to pack data efficiently - compact table format
+        uint8x16_t shuffle_mask = vld1q_u8(&encode_shuffle_table[(control_byte & 0x3F) * 16]);
         uint8x16_t byte_values = vreinterpretq_u8_u32(values);
         
         // Use NEON table lookup (vqtbl1q_u8 is more efficient than vtbl1_u8 for AArch64)
@@ -234,7 +234,7 @@ static size_t streamvbyte_decode_neon(const uint8_t* in, uint32_t* out, uint32_t
         // Load compressed data (up to 16 bytes needed for 4x4-byte values)
         uint8x16_t compressed = vld1q_u8(data_ptr);
         
-        // Load decoding shuffle mask from lookup table  
+        // Load decoding shuffle mask from lookup table (full 256-entry table)
         uint8x16_t decoding_shuffle = vld1q_u8(&decode_shuffle_table[control_byte * 16]);
         
         // Use NEON table lookup to unpack data according to shuffle mask

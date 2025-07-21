@@ -7,17 +7,18 @@ int main() {
     printf("// DO NOT EDIT - regenerate with generate_streamvbyte_tables.c\n\n");
     
     // Generate encoding shuffle table
-    printf("// Generated shuffle table for StreamVByte encoding (PSHUFB/VTBL) - flattened\n");
-    printf("static const uint8_t encode_shuffle_table[4096] = {\n");
+    printf("// Generated shuffle table for StreamVByte encoding (PSHUFB/VTBL) - compact layout\n");
+    printf("static const uint8_t encode_shuffle_table[64*16] = {\n");
     
-    for (int control_byte = 0; control_byte < 256; control_byte++) {
-        uint8_t cb = (uint8_t)control_byte;
+    // Only generate for control bytes that represent pairs of 4-value encodings
+    for (int key_pair = 0; key_pair < 64; key_pair++) {
+        uint8_t key = (uint8_t)key_pair;
         
-        // Extract bytes needed for each of 4 values
-        uint8_t bytes0 = ((cb >> 0) & 3) + 1;
-        uint8_t bytes1 = ((cb >> 2) & 3) + 1;
-        uint8_t bytes2 = ((cb >> 4) & 3) + 1;
-        uint8_t bytes3 = ((cb >> 6) & 3) + 1;
+        // Extract bytes needed for each of 4 values from the key
+        uint8_t bytes0 = ((key >> 0) & 3) + 1;
+        uint8_t bytes1 = ((key >> 2) & 3) + 1;
+        uint8_t bytes2 = ((key >> 4) & 3) + 1;
+        uint8_t bytes3 = ((key >> 6) & 3) + 1;
         
         uint8_t pos = 0;
         uint8_t shuffle[16];
@@ -47,21 +48,22 @@ int main() {
             shuffle[pos++] = 12 + i;
         }
         
-        printf("    ");
+        printf("\t");
         
         for (int i = 0; i < 16; i++) {
-            int element_idx = control_byte * 16 + i;
-            printf("%d, ", shuffle[i]);
+            printf("0x%02X", shuffle[i]);
+            if (i < 15) printf(", ");
         }
         
-        printf("  // 0x%02x\n", control_byte);
+        printf(",");
+        if (key_pair < 63) printf("\n");
     }
     
     printf("\n};\n\n");
     
-    // Generate decoding shuffle table
-    printf("// Generated shuffle table for StreamVByte decoding (VTBL) - flattened\n");
-    printf("static const uint8_t decode_shuffle_table[4096] = {\n");
+    // Generate decoding shuffle table - full 256 entries needed for decode
+    printf("// Generated shuffle table for StreamVByte decoding (VTBL) - full 256 entries\n");
+    printf("static const uint8_t decode_shuffle_table[256*16] = {\n");
     
     for (int control_byte = 0; control_byte < 256; control_byte++) {
         uint8_t cb = (uint8_t)control_byte;
@@ -101,14 +103,15 @@ int main() {
             shuffle[12 + i] = packed_pos++;
         }
         
-        printf("    ");
+        printf("\t");
 
         for (int i = 0; i < 16; i++) {
-            int element_idx = control_byte * 16 + i;
-            printf("%d, ", shuffle[i]);
+            printf("0x%02X", shuffle[i]);
+            if (i < 15) printf(", ");
         }
         
-        printf("  // 0x%02x\n", control_byte);
+        printf(",");
+        if (control_byte < 255) printf("\n");
     }
     
     printf("\n};\n\n");
@@ -129,11 +132,14 @@ int main() {
         
         if (control_byte % 16 == 0) {
             if (control_byte > 0) printf("\n");
-            printf("    ");
+            printf("\t");
         }
         
         printf("%2d", total_length);
-        if (control_byte < 255) printf(", ");
+        if (control_byte < 255) {
+            printf(",");
+            if ((control_byte + 1) % 16 != 0) printf(" ");
+        }
     }
     
     printf("\n};\n");
