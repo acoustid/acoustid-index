@@ -329,9 +329,6 @@ pub const BlockEncoder = struct {
         }
 
         // print out deltas
-        for (0..deltas.len) |i| {
-            std.debug.print("delta {d}: hash={x}, id={d}\n", .{ i, deltas[i].hash, deltas[i].id });
-        }
 
         var deltas_ptr = deltas;
         while (deltas_ptr.len >= 4) {
