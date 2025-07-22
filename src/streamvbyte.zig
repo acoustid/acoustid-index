@@ -294,7 +294,6 @@ pub const BlockEncoder = struct {
             return;
         }
 
-        std.debug.print("enc control byte: {x}\n", .{self.out_hashes_control[self.out_hashes_control_len]});
 
         self.out_hashes_len = new_out_hashes_len;
         self.out_hashes_control_len = new_out_hashes_control_len;
