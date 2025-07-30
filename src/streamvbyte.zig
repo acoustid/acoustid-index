@@ -47,12 +47,15 @@ pub fn svbDecodeQuad0124(in_control: u8, in_data: []const u8, out: []u32) usize 
         if (control == 0) {
             out[i] = 0;
         } else if (control == 1) {
+            if (in_data_ptr.len < 1) break;
             out[i] = std.mem.readInt(u8, in_data_ptr[0..1], .little);
             in_data_ptr = in_data_ptr[1..];
         } else if (control == 2) {
+            if (in_data_ptr.len < 2) break;
             out[i] = std.mem.readInt(u16, in_data_ptr[0..2], .little);
             in_data_ptr = in_data_ptr[2..];
         } else if (control == 3) {
+            if (in_data_ptr.len < 4) break;
             out[i] = std.mem.readInt(u32, in_data_ptr[0..4], .little);
             in_data_ptr = in_data_ptr[4..];
         }
@@ -65,15 +68,19 @@ pub fn svbDecodeQuad1234(in_control: u8, in_data: []const u8, out: []u32) usize 
     inline for (0..4) |i| {
         const control = (in_control >> (2 * i)) & 0x03;
         if (control == 0) {
+            if (in_data_ptr.len < 1) break;
             out[i] = std.mem.readInt(u8, in_data_ptr[0..1], .little);
             in_data_ptr = in_data_ptr[1..];
         } else if (control == 1) {
+            if (in_data_ptr.len < 2) break;
             out[i] = std.mem.readInt(u16, in_data_ptr[0..2], .little);
             in_data_ptr = in_data_ptr[2..];
         } else if (control == 2) {
+            if (in_data_ptr.len < 3) break;
             out[i] = std.mem.readInt(u24, in_data_ptr[0..3], .little);
             in_data_ptr = in_data_ptr[3..];
         } else if (control == 3) {
+            if (in_data_ptr.len < 4) break;
             out[i] = std.mem.readInt(u32, in_data_ptr[0..4], .little);
             in_data_ptr = in_data_ptr[4..];
         }
@@ -91,7 +98,7 @@ pub fn decodeBlockHashes(header: BlockHeader, in: []const u8, out: []u32) usize 
     var out_ptr = out;
 
     var remaining = header.num_items;
-    while (remaining > 4) {
+    while (remaining >= 4) {
         const consumed = svbDecodeQuad0124(in_control_ptr[0], in_data_ptr, out_ptr);
         in_control_ptr = in_control_ptr[1..];
         in_data_ptr = in_data_ptr[consumed..];
@@ -107,6 +114,8 @@ pub fn decodeBlockHashes(header: BlockHeader, in: []const u8, out: []u32) usize 
         remaining = 0;
     }
 
+    // Apply delta decoding - first item is absolute, rest are deltas
+    out[0] += header.first_hash;
     for (1..header.num_items) |i| {
         out[i] += out[i - 1];
     }
@@ -124,7 +133,7 @@ pub fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u
     var out_ptr = out;
 
     var remaining = header.num_items;
-    while (remaining > 4) {
+    while (remaining >= 4) {
         const consumed = svbDecodeQuad1234(in_control_ptr[0], in_data_ptr, out_ptr);
         in_control_ptr = in_control_ptr[1..];
         in_data_ptr = in_data_ptr[consumed..];
@@ -140,8 +149,9 @@ pub fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u
         remaining = 0;
     }
 
+    // Apply delta decoding for docids
     for (1..header.num_items) |i| {
-        out[i] += if (hashes[i] == hashes[i - 1]) out[i - 1] else 0;
+        out[i] = if (hashes[i] == hashes[i - 1]) out[i] +% out[i - 1] else out[i];
     }
 
     return out.len - out_ptr.len;
@@ -214,10 +224,9 @@ pub fn svbEncodeQuad1234(in: [4]u32, out_data: []u8, out_control: *u8) usize {
 }
 
 pub const BlockEncoder = struct {
-    block_size: usize,
-    num_items: u16,
-
-    first_hash: u32 = 0,
+    num_items: u16 = 0,
+    last_hash: u32 = 0,
+    last_docid: u32 = 0,
 
     out_hashes: [MAX_BLOCK_SIZE]u8 = undefined,
     out_hashes_control: [MAX_BLOCK_SIZE]u8 = undefined,
@@ -231,42 +240,43 @@ pub const BlockEncoder = struct {
     out_docids_len: usize = 0,
     out_docids_control_len: usize = 0,
 
-    is_full: bool = false,
-
     const Buffer = std.BoundedArray(u32, MAX_ITEMS_PER_BLOCK);
 
     const Self = @This();
 
-    pub fn init(block_size: usize) Self {
-        return .{
-            .block_size = block_size,
-            .num_items = 0,
-        };
+    pub fn init() Self {
+        return .{};
     }
 
-    pub fn encodeChunk(self: *Self, items: []const Item, comptime full_chunk: bool) void {
+    pub fn encodeChunk(self: *Self, items: []const Item, block_size: usize, comptime full_chunk: bool) !void {
+        std.debug.assert(items.len > 0);
         std.debug.assert(items.len <= 4);
+
+        if (full_chunk) {
+            std.debug.assert(items.len == 4);
+        }
 
         var chunk_hashes: [4]u32 = undefined;
         var chunk_docids: [4]u32 = undefined;
 
-        if (full_chunk) {
-            for (0..4) |i| {
-                chunk_hashes[i] = items[i].hash;
+        for (0..items.len) |i| {
+            // Calculate hash delta from previous item
+            std.debug.assert(items[i].hash >= self.last_hash);
+            chunk_hashes[i] = items[i].hash - self.last_hash;
+            if (chunk_hashes[i] == 0) {
+                // Same hash, encode docid delta
+                std.debug.assert(items[i].id >= self.last_docid);
+                chunk_docids[i] = items[i].id - self.last_docid;
+            } else {
+                // Different hash, encode absolute docid
                 chunk_docids[i] = items[i].id;
             }
-        } else {
-            if (items.len == 0) {
-                return;
-            }
-            for (0..items.len) |i| {
-                chunk_hashes[i] = items[i].hash;
-                chunk_docids[i] = items[i].id;
-            }
-            for (items.len..4) |i| {
-                chunk_hashes[i] = 0; // Fill with zeroes for partial chunks
-                chunk_docids[i] = 0;
-            }
+            self.last_hash = items[i].hash;
+            self.last_docid = items[i].id;
+        }
+        for (items.len..4) |i| {
+            chunk_hashes[i] = 0; // Fill with zeroes for partial chunks
+            chunk_docids[i] = 0;
         }
 
         const encoded_hash_size = svbEncodeQuad0124(
@@ -288,70 +298,58 @@ pub const BlockEncoder = struct {
 
         const new_block_size = BLOCK_HEADER_SIZE + new_out_hashes_len + new_out_hashes_control_len + new_out_docids_len + new_out_docids_control_len;
 
-        if (new_block_size > self.block_size) {
-            // The block is full, we cannot add more items.
-            self.is_full = true;
-            return;
+        if (new_block_size > block_size) {
+            return error.BlockFull;
         }
-
 
         self.out_hashes_len = new_out_hashes_len;
         self.out_hashes_control_len = new_out_hashes_control_len;
         self.out_docids_len = new_out_docids_len;
         self.out_docids_control_len = new_out_docids_control_len;
-
         self.num_items += if (full_chunk) 4 else @intCast(items.len);
-
-        if (new_block_size == self.block_size) {
-            // We have filled the block, we can flush it now.
-            self.is_full = true;
-        }
     }
 
-    pub fn encode(self: *Self, items: []const Item) usize {
-        if (self.num_items == 0) {
-            self.first_hash = if (items.len > 0) items[0].hash else 0;
+    /// Encode items into a block and return the number of items consumed.
+    /// Takes more items than needed to fill one block, always returns a full block.
+    /// Returns the number of items consumed from the input.
+    pub fn encodeBlock(self: *Self, items: []const Item, out: []u8) usize {
+        const block_size = out.len;
+
+        if (items.len == 0) {
+            @memset(out, 0);
+            return 0;
         }
 
-        var tmp_items: [MAX_ITEMS_PER_BLOCK]Item = undefined;
+        const first_hash = items[0].hash;
 
-        // generate deltas, items are always sorted by hash first, then by docid
-        // so hashes are always increasing, docids are increasing within the same hash
-        var deltas = tmp_items[0..items.len];
-        for (0..items.len) |i| {
-            deltas[i] = items[i];
-            if (i > 0) {
-                std.debug.assert(deltas[i].hash >= items[i - 1].hash);
-                deltas[i].hash -= items[i - 1].hash;
-                std.debug.assert(deltas[i].hash > 0 or deltas[i].id >= items[i - 1].id);
-                deltas[i].id -= if (deltas[i].hash == 0) items[i - 1].id else 0;
-            }
+        // Reset encoder state for this block
+        self.num_items = 0;
+        self.last_hash = first_hash;
+        self.last_docid = 0;
+        self.out_hashes_len = 0;
+        self.out_hashes_control_len = 0;
+        self.out_docids_len = 0;
+        self.out_docids_control_len = 0;
+
+        // Try to encode items in chunks of 4
+        var items_ptr = items;
+        while (items_ptr.len >= 4) {
+            self.encodeChunk(items_ptr[0..4], block_size, true) catch {
+                items_ptr = items_ptr[0..0];
+                break;
+            };
+            items_ptr = items_ptr[4..];
         }
 
-        // print out deltas
-
-        var deltas_ptr = deltas;
-        while (deltas_ptr.len >= 4) {
-            self.encodeChunk(deltas_ptr[0..4], true);
-            if (self.is_full) {
-                return deltas.len - deltas_ptr.len;
-            }
-            deltas_ptr = deltas_ptr[4..];
-        }
-        self.encodeChunk(deltas_ptr, false);
-        return deltas.len;
-    }
-
-    pub fn getBlock(self: *Self, out: []u8) bool {
-        if (!self.is_full) {
-            return false;
+        // Try to encode remaining items in partial chunk (max 3 items)
+        if (items_ptr.len > 0) {
+            self.encodeChunk(items_ptr, block_size, false) catch {};
         }
 
-        std.debug.assert(out.len == self.block_size);
-
+        // Write the block
         const header = BlockHeader{
             .num_items = self.num_items,
-            .first_hash = self.first_hash,
+            .first_hash = first_hash,
             .docid_list_offset = @intCast(self.out_hashes_len + self.out_hashes_control_len),
         };
 
@@ -372,15 +370,10 @@ pub const BlockEncoder = struct {
         @memcpy(out_ptr[0..self.out_docids_len], self.out_docids[0..self.out_docids_len]);
         out_ptr = out_ptr[self.out_docids_len..];
 
-        self.num_items = 0;
-        self.out_hashes_len = 0;
-        self.out_hashes_control_len = 0;
-        self.out_docids_len = 0;
-        self.out_docids_control_len = 0;
-        self.is_full = false;
-        self.first_hash = 0;
+        // Zero out remaining space
+        @memset(out_ptr, 0);
 
-        return true;
+        return self.num_items;
     }
 };
 
@@ -400,7 +393,7 @@ test "encodeBlockHeader/decodeBlockHeader" {
 }
 
 test "BlockEncoder" {
-    var encoder = BlockEncoder.init(32);
+    var encoder = BlockEncoder.init();
     const items: []const Item = &.{
         .{ .hash = 1, .id = 100 },
         .{ .hash = 1, .id = 200 },
@@ -409,16 +402,9 @@ test "BlockEncoder" {
         .{ .hash = 5, .id = 500 },
     };
 
-    while (true) {
-        const consumed = encoder.encode(items);
-        if (encoder.is_full) {
-            break;
-        }
-        try std.testing.expectEqual(5, consumed);
-    }
-
-    var block: [32]u8 = undefined;
-    try std.testing.expect(encoder.getBlock(&block));
+    var block: [64]u8 = undefined;
+    const consumed = encoder.encodeBlock(items, &block);
+    try std.testing.expectEqual(5, consumed);
 
     const header = decodeBlockHeader(&block);
     try std.testing.expectEqual(5, header.num_items);
