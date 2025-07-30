@@ -20,75 +20,7 @@ pub const min_block_size = streamvbyte.MIN_BLOCK_SIZE;
 pub const max_block_size = streamvbyte.MAX_BLOCK_SIZE;
 
 pub fn maxItemsPerBlock(block_size: usize) usize {
-    return (block_size - 2) / (2 * min_varint32_size);
-}
-
-const min_varint32_size = 1;
-const max_varint32_size = 5;
-
-fn varint32Size(value: u32) usize {
-    if (value < (1 << 7)) {
-        return 1;
-    }
-    if (value < (1 << 14)) {
-        return 2;
-    }
-    if (value < (1 << 21)) {
-        return 3;
-    }
-    if (value < (1 << 28)) {
-        return 4;
-    }
-    return max_varint32_size;
-}
-
-test "check varint32Size" {
-    try testing.expectEqual(1, varint32Size(1));
-    try testing.expectEqual(2, varint32Size(1000));
-    try testing.expectEqual(3, varint32Size(100000));
-    try testing.expectEqual(4, varint32Size(10000000));
-    try testing.expectEqual(5, varint32Size(1000000000));
-    try testing.expectEqual(5, varint32Size(math.maxInt(u32)));
-}
-
-fn writeVarint32(buf: []u8, value: u32) usize {
-    assert(buf.len >= varint32Size(value));
-    var v = value;
-    var i: usize = 0;
-    while (i < max_varint32_size) : (i += 1) {
-        buf[i] = @intCast(v & 0x7F);
-        v >>= 7;
-        if (v == 0) {
-            return i + 1;
-        }
-        buf[i] |= 0x80;
-    }
-    unreachable;
-}
-
-fn readVarint32(buf: []const u8) struct { value: u32, size: usize } {
-    var v: u32 = 0;
-    var shift: u5 = 0;
-    var i: usize = 0;
-    while (i < @min(max_varint32_size, buf.len)) : (i += 1) {
-        const b = buf[i];
-        v |= @as(u32, @intCast(b & 0x7F)) << shift;
-        if (b & 0x80 == 0) {
-            return .{ .value = v, .size = i + 1 };
-        }
-        shift += 7;
-    }
-    return .{ .value = v, .size = i };
-}
-
-test "check writeVarint32" {
-    var buf: [max_varint32_size]u8 = undefined;
-
-    try std.testing.expectEqual(1, writeVarint32(&buf, 1));
-    try std.testing.expectEqualSlices(u8, &[_]u8{0x01}, buf[0..1]);
-
-    try std.testing.expectEqual(2, writeVarint32(&buf, 1000));
-    try std.testing.expectEqualSlices(u8, &[_]u8{ 0xe8, 0x07 }, buf[0..2]);
+    return block_size / 2;
 }
 
 pub const max_file_name_size = 64;
@@ -111,7 +43,7 @@ pub fn decodeBlockHeader(data: []const u8, min_doc_id: u32) !BlockHeader {
 
 pub fn readBlock(data: []const u8, items: *std.ArrayList(Item), min_doc_id: u32) !void {
     _ = min_doc_id; // StreamVByte handles doc IDs differently
-    
+
     const header = streamvbyte.decodeBlockHeader(data);
     if (header.num_items == 0) {
         items.clearRetainingCapacity();
@@ -140,12 +72,12 @@ pub fn readBlock(data: []const u8, items: *std.ArrayList(Item), min_doc_id: u32)
 
 pub fn encodeBlock(data: []u8, reader: anytype, min_doc_id: u32) !u16 {
     _ = min_doc_id; // StreamVByte handles doc IDs differently
-    
+
     var encoder = streamvbyte.BlockEncoder.init();
-    
+
     // Collect items as we go, one by one, and let the encoder determine when to stop
     var items_buffer: [streamvbyte.MAX_ITEMS_PER_BLOCK * 2]Item = undefined;
-    
+
     // First, collect up to MAX_ITEMS_PER_BLOCK * 2 items
     var items_available: usize = 0;
     while (items_available < items_buffer.len) {
@@ -162,7 +94,7 @@ pub fn encodeBlock(data: []u8, reader: anytype, min_doc_id: u32) !u16 {
 
     // Now encode and get the actual consumption
     const consumed = encoder.encodeBlock(items_buffer[0..items_available], data);
-    
+
     // We've already advanced the reader for all items we collected, but only some were consumed.
     // The reader design assumes we won't over-read, so this is a fundamental issue.
     // For now, we'll have to live with this limitation - the caller should ensure
