@@ -138,7 +138,7 @@ fn getTaskToRun(self: *Self) ?*Queue.Node {
 
     while (!self.stopping) {
         const task = self.queue.popFirst() orelse {
-            self.queue_not_empty.timedWait(&self.queue_mutex, std.time.us_per_min) catch {};
+            self.queue_not_empty.timedWait(&self.queue_mutex, std.time.ns_per_min) catch {};
             continue;
         };
         task.prev = null;
