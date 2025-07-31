@@ -373,7 +373,7 @@ fn maybeScheduleCheckpoint(self: *Self) void {
 }
 
 pub fn waitForReady(self: *Self, timeout_ms: u32) !void {
-    try self.is_ready.timedWait(timeout_ms * std.time.us_per_ms);
+    try self.is_ready.timedWait(@as(u64, timeout_ms) * std.time.ns_per_ms);
 }
 
 pub fn checkReady(self: *Self) !void {
