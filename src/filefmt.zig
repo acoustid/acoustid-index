@@ -35,11 +35,6 @@ pub fn buildSegmentFileName(buf: []u8, info: SegmentInfo) []u8 {
 // Use StreamVByte block header
 const BlockHeader = streamvbyte.BlockHeader;
 
-pub fn decodeBlockHeader(data: []const u8, min_doc_id: u32) !BlockHeader {
-    assert(data.len >= min_block_size);
-    _ = min_doc_id; // StreamVByte handles doc IDs differently
-    return streamvbyte.decodeBlockHeader(data);
-}
 
 pub fn readBlock(data: []const u8, items: *std.ArrayList(Item), min_doc_id: u32) !void {
 
@@ -136,7 +131,7 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
         items.items,
     );
 
-    const header = try decodeBlockHeader(block_data[0..], min_doc_id);
+    const header = streamvbyte.decodeBlockHeader(block_data[0..]);
     try testing.expectEqual(items.items.len, header.num_items);
     try testing.expectEqual(items.items[0].hash, header.first_hash);
 }
@@ -377,7 +372,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     while (ptr + block_size <= raw_data.len) {
         const block_data = raw_data[ptr .. ptr + block_size];
         ptr += block_size;
-        const block_header = try decodeBlockHeader(block_data, segment.min_doc_id);
+        const block_header = streamvbyte.decodeBlockHeader(block_data);
         if (block_header.num_items == 0) {
             break;
         }
