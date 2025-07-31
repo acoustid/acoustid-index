@@ -42,7 +42,6 @@ pub fn decodeBlockHeader(data: []const u8, min_doc_id: u32) !BlockHeader {
 }
 
 pub fn readBlock(data: []const u8, items: *std.ArrayList(Item), min_doc_id: u32) !void {
-    _ = min_doc_id; // StreamVByte handles doc IDs differently
 
     const header = streamvbyte.decodeBlockHeader(data);
     if (header.num_items == 0) {
@@ -62,7 +61,7 @@ pub fn readBlock(data: []const u8, items: *std.ArrayList(Item), min_doc_id: u32)
     var docids: [streamvbyte.MAX_ITEMS_PER_BLOCK]u32 = undefined;
 
     _ = streamvbyte.decodeBlockHashes(header, data, &hashes);
-    _ = streamvbyte.decodeBlockDocids(header, hashes[0..header.num_items], data, &docids);
+    _ = streamvbyte.decodeBlockDocids(header, hashes[0..header.num_items], data, min_doc_id, &docids);
 
     for (0..header.num_items) |i| {
         const item = items.addOneAssumeCapacity();
@@ -71,8 +70,6 @@ pub fn readBlock(data: []const u8, items: *std.ArrayList(Item), min_doc_id: u32)
 }
 
 pub fn encodeBlock(data: []u8, reader: anytype, min_doc_id: u32) !u16 {
-    _ = min_doc_id; // StreamVByte handles doc IDs differently
-
     var encoder = streamvbyte.BlockEncoder.init();
 
     // Collect items as we go, one by one, and let the encoder determine when to stop
@@ -93,7 +90,7 @@ pub fn encodeBlock(data: []u8, reader: anytype, min_doc_id: u32) !u16 {
     }
 
     // Now encode and get the actual consumption
-    const consumed = encoder.encodeBlock(items_buffer[0..items_available], data);
+    const consumed = encoder.encodeBlock(items_buffer[0..items_available], min_doc_id, data);
 
     // We've already advanced the reader for all items we collected, but only some were consumed.
     // The reader design assumes we won't over-read, so this is a fundamental issue.

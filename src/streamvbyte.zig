@@ -123,7 +123,7 @@ pub fn decodeBlockHashes(header: BlockHeader, in: []const u8, out: []u32) usize 
     return out.len - out_ptr.len;
 }
 
-pub fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u8, out: []u32) usize {
+pub fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u8, min_doc_id: u32, out: []u32) usize {
     const num_quads = (header.num_items + 3) / 4;
 
     var in_ptr = in[BLOCK_HEADER_SIZE + header.docid_list_offset ..];
@@ -149,9 +149,20 @@ pub fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u
         remaining = 0;
     }
 
-    // Apply delta decoding for docids
+    // First item is always absolute, add min_doc_id back
+    if (header.num_items > 0) {
+        out[0] = out[0] + min_doc_id;
+    }
+
+    // Apply delta decoding for docids and add min_doc_id back to absolute values
     for (1..header.num_items) |i| {
-        out[i] = if (hashes[i] == hashes[i - 1]) out[i] +% out[i - 1] else out[i];
+        if (hashes[i] == hashes[i - 1]) {
+            // Same hash - this is a delta, just add to previous
+            out[i] = out[i] + out[i - 1];
+        } else {
+            // Different hash - this was an absolute value, add min_doc_id back
+            out[i] = out[i] + min_doc_id;
+        }
     }
 
     return out.len - out_ptr.len;
@@ -248,7 +259,7 @@ pub const BlockEncoder = struct {
         return .{};
     }
 
-    pub fn encodeChunk(self: *Self, items: []const Item, block_size: usize, comptime full_chunk: bool) !void {
+    pub fn encodeChunk(self: *Self, items: []const Item, min_doc_id: u32, block_size: usize, comptime full_chunk: bool) !void {
         std.debug.assert(items.len > 0);
         std.debug.assert(items.len <= 4);
 
@@ -268,8 +279,9 @@ pub const BlockEncoder = struct {
                 std.debug.assert(items[i].id >= self.last_docid);
                 chunk_docids[i] = items[i].id - self.last_docid;
             } else {
-                // Different hash, encode absolute docid
-                chunk_docids[i] = items[i].id;
+                // Different hash, encode absolute docid minus min_doc_id
+                std.debug.assert(items[i].id >= min_doc_id);
+                chunk_docids[i] = items[i].id - min_doc_id;
             }
             self.last_hash = items[i].hash;
             self.last_docid = items[i].id;
@@ -312,7 +324,8 @@ pub const BlockEncoder = struct {
     /// Encode items into a block and return the number of items consumed.
     /// Takes more items than needed to fill one block, always returns a full block.
     /// Returns the number of items consumed from the input.
-    pub fn encodeBlock(self: *Self, items: []const Item, out: []u8) usize {
+    /// min_doc_id is subtracted from absolute docid values to reduce storage size.
+    pub fn encodeBlock(self: *Self, items: []const Item, min_doc_id: u32, out: []u8) usize {
         const block_size = out.len;
 
         if (items.len == 0) {
@@ -325,7 +338,7 @@ pub const BlockEncoder = struct {
         // Reset encoder state for this block
         self.num_items = 0;
         self.last_hash = first_hash;
-        self.last_docid = 0;
+        self.last_docid = min_doc_id;
         self.out_hashes_len = 0;
         self.out_hashes_control_len = 0;
         self.out_docids_len = 0;
@@ -334,7 +347,7 @@ pub const BlockEncoder = struct {
         // Try to encode items in chunks of 4
         var items_ptr = items;
         while (items_ptr.len >= 4) {
-            self.encodeChunk(items_ptr[0..4], block_size, true) catch {
+            self.encodeChunk(items_ptr[0..4], min_doc_id, block_size, true) catch {
                 items_ptr = items_ptr[0..0];
                 break;
             };
@@ -343,7 +356,7 @@ pub const BlockEncoder = struct {
 
         // Try to encode remaining items in partial chunk (max 3 items)
         if (items_ptr.len > 0) {
-            self.encodeChunk(items_ptr, block_size, false) catch {};
+            self.encodeChunk(items_ptr, min_doc_id, block_size, false) catch {};
         }
 
         // Write the block
@@ -402,8 +415,9 @@ test "BlockEncoder" {
         .{ .hash = 5, .id = 500 },
     };
 
+    const min_doc_id: u32 = 50;
     var block: [64]u8 = undefined;
-    const consumed = encoder.encodeBlock(items, &block);
+    const consumed = encoder.encodeBlock(items, min_doc_id, &block);
     try std.testing.expectEqual(5, consumed);
 
     const header = decodeBlockHeader(&block);
@@ -416,7 +430,7 @@ test "BlockEncoder" {
     try std.testing.expectEqualSlices(u32, &[_]u32{ 1, 1, 3, 4, 5 }, hashes[0..num_hashes]);
 
     var docids: [MAX_ITEMS_PER_BLOCK]u32 = undefined;
-    const num_docids = decodeBlockDocids(header, hashes[0..num_hashes], &block, &docids);
+    const num_docids = decodeBlockDocids(header, hashes[0..num_hashes], &block, min_doc_id, &docids);
     try std.testing.expectEqual(5, num_docids);
     try std.testing.expectEqualSlices(u32, &[_]u32{ 100, 200, 300, 400, 500 }, docids[0..num_docids]);
 }
