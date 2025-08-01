@@ -8,6 +8,7 @@ const fs = std.fs;
 const log = std.log.scoped(.filefmt);
 
 const msgpack = @import("msgpack");
+const streamvbyte = @import("streamvbyte.zig");
 
 const Item = @import("segment.zig").Item;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
@@ -15,79 +16,11 @@ const MemorySegment = @import("MemorySegment.zig");
 const FileSegment = @import("FileSegment.zig");
 
 pub const default_block_size = 1024;
-pub const min_block_size = 256;
-pub const max_block_size = 4096;
+pub const min_block_size = streamvbyte.MIN_BLOCK_SIZE;
+pub const max_block_size = streamvbyte.MAX_BLOCK_SIZE;
 
 pub fn maxItemsPerBlock(block_size: usize) usize {
-    return (block_size - 2) / (2 * min_varint32_size);
-}
-
-const min_varint32_size = 1;
-const max_varint32_size = 5;
-
-fn varint32Size(value: u32) usize {
-    if (value < (1 << 7)) {
-        return 1;
-    }
-    if (value < (1 << 14)) {
-        return 2;
-    }
-    if (value < (1 << 21)) {
-        return 3;
-    }
-    if (value < (1 << 28)) {
-        return 4;
-    }
-    return max_varint32_size;
-}
-
-test "check varint32Size" {
-    try testing.expectEqual(1, varint32Size(1));
-    try testing.expectEqual(2, varint32Size(1000));
-    try testing.expectEqual(3, varint32Size(100000));
-    try testing.expectEqual(4, varint32Size(10000000));
-    try testing.expectEqual(5, varint32Size(1000000000));
-    try testing.expectEqual(5, varint32Size(math.maxInt(u32)));
-}
-
-fn writeVarint32(buf: []u8, value: u32) usize {
-    assert(buf.len >= varint32Size(value));
-    var v = value;
-    var i: usize = 0;
-    while (i < max_varint32_size) : (i += 1) {
-        buf[i] = @intCast(v & 0x7F);
-        v >>= 7;
-        if (v == 0) {
-            return i + 1;
-        }
-        buf[i] |= 0x80;
-    }
-    unreachable;
-}
-
-fn readVarint32(buf: []const u8) struct { value: u32, size: usize } {
-    var v: u32 = 0;
-    var shift: u5 = 0;
-    var i: usize = 0;
-    while (i < @min(max_varint32_size, buf.len)) : (i += 1) {
-        const b = buf[i];
-        v |= @as(u32, @intCast(b & 0x7F)) << shift;
-        if (b & 0x80 == 0) {
-            return .{ .value = v, .size = i + 1 };
-        }
-        shift += 7;
-    }
-    return .{ .value = v, .size = i };
-}
-
-test "check writeVarint32" {
-    var buf: [max_varint32_size]u8 = undefined;
-
-    try std.testing.expectEqual(1, writeVarint32(&buf, 1));
-    try std.testing.expectEqualSlices(u8, &[_]u8{0x01}, buf[0..1]);
-
-    try std.testing.expectEqual(2, writeVarint32(&buf, 1000));
-    try std.testing.expectEqualSlices(u8, &[_]u8{ 0xe8, 0x07 }, buf[0..2]);
+    return block_size / 2;
 }
 
 pub const max_file_name_size = 64;
@@ -99,103 +32,82 @@ pub fn buildSegmentFileName(buf: []u8, info: SegmentInfo) []u8 {
     return std.fmt.bufPrint(buf, segment_file_name_fmt, .{ info.version, info.merges }) catch unreachable;
 }
 
-const BlockHeader = struct {
-    num_items: u16,
-    first_item: Item,
-};
-
-pub fn decodeBlockHeader(data: []const u8, min_doc_id: u32) !BlockHeader {
-    assert(data.len >= min_block_size);
-
-    const num_items = std.mem.readInt(u16, data[0..2], .little);
-    if (num_items == 0) {
-        return .{ .num_items = 0, .first_item = .{ .hash = 0, .id = 0 } };
-    }
-
-    var ptr: usize = 2;
-    const hash = readVarint32(data[ptr..]);
-    ptr += hash.size;
-    const id = readVarint32(data[ptr..]);
-    ptr += id.size;
-
-    return .{
-        .num_items = num_items,
-        .first_item = Item{ .hash = hash.value, .id = id.value + min_doc_id },
-    };
-}
+// Use StreamVByte block header
+const BlockHeader = streamvbyte.BlockHeader;
 
 pub fn readBlock(data: []const u8, items: *std.ArrayList(Item), min_doc_id: u32) !void {
-    var ptr: usize = 0;
-
-    if (data.len < 2) {
-        return error.InvalidBlock;
+    const header = streamvbyte.decodeBlockHeader(data);
+    if (header.num_items == 0) {
+        items.clearRetainingCapacity();
+        return;
     }
 
-    const total_items = std.mem.readInt(u16, data[0..2], .little);
-    ptr += 2;
+    // Sanity check the header
+    if (header.num_items > streamvbyte.MAX_ITEMS_PER_BLOCK) {
+        return error.InvalidBlock;
+    }
 
     items.clearRetainingCapacity();
-    try items.ensureUnusedCapacity(total_items);
+    try items.ensureUnusedCapacity(header.num_items);
 
-    var last_hash: u32 = 0;
-    var last_doc_id: u32 = 0;
+    var hashes: [streamvbyte.MAX_ITEMS_PER_BLOCK]u32 = undefined;
+    var docids: [streamvbyte.MAX_ITEMS_PER_BLOCK]u32 = undefined;
 
-    var num_items: u16 = 0;
-    while (num_items < total_items) {
-        if (ptr + 2 * min_varint32_size > data.len) {
-            return error.InvalidBlock;
-        }
-        const diff_hash = readVarint32(data[ptr..]);
-        ptr += diff_hash.size;
-        const diff_doc_id = readVarint32(data[ptr..]);
-        ptr += diff_doc_id.size;
+    const num_hashes = streamvbyte.decodeBlockHashes(header, data, &hashes);
+    const num_docids = streamvbyte.decodeBlockDocids(header, hashes[0..header.num_items], data, min_doc_id, &docids);
+    
+    assert(num_hashes == header.num_items);
+    assert(num_docids == header.num_items);
 
-        last_hash += diff_hash.value;
-        last_doc_id = if (diff_hash.value > 0) diff_doc_id.value + min_doc_id else last_doc_id + diff_doc_id.value;
-
+    for (0..header.num_items) |i| {
         const item = items.addOneAssumeCapacity();
-        item.* = .{ .hash = last_hash, .id = last_doc_id };
-        num_items += 1;
-    }
-
-    if (num_items < total_items) {
-        return error.InvalidBlock;
+        item.* = .{ .hash = hashes[i], .id = docids[i] };
     }
 }
 
-pub fn encodeBlock(data: []u8, reader: anytype, min_doc_id: u32) !u16 {
-    assert(data.len >= 2);
-
-    var ptr: usize = 2;
-    var num_items: u16 = 0;
-    var last_hash: u32 = 0;
-    var last_doc_id: u32 = 0;
+pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime block_size: u32) !SegmentFileFooter {
+    var encoder = streamvbyte.BlockEncoder.init();
+    var items_buffer: [streamvbyte.MAX_ITEMS_PER_BLOCK]Item = undefined;
+    var items_in_buffer: usize = 0;
+    var num_items: u32 = 0;
+    var num_blocks: u32 = 0;
+    var crc = std.hash.crc.Crc64Xz.init();
+    var block_data: [block_size]u8 = undefined;
 
     while (true) {
-        const item = try reader.read() orelse break;
-        assert(item.hash > last_hash or (item.hash == last_hash and item.id >= last_doc_id));
+        // Fill buffer with new items from reader
+        while (items_in_buffer < items_buffer.len) {
+            const item = try reader.read() orelse break;
+            items_buffer[items_in_buffer] = item;
+            items_in_buffer += 1;
+            reader.advance();
+        }
 
-        const diff_hash = item.hash - last_hash;
-        const diff_doc_id = if (diff_hash > 0) item.id - min_doc_id else item.id - last_doc_id;
-
-        if (ptr + varint32Size(diff_hash) + varint32Size(diff_doc_id) > data.len) {
+        // Encode a block from the buffer
+        const consumed = encoder.encodeBlock(items_buffer[0..items_in_buffer], min_doc_id, &block_data);
+        try writer.writeAll(&block_data);
+        if (consumed == 0) {
             break;
         }
 
-        ptr += writeVarint32(data[ptr..], diff_hash);
-        ptr += writeVarint32(data[ptr..], diff_doc_id);
+        num_items += @intCast(consumed);
+        num_blocks += 1;
+        crc.update(&block_data);
 
-        last_hash = item.hash;
-        last_doc_id = item.id;
-
-        num_items += 1;
-        reader.advance();
+        // Move unused items to front of buffer
+        const remaining = items_in_buffer - consumed;
+        if (remaining > 0) {
+            std.mem.copyForwards(Item, items_buffer[0..remaining], items_buffer[consumed..items_in_buffer]);
+        }
+        items_in_buffer = remaining;
     }
 
-    std.mem.writeInt(u16, data[0..2], num_items, .little);
-    @memset(data[ptr..], 0);
-
-    return num_items;
+    return SegmentFileFooter{
+        .magic = segment_file_footer_magic_v1,
+        .num_items = num_items,
+        .num_blocks = num_blocks,
+        .checksum = crc.final(),
+    };
 }
 
 test "writeBlock/readBlock/readFirstItemFromBlock" {
@@ -214,8 +126,8 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
 
     const min_doc_id: u32 = 1;
 
-    var reader = segment.reader();
-    const num_items = try encodeBlock(block_data[0..], &reader, min_doc_id);
+    var encoder = streamvbyte.BlockEncoder.init();
+    const num_items = encoder.encodeBlock(segment.items.items, min_doc_id, block_data[0..]);
     try testing.expectEqual(segment.items.items.len, num_items);
 
     var items = std.ArrayList(Item).init(std.testing.allocator);
@@ -234,9 +146,9 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
         items.items,
     );
 
-    const header = try decodeBlockHeader(block_data[0..], min_doc_id);
+    const header = streamvbyte.decodeBlockHeader(block_data[0..]);
     try testing.expectEqual(items.items.len, header.num_items);
-    try testing.expectEqual(items.items[0], header.first_item);
+    try testing.expectEqual(items.items[0].hash, header.first_hash);
 }
 
 const segment_file_header_magic_v1: u32 = 0x53474D31; // "SGM1" in big endian
@@ -341,28 +253,7 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
     const padding_size = block_size - counting_writer.bytes_written % block_size;
     try writer.writeByteNTimes(0, padding_size);
 
-    var num_items: u32 = 0;
-    var num_blocks: u32 = 0;
-    var crc = std.hash.crc.Crc64Xz.init();
-
-    var block_data: [block_size]u8 = undefined;
-    while (true) {
-        const n = try encodeBlock(block_data[0..], reader, segment.min_doc_id);
-        try writer.writeAll(block_data[0..]);
-        if (n == 0) {
-            break;
-        }
-        num_items += n;
-        num_blocks += 1;
-        crc.update(block_data[0..]);
-    }
-
-    const footer = SegmentFileFooter{
-        .magic = segment_file_footer_magic_v1,
-        .num_items = num_items,
-        .num_blocks = num_blocks,
-        .checksum = crc.final(),
-    };
+    const footer = try writeBlocks(reader, writer, segment.min_doc_id, block_size);
     try packer.write(footer);
 
     try buffered_writer.flush();
@@ -475,17 +366,18 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     while (ptr + block_size <= raw_data.len) {
         const block_data = raw_data[ptr .. ptr + block_size];
         ptr += block_size;
-        const block_header = try decodeBlockHeader(block_data, segment.min_doc_id);
+        const block_header = streamvbyte.decodeBlockHeader(block_data);
         if (block_header.num_items == 0) {
             break;
         }
-        segment.index.appendAssumeCapacity(block_header.first_item.hash);
+        segment.index.appendAssumeCapacity(block_header.first_hash);
         num_items += block_header.num_items;
         num_blocks += 1;
         crc.update(block_data);
     }
     const blocks_data_end = ptr;
     segment.blocks = raw_data[blocks_data_start..blocks_data_end];
+    segment.num_blocks = num_blocks;
 
     try fixed_buffer_stream.seekBy(@intCast(segment.blocks.len));
 

@@ -13,6 +13,7 @@ const SegmentStatus = @import("segment.zig").SegmentStatus;
 const metrics = @import("metrics.zig");
 
 const filefmt = @import("filefmt.zig");
+const streamvbyte = @import("streamvbyte.zig");
 
 const Self = @This();
 
@@ -33,6 +34,7 @@ block_size: usize = 0,
 blocks: []const u8,
 merged: u32 = 0,
 num_items: usize = 0,
+num_blocks: usize = 0,
 delete_in_deinit: bool = false,
 
 mmaped_file: ?std.fs.File = null,
@@ -69,6 +71,7 @@ pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
 }
 
 pub fn getBlockData(self: Self, block: usize) []const u8 {
+    std.debug.assert(block < self.num_blocks);
     return self.blocks[block * self.block_size .. (block + 1) * self.block_size];
 }
 
@@ -80,8 +83,11 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
     var prev_block_no: usize = std.math.maxInt(usize);
     var prev_block_range_start: usize = 0;
 
-    var block_items = std.ArrayList(Item).init(results.allocator);
-    defer block_items.deinit();
+    var block_hashes: [streamvbyte.MAX_ITEMS_PER_BLOCK]u32 = undefined;
+    var block_docids: [streamvbyte.MAX_ITEMS_PER_BLOCK]u32 = undefined;
+    var current_block_header: streamvbyte.BlockHeader = .{ .num_items = 0, .docid_list_offset = 0, .first_hash = 0 };
+    var hashes_loaded: bool = false;
+    var docids_loaded: bool = false;
 
     // Let's say we have blocks like this:
     //
@@ -104,13 +110,42 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
         while (block_no < self.index.items.len and self.index.items[block_no] <= hash) : (block_no += 1) {
             if (block_no != prev_block_no) {
                 prev_block_no = block_no;
+                hashes_loaded = false;
+                docids_loaded = false;
+            }
+
+            // Load hashes if not already loaded for this block
+            if (!hashes_loaded) {
                 const block_data = self.getBlockData(block_no);
-                try filefmt.readBlock(block_data, &block_items, self.min_doc_id);
+                current_block_header = streamvbyte.decodeBlockHeader(block_data);
+                const num_hashes = streamvbyte.decodeBlockHashes(current_block_header, block_data, &block_hashes);
+                assert(num_hashes == current_block_header.num_items);
+                hashes_loaded = true;
             }
-            const matches = std.sort.equalRange(Item, block_items.items, Item{ .hash = hash, .id = 0 }, Item.orderByHash);
-            for (matches[0]..matches[1]) |j| {
-                try results.incr(block_items.items[j].id, self.info.version);
+
+            const num_items = current_block_header.num_items;
+
+            if (num_items == 0) {
+                continue;
             }
+
+            // Search for hash matches in the decoded hashes
+            const matches = std.sort.equalRange(u32, block_hashes[0..num_items], hash, compareHashes);
+            if (matches[1] > matches[0]) {
+                // We have matches - load docids if not already loaded
+                if (!docids_loaded) {
+                    const block_data = self.getBlockData(block_no);
+                    const num_docids = streamvbyte.decodeBlockDocids(current_block_header, block_hashes[0..num_items], block_data, self.min_doc_id, &block_docids);
+                    assert(num_docids == current_block_header.num_items);
+                    docids_loaded = true;
+                }
+
+                // Process the matched docids
+                for (matches[0]..matches[1]) |j| {
+                    try results.incr(block_docids[j], self.info.version);
+                }
+            }
+
             num_docs += matches[1] - matches[0];
             if (num_docs > 1000) {
                 break; // XXX explain why
