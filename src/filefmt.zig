@@ -64,7 +64,7 @@ pub fn readBlock(data: []const u8, items: *std.ArrayList(Item), min_doc_id: u32)
 
 pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime block_size: u32) !SegmentFileFooter {
     var encoder = streamvbyte.BlockEncoder.init();
-    var items_buffer: [streamvbyte.MAX_ITEMS_PER_BLOCK * 2]Item = undefined;
+    var items_buffer: [streamvbyte.MAX_ITEMS_PER_BLOCK]Item = undefined;
     var items_in_buffer: usize = 0;
     var num_items: u32 = 0;
     var num_blocks: u32 = 0;
@@ -78,14 +78,6 @@ pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime b
             items_buffer[items_in_buffer] = item;
             items_in_buffer += 1;
             reader.advance();
-        }
-
-        // If no items in buffer, we're done
-        if (items_in_buffer == 0) {
-            // Write final empty block
-            @memset(&block_data, 0);
-            try writer.writeAll(&block_data);
-            break;
         }
 
         // Encode a block from the buffer
