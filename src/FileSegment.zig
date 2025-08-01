@@ -118,7 +118,8 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
             if (!hashes_loaded) {
                 const block_data = self.getBlockData(block_no);
                 current_block_header = streamvbyte.decodeBlockHeader(block_data);
-                _ = streamvbyte.decodeBlockHashes(current_block_header, block_data, &block_hashes);
+                const num_hashes = streamvbyte.decodeBlockHashes(current_block_header, block_data, &block_hashes);
+                assert(num_hashes == current_block_header.num_items);
                 hashes_loaded = true;
             }
 
@@ -134,7 +135,8 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
                 // We have matches - load docids if not already loaded
                 if (!docids_loaded) {
                     const block_data = self.getBlockData(block_no);
-                    _ = streamvbyte.decodeBlockDocids(current_block_header, block_hashes[0..num_items], block_data, self.min_doc_id, &block_docids);
+                    const num_docids = streamvbyte.decodeBlockDocids(current_block_header, block_hashes[0..num_items], block_data, self.min_doc_id, &block_docids);
+                    assert(num_docids == current_block_header.num_items);
                     docids_loaded = true;
                 }
 

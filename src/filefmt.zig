@@ -53,8 +53,11 @@ pub fn readBlock(data: []const u8, items: *std.ArrayList(Item), min_doc_id: u32)
     var hashes: [streamvbyte.MAX_ITEMS_PER_BLOCK]u32 = undefined;
     var docids: [streamvbyte.MAX_ITEMS_PER_BLOCK]u32 = undefined;
 
-    _ = streamvbyte.decodeBlockHashes(header, data, &hashes);
-    _ = streamvbyte.decodeBlockDocids(header, hashes[0..header.num_items], data, min_doc_id, &docids);
+    const num_hashes = streamvbyte.decodeBlockHashes(header, data, &hashes);
+    const num_docids = streamvbyte.decodeBlockDocids(header, hashes[0..header.num_items], data, min_doc_id, &docids);
+    
+    assert(num_hashes == header.num_items);
+    assert(num_docids == header.num_items);
 
     for (0..header.num_items) |i| {
         const item = items.addOneAssumeCapacity();
