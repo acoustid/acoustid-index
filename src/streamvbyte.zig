@@ -151,11 +151,6 @@ pub fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u
         remaining = 0;
     }
 
-    for (0..header.num_items) |i| {
-        // Ensure no negative values after adding min_doc_id
-        std.debug.print("Hash {d}, DocID {d}\n", .{ hashes[i], out[i] });
-    }
-
     // First item is always absolute, add min_doc_id back
     if (header.num_items > 0) {
         out[0] = out[0] + min_doc_id;
