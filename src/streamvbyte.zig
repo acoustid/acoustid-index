@@ -47,15 +47,15 @@ pub fn svbDecodeQuad0124(in_control: u8, in_data: []const u8, out: []u32) usize 
         if (control == 0) {
             out[i] = 0;
         } else if (control == 1) {
-            if (in_data_ptr.len < 1) break;
+            std.debug.assert(in_data_ptr.len >= 1);
             out[i] = std.mem.readInt(u8, in_data_ptr[0..1], .little);
             in_data_ptr = in_data_ptr[1..];
         } else if (control == 2) {
-            if (in_data_ptr.len < 2) break;
+            std.debug.assert(in_data_ptr.len >= 2);
             out[i] = std.mem.readInt(u16, in_data_ptr[0..2], .little);
             in_data_ptr = in_data_ptr[2..];
         } else if (control == 3) {
-            if (in_data_ptr.len < 4) break;
+            std.debug.assert(in_data_ptr.len >= 4);
             out[i] = std.mem.readInt(u32, in_data_ptr[0..4], .little);
             in_data_ptr = in_data_ptr[4..];
         }
@@ -68,19 +68,19 @@ pub fn svbDecodeQuad1234(in_control: u8, in_data: []const u8, out: []u32) usize 
     inline for (0..4) |i| {
         const control = (in_control >> (2 * i)) & 0x03;
         if (control == 0) {
-            if (in_data_ptr.len < 1) break;
+            std.debug.assert(in_data_ptr.len >= 1);
             out[i] = std.mem.readInt(u8, in_data_ptr[0..1], .little);
             in_data_ptr = in_data_ptr[1..];
         } else if (control == 1) {
-            if (in_data_ptr.len < 2) break;
+            std.debug.assert(in_data_ptr.len >= 2);
             out[i] = std.mem.readInt(u16, in_data_ptr[0..2], .little);
             in_data_ptr = in_data_ptr[2..];
         } else if (control == 2) {
-            if (in_data_ptr.len < 3) break;
+            std.debug.assert(in_data_ptr.len >= 3);
             out[i] = std.mem.readInt(u24, in_data_ptr[0..3], .little);
             in_data_ptr = in_data_ptr[3..];
         } else if (control == 3) {
-            if (in_data_ptr.len < 4) break;
+            std.debug.assert(in_data_ptr.len >= 4);
             out[i] = std.mem.readInt(u32, in_data_ptr[0..4], .little);
             in_data_ptr = in_data_ptr[4..];
         }
@@ -132,6 +132,8 @@ pub fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u
 
     var out_ptr = out;
 
+    std.debug.assert(out.len >= header.num_items);
+
     var remaining = header.num_items;
     while (remaining >= 4) {
         const consumed = svbDecodeQuad1234(in_control_ptr[0], in_data_ptr, out_ptr);
@@ -147,6 +149,11 @@ pub fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u
         in_data_ptr = in_data_ptr[consumed..];
         out_ptr = out_ptr[remaining..];
         remaining = 0;
+    }
+
+    for (0..header.num_items) |i| {
+        // Ensure no negative values after adding min_doc_id
+        std.debug.print("Hash {d}, DocID {d}\n", .{ hashes[i], out[i] });
     }
 
     // First item is always absolute, add min_doc_id back

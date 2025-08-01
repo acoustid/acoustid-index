@@ -199,3 +199,69 @@ test "index, multiple fingerprints with the same hashes" {
         },
     }, collector.getResults());
 }
+
+test "index insert many" {
+    var tmp_dir = std.testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    var scheduler = Scheduler.init(std.testing.allocator);
+    defer scheduler.deinit();
+
+    try scheduler.start(2);
+
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
+    defer index.deinit();
+
+    try index.open(true);
+
+    const batch_size = 1000;
+    const total_count = 50000;
+    const max_hash = 1 << 18; // 2^18
+    var hashes: [100]u32 = undefined;
+
+    // Insert fingerprints in batches
+    var batch = std.ArrayList(Change).init(std.testing.allocator);
+    defer batch.deinit();
+
+    var i: u32 = 1;
+    while (i <= total_count) : (i += 1) {
+        // Generate hashes with deterministic seed based on ID
+        var prng = std.Random.DefaultPrng.init(i);
+        const rand = prng.random();
+        for (&hashes) |*h| {
+            h.* = rand.int(u32) % max_hash;
+        }
+
+        try batch.append(.{ .insert = .{
+            .id = i,
+            .hashes = try std.testing.allocator.dupe(u32, &hashes),
+        } });
+
+        if (batch.items.len == batch_size or i == total_count) {
+            try index.update(batch.items);
+
+            // Clean up allocated hashes
+            for (batch.items) |change| {
+                std.testing.allocator.free(change.insert.hashes);
+            }
+            batch.clearRetainingCapacity();
+        }
+    }
+
+    // Wait for index to be ready after all updates
+    try index.waitForReady(30000);
+
+    // Verify we can find fingerprint with ID 100 (same as Python test)
+    var prng = std.Random.DefaultPrng.init(100);
+    const rand = prng.random();
+    for (&hashes) |*h| {
+        h.* = rand.int(u32) % max_hash;
+    }
+
+    var collector = SearchResults.init(std.testing.allocator, .{});
+    defer collector.deinit();
+
+    try index.search(&hashes, &collector, .{});
+
+    try std.testing.expectEqualSlices(SearchResult, &.{.{ .id = 100, .score = hashes.len }}, collector.getResults());
+}
