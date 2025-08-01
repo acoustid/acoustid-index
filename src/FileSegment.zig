@@ -34,6 +34,7 @@ block_size: usize = 0,
 blocks: []const u8,
 merged: u32 = 0,
 num_items: usize = 0,
+num_blocks: usize = 0,
 delete_in_deinit: bool = false,
 
 mmaped_file: ?std.fs.File = null,
@@ -70,6 +71,7 @@ pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
 }
 
 pub fn getBlockData(self: Self, block: usize) []const u8 {
+    std.debug.assert(block < self.num_blocks);
     return self.blocks[block * self.block_size .. (block + 1) * self.block_size];
 }
 

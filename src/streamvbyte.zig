@@ -224,6 +224,7 @@ pub fn svbEncodeValue1234(in: u32, out_data: []u8, out_control: *u8, comptime in
 // Encode four 32-bit integers into a StreamVByte encoded byte array. (0124 variant)
 pub fn svbEncodeQuad0124(in: [4]u32, out_data: []u8, out_control: *u8) usize {
     var out_data_ptr = out_data;
+    out_control.* = 0;
     inline for (0..4) |i| {
         const size = svbEncodeValue0124(in[i], out_data_ptr, out_control, i);
         out_data_ptr = out_data_ptr[size..];
@@ -234,6 +235,7 @@ pub fn svbEncodeQuad0124(in: [4]u32, out_data: []u8, out_control: *u8) usize {
 // Encode four 32-bit integers into a StreamVByte encoded byte array. (1234 variant)
 pub fn svbEncodeQuad1234(in: [4]u32, out_data: []u8, out_control: *u8) usize {
     var out_data_ptr = out_data;
+    out_control.* = 0; // Reset control byte
     inline for (0..4) |i| {
         const size = svbEncodeValue1234(in[i], out_data_ptr, out_control, i);
         out_data_ptr = out_data_ptr[size..];

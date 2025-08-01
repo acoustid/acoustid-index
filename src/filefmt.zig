@@ -374,6 +374,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     }
     const blocks_data_end = ptr;
     segment.blocks = raw_data[blocks_data_start..blocks_data_end];
+    segment.num_blocks = num_blocks;
 
     try fixed_buffer_stream.seekBy(@intCast(segment.blocks.len));
 
