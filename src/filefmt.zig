@@ -35,9 +35,7 @@ pub fn buildSegmentFileName(buf: []u8, info: SegmentInfo) []u8 {
 // Use StreamVByte block header
 const BlockHeader = streamvbyte.BlockHeader;
 
-
 pub fn readBlock(data: []const u8, items: *std.ArrayList(Item), min_doc_id: u32) !void {
-
     const header = streamvbyte.decodeBlockHeader(data);
     if (header.num_items == 0) {
         items.clearRetainingCapacity();
@@ -64,35 +62,57 @@ pub fn readBlock(data: []const u8, items: *std.ArrayList(Item), min_doc_id: u32)
     }
 }
 
-pub fn encodeBlock(data: []u8, reader: anytype, min_doc_id: u32) !u16 {
+pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime block_size: u32) !SegmentFileFooter {
     var encoder = streamvbyte.BlockEncoder.init();
-
-    // Collect items as we go, one by one, and let the encoder determine when to stop
     var items_buffer: [streamvbyte.MAX_ITEMS_PER_BLOCK * 2]Item = undefined;
+    var items_in_buffer: usize = 0;
+    var num_items: u32 = 0;
+    var num_blocks: u32 = 0;
+    var crc = std.hash.crc.Crc64Xz.init();
+    var block_data: [block_size]u8 = undefined;
 
-    // First, collect up to MAX_ITEMS_PER_BLOCK * 2 items
-    var items_available: usize = 0;
-    while (items_available < items_buffer.len) {
-        const item = try reader.read() orelse break;
-        items_buffer[items_available] = item;
-        items_available += 1;
-        reader.advance();
+    while (true) {
+        // Fill buffer with new items from reader
+        while (items_in_buffer < items_buffer.len) {
+            const item = try reader.read() orelse break;
+            items_buffer[items_in_buffer] = item;
+            items_in_buffer += 1;
+            reader.advance();
+        }
+
+        // If no items in buffer, we're done
+        if (items_in_buffer == 0) {
+            // Write final empty block
+            @memset(&block_data, 0);
+            try writer.writeAll(&block_data);
+            break;
+        }
+
+        // Encode a block from the buffer
+        const consumed = encoder.encodeBlock(items_buffer[0..items_in_buffer], min_doc_id, &block_data);
+        try writer.writeAll(&block_data);
+        if (consumed == 0) {
+            break;
+        }
+
+        num_items += @intCast(consumed);
+        num_blocks += 1;
+        crc.update(&block_data);
+
+        // Move unused items to front of buffer
+        const remaining = items_in_buffer - consumed;
+        if (remaining > 0) {
+            std.mem.copyForwards(Item, items_buffer[0..remaining], items_buffer[consumed..items_in_buffer]);
+        }
+        items_in_buffer = remaining;
     }
 
-    if (items_available == 0) {
-        @memset(data, 0);
-        return 0;
-    }
-
-    // Now encode and get the actual consumption
-    const consumed = encoder.encodeBlock(items_buffer[0..items_available], min_doc_id, data);
-
-    // We've already advanced the reader for all items we collected, but only some were consumed.
-    // The reader design assumes we won't over-read, so this is a fundamental issue.
-    // For now, we'll have to live with this limitation - the caller should ensure
-    // that they handle partial consumption correctly.
-
-    return @intCast(consumed);
+    return SegmentFileFooter{
+        .magic = segment_file_footer_magic_v1,
+        .num_items = num_items,
+        .num_blocks = num_blocks,
+        .checksum = crc.final(),
+    };
 }
 
 test "writeBlock/readBlock/readFirstItemFromBlock" {
@@ -111,8 +131,8 @@ test "writeBlock/readBlock/readFirstItemFromBlock" {
 
     const min_doc_id: u32 = 1;
 
-    var reader = segment.reader();
-    const num_items = try encodeBlock(block_data[0..], &reader, min_doc_id);
+    var encoder = streamvbyte.BlockEncoder.init();
+    const num_items = encoder.encodeBlock(segment.items.items, min_doc_id, block_data[0..]);
     try testing.expectEqual(segment.items.items.len, num_items);
 
     var items = std.ArrayList(Item).init(std.testing.allocator);
@@ -238,28 +258,7 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
     const padding_size = block_size - counting_writer.bytes_written % block_size;
     try writer.writeByteNTimes(0, padding_size);
 
-    var num_items: u32 = 0;
-    var num_blocks: u32 = 0;
-    var crc = std.hash.crc.Crc64Xz.init();
-
-    var block_data: [block_size]u8 = undefined;
-    while (true) {
-        const n = try encodeBlock(block_data[0..], reader, segment.min_doc_id);
-        try writer.writeAll(block_data[0..]);
-        if (n == 0) {
-            break;
-        }
-        num_items += n;
-        num_blocks += 1;
-        crc.update(block_data[0..]);
-    }
-
-    const footer = SegmentFileFooter{
-        .magic = segment_file_footer_magic_v1,
-        .num_items = num_items,
-        .num_blocks = num_blocks,
-        .checksum = crc.final(),
-    };
+    const footer = try writeBlocks(reader, writer, segment.min_doc_id, block_size);
     try packer.write(footer);
 
     try buffered_writer.flush();
