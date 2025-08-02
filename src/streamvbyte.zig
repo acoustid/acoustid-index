@@ -1,6 +1,10 @@
 const std = @import("std");
 const Item = @import("segment.zig").Item;
 
+const c = @cImport({
+    @cInclude("streamvbyte_decode.h");
+});
+
 // Encode lists of (hash, docid) pairs into blocks, encoded with StreamVByte.
 // Each block has a fixed size and are written into a file, they need to be fixed size for easier indexing.
 
@@ -41,51 +45,13 @@ pub fn decodeBlockHeader(data: []const u8) BlockHeader {
 }
 
 pub fn svbDecodeQuad0124(in_control: u8, in_data: []const u8, out: []u32) usize {
-    var in_data_ptr = in_data;
-    inline for (0..4) |i| {
-        const control = (in_control >> (2 * i)) & 0x03;
-        if (control == 0) {
-            out[i] = 0;
-        } else if (control == 1) {
-            std.debug.assert(in_data_ptr.len >= 1);
-            out[i] = std.mem.readInt(u8, in_data_ptr[0..1], .little);
-            in_data_ptr = in_data_ptr[1..];
-        } else if (control == 2) {
-            std.debug.assert(in_data_ptr.len >= 2);
-            out[i] = std.mem.readInt(u16, in_data_ptr[0..2], .little);
-            in_data_ptr = in_data_ptr[2..];
-        } else if (control == 3) {
-            std.debug.assert(in_data_ptr.len >= 4);
-            out[i] = std.mem.readInt(u32, in_data_ptr[0..4], .little);
-            in_data_ptr = in_data_ptr[4..];
-        }
-    }
-    return in_data.len - in_data_ptr.len;
+    std.debug.assert(out.len >= 4);
+    return c.svb_decode_quad_0124(in_control, in_data.ptr, out.ptr);
 }
 
 pub fn svbDecodeQuad1234(in_control: u8, in_data: []const u8, out: []u32) usize {
-    var in_data_ptr = in_data;
-    inline for (0..4) |i| {
-        const control = (in_control >> (2 * i)) & 0x03;
-        if (control == 0) {
-            std.debug.assert(in_data_ptr.len >= 1);
-            out[i] = std.mem.readInt(u8, in_data_ptr[0..1], .little);
-            in_data_ptr = in_data_ptr[1..];
-        } else if (control == 1) {
-            std.debug.assert(in_data_ptr.len >= 2);
-            out[i] = std.mem.readInt(u16, in_data_ptr[0..2], .little);
-            in_data_ptr = in_data_ptr[2..];
-        } else if (control == 2) {
-            std.debug.assert(in_data_ptr.len >= 3);
-            out[i] = std.mem.readInt(u24, in_data_ptr[0..3], .little);
-            in_data_ptr = in_data_ptr[3..];
-        } else if (control == 3) {
-            std.debug.assert(in_data_ptr.len >= 4);
-            out[i] = std.mem.readInt(u32, in_data_ptr[0..4], .little);
-            in_data_ptr = in_data_ptr[4..];
-        }
-    }
-    return in_data.len - in_data_ptr.len;
+    std.debug.assert(out.len >= 4);
+    return c.svb_decode_quad_1234(in_control, in_data.ptr, out.ptr);
 }
 
 pub fn decodeBlockHashes(header: BlockHeader, in: []const u8, out: []u32) usize {
