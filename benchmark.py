@@ -4,7 +4,6 @@ import asyncio
 import time
 import random
 import argparse
-import subprocess
 import shutil
 import os
 from pathlib import Path
@@ -89,7 +88,7 @@ class ServerManager:
         self.log_file = self.data_dir / 'server.log'
         self.port = port
         self.config = config
-        self.process: subprocess.Popen[bytes] | None = None
+        self.process: asyncio.subprocess.Process | None = None
 
     async def __aenter__(self):
         if self.data_dir.exists():
@@ -103,11 +102,14 @@ class ServerManager:
             '--log-level', 'debug',
         ]
         print(' '.join(command))
-        self.process = subprocess.Popen(
-            command,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=self.log_file.open('a'),
+        
+        # Open log file for stderr redirection
+        stderr_file = self.log_file.open('a')
+        self.process = await asyncio.create_subprocess_exec(
+            *command,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=stderr_file,
         )
         await self.wait_for_ready()
         return self
@@ -116,10 +118,10 @@ class ServerManager:
         if self.process is not None and self.process.returncode is None:
             self.process.terminate()
             try:
-                self.process.wait(timeout=5.0)
-            except subprocess.TimeoutExpired:
+                await asyncio.wait_for(self.process.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
                 self.process.kill()
-                self.process.wait()
+                await self.process.wait()
         if exc_type is not None:
             self.print_error_log()
 
@@ -140,7 +142,7 @@ class ServerManager:
             if time.time() > deadline:
                 raise TimeoutError("Server did not become ready in time.")
 
-            if self.process is not None and self.process.poll() is not None:
+            if self.process is not None and self.process.returncode is not None:
                 raise ConnectionError("Server process died.")
 
             await asyncio.sleep(0.1)
