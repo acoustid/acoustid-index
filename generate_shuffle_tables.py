@@ -117,7 +117,7 @@ def generate_shuffle_table_1234():
 
 def format_shuffle_table(shuffle_table, variant_name):
     """Format shuffle table as C array"""
-    lines = [f"static const int8_t shuffle_table_{variant_name}[256][16] = {{"]
+    lines = [f"static const int8_t shuffle_table_{variant_name}[256][16] __attribute__((aligned(16))) = {{"]
     
     for i, mask in enumerate(shuffle_table):
         # Format the mask values
