@@ -86,7 +86,7 @@ static size_t svb_decode_quad_0124_sse41(uint8_t control, const uint8_t* in_data
     __m128i data = _mm_loadu_si128((const __m128i*)in_data);
     
     // Load shuffle mask for this control byte
-    __m128i shuffle_mask = *(__m128i*)&shuffle_table_0124[control];
+    __m128i shuffle_mask = _mm_load_si128((const __m128i*)&shuffle_table_0124[control]);
     
     // Apply shuffle to rearrange bytes
     __m128i result = _mm_shuffle_epi8(data, shuffle_mask);
@@ -104,7 +104,7 @@ static size_t svb_decode_quad_1234_sse41(uint8_t control, const uint8_t* in_data
     __m128i data = _mm_loadu_si128((const __m128i*)in_data);
     
     // Load shuffle mask for this control byte
-    __m128i shuffle_mask = *(__m128i*)&shuffle_table_1234[control];
+    __m128i shuffle_mask = _mm_load_si128((const __m128i*)&shuffle_table_1234[control]);
     
     // Apply shuffle to rearrange bytes
     __m128i result = _mm_shuffle_epi8(data, shuffle_mask);
