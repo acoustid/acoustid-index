@@ -72,7 +72,11 @@ pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
 
 pub fn getBlockData(self: Self, block: usize) []const u8 {
     std.debug.assert(block < self.num_blocks);
-    return self.blocks[block * self.block_size .. (block + 1) * self.block_size];
+    const start = block * self.block_size;
+    const end = (block + 1) * self.block_size;
+    // Add extra SIMD padding for safe decoding - ensure we don't exceed blocks bounds
+    const padded_end = @min(end + streamvbyte.SIMD_DECODE_PADDING, self.blocks.len);
+    return self.blocks[start..padded_end];
 }
 
 fn compareHashes(a: u32, b: u32) std.math.Order {
