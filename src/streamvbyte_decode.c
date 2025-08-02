@@ -80,6 +80,7 @@ static size_t svb_decode_quad_1234_scalar(uint8_t control, const uint8_t* in_dat
 }
 
 // SSE4.1 SIMD implementations
+// Requires: at least 16 bytes available at in_data
 static size_t svb_decode_quad_0124_sse41(uint8_t control, const uint8_t* in_data, uint32_t* out) {
     // Load 16 bytes of input data
     __m128i data = _mm_loadu_si128((const __m128i*)in_data);
@@ -97,6 +98,7 @@ static size_t svb_decode_quad_0124_sse41(uint8_t control, const uint8_t* in_data
     return length_table_0124[control];
 }
 
+// Requires: at least 16 bytes available at in_data
 static size_t svb_decode_quad_1234_sse41(uint8_t control, const uint8_t* in_data, uint32_t* out) {
     // Load 16 bytes of input data
     __m128i data = _mm_loadu_si128((const __m128i*)in_data);
@@ -116,10 +118,6 @@ static size_t svb_decode_quad_1234_sse41(uint8_t control, const uint8_t* in_data
 
 // Function pointer types
 typedef size_t (*decode_quad_func_t)(uint8_t control, const uint8_t* in_data, uint32_t* out);
-
-// Function pointers - will be set by ifunc resolvers
-static decode_quad_func_t decode_0124_impl = NULL;
-static decode_quad_func_t decode_1234_impl = NULL;
 
 // IFUNC resolvers
 static decode_quad_func_t resolve_decode_0124(void) {

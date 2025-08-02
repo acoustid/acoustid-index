@@ -376,6 +376,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
         crc.update(block_data);
     }
     const blocks_data_end = ptr;
+    // The empty block (included in blocks_data_start..blocks_data_end) provides sufficient SIMD padding
     segment.blocks = raw_data[blocks_data_start..blocks_data_end];
     segment.num_blocks = num_blocks;
 

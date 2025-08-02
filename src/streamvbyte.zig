@@ -22,6 +22,9 @@ pub const MAX_ITEMS_PER_BLOCK = MAX_BLOCK_SIZE / 2;
 
 pub const BLOCK_HEADER_SIZE = 8; // u16 + u16 + u32
 
+// Padding required for SIMD decode functions to safely read 16 bytes
+pub const SIMD_DECODE_PADDING = 16;
+
 pub const BlockHeader = struct {
     num_items: u16,
     docid_list_offset: u16,
@@ -46,11 +49,13 @@ pub fn decodeBlockHeader(data: []const u8) BlockHeader {
 
 pub fn svbDecodeQuad0124(in_control: u8, in_data: []const u8, out: []u32) usize {
     std.debug.assert(out.len >= 4);
+    std.debug.assert(in_data.len >= SIMD_DECODE_PADDING); // SIMD implementation requires padding
     return c.svb_decode_quad_0124(in_control, in_data.ptr, out.ptr);
 }
 
 pub fn svbDecodeQuad1234(in_control: u8, in_data: []const u8, out: []u32) usize {
     std.debug.assert(out.len >= 4);
+    std.debug.assert(in_data.len >= SIMD_DECODE_PADDING); // SIMD implementation requires padding
     return c.svb_decode_quad_1234(in_control, in_data.ptr, out.ptr);
 }
 
