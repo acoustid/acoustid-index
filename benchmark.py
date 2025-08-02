@@ -266,11 +266,12 @@ async def run_insertion_mode(session: aiohttp.ClientSession, url: str,
         batch.append(fingerprint)
         
         # Determine batch size based on mode
+        # Determine batch size based on mode
         if batch_size_range[0] == batch_size_range[1]:
             target_batch_size = batch_size_range[0]
         else:
-            target_batch_size = random.randint(batch_size_range[0], batch_size_range[1])
-        
+            # Use the generator's RNG for reproducibility
+            target_batch_size = fingerprint_generator.rng.randint(batch_size_range[0], batch_size_range[1])
         if len(batch) >= target_batch_size:
             await insert_batch(session, url, batch)
             batch = []
