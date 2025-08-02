@@ -244,7 +244,7 @@ async def insert_batch(session: aiohttp.ClientSession, url: str, batch: list[dic
 
 async def run_insertion_mode(session: aiohttp.ClientSession, url: str, 
                             fingerprint_generator: AsyncIterator[dict[str, Any]], num_docs: int, 
-                            mode_name: str, batch_size_range: tuple[int, int]) -> tuple[float, float]:
+                            mode_name: str, batch_size_range: tuple[int, int], rng: random.Random) -> tuple[float, float]:
     """Run insertion for a specific mode with given batch size range."""
     print(f"Inserting {num_docs} documents in {mode_name} mode...")
     start_time = time.time()
@@ -258,12 +258,11 @@ async def run_insertion_mode(session: aiohttp.ClientSession, url: str,
         batch.append(fingerprint)
         
         # Determine batch size based on mode
-        # Determine batch size based on mode
         if batch_size_range[0] == batch_size_range[1]:
             target_batch_size = batch_size_range[0]
         else:
-            # Use the generator's RNG for reproducibility
-            target_batch_size = fingerprint_generator.rng.randint(batch_size_range[0], batch_size_range[1])
+            # Use the provided RNG for reproducibility
+            target_batch_size = rng.randint(batch_size_range[0], batch_size_range[1])
         if len(batch) >= target_batch_size:
             await insert_batch(session, url, batch)
             batch = []
@@ -296,19 +295,19 @@ async def run_insertion(session: aiohttp.ClientSession, index_name: str, num_doc
     # Mode 1: Bulk load (large batches)
     bulk_duration, bulk_rate = await run_insertion_mode(
         session, url, fingerprint_generator, bulk_docs,
-        "bulk load", (config.bulk_batch_size, config.bulk_batch_size)
+        "bulk load", (config.bulk_batch_size, config.bulk_batch_size), fp_generator.rng
     )
     
     # Mode 2: Medium batches
     medium_duration, medium_rate = await run_insertion_mode(
         session, url, fingerprint_generator, medium_docs,
-        "medium batch", (config.medium_batch_min, config.medium_batch_max)
+        "medium batch", (config.medium_batch_min, config.medium_batch_max), fp_generator.rng
     )
     
     # Mode 3: Small batches
     small_duration, small_rate = await run_insertion_mode(
         session, url, fingerprint_generator, small_docs,
-        "small batch", (config.small_batch_min, config.small_batch_max)
+        "small batch", (config.small_batch_min, config.small_batch_max), fp_generator.rng
     )
     
     total_duration = bulk_duration + medium_duration + small_duration
