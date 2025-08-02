@@ -4,13 +4,12 @@ import asyncio
 import time
 import random
 import argparse
-import msgpack
 import subprocess
 import shutil
 import os
 from pathlib import Path
-import math
-from typing import Dict, List, AsyncGenerator, Tuple, Any, NamedTuple
+import statistics
+from typing import AsyncGenerator, AsyncIterator, Any, NamedTuple
 from dataclasses import dataclass
 
 
@@ -57,32 +56,31 @@ class BenchmarkConfig:
         return f"{self.hash_bits}-bit hashes (0 to {self.max_hash_value:,}, ~{self.max_hash_value/1_000_000:.1f}M values)"
 
 
-def mean(data: List[float]) -> float:
+def mean(data: list[float]) -> float:
     if not data:
         return 0.0
-    return sum(data) / len(data)
+    return statistics.mean(data)
 
 
-def std(data: List[float]) -> float:
+def std(data: list[float]) -> float:
     if len(data) < 2:
         return 0.0
-    m = mean(data)
-    variance = sum((x - m) ** 2 for x in data) / len(data)
-    return math.sqrt(variance)
+    return statistics.stdev(data)
 
 
-def percentile(data: List[float], p: float) -> float:
+def percentile(data: list[float], p: float) -> float:
     if not data:
         return 0.0
-    sorted_data = sorted(data)
-    k = (len(sorted_data) - 1) * (p / 100.0)
-    f = math.floor(k)
-    c = math.ceil(k)
-    if f == c:
-        return sorted_data[int(k)]
-    d0 = sorted_data[int(f)] * (c - k)
-    d1 = sorted_data[int(c)] * (k - f)
-    return d0 + d1
+    # Use statistics.quantiles with method='inclusive' for better compatibility
+    quantiles = statistics.quantiles(data, n=100, method='inclusive')
+    # quantiles[0] is 1st percentile, quantiles[94] is 95th percentile  
+    index = int(p) - 1
+    if index < 0:
+        return min(data)
+    elif index >= len(quantiles):
+        return max(data)
+    else:
+        return quantiles[index]
 
 
 class ServerManager:
@@ -115,14 +113,13 @@ class ServerManager:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.process is not None:
-            if self.process.returncode is None:
-                self.process.terminate()
-                try:
-                    self.process.wait(timeout=5.0)
-                except subprocess.TimeoutExpired:
-                    self.process.kill()
-                    self.process.wait()
+        if self.process is not None and self.process.returncode is None:
+            self.process.terminate()
+            try:
+                self.process.wait(timeout=5.0)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait()
         if exc_type is not None:
             self.print_error_log()
 
@@ -172,10 +169,10 @@ class FingerprintGenerator:
     def __init__(self, config: BenchmarkConfig):
         self.config = config
         self.rng = random.Random(config.random_seed)
-        self.inserted_ids: List[int] = []
-        self.inserted_hashes: Dict[int, List[int]] = {}
+        self.inserted_ids: list[int] = []
+        self.inserted_hashes: dict[int, list[int]] = {}
     
-    def generate_fingerprint(self) -> Dict[str, Any]:
+    def generate_fingerprint(self) -> dict[str, Any]:
         """Generate a single fingerprint with consistent randomization."""
         hashes = []
         for _ in range(self.rng.randint(self.config.min_hashes_per_fingerprint, self.config.max_hashes_per_fingerprint)):
@@ -188,7 +185,7 @@ class FingerprintGenerator:
         
         return {'insert': {'id': fp_id, 'hashes': hashes}}
     
-    def get_search_hashes(self, should_match: bool) -> List[int]:
+    def get_search_hashes(self, should_match: bool) -> list[int]:
         """Generate search hashes that either match or don't match inserted data.
         
         For matches: Uses exact subsets of inserted fingerprint hashes.
@@ -231,17 +228,12 @@ class FingerprintGenerator:
             return hashes
 
 
-def generate_fingerprint(config: BenchmarkConfig, generator: FingerprintGenerator) -> Dict[str, Any]:
-    """Legacy wrapper for backward compatibility."""
-    return generator.generate_fingerprint()
-
-
-async def generate_fingerprints(num_docs: int, generator: FingerprintGenerator) -> AsyncGenerator[Dict[str, Any], None]:
+async def generate_fingerprints(num_docs: int, generator: FingerprintGenerator) -> AsyncGenerator[dict[str, Any], None]:
     for i in range(1, num_docs + 1):
         yield generator.generate_fingerprint()
 
 
-async def insert_batch(session: aiohttp.ClientSession, url: str, batch: List[Dict[str, Any]]) -> None:
+async def insert_batch(session: aiohttp.ClientSession, url: str, batch: list[dict[str, Any]]) -> None:
     """Helper function to insert a batch of fingerprints."""
     if not batch:
         return
@@ -251,8 +243,8 @@ async def insert_batch(session: aiohttp.ClientSession, url: str, batch: List[Dic
 
 
 async def run_insertion_mode(session: aiohttp.ClientSession, url: str, 
-                            fingerprint_generator, num_docs: int, 
-                            mode_name: str, batch_size_range: Tuple[int, int]) -> Tuple[float, float]:
+                            fingerprint_generator: AsyncIterator[dict[str, Any]], num_docs: int, 
+                            mode_name: str, batch_size_range: tuple[int, int]) -> tuple[float, float]:
     """Run insertion for a specific mode with given batch size range."""
     print(f"Inserting {num_docs} documents in {mode_name} mode...")
     start_time = time.time()
@@ -286,7 +278,7 @@ async def run_insertion_mode(session: aiohttp.ClientSession, url: str,
     return duration, rate
 
 
-async def run_insertion(session: aiohttp.ClientSession, index_name: str, num_docs: int, config: BenchmarkConfig, fp_generator: FingerprintGenerator) -> Dict[str, float]:
+async def run_insertion(session: aiohttp.ClientSession, index_name: str, num_docs: int, config: BenchmarkConfig, fp_generator: FingerprintGenerator) -> dict[str, float]:
     print(f"Inserting {num_docs} documents across three modes...")
     print(f"DEBUG: Starting insertion, generator currently has {len(fp_generator.inserted_ids)} fingerprints tracked")
     url = f'http://localhost:{config.server_port}/{index_name}/_update'
@@ -411,7 +403,7 @@ async def run_search_mode(session: aiohttp.ClientSession, url: str, mode_name: s
     
     sem = asyncio.Semaphore(config.max_concurrent_searches)
 
-    async def do_search(h: List[int], expected_match: bool) -> SearchResult:
+    async def do_search(h: list[int], expected_match: bool) -> SearchResult:
         async with sem:
             start_time = time.time()
             async with session.post(url, json={'query': h}) as response:
@@ -473,7 +465,7 @@ async def run_search_mode(session: aiohttp.ClientSession, url: str, mode_name: s
     return search_mode_results
 
 
-async def run_searches(session: aiohttp.ClientSession, index_name: str, config: BenchmarkConfig, fp_generator: FingerprintGenerator) -> Dict[str, Any]:
+async def run_searches(session: aiohttp.ClientSession, index_name: str, config: BenchmarkConfig, fp_generator: FingerprintGenerator) -> dict[str, Any]:
     """Run searches across three different modes."""
     url = f'http://localhost:{config.server_port}/{index_name}/_search'
     
@@ -579,7 +571,7 @@ async def run_searches(session: aiohttp.ClientSession, index_name: str, config: 
     }
 
 
-async def single_benchmark_run(run_number: int, config: BenchmarkConfig) -> Dict[str, float]:
+async def single_benchmark_run(run_number: int, config: BenchmarkConfig) -> dict[str, float]:
     data_dir = Path(config.data_dir_base) / f"run_{run_number}"
     data_dir.mkdir(parents=True, exist_ok=True)
     
