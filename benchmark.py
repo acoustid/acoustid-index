@@ -801,6 +801,8 @@ def create_config_from_args() -> BenchmarkConfig:
                        help=f'Random seed for reproducible results (default: {config.random_seed})')
     parser.add_argument('--hash-bits', type=int, default=config.hash_bits, 
                        help=f'Number of bits for hash values (default: {config.hash_bits}, range: 8-32)')
+    parser.add_argument('--server-exe', type=str, default=config.server_exe, 
+                       help=f'Path to server executable (default: {config.server_exe})')
     args = parser.parse_args()
     
     config.num_docs = args.num_docs
@@ -815,6 +817,7 @@ def create_config_from_args() -> BenchmarkConfig:
     config.searches_per_mode = args.searches_per_mode
     config.random_seed = args.random_seed
     config.hash_bits = max(8, min(32, args.hash_bits))  # Clamp to reasonable range
+    config.server_exe = args.server_exe
     
     return config
 
