@@ -602,32 +602,13 @@ async def single_benchmark_run(run_number: int, config: BenchmarkConfig) -> dict
     }
 
 
-async def run_benchmark(config: BenchmarkConfig) -> None:
-    results = []
-    for i in range(1, config.num_runs + 1):
-        print(f"--- Starting benchmark run {i}/{config.num_runs} ---")
-        result = await single_benchmark_run(i, config)
-        results.append(result)
-
-    print("\n--- Benchmark Summary ---")
-
+def report_insertion_metrics(results: list[dict[str, Any]]) -> None:
+    """Report insertion performance metrics."""
     # Extract metrics for each insert mode
     bulk_rates = [r['bulk_insertion_rate'] for r in results]
     medium_rates = [r['medium_insertion_rate'] for r in results]
     small_rates = [r['small_insertion_rate'] for r in results]
     overall_rates = [r['overall_insertion_rate'] for r in results]
-    
-    # Extract search metrics for each mode
-    mostly_matches_avg = [r['mostly_matches_avg_latency'] * 1000 for r in results]
-    mostly_matches_p95 = [r['mostly_matches_p95_latency'] * 1000 for r in results]
-    mostly_misses_avg = [r['mostly_misses_avg_latency'] * 1000 for r in results]
-    mostly_misses_p95 = [r['mostly_misses_p95_latency'] * 1000 for r in results]
-    mixed_avg = [r['mixed_avg_latency'] * 1000 for r in results]
-    mixed_p95 = [r['mixed_p95_latency'] * 1000 for r in results]
-    overall_search_avg = [r['overall_avg_latency'] * 1000 for r in results]
-    overall_search_p95 = [r['overall_p95_latency'] * 1000 for r in results]
-    
-    data_sizes = [r['data_size'] / (1024*1024) for r in results]
 
     print("\n=== INSERTION PERFORMANCE ===")
     print("Bulk Load Insertion Rate (docs/s):")
@@ -645,6 +626,20 @@ async def run_benchmark(config: BenchmarkConfig) -> None:
     print("Overall Insertion Rate (docs/s):")
     print(f"  Avg: {mean(overall_rates):.2f}")
     print(f"  Std: {std(overall_rates):.2f}")
+
+
+def report_search_performance(results: list[dict[str, Any]]) -> None:
+    """Report search performance metrics."""
+    # Extract search metrics for each mode
+    mostly_matches_avg = [r['mostly_matches_avg_latency'] * 1000 for r in results]
+    mostly_matches_p95 = [r['mostly_matches_p95_latency'] * 1000 for r in results]
+    mostly_misses_avg = [r['mostly_misses_avg_latency'] * 1000 for r in results]
+    mostly_misses_p95 = [r['mostly_misses_p95_latency'] * 1000 for r in results]
+    mixed_avg = [r['mixed_avg_latency'] * 1000 for r in results]
+    mixed_p95 = [r['mixed_p95_latency'] * 1000 for r in results]
+    overall_search_avg = [r['overall_avg_latency'] * 1000 for r in results]
+    overall_search_p95 = [r['overall_p95_latency'] * 1000 for r in results]
+    data_sizes = [r['data_size'] / (1024*1024) for r in results]
 
     print("\n=== SEARCH PERFORMANCE BY MODE ===")
     print("Mostly Matches - Average Latency (ms):")
@@ -670,14 +665,31 @@ async def run_benchmark(config: BenchmarkConfig) -> None:
     print("Mixed - P95 Latency (ms):")
     print(f"  Avg: {mean(mixed_p95):.2f}")
     print(f"  Std: {std(mixed_p95):.2f}")
+
+    print("\n=== OVERALL SEARCH PERFORMANCE ===")
+    print("Overall Average Latency (ms):")
+    print(f"  Avg: {mean(overall_search_avg):.2f}")
+    print(f"  Std: {std(overall_search_avg):.2f}")
     
-    print("\n=== SEARCH ACCURACY METRICS ===")
+    print("Overall P95 Latency (ms):")
+    print(f"  Avg: {mean(overall_search_p95):.2f}")
+    print(f"  Std: {std(overall_search_p95):.2f}")
+
+    print("\n=== STORAGE ===")
+    print("Data Size (MB):")
+    print(f"  Avg: {mean(data_sizes):.2f}")
+    print(f"  Std: {std(data_sizes):.2f}")
+
+
+def report_accuracy_metrics(results: list[dict[str, Any]]) -> None:
+    """Report search accuracy metrics and distribution analysis."""
     # Accuracy metrics for each mode
     mostly_matches_accuracy = [r['mostly_matches_accuracy'] for r in results]
     mostly_misses_accuracy = [r['mostly_misses_accuracy'] for r in results]
     mixed_accuracy = [r['mixed_accuracy'] for r in results]
     overall_accuracy = [r['overall_accuracy'] for r in results]
     
+    print("\n=== SEARCH ACCURACY METRICS ===")
     print("Mostly Matches Mode Accuracy:")
     print(f"  Avg: {mean(mostly_matches_accuracy):.3f}")
     print(f"  Std: {std(mostly_matches_accuracy):.3f}")
@@ -693,20 +705,6 @@ async def run_benchmark(config: BenchmarkConfig) -> None:
     print("Overall Accuracy:")
     print(f"  Avg: {mean(overall_accuracy):.3f}")
     print(f"  Std: {std(overall_accuracy):.3f}")
-    
-    print("\n=== OVERALL SEARCH PERFORMANCE ===")
-    print("Overall Average Latency (ms):")
-    print(f"  Avg: {mean(overall_search_avg):.2f}")
-    print(f"  Std: {std(overall_search_avg):.2f}")
-    
-    print("Overall P95 Latency (ms):")
-    print(f"  Avg: {mean(overall_search_p95):.2f}")
-    print(f"  Std: {std(overall_search_p95):.2f}")
-
-    print("\n=== STORAGE ===")
-    print("Data Size (MB):")
-    print(f"  Avg: {mean(data_sizes):.2f}")
-    print(f"  Std: {std(data_sizes):.2f}")
     
     print("\n=== DOCUMENT & SEARCH DISTRIBUTION ===")
     if results:
@@ -757,7 +755,22 @@ async def run_benchmark(config: BenchmarkConfig) -> None:
         if total_fn > 0:
             print(f"  ⚠️  Algorithm missed expected matches ({total_fn:.1f} false negatives)")
         if total_tp == 0 and total_fp == 0:
-            print(f"  ℹ️   No matches found at all - algorithm may be very strict or incompatible data format")
+            print("  ℹ️   No matches found at all - algorithm may be very strict or incompatible data format")
+
+
+async def run_benchmark(config: BenchmarkConfig) -> None:
+    """Run the complete benchmark and report results."""
+    results = []
+    for i in range(1, config.num_runs + 1):
+        print(f"--- Starting benchmark run {i}/{config.num_runs} ---")
+        result = await single_benchmark_run(i, config)
+        results.append(result)
+
+    print("\n--- Benchmark Summary ---")
+    
+    report_insertion_metrics(results)
+    report_search_performance(results)
+    report_accuracy_metrics(results)
 
 
 def create_config_from_args() -> BenchmarkConfig:
