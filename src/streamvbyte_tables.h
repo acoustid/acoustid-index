@@ -6,7 +6,7 @@
 // Shuffle tables for StreamVByte SIMD decoding
 // Generated automatically by generate_shuffle_tables.py
 
-static const int8_t shuffle_table_0124[256][16] = {
+static const int8_t shuffle_table_0124[256][16] __attribute__((aligned(16))) = {
     {  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1 }, // 00: 0000
     {   0,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1 }, // 01: 0001
     {   0,   1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1 }, // 02: 0002
@@ -265,7 +265,7 @@ static const int8_t shuffle_table_0124[256][16] = {
     {   0,   1,   2,   3,   4,   5,   6,   7,   8,   9,  10,  11,  12,  13,  14,  15 }, // FF: 3333
 };
 
-static const int8_t shuffle_table_1234[256][16] = {
+static const int8_t shuffle_table_1234[256][16] __attribute__((aligned(16))) = {
     {   0,  -1,  -1,  -1,   1,  -1,  -1,  -1,   2,  -1,  -1,  -1,   3,  -1,  -1,  -1 }, // 00: 0000
     {   0,   1,  -1,  -1,   2,  -1,  -1,  -1,   3,  -1,  -1,  -1,   4,  -1,  -1,  -1 }, // 01: 0001
     {   0,   1,   2,  -1,   3,  -1,  -1,  -1,   4,  -1,  -1,  -1,   5,  -1,  -1,  -1 }, // 02: 0002
