@@ -10,6 +10,7 @@ from pathlib import Path
 import statistics
 from typing import AsyncGenerator, AsyncIterator, Any, NamedTuple
 from dataclasses import dataclass
+import msgpack
 
 
 @dataclass
@@ -185,7 +186,7 @@ class FingerprintGenerator:
         self.inserted_ids.append(fp_id)
         self.inserted_hashes[fp_id] = hashes
         
-        return {'insert': {'id': fp_id, 'hashes': hashes}}
+        return {'i': {'i': fp_id, 'h': hashes}}
     
     def get_search_hashes(self, should_match: bool) -> list[int]:
         """Generate search hashes that either match or don't match inserted data.
@@ -239,8 +240,12 @@ async def insert_batch(session: aiohttp.ClientSession, url: str, batch: list[dic
     """Helper function to insert a batch of fingerprints."""
     if not batch:
         return
-    content = {'changes': batch}
-    async with session.post(url, json=content) as response:
+    content = {'c': batch}
+    headers = {
+        'Content-Type': 'application/vnd.msgpack',
+        'Accept': 'application/vnd.msgpack',
+    }
+    async with session.post(url, data=msgpack.packb(content), headers=headers) as response:
         response.raise_for_status()
 
 
@@ -407,13 +412,18 @@ async def run_search_mode(session: aiohttp.ClientSession, url: str, mode_name: s
     async def do_search(h: list[int], expected_match: bool) -> SearchResult:
         async with sem:
             start_time = time.time()
-            async with session.post(url, json={'query': h}) as response:
+            headers = {
+                'Content-Type': 'application/vnd.msgpack',
+                'Accept': 'application/vnd.msgpack',
+            }
+            async with session.post(url, data=msgpack.packb({'q': h}), headers=headers) as response:
                 response.raise_for_status()
-                result = await response.json()
+                result = msgpack.unpackb(await response.read())
             duration = time.time() - start_time
             
             # Check if we got any matches
-            has_matches = len(result.get('results', [])) > 0
+            # Server uses abbreviated msgpack keys: 'results' -> 'r'
+            has_matches = len(result.get('r', [])) > 0
             
             return SearchResult(
                 latency=duration,
