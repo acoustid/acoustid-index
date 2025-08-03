@@ -205,22 +205,37 @@ fn parseContentTypeHeader(req: *httpz.Request) !ContentType {
         }
         return error.InvalidContentType;
     }
-    return .json;
+    // Default based on whether request has a body
+    if (req.body() != null) {
+        return .msgpack; // Requests with body default to MessagePack
+    } else {
+        return .json; // Requests without body (GET, HEAD) default to JSON for backward compatibility
+    }
 }
 
-fn parseAcceptHeader(req: *httpz.Request) ContentType {
+fn parseAcceptHeader(req: *httpz.Request) !ContentType {
     if (req.header("accept")) |accept_header| {
         if (std.mem.eql(u8, accept_header, "application/json")) {
             return .json;
         } else if (std.mem.eql(u8, accept_header, "application/vnd.msgpack")) {
             return .msgpack;
+        } else if (std.mem.eql(u8, accept_header, "*/*")) {
+            // Wildcard Accept header - match the request content type
+            const request_content_type = parseContentTypeHeader(req) catch .msgpack;
+            return request_content_type;
         }
+        return error.InvalidAcceptType;
     }
-    return .json;
+    // When no Accept header, match the request content type for backward compatibility
+    const request_content_type = parseContentTypeHeader(req) catch .msgpack;
+    return request_content_type;
 }
 
 fn writeResponse(value: anytype, req: *httpz.Request, res: *httpz.Response) !void {
-    const content_type = parseAcceptHeader(req);
+    const content_type = parseAcceptHeader(req) catch |err| switch (err) {
+        error.InvalidAcceptType => .json, // Default to JSON for invalid Accept headers
+        else => return err,
+    };
 
     switch (content_type) {
         .json => try res.json(value, .{}),
@@ -263,7 +278,38 @@ fn handleError(_: *Context, req: *httpz.Request, res: *httpz.Response, err: anye
 
 fn writeErrorResponse(status: u16, err: anyerror, req: *httpz.Request, res: *httpz.Response) !void {
     res.status = status;
-    try writeResponse(ErrorResponse{ .@"error" = @errorName(err) }, req, res);
+    
+    // Safe content negotiation that doesn't cause recursion
+    const content_type = if (req.header("accept")) |accept_header| blk: {
+        if (std.mem.eql(u8, accept_header, "application/json")) break :blk ContentType.json;
+        if (std.mem.eql(u8, accept_header, "application/vnd.msgpack")) break :blk ContentType.msgpack;
+        if (std.mem.eql(u8, accept_header, "*/*")) {
+            // For wildcard, only check explicit Content-Type (no defaults to avoid recursion)
+            if (req.header("content-type")) |ct| {
+                if (std.mem.eql(u8, ct, "application/json")) break :blk ContentType.json;
+                if (std.mem.eql(u8, ct, "application/vnd.msgpack")) break :blk ContentType.msgpack;
+            }
+            // Default for wildcard based on request body presence
+            if (req.body() != null) break :blk ContentType.msgpack else break :blk ContentType.json;
+        }
+        break :blk ContentType.json; // Safe fallback for invalid Accept headers
+    } else blk: {
+        // No Accept header - match request content type safely
+        if (req.header("content-type")) |ct| {
+            if (std.mem.eql(u8, ct, "application/json")) break :blk ContentType.json;
+            if (std.mem.eql(u8, ct, "application/vnd.msgpack")) break :blk ContentType.msgpack;
+        }
+        // Default based on request body presence (same logic as parseContentTypeHeader but safe)
+        if (req.body() != null) break :blk ContentType.msgpack else break :blk ContentType.json;
+    };
+    
+    switch (content_type) {
+        .json => try res.json(ErrorResponse{ .@"error" = @errorName(err) }, .{}),
+        .msgpack => {
+            res.header("content-type", "application/vnd.msgpack");
+            try msgpack.encode(ErrorResponse{ .@"error" = @errorName(err) }, res.writer());
+        },
+    }
 }
 
 fn getRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !?T {
