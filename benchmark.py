@@ -186,7 +186,7 @@ class FingerprintGenerator:
         self.inserted_ids.append(fp_id)
         self.inserted_hashes[fp_id] = hashes
         
-        return {'insert': {'id': fp_id, 'hashes': hashes}}
+        return {'i': {'i': fp_id, 'h': hashes}}
     
     def get_search_hashes(self, should_match: bool) -> list[int]:
         """Generate search hashes that either match or don't match inserted data.
