@@ -59,10 +59,6 @@ pub fn svbDecodeQuad1234(in_control: u8, in_data: []const u8, out: []u32) usize 
     return c.svb_decode_quad_1234(in_control, in_data.ptr, out.ptr);
 }
 
-pub fn svbDeltaDecode(input: []const u32, output: []u32, first_value: u32) void {
-    std.debug.assert(input.len == output.len);
-    c.svb_delta_decode(input.ptr, output.ptr, input.len, first_value);
-}
 
 pub fn svbDeltaDecodeInPlace(data: []u32, first_value: u32) void {
     c.svb_delta_decode_inplace(data.ptr, data.len, first_value);

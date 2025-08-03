@@ -136,125 +136,6 @@ static decode_quad_func_t resolve_decode_1234(void) {
     }
 }
 
-// Scalar delta decoding implementation
-static void svb_delta_decode_scalar(const uint32_t* input, uint32_t* output, size_t count, uint32_t first_value) {
-    if (count == 0) return;
-    
-    if (input == output) {
-        // In-place operation
-        output[0] += first_value;
-        for (size_t i = 1; i < count; i++) {
-            output[i] += output[i - 1];
-        }
-    } else {
-        // Separate input/output arrays
-        output[0] = input[0] + first_value;
-        for (size_t i = 1; i < count; i++) {
-            output[i] = input[i] + output[i - 1];
-        }
-    }
-}
-
-// SSE4.1 SIMD delta decoding implementation
-static void svb_delta_decode_sse41(const uint32_t* input, uint32_t* output, size_t count, uint32_t first_value) {
-    if (count == 0) return;
-    
-    if (input == output) {
-        // In-place operation
-        output[0] += first_value;
-        
-        if (count == 1) return;
-        
-        uint32_t carry = output[0];
-        size_t i = 1;
-        
-        // Process 4 elements at a time with SIMD
-        while (i + 3 < count) {
-            // Load 4 input values
-            __m128i vec = _mm_loadu_si128((const __m128i*)&output[i]);
-            
-            // Compute prefix sum within the vector FIRST: [a, b, c, d] -> [a, a+b, a+b+c, a+b+c+d]
-            // Step 1: [a, b, c, d] + [0, a, b, c] = [a, a+b, b+c, c+d]
-            __m128i temp1 = _mm_slli_si128(vec, 4);
-            vec = _mm_add_epi32(vec, temp1);
-            
-            // Step 2: [a, a+b, b+c, c+d] + [0, 0, a, a+b] = [a, a+b, a+b+c, a+b+c+d]
-            __m128i temp2 = _mm_slli_si128(vec, 8);
-            vec = _mm_add_epi32(vec, temp2);
-            
-            // THEN add carry to all elements: [a, a+b, a+b+c, a+b+c+d] + [carry, carry, carry, carry]
-            __m128i carry_vec = _mm_set1_epi32(carry);
-            vec = _mm_add_epi32(vec, carry_vec);
-            
-            // Store result
-            _mm_storeu_si128((__m128i*)&output[i], vec);
-            
-            // Extract last element as new carry
-            carry = _mm_extract_epi32(vec, 3);
-            i += 4;
-        }
-        
-        // Handle remaining elements (1-3) with scalar code
-        while (i < count) {
-            output[i] += carry;
-            carry = output[i];
-            i++;
-        }
-    } else {
-        // Separate input/output arrays
-        output[0] = input[0] + first_value;
-        
-        if (count == 1) return;
-        
-        uint32_t carry = output[0];
-        size_t i = 1;
-        
-        // Process 4 elements at a time with SIMD
-        while (i + 3 < count) {
-            // Load 4 input values
-            __m128i vec = _mm_loadu_si128((const __m128i*)&input[i]);
-            
-            // Compute prefix sum within the vector FIRST: [a, b, c, d] -> [a, a+b, a+b+c, a+b+c+d]
-            // Step 1: [a, b, c, d] + [0, a, b, c] = [a, a+b, b+c, c+d]
-            __m128i temp1 = _mm_slli_si128(vec, 4);
-            vec = _mm_add_epi32(vec, temp1);
-            
-            // Step 2: [a, a+b, b+c, c+d] + [0, 0, a, a+b] = [a, a+b, a+b+c, a+b+c+d]
-            __m128i temp2 = _mm_slli_si128(vec, 8);
-            vec = _mm_add_epi32(vec, temp2);
-            
-            // THEN add carry to all elements: [a, a+b, a+b+c, a+b+c+d] + [carry, carry, carry, carry]
-            __m128i carry_vec = _mm_set1_epi32(carry);
-            vec = _mm_add_epi32(vec, carry_vec);
-            
-            // Store result
-            _mm_storeu_si128((__m128i*)&output[i], vec);
-            
-            // Extract last element as new carry
-            carry = _mm_extract_epi32(vec, 3);
-            i += 4;
-        }
-        
-        // Handle remaining elements (1-3) with scalar code
-        while (i < count) {
-            output[i] = input[i] + carry;
-            carry = output[i];
-            i++;
-        }
-    }
-}
-
-// Function pointer type
-typedef void (*delta_decode_func_t)(const uint32_t* input, uint32_t* output, size_t count, uint32_t first_value);
-
-// IFUNC resolver for delta decoding
-static delta_decode_func_t resolve_delta_decode(void) {
-    if (has_sse41()) {
-        return svb_delta_decode_sse41;
-    } else {
-        return svb_delta_decode_scalar;
-    }
-}
 
 // GNU IFUNC attributes
 size_t svb_decode_quad_0124(uint8_t control, const uint8_t* in_data, uint32_t* out)
@@ -329,8 +210,6 @@ static delta_decode_inplace_func_t resolve_delta_decode_inplace(void) {
     }
 }
 
-void svb_delta_decode(const uint32_t* input, uint32_t* output, size_t count, uint32_t first_value)
-    __attribute__((ifunc("resolve_delta_decode")));
 
 void svb_delta_decode_inplace(uint32_t* data, size_t count, uint32_t first_value)
     __attribute__((ifunc("resolve_delta_decode_inplace")));
