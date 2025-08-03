@@ -21,7 +21,7 @@ class BenchmarkConfig:
     server_port: int = 8999
     index_name: str = 'benchmark_index'
     data_dir_base: str = '/tmp/fpindex_benchmark'
-    max_concurrent_searches: int = 200
+    max_concurrent_searches: int = 16
     server_ready_timeout: float = 15.0
     min_hashes_per_fingerprint: int = 100
     max_hashes_per_fingerprint: int = 120
