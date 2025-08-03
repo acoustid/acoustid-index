@@ -59,6 +59,11 @@ pub fn svbDecodeQuad1234(in_control: u8, in_data: []const u8, out: []u32) usize 
     return c.svb_decode_quad_1234(in_control, in_data.ptr, out.ptr);
 }
 
+
+pub fn svbDeltaDecodeInPlace(data: []u32, first_value: u32) void {
+    c.svb_delta_decode_inplace(data.ptr, data.len, first_value);
+}
+
 pub fn decodeBlockHashes(header: BlockHeader, in: []const u8, out: []u32) usize {
     const num_quads = (header.num_items + 3) / 4;
 
@@ -86,10 +91,7 @@ pub fn decodeBlockHashes(header: BlockHeader, in: []const u8, out: []u32) usize 
     }
 
     // Apply delta decoding - first item is absolute, rest are deltas
-    out[0] += header.first_hash;
-    for (1..header.num_items) |i| {
-        out[i] += out[i - 1];
-    }
+    svbDeltaDecodeInPlace(out[0..header.num_items], header.first_hash);
 
     return out.len - out_ptr.len;
 }
