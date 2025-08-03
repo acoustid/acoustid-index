@@ -153,7 +153,11 @@ class Server:
 
             while True:
                 try:
-                    line = await reader.readuntil(b"\n")
+                    line = await asyncio.wait_for(reader.readuntil(b"\n"), timeout=30.0)
+                except asyncio.TimeoutError:
+                    writer.write(b"ERR timeout\r\n")
+                    await writer.drain()
+                    return
                 except asyncio.exceptions.IncompleteReadError:
                     return
 
