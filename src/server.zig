@@ -196,6 +196,15 @@ const ContentType = enum {
     msgpack,
 };
 
+fn getDefaultContentType(req: *httpz.Request) ContentType {
+    // Default based on whether request has a body
+    if (req.body() != null) {
+        return .msgpack; // Requests with body default to MessagePack
+    } else {
+        return .json; // Requests without body (GET, HEAD) default to JSON for backward compatibility
+    }
+}
+
 fn parseContentTypeHeader(req: *httpz.Request) !ContentType {
     if (req.header("content-type")) |content_type| {
         if (std.mem.eql(u8, content_type, "application/json")) {
@@ -205,12 +214,7 @@ fn parseContentTypeHeader(req: *httpz.Request) !ContentType {
         }
         return error.InvalidContentType;
     }
-    // Default based on whether request has a body
-    if (req.body() != null) {
-        return .msgpack; // Requests with body default to MessagePack
-    } else {
-        return .json; // Requests without body (GET, HEAD) default to JSON for backward compatibility
-    }
+    return getDefaultContentType(req);
 }
 
 fn parseAcceptHeader(req: *httpz.Request) !ContentType {
@@ -221,13 +225,13 @@ fn parseAcceptHeader(req: *httpz.Request) !ContentType {
             return .msgpack;
         } else if (std.mem.eql(u8, accept_header, "*/*")) {
             // Wildcard Accept header - match the request content type
-            const request_content_type = parseContentTypeHeader(req) catch .msgpack;
+            const request_content_type = parseContentTypeHeader(req) catch getDefaultContentType(req);
             return request_content_type;
         }
         return error.InvalidAcceptType;
     }
     // When no Accept header, match the request content type for backward compatibility
-    const request_content_type = parseContentTypeHeader(req) catch .msgpack;
+    const request_content_type = parseContentTypeHeader(req) catch getDefaultContentType(req);
     return request_content_type;
 }
 
@@ -279,28 +283,11 @@ fn handleError(_: *Context, req: *httpz.Request, res: *httpz.Response, err: anye
 fn writeErrorResponse(status: u16, err: anyerror, req: *httpz.Request, res: *httpz.Response) !void {
     res.status = status;
     
-    // Safe content negotiation that doesn't cause recursion
-    const content_type = if (req.header("accept")) |accept_header| blk: {
-        if (std.mem.eql(u8, accept_header, "application/json")) break :blk ContentType.json;
-        if (std.mem.eql(u8, accept_header, "application/vnd.msgpack")) break :blk ContentType.msgpack;
-        if (std.mem.eql(u8, accept_header, "*/*")) {
-            // For wildcard, only check explicit Content-Type (no defaults to avoid recursion)
-            if (req.header("content-type")) |ct| {
-                if (std.mem.eql(u8, ct, "application/json")) break :blk ContentType.json;
-                if (std.mem.eql(u8, ct, "application/vnd.msgpack")) break :blk ContentType.msgpack;
-            }
-            // Default for wildcard based on request body presence
-            if (req.body() != null) break :blk ContentType.msgpack else break :blk ContentType.json;
-        }
-        break :blk ContentType.json; // Safe fallback for invalid Accept headers
-    } else blk: {
-        // No Accept header - match request content type safely
-        if (req.header("content-type")) |ct| {
-            if (std.mem.eql(u8, ct, "application/json")) break :blk ContentType.json;
-            if (std.mem.eql(u8, ct, "application/vnd.msgpack")) break :blk ContentType.msgpack;
-        }
-        // Default based on request body presence (same logic as parseContentTypeHeader but safe)
-        if (req.body() != null) break :blk ContentType.msgpack else break :blk ContentType.json;
+    // Use existing content negotiation functions, but fallback to safe defaults on error
+    const content_type = parseAcceptHeader(req) catch blk: {
+        // If Accept header parsing fails, try Content-Type parsing
+        const request_content_type = parseContentTypeHeader(req) catch getDefaultContentType(req);
+        break :blk request_content_type;
     };
     
     switch (content_type) {
