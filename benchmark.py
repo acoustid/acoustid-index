@@ -240,7 +240,7 @@ async def insert_batch(session: aiohttp.ClientSession, url: str, batch: list[dic
     """Helper function to insert a batch of fingerprints."""
     if not batch:
         return
-    content = {'changes': batch}
+    content = {'c': batch}
     headers = {
         'Content-Type': 'application/vnd.msgpack',
         'Accept': 'application/vnd.msgpack',
@@ -416,14 +416,14 @@ async def run_search_mode(session: aiohttp.ClientSession, url: str, mode_name: s
                 'Content-Type': 'application/vnd.msgpack',
                 'Accept': 'application/vnd.msgpack',
             }
-            async with session.post(url, data=msgpack.packb({'query': h}), headers=headers) as response:
+            async with session.post(url, data=msgpack.packb({'q': h}), headers=headers) as response:
                 response.raise_for_status()
                 result = msgpack.unpackb(await response.read())
             duration = time.time() - start_time
             
             # Check if we got any matches
-            # Server uses full JSON protocol, returns 'results' key
-            has_matches = len(result.get('results', [])) > 0
+            # Server uses abbreviated msgpack keys: 'results' -> 'r'
+            has_matches = len(result.get('r', [])) > 0
             
             return SearchResult(
                 latency=duration,
