@@ -196,20 +196,22 @@ const ContentType = enum {
     msgpack,
 };
 
+const jsonContentTypeName = "application/json";
+const msgpackContentTypeName = "application/vnd.msgpack";
+
 fn getDefaultContentType(req: *httpz.Request) ContentType {
-    // Default based on whether request has a body
     if (req.body() != null) {
-        return .msgpack; // Requests with body default to MessagePack
+        return .msgpack;
     } else {
-        return .json; // Requests without body (GET, HEAD) default to JSON for backward compatibility
+        return .json;
     }
 }
 
 fn parseContentTypeHeader(req: *httpz.Request) !ContentType {
     if (req.header("content-type")) |content_type| {
-        if (std.mem.eql(u8, content_type, "application/json")) {
+        if (std.mem.eql(u8, content_type, jsonContentTypeName)) {
             return .json;
-        } else if (std.mem.eql(u8, content_type, "application/vnd.msgpack")) {
+        } else if (std.mem.eql(u8, content_type, msgpackContentTypeName)) {
             return .msgpack;
         }
         return error.InvalidContentType;
@@ -217,34 +219,23 @@ fn parseContentTypeHeader(req: *httpz.Request) !ContentType {
     return getDefaultContentType(req);
 }
 
-fn parseAcceptHeader(req: *httpz.Request) !ContentType {
+fn parseAcceptHeader(req: *httpz.Request) ContentType {
     if (req.header("accept")) |accept_header| {
-        if (std.mem.eql(u8, accept_header, "application/json")) {
+        if (std.mem.eql(u8, accept_header, jsonContentTypeName)) {
             return .json;
-        } else if (std.mem.eql(u8, accept_header, "application/vnd.msgpack")) {
+        } else if (std.mem.eql(u8, accept_header, msgpackContentTypeName)) {
             return .msgpack;
-        } else if (std.mem.eql(u8, accept_header, "*/*")) {
-            // Wildcard Accept header - match the request content type
-            const request_content_type = parseContentTypeHeader(req) catch getDefaultContentType(req);
-            return request_content_type;
         }
-        return error.InvalidAcceptType;
     }
-    // When no Accept header, match the request content type for backward compatibility
-    const request_content_type = parseContentTypeHeader(req) catch getDefaultContentType(req);
-    return request_content_type;
+    return parseContentTypeHeader(req) catch getDefaultContentType(req);
 }
 
 fn writeResponse(value: anytype, req: *httpz.Request, res: *httpz.Response) !void {
-    const content_type = parseAcceptHeader(req) catch |err| switch (err) {
-        error.InvalidAcceptType => .json, // Default to JSON for invalid Accept headers
-        else => return err,
-    };
-
+    const content_type = parseAcceptHeader(req);
     switch (content_type) {
         .json => try res.json(value, .{}),
         .msgpack => {
-            res.header("content-type", "application/vnd.msgpack");
+            res.header("content-type", msgpackContentTypeName);
             try msgpack.encode(value, res.writer());
         },
     }
@@ -282,14 +273,8 @@ fn handleError(_: *Context, req: *httpz.Request, res: *httpz.Response, err: anye
 
 fn writeErrorResponse(status: u16, err: anyerror, req: *httpz.Request, res: *httpz.Response) !void {
     res.status = status;
-    
-    // Use existing content negotiation functions, but fallback to safe defaults on error
-    const content_type = parseAcceptHeader(req) catch blk: {
-        // If Accept header parsing fails, try Content-Type parsing
-        const request_content_type = parseContentTypeHeader(req) catch getDefaultContentType(req);
-        break :blk request_content_type;
-    };
-    
+
+    const content_type = parseAcceptHeader(req);
     switch (content_type) {
         .json => try res.json(ErrorResponse{ .@"error" = @errorName(err) }, .{}),
         .msgpack => {

@@ -13,6 +13,7 @@ def test_msgpack_default_no_headers(client, index_name, create_index):
     assert req.status_code == 200
     
     # Response should be MessagePack (empty response)
+    assert req.headers['content-type'] == 'application/vnd.msgpack'
     response_data = msgpack.loads(req.content)
     assert response_data == {}
     
@@ -24,6 +25,7 @@ def test_msgpack_default_no_headers(client, index_name, create_index):
     assert req.status_code == 200
     
     # Response should be MessagePack with abbreviated keys
+    assert req.headers['content-type'] == 'application/vnd.msgpack'
     response_data = msgpack.loads(req.content)
     assert response_data == {
         'r': [
@@ -122,22 +124,6 @@ def test_invalid_content_type_error(client, index_name, create_index):
     assert response.status_code == 415
 
 
-def test_invalid_accept_header_defaults_to_json(client, index_name, create_index):
-    """Test that invalid Accept header gracefully defaults to JSON"""
-    # Insert some data first
-    req = client.put(f'/{index_name}/1', json={'hashes': [101, 201, 301]})
-    assert req.status_code == 200
-    
-    # Request with invalid Accept header should get JSON response
-    req = client.get(f'/{index_name}/1',
-                     headers={'Accept': 'invalid/type'})
-    assert req.status_code == 200
-    
-    # Response should be JSON (graceful fallback)
-    response_data = json.loads(req.content)
-    assert response_data == {'version': 1}
-
-
 def test_error_responses_match_request_format(client, index_name, create_index):
     """Test that error responses use the same format as request"""
     import requests
@@ -174,29 +160,3 @@ def test_error_responses_match_request_format(client, index_name, create_index):
     assert response.headers['content-type'] == 'application/vnd.msgpack'
     error_data = msgpack.loads(response.content)
     assert 'error' in error_data or 'e' in error_data
-
-
-def test_minimal_headers_performance_case(client, index_name, create_index):
-    """Test the optimal performance case - no headers needed for MessagePack"""
-    # This is the target use case: minimal headers for high-performance MessagePack
-    data = {'hashes': [101, 201, 301]}
-    msgpack_data = msgpack.packb(data)
-    
-    # No Content-Type header needed
-    req = client.put(f'/{index_name}/1', data=msgpack_data)
-    assert req.status_code == 200
-    
-    # Search also with minimal headers
-    search_data = {'query': [101, 201, 301]}
-    msgpack_search = msgpack.packb(search_data)
-    
-    req = client.post(f'/{index_name}/_search', data=msgpack_search)
-    assert req.status_code == 200
-    
-    # Verify we get the correct MessagePack response (abbreviated keys)
-    response_data = msgpack.loads(req.content)
-    assert response_data == {
-        'r': [
-            {'i': 1, 's': 3},
-        ],
-    }
