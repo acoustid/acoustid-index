@@ -196,36 +196,46 @@ const ContentType = enum {
     msgpack,
 };
 
+const jsonContentTypeName = "application/json";
+const msgpackContentTypeName = "application/vnd.msgpack";
+
+fn getDefaultContentType(req: *httpz.Request) ContentType {
+    if (req.body() != null) {
+        return .msgpack;
+    } else {
+        return .json;
+    }
+}
+
 fn parseContentTypeHeader(req: *httpz.Request) !ContentType {
     if (req.header("content-type")) |content_type| {
-        if (std.mem.eql(u8, content_type, "application/json")) {
+        if (std.mem.eql(u8, content_type, jsonContentTypeName)) {
             return .json;
-        } else if (std.mem.eql(u8, content_type, "application/vnd.msgpack")) {
+        } else if (std.mem.eql(u8, content_type, msgpackContentTypeName)) {
             return .msgpack;
         }
         return error.InvalidContentType;
     }
-    return .json;
+    return getDefaultContentType(req);
 }
 
 fn parseAcceptHeader(req: *httpz.Request) ContentType {
     if (req.header("accept")) |accept_header| {
-        if (std.mem.eql(u8, accept_header, "application/json")) {
+        if (std.mem.eql(u8, accept_header, jsonContentTypeName)) {
             return .json;
-        } else if (std.mem.eql(u8, accept_header, "application/vnd.msgpack")) {
+        } else if (std.mem.eql(u8, accept_header, msgpackContentTypeName)) {
             return .msgpack;
         }
     }
-    return .json;
+    return parseContentTypeHeader(req) catch getDefaultContentType(req);
 }
 
 fn writeResponse(value: anytype, req: *httpz.Request, res: *httpz.Response) !void {
     const content_type = parseAcceptHeader(req);
-
     switch (content_type) {
         .json => try res.json(value, .{}),
         .msgpack => {
-            res.header("content-type", "application/vnd.msgpack");
+            res.header("content-type", msgpackContentTypeName);
             try msgpack.encode(value, res.writer());
         },
     }
