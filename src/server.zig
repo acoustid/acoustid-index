@@ -273,15 +273,7 @@ fn handleError(_: *Context, req: *httpz.Request, res: *httpz.Response, err: anye
 
 fn writeErrorResponse(status: u16, err: anyerror, req: *httpz.Request, res: *httpz.Response) !void {
     res.status = status;
-
-    const content_type = parseAcceptHeader(req);
-    switch (content_type) {
-        .json => try res.json(ErrorResponse{ .@"error" = @errorName(err) }, .{}),
-        .msgpack => {
-            res.header("content-type", "application/vnd.msgpack");
-            try msgpack.encode(ErrorResponse{ .@"error" = @errorName(err) }, res.writer());
-        },
-    }
+    try writeResponse(ErrorResponse{ .@"error" = @errorName(err) }, req, res);
 }
 
 fn getRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !?T {
