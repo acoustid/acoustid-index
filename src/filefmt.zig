@@ -1,3 +1,12 @@
+// Segment file format layout:
+// 1. Header - msgpack encoded segment metadata and configuration
+// 2. Attributes - msgpack encoded string to u64 mappings
+// 3. Documents - msgpack encoded document ID to boolean mappings
+// 4. Padding - zero bytes to align to block size boundary
+// 5. Blocks - fixed-size blocks containing the inverted index data
+// 6. Footer - msgpack encoded validation data (counts, checksum)
+// 7. Footer Size - 4-byte little-endian u32 with footer size in bytes
+
 const std = @import("std");
 const builtin = @import("builtin");
 const testing = std.testing;
@@ -55,7 +64,7 @@ pub fn readBlock(data: []const u8, items: *std.ArrayList(Item), min_doc_id: u32)
 
     const num_hashes = streamvbyte.decodeBlockHashes(header, data, &hashes);
     const num_docids = streamvbyte.decodeBlockDocids(header, hashes[0..header.num_items], data, min_doc_id, &docids);
-    
+
     assert(num_hashes == header.num_items);
     assert(num_docids == header.num_items);
 
@@ -254,7 +263,14 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
     try writer.writeByteNTimes(0, padding_size);
 
     const footer = try writeBlocks(reader, writer, segment.min_doc_id, block_size);
+
+    // Write footer and capture its size
+    const footer_start_pos = counting_writer.bytes_written;
     try packer.write(footer);
+    const footer_size = counting_writer.bytes_written - footer_start_pos;
+
+    // Write footer size as 4-byte little-endian integer at the end
+    try writer.writeInt(u32, @intCast(footer_size), .little);
 
     try buffered_writer.flush();
 
