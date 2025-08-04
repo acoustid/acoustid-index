@@ -336,21 +336,13 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     segment.block_size = header.block_size;
 
     if (header.has_attributes) {
-        // FIXME nicer api in msgpack.zig
-        var attributes = std.StringHashMap(u64).init(segment.allocator);
-        defer attributes.deinit();
-        try unpacker.readMapInto(&attributes);
-        segment.attributes.deinit(segment.allocator);
-        segment.attributes = attributes.unmanaged.move();
+        segment.attributes.clearRetainingCapacity();
+        try msgpack.unpackMapInto(reader, segment.allocator, &segment.attributes);
     }
 
     if (header.has_docs) {
-        // FIXME nicer api in msgpack.zig
-        var docs = std.AutoHashMap(u32, bool).init(segment.allocator);
-        defer docs.deinit();
-        try unpacker.readMapInto(&docs);
-        segment.docs.deinit(segment.allocator);
-        segment.docs = docs.unmanaged.move();
+        segment.docs.clearRetainingCapacity();
+        try msgpack.unpackMapInto(reader, segment.allocator, &segment.docs);
 
         var iter = segment.docs.keyIterator();
         segment.min_doc_id = 0;
