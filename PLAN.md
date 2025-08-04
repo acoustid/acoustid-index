@@ -120,16 +120,26 @@ const Options = struct {
 ### 🎯 **Recent Enhancements (Latest Commits)**
 
 **Latest Commits Added:**
-1. `eec0da2` - Abstract state completion logic into reusable WaitGroup component
-2. `c83d3c1` - Fix unit test failures in parallel segment loading  
-3. `afe3f89` - Fix compilation error in WaitGroup test
+1. `4d1abc3` - Replace polling with semaphores and add comprehensive metrics
+2. `2143803` - Remove unused MAX_CONCURRENT_LOADS constant
+3. `29529fd` - Remove unused mutex field from SegmentLoadContext and ParallelLoadState
+4. `5c01e51` - Fix race condition in WaitGroup.add() overflow check
+5. `0697575` - Fix race condition in WaitGroup.wait() using ResetEvent
+6. `eec0da2` - Abstract state completion logic into reusable WaitGroup component
+7. `c83d3c1` - Fix unit test failures in parallel segment loading  
+8. `afe3f89` - Fix compilation error in WaitGroup test
 
 **Key Improvements:**
+- ✅ **Semaphore-Based Concurrency**: Replaced polling-based task limiting with proper semaphore resource management
+- ✅ **Performance Metrics**: Added comprehensive metrics (startup duration, parallel/sequential counters, segment counts)
+- ✅ **Race Condition Fixes**: Fixed critical race conditions in WaitGroup add() and wait() methods
+- ✅ **ResetEvent Synchronization**: Replaced semaphore with ResetEvent in WaitGroup for proper atomic signaling
+- ✅ **Code Cleanup**: Removed unused constants and mutex fields
+- ✅ **Comprehensive Testing**: Added metrics validation tests
 - ✅ **WaitGroup Synchronization**: Replaced polling with proper event-based coordination
 - ✅ **Better Error Handling**: Simplified per-task error management
 - ✅ **More Tests**: Added 3 WaitGroup unit tests (27 total unit tests)
 - ✅ **Cleaner Code**: Abstracted synchronization logic into reusable component
-- ✅ **Fixed Issues**: Resolved compilation errors and test failures
 
 **Current Synchronization Approach:**
 ```zig
@@ -138,10 +148,23 @@ while (completion_counter.load(.acquire) > 0) {
     std.time.sleep(std.time.ns_per_ms);
 }
 
-// NEW: Event-based with WaitGroup (efficient)
+// NEW: Event-based with WaitGroup + ResetEvent (race-condition free)
 load_state.wait_group.add(manifest.len);
-// ... tasks call wait_group.done() when complete ...
-load_state.wait_group.wait(); // Blocks until all done
+// ... semaphore controls concurrency, tasks call wait_group.done() when complete ...
+load_state.wait_group.wait(); // Uses ResetEvent for atomic condition checking
+```
+
+**Concurrency Control Approach:**
+```zig
+// OLD: Polling-based task limiting (inefficient)
+while (active_tasks >= MAX_CONCURRENT_LOADS) {
+    std.time.sleep(std.time.ns_per_ms);
+}
+
+// NEW: Semaphore-based resource management (efficient)
+concurrency_semaphore.wait();     // Acquire permit (blocks if at limit)
+// ... schedule task ...
+defer concurrency_semaphore.post(); // Release permit when task completes
 ```
 
 ## Design Principles
@@ -161,15 +184,15 @@ load_state.wait_group.wait(); // Blocks until all done
    - ~~Implement proper completion signaling as recommended by architect~~ ✅ **DONE**: WaitGroup handles completion
    - ~~More efficient than current 1ms polling intervals~~ ✅ **DONE**: No more polling
 
-2. **Improve Bounded Concurrency** - Replace simple task limiting *(partially addressed)*
-   - Add `std.Thread.Semaphore` for proper resource management  
-   - Remove the remaining polling-based backpressure logic
-   - *(Current implementation still uses basic task counting - can be improved)*
+2. ~~**Improve Bounded Concurrency** - Replace simple task limiting~~ ✅ **COMPLETED**
+   - ~~Add `std.Thread.Semaphore` for proper resource management~~ ✅ **DONE**: Implemented semaphore-based task limiting
+   - ~~Remove the remaining polling-based backpressure logic~~ ✅ **DONE**: No more polling for concurrency control
+   - ~~*(Current implementation still uses basic task counting - can be improved)*~~ ✅ **RESOLVED**: Proper semaphore permits
 
-3. **Performance Monitoring** - Add basic metrics
-   - Track parallel vs sequential loading usage
-   - Measure startup time improvements  
-   - Log resource usage patterns
+3. ~~**Performance Monitoring** - Add basic metrics~~ ✅ **COMPLETED**
+   - ~~Track parallel vs sequential loading usage~~ ✅ **DONE**: Added parallel_loading_total, sequential_loading_total counters
+   - ~~Measure startup time improvements~~ ✅ **DONE**: Added startup_duration_seconds histogram
+   - ~~Log resource usage patterns~~ ✅ **DONE**: Added parallel_segment_count histogram
 
 4. **Configuration Exposure** - Make settings runtime configurable
    - Expose `max_concurrent_loads` via command line args
@@ -183,14 +206,19 @@ load_state.wait_group.wait(); // Blocks until all done
    - ~~Should be replaced with event-based signaling~~ ✅ **DONE**: WaitGroup provides proper signaling
    - ~~Code location: `loadParallel()` lines ~442-458 and ~481-483~~ ✅ **UPDATED**: Now uses `wait_group.wait()`
 
-2. **Simple Task Limiting**: Basic active task counting with polling *(still present)*
-   - Functional but not optimal
-   - Should use semaphore for proper backpressure
-   - Code location: `loadParallel()` lines ~445-459 (still uses polling for task limiting)
+2. ~~**Simple Task Limiting**: Basic active task counting with polling~~ ✅ **FIXED**
+   - ~~Functional but not optimal~~ ✅ **RESOLVED**: Implemented proper semaphore-based resource management
+   - ~~Should use semaphore for proper backpressure~~ ✅ **DONE**: Using `std.Thread.Semaphore` with permits
+   - ~~Code location: `loadParallel()` lines ~445-459 (still uses polling for task limiting)~~ ✅ **UPDATED**: Now uses semaphore.wait()/post()
 
-3. **No Performance Metrics**: Can't measure actual improvements yet
-   - Need baseline measurements
-   - Should track loading times and resource usage
+3. ~~**No Performance Metrics**: Can't measure actual improvements yet~~ ✅ **FIXED**
+   - ~~Need baseline measurements~~ ✅ **RESOLVED**: Added comprehensive metrics collection
+   - ~~Should track loading times and resource usage~~ ✅ **DONE**: Startup duration, counters, and segment count histograms
+
+4. **WaitGroup Race Conditions**: ✅ **FIXED**
+   - ✅ **Fixed overflow race**: Compare-and-swap loop prevents overflow after atomic operations
+   - ✅ **Fixed wait race**: ResetEvent eliminates missed wakeup signals between counter checks and waits
+   - ✅ **Thread-safe signaling**: Proper atomic condition checking and event-based coordination
 
 ### 📊 Performance Testing Needed
 
