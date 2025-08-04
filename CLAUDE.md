@@ -77,4 +77,6 @@ Primarily uses MessagePack with compact message structure (using single characte
 ## Development Notes
 
 - Don't break backwards compatibility unless absolutely necessary
-- Run unit tests after any code change, run integration tests after you are done with a larger request
+- Run unit tests after any code change
+- Run integration tests, and ask code-reviewer agent for code review, after finishing any larger code change
+- Ask architect agent for review when planning a change to the system
