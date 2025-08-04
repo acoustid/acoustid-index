@@ -52,7 +52,6 @@ const SegmentLoadContext = struct {
     result: *?FileSegmentList.Node,
     load_error: *?anyerror,
     wait_group: *WaitGroup,
-    mutex: *std.Thread.Mutex,
     concurrency_semaphore: *std.Thread.Semaphore,
 };
 
@@ -62,7 +61,6 @@ const ParallelLoadState = struct {
     errors: []?anyerror,
     tasks: []?Scheduler.Task,
     wait_group: WaitGroup,
-    mutex: std.Thread.Mutex,
     concurrency_semaphore: std.Thread.Semaphore,
     
     fn init(allocator: std.mem.Allocator, segment_count: usize, max_concurrent: u32) !ParallelLoadState {
@@ -85,7 +83,6 @@ const ParallelLoadState = struct {
             .errors = errors,
             .tasks = tasks,
             .wait_group = WaitGroup.init(),
-            .mutex = .{},
             .concurrency_semaphore = std.Thread.Semaphore{ .permits = max_concurrent },
         };
     }
@@ -478,7 +475,6 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
             .result = &load_state.results[i],
             .load_error = &load_state.errors[i],
             .wait_group = &load_state.wait_group,
-            .mutex = &load_state.mutex,
             .concurrency_semaphore = &load_state.concurrency_semaphore,
         };
         
