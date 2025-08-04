@@ -5,7 +5,7 @@ const std = @import("std");
 /// multiple concurrent operations.
 pub const WaitGroup = struct {
     counter: std.atomic.Value(usize),
-    semaphore: std.Thread.Semaphore,
+    completion_event: std.Thread.ResetEvent,
 
     const Self = @This();
 
@@ -13,7 +13,7 @@ pub const WaitGroup = struct {
     pub fn init() Self {
         return Self{
             .counter = std.atomic.Value(usize).init(0),
-            .semaphore = .{},
+            .completion_event = .{},
         };
     }
 
@@ -37,7 +37,11 @@ pub const WaitGroup = struct {
                 _ = actual;
                 continue;
             } else {
-                // CAS succeeded, we're done
+                // CAS succeeded, check if we went from 0 to non-zero
+                if (current_count == 0 and new_count > 0) {
+                    // Reset the completion event since we now have work to wait for
+                    self.completion_event.reset();
+                }
                 break;
             }
         }
@@ -54,27 +58,24 @@ pub const WaitGroup = struct {
         }
         
         if (old_count == 1) {
-            // Counter reached 0, wake up all waiters
-            // Post multiple signals to handle multiple potential waiters
-            // This is a reasonable compromise - most use cases won't have more than 4 waiters
-            var i: u32 = 0;
-            while (i < 4) : (i += 1) {
-                self.semaphore.post();
-            }
+            // Counter reached 0, signal completion to all waiters
+            self.completion_event.set();
         }
     }
 
     /// Wait until the WaitGroup counter reaches 0.
     /// This will block until all tasks that were added have called done().
     pub fn wait(self: *Self) void {
-        while (true) {
-            const current_count = self.counter.load(.acquire);
-            if (current_count == 0) {
-                break;
+        // Keep waiting until counter reaches 0
+        while (self.counter.load(.acquire) != 0) {
+            // Wait for completion event - this will be set when counter reaches 0
+            self.completion_event.wait();
+            
+            // After waking up, reset the event for potential next wait cycle
+            // This handles the case where more tasks might be added after completion
+            if (self.counter.load(.acquire) != 0) {
+                self.completion_event.reset();
             }
-            // Wait on semaphore - this will block until done() posts
-            self.semaphore.wait();
-            // Loop back to check counter again to handle spurious wakeups and multiple waiters
         }
     }
 
