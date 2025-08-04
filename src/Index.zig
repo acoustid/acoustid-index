@@ -124,6 +124,9 @@ checkpoint_task: ?Scheduler.Task = null,
 file_segment_merge_task: ?Scheduler.Task = null,
 memory_segment_merge_task: ?Scheduler.Task = null,
 
+stopping: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+file_segment_merge_event: std.Thread.ResetEvent = .{},
+
 fn getFileSegmentSize(segment: SharedPtr(FileSegment)) usize {
     return segment.value.getSize();
 }
@@ -179,6 +182,10 @@ pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, parent_dir: std
 
 pub fn deinit(self: *Self) void {
     log.info("closing index {}", .{@intFromPtr(self)});
+
+    // Signal stopping to any background threads
+    self.stopping.store(true, .release);
+    self.file_segment_merge_event.set();
 
     if (self.load_task) |task| {
         self.scheduler.destroyTask(task);
@@ -376,8 +383,7 @@ fn loadSegmentTask(ctx: SegmentLoadContext) void {
         ctx.segment_info,
         .{ .dir = ctx.index.dir }
     ) catch |err| {
-        ctx.mutex.lock();
-        defer ctx.mutex.unlock();
+        // Store error without mutex - each task has its own error slot
         ctx.load_error.* = err;
         ctx.wait_group.done();
         return;
