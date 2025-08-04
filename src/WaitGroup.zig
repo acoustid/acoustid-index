@@ -21,11 +21,25 @@ pub const WaitGroup = struct {
     /// This should be called before starting tasks that will call done().
     /// The counter must not go negative.
     pub fn add(self: *Self, delta: usize) void {
-        const old_count = self.counter.fetchAdd(delta, .acq_rel);
-        
-        // Detect overflow (though unlikely with usize)
-        if (old_count > std.math.maxInt(usize) - delta) {
-            @panic("WaitGroup counter overflow");
+        while (true) {
+            const current_count = self.counter.load(.acquire);
+            
+            // Check for overflow before attempting to add
+            if (current_count > std.math.maxInt(usize) - delta) {
+                @panic("WaitGroup counter overflow");
+            }
+            
+            const new_count = current_count + delta;
+            
+            // Attempt atomic compare-and-swap
+            if (self.counter.cmpxchgWeak(current_count, new_count, .acq_rel, .acquire)) |actual| {
+                // CAS failed, retry with the actual value we read
+                _ = actual;
+                continue;
+            } else {
+                // CAS succeeded, we're done
+                break;
+            }
         }
     }
 
