@@ -340,13 +340,15 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
         try msgpack.unpackMapInto(reader, segment.allocator, &segment.attributes);
     }
 
+    segment.min_doc_id = 0;
+    segment.max_doc_id = 0;
+
     segment.docs.clearRetainingCapacity();
+
     if (header.has_docs) {
         try msgpack.unpackMapInto(reader, segment.allocator, &segment.docs);
 
         var iter = segment.docs.keyIterator();
-        segment.min_doc_id = 0;
-        segment.max_doc_id = 0;
         while (iter.next()) |key_ptr| {
             if (segment.min_doc_id == 0 or key_ptr.* < segment.min_doc_id) {
                 segment.min_doc_id = key_ptr.*;
