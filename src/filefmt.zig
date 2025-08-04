@@ -335,26 +335,20 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     segment.info = header.info;
     segment.block_size = header.block_size;
 
+    segment.attributes.clearRetainingCapacity();
     if (header.has_attributes) {
-        // FIXME nicer api in msgpack.zig
-        var attributes = std.StringHashMap(u64).init(segment.allocator);
-        defer attributes.deinit();
-        try unpacker.readMapInto(&attributes);
-        segment.attributes.deinit(segment.allocator);
-        segment.attributes = attributes.unmanaged.move();
+        try msgpack.unpackMapInto(reader, segment.allocator, &segment.attributes);
     }
 
+    segment.min_doc_id = 0;
+    segment.max_doc_id = 0;
+
+    segment.docs.clearRetainingCapacity();
+
     if (header.has_docs) {
-        // FIXME nicer api in msgpack.zig
-        var docs = std.AutoHashMap(u32, bool).init(segment.allocator);
-        defer docs.deinit();
-        try unpacker.readMapInto(&docs);
-        segment.docs.deinit(segment.allocator);
-        segment.docs = docs.unmanaged.move();
+        try msgpack.unpackMapInto(reader, segment.allocator, &segment.docs);
 
         var iter = segment.docs.keyIterator();
-        segment.min_doc_id = 0;
-        segment.max_doc_id = 0;
         while (iter.next()) |key_ptr| {
             if (segment.min_doc_id == 0 or key_ptr.* < segment.min_doc_id) {
                 segment.min_doc_id = key_ptr.*;
