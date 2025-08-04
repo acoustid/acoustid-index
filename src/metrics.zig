@@ -11,6 +11,16 @@ const SearchDuration = m.Histogram(
     &.{ 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10 },
 );
 
+const StartupDuration = m.Histogram(
+    f64,
+    &.{ 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10 },
+);
+
+const ParallelSegmentCount = m.Histogram(
+    u64,
+    &.{ 1, 2, 3, 5, 10, 20, 50, 100 },
+);
+
 const ScannedDocsPerHash = m.Histogram(
     u64,
     &.{ 1, 2, 3, 5, 10, 50, 100, 500, 1000 },
@@ -33,6 +43,11 @@ const Metrics = struct {
     docs: m.GaugeVec(u32, WithIndex),
     scanned_docs_per_hash: ScannedDocsPerHash,
     scanned_blocks_per_hash: ScannedBlocksPerHash,
+    // Parallel loading metrics
+    parallel_loading_total: m.Counter(u64),
+    sequential_loading_total: m.Counter(u64),
+    startup_duration: StartupDuration,
+    parallel_segment_count: ParallelSegmentCount,
 };
 
 pub fn search() void {
@@ -79,6 +94,19 @@ pub fn docs(index_name: []const u8, value: u32) void {
     metrics.docs.set(.{ .index = index_name }, value) catch {};
 }
 
+pub fn parallelLoading(segment_count: usize) void {
+    metrics.parallel_loading_total.incr();
+    metrics.parallel_segment_count.observe(@intCast(segment_count));
+}
+
+pub fn sequentialLoading() void {
+    metrics.sequential_loading_total.incr();
+}
+
+pub fn startupDuration(duration_ms: i64) void {
+    metrics.startup_duration.observe(@as(f64, @floatFromInt(duration_ms)) / 1000.0);
+}
+
 pub fn initializeMetrics(allocator: std.mem.Allocator, comptime opts: m.RegistryOpts) !void {
     arena = std.heap.ArenaAllocator.init(allocator);
     const alloc = arena.?.allocator();
@@ -95,6 +123,11 @@ pub fn initializeMetrics(allocator: std.mem.Allocator, comptime opts: m.Registry
         .docs = try m.GaugeVec(u32, WithIndex).init(alloc, "docs", .{}, opts),
         .scanned_docs_per_hash = ScannedDocsPerHash.init("scanned_docs_per_hash", .{}, opts),
         .scanned_blocks_per_hash = ScannedBlocksPerHash.init("scanned_blocks_per_hash", .{}, opts),
+        // Initialize parallel loading metrics
+        .parallel_loading_total = m.Counter(u64).init("parallel_loading_total", .{}, opts),
+        .sequential_loading_total = m.Counter(u64).init("sequential_loading_total", .{}, opts),
+        .startup_duration = StartupDuration.init("startup_duration_seconds", .{}, opts),
+        .parallel_segment_count = ParallelSegmentCount.init("parallel_segment_count", .{}, opts),
     };
 }
 

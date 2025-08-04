@@ -54,6 +54,7 @@ const SegmentLoadContext = struct {
     load_error: *?anyerror,
     wait_group: *WaitGroup,
     mutex: *std.Thread.Mutex,
+    concurrency_semaphore: *std.Thread.Semaphore,
 };
 
 const ParallelLoadState = struct {
@@ -63,8 +64,9 @@ const ParallelLoadState = struct {
     tasks: []?Scheduler.Task,
     wait_group: WaitGroup,
     mutex: std.Thread.Mutex,
+    concurrency_semaphore: std.Thread.Semaphore,
     
-    fn init(allocator: std.mem.Allocator, segment_count: usize) !ParallelLoadState {
+    fn init(allocator: std.mem.Allocator, segment_count: usize, max_concurrent: u32) !ParallelLoadState {
         const results = try allocator.alloc(?FileSegmentList.Node, segment_count);
         errdefer allocator.free(results);
         
@@ -85,6 +87,7 @@ const ParallelLoadState = struct {
             .tasks = tasks,
             .wait_group = WaitGroup.init(),
             .mutex = .{},
+            .concurrency_semaphore = std.Thread.Semaphore{ .permits = max_concurrent },
         };
     }
     
@@ -378,6 +381,12 @@ pub fn open(self: *Self, create: bool) !void {
 }
 
 fn loadSegmentTask(ctx: SegmentLoadContext) void {
+    defer {
+        // Always release the semaphore slot when task completes
+        ctx.concurrency_semaphore.post();
+        ctx.wait_group.done();
+    }
+    
     ctx.result.* = FileSegmentList.loadSegment(
         ctx.index.allocator,
         ctx.segment_info,
@@ -385,12 +394,10 @@ fn loadSegmentTask(ctx: SegmentLoadContext) void {
     ) catch |err| {
         // Store error without mutex - each task has its own error slot
         ctx.load_error.* = err;
-        ctx.wait_group.done();
         return;
     };
     
     log.info("loaded segment {}", .{ctx.segment_info.version});
-    ctx.wait_group.done();
 }
 
 fn load(self: *Self, manifest: []SegmentInfo) !void {
@@ -411,6 +418,12 @@ fn load(self: *Self, manifest: []SegmentInfo) !void {
 }
 
 fn loadEmpty(self: *Self) !void {
+    const start_time = std.time.milliTimestamp();
+    defer metrics.startupDuration(std.time.milliTimestamp() - start_time);
+    
+    // Record that we used empty loading (which is technically sequential)
+    metrics.sequentialLoading();
+    
     self.memory_segment_merge_task = try self.scheduler.createTask(.high, memorySegmentMergeTask, .{self});
     self.checkpoint_task = try self.scheduler.createTask(.medium, checkpointTask, .{self});
     self.file_segment_merge_task = try self.scheduler.createTask(.low, fileSegmentMergeTask, .{self});
@@ -421,6 +434,11 @@ fn loadEmpty(self: *Self) !void {
 }
 
 fn loadSequential(self: *Self, manifest: []SegmentInfo) !void {
+    const start_time = std.time.milliTimestamp();
+    defer metrics.startupDuration(std.time.milliTimestamp() - start_time);
+    
+    metrics.sequentialLoading();
+    
     try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, manifest.len);
     var last_commit_id: u64 = 0;
     
@@ -435,9 +453,14 @@ fn loadSequential(self: *Self, manifest: []SegmentInfo) !void {
 }
 
 fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
+    const start_time = std.time.milliTimestamp();
+    defer metrics.startupDuration(std.time.milliTimestamp() - start_time);
+    
     log.info("using parallel loading for {} segments", .{manifest.len});
     
-    var load_state = try ParallelLoadState.init(self.allocator, manifest.len);
+    metrics.parallelLoading(manifest.len);
+    
+    var load_state = try ParallelLoadState.init(self.allocator, manifest.len, self.options.max_concurrent_loads);
     defer load_state.deinit();
     
     // Add all segments to the wait group
@@ -445,28 +468,10 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
     
     try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, manifest.len);
     
-    // Create and schedule loading tasks (with basic bounded concurrency)
-    var active_tasks: usize = 0;
+    // Create and schedule loading tasks with semaphore-based concurrency control
     for (manifest, 0..) |segment_info, i| {
-        // Simple bounded concurrency - wait if we have too many active tasks
-        while (active_tasks >= MAX_CONCURRENT_LOADS) {
-            std.time.sleep(std.time.ns_per_ms);
-            
-            // Check if any tasks completed
-            var completed_count: usize = 0;
-            for (load_state.tasks[0..i]) |maybe_task| {
-                if (maybe_task) |task| {
-                    // Check if task is done (non-blocking)
-                    if (!task.data.running and !task.data.scheduled) {
-                        completed_count += 1;
-                    }
-                }
-            }
-            if (completed_count > 0) {
-                active_tasks = @min(active_tasks, MAX_CONCURRENT_LOADS - 1);
-                break;
-            }
-        }
+        // Acquire semaphore slot - this blocks if we're at the concurrency limit
+        load_state.concurrency_semaphore.wait();
         
         const load_context = SegmentLoadContext{
             .index = self,
@@ -475,16 +480,18 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
             .load_error = &load_state.errors[i],
             .wait_group = &load_state.wait_group,
             .mutex = &load_state.mutex,
+            .concurrency_semaphore = &load_state.concurrency_semaphore,
         };
         
         load_state.tasks[i] = self.scheduler.createTask(.high, loadSegmentTask, .{load_context}) catch |err| {
+            // If task creation fails, release the semaphore and mark as done
+            load_state.concurrency_semaphore.post();
             load_state.errors[i] = err;
             load_state.wait_group.done();
             continue;
         };
         
         self.scheduler.scheduleTask(load_state.tasks[i].?);
-        active_tasks += 1;
     }
     
     // Wait for all tasks to complete
