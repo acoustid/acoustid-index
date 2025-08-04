@@ -1,5 +1,11 @@
 import json
 import random
+import time
+
+
+def wait_for_checkpoint(seconds=5):
+    """Wait for background checkpointing to complete."""
+    time.sleep(seconds)
 
 
 def test_parallel_loading_on_restart_with_multiple_segments(server, client, index_name, create_index):
@@ -28,9 +34,8 @@ def test_parallel_loading_on_restart_with_multiple_segments(server, client, inde
         })
         assert req.status_code == 200, req.content
     
-    # Wait a bit for background checkpointing to complete
-    import time
-    time.sleep(2)
+    # Wait for background checkpointing to complete
+    wait_for_checkpoint()
     
     # Get index info to see how many segments we have
     req = client.get(f'/{index_name}')

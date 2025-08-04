@@ -1,6 +1,12 @@
 import json
 import random
 import re
+import time
+
+
+def wait_for_checkpoint(seconds=5):
+    """Wait for background checkpointing to complete."""
+    time.sleep(seconds)
 
 
 def test_parallel_loading_metrics_recorded(server, client, index_name, create_index):
@@ -30,8 +36,7 @@ def test_parallel_loading_metrics_recorded(server, client, index_name, create_in
         assert req.status_code == 200, req.content
     
     # Wait for checkpointing to create file segments
-    import time
-    time.sleep(3)
+    wait_for_checkpoint()
     
     # Force a restart to trigger parallel loading
     server.stop(kill=True)
