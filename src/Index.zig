@@ -40,6 +40,66 @@ const Self = @This();
 const Options = struct {
     min_segment_size: usize = 500_000,
     max_segment_size: usize = 750_000_000,
+    max_concurrent_loads: u32 = 4,
+    parallel_loading_threshold: usize = 3,
+};
+
+const MAX_CONCURRENT_LOADS = 4;
+
+const SegmentLoadContext = struct {
+    index: *Self,
+    segment_info: SegmentInfo,
+    result: *?FileSegmentList.Node,
+    load_error: *?anyerror,
+    completion_counter: *std.atomic.Value(usize),
+    mutex: *std.Thread.Mutex,
+};
+
+const ParallelLoadState = struct {
+    allocator: std.mem.Allocator,
+    results: []?FileSegmentList.Node,
+    errors: []?anyerror,
+    tasks: []?Scheduler.Task,
+    completion_counter: std.atomic.Value(usize),
+    mutex: std.Thread.Mutex,
+    
+    fn init(allocator: std.mem.Allocator, segment_count: usize) !ParallelLoadState {
+        const results = try allocator.alloc(?FileSegmentList.Node, segment_count);
+        errdefer allocator.free(results);
+        
+        const errors = try allocator.alloc(?anyerror, segment_count);
+        errdefer allocator.free(errors);
+        
+        const tasks = try allocator.alloc(?Scheduler.Task, segment_count);
+        errdefer allocator.free(tasks);
+        
+        @memset(results, null);
+        @memset(errors, null);
+        @memset(tasks, null);
+        
+        return ParallelLoadState{
+            .allocator = allocator,
+            .results = results,
+            .errors = errors,
+            .tasks = tasks,
+            .completion_counter = std.atomic.Value(usize).init(segment_count),
+            .mutex = .{},
+        };
+    }
+    
+    fn deinit(self: *ParallelLoadState) void {
+        // Clean up any remaining tasks
+        for (self.tasks) |maybe_task| {
+            if (maybe_task) |task| {
+                // Tasks should be cleaned up by caller, but just in case
+                _ = task;
+            }
+        }
+        
+        self.allocator.free(self.results);
+        self.allocator.free(self.errors);
+        self.allocator.free(self.tasks);
+    }
 };
 
 options: Options,
@@ -309,20 +369,155 @@ pub fn open(self: *Self, create: bool) !void {
     self.scheduler.scheduleTask(self.load_task.?);
 }
 
+fn loadSegmentTask(ctx: SegmentLoadContext) void {
+    ctx.result.* = FileSegmentList.loadSegment(
+        ctx.index.allocator,
+        ctx.segment_info,
+        .{ .dir = ctx.index.dir }
+    ) catch |err| {
+        ctx.mutex.lock();
+        defer ctx.mutex.unlock();
+        ctx.load_error.* = err;
+        _ = ctx.completion_counter.fetchSub(1, .release);
+        return;
+    };
+    
+    log.info("loaded segment {}", .{ctx.segment_info.version});
+    _ = ctx.completion_counter.fetchSub(1, .release);
+}
+
 fn load(self: *Self, manifest: []SegmentInfo) !void {
     defer self.allocator.free(manifest);
 
     log.info("found {} segments in manifest", .{manifest.len});
 
+    if (manifest.len == 0) {
+        return self.loadEmpty();
+    }
+
+    // Use parallel loading for manifests with 3+ segments
+    if (manifest.len >= self.options.parallel_loading_threshold) {
+        return self.loadParallel(manifest);
+    } else {
+        return self.loadSequential(manifest);
+    }
+}
+
+fn loadEmpty(self: *Self) !void {
+    self.memory_segment_merge_task = try self.scheduler.createTask(.high, memorySegmentMergeTask, .{self});
+    self.checkpoint_task = try self.scheduler.createTask(.medium, checkpointTask, .{self});
+    self.file_segment_merge_task = try self.scheduler.createTask(.low, fileSegmentMergeTask, .{self});
+
+    try self.oplog.open(1, updateInternal, self);
+    log.info("index loaded (empty)", .{});
+    self.is_ready.set();
+}
+
+fn loadSequential(self: *Self, manifest: []SegmentInfo) !void {
     try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, manifest.len);
     var last_commit_id: u64 = 0;
-    for (manifest, 1..) |segment_id, i| {
-        const node = try FileSegmentList.loadSegment(self.allocator, segment_id, .{ .dir = self.dir });
+    
+    for (manifest, 1..) |segment_info, i| {
+        const node = try FileSegmentList.loadSegment(self.allocator, segment_info, .{ .dir = self.dir });
         self.file_segments.segments.value.nodes.appendAssumeCapacity(node);
         last_commit_id = node.value.info.getLastCommitId();
         log.info("loaded segment {} ({}/{})", .{ last_commit_id, i, manifest.len });
     }
 
+    try self.completeLoading(last_commit_id);
+}
+
+fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
+    log.info("using parallel loading for {} segments", .{manifest.len});
+    
+    var load_state = try ParallelLoadState.init(self.allocator, manifest.len);
+    defer load_state.deinit();
+    
+    try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, manifest.len);
+    
+    // Create and schedule loading tasks (with basic bounded concurrency)
+    var active_tasks: usize = 0;
+    for (manifest, 0..) |segment_info, i| {
+        // Simple bounded concurrency - wait if we have too many active tasks
+        while (active_tasks >= MAX_CONCURRENT_LOADS) {
+            std.time.sleep(std.time.ns_per_ms);
+            
+            // Check if any tasks completed
+            var completed_count: usize = 0;
+            for (load_state.tasks[0..i]) |maybe_task| {
+                if (maybe_task) |task| {
+                    // Check if task is done (non-blocking)
+                    if (!task.data.running and !task.data.scheduled) {
+                        completed_count += 1;
+                    }
+                }
+            }
+            if (completed_count > 0) {
+                active_tasks = @min(active_tasks, MAX_CONCURRENT_LOADS - 1);
+                break;
+            }
+        }
+        
+        const load_context = SegmentLoadContext{
+            .index = self,
+            .segment_info = segment_info,
+            .result = &load_state.results[i],
+            .load_error = &load_state.errors[i],
+            .completion_counter = &load_state.completion_counter,
+            .mutex = &load_state.mutex,
+        };
+        
+        load_state.tasks[i] = self.scheduler.createTask(.high, loadSegmentTask, .{load_context}) catch |err| {
+            load_state.errors[i] = err;
+            _ = load_state.completion_counter.fetchSub(1, .release);
+            continue;
+        };
+        
+        self.scheduler.scheduleTask(load_state.tasks[i].?);
+        active_tasks += 1;
+    }
+    
+    // Wait for all tasks to complete
+    while (load_state.completion_counter.load(.acquire) > 0) {
+        std.time.sleep(std.time.ns_per_ms);
+    }
+    
+    // Clean up tasks
+    for (load_state.tasks) |maybe_task| {
+        if (maybe_task) |task| {
+            self.scheduler.destroyTask(task);
+        }
+    }
+    
+    // Process results and handle errors
+    var last_commit_id: u64 = 0;
+    var any_errors = false;
+    
+    for (load_state.results, load_state.errors, 0..) |maybe_node, maybe_error, i| {
+        if (maybe_error) |err| {
+            log.err("failed to load segment {}: {}", .{manifest[i].version, err});
+            any_errors = true;
+            continue;
+        }
+        
+        if (maybe_node) |node| {
+            self.file_segments.segments.value.nodes.appendAssumeCapacity(node);
+            last_commit_id = @max(last_commit_id, node.value.info.getLastCommitId());
+        } else {
+            log.err("segment {} loaded but no result or error", .{manifest[i].version});
+            any_errors = true;
+        }
+    }
+    
+    if (any_errors) {
+        return error.SegmentLoadFailed;
+    }
+    
+    log.info("parallel loading completed: {} segments", .{manifest.len});
+    try self.completeLoading(last_commit_id);
+}
+
+fn completeLoading(self: *Self, last_commit_id: u64) !void {
     self.memory_segment_merge_task = try self.scheduler.createTask(.high, memorySegmentMergeTask, .{self});
     self.checkpoint_task = try self.scheduler.createTask(.medium, checkpointTask, .{self});
     self.file_segment_merge_task = try self.scheduler.createTask(.low, fileSegmentMergeTask, .{self});
@@ -330,7 +525,6 @@ fn load(self: *Self, manifest: []SegmentInfo) !void {
     try self.oplog.open(last_commit_id + 1, updateInternal, self);
 
     log.info("index loaded", .{});
-
     self.is_ready.set();
 }
 
