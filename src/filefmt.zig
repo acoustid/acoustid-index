@@ -335,13 +335,13 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     segment.info = header.info;
     segment.block_size = header.block_size;
 
+    segment.attributes.clearRetainingCapacity();
     if (header.has_attributes) {
-        segment.attributes.clearRetainingCapacity();
         try msgpack.unpackMapInto(reader, segment.allocator, &segment.attributes);
     }
 
+    segment.docs.clearRetainingCapacity();
     if (header.has_docs) {
-        segment.docs.clearRetainingCapacity();
         try msgpack.unpackMapInto(reader, segment.allocator, &segment.docs);
 
         var iter = segment.docs.keyIterator();
