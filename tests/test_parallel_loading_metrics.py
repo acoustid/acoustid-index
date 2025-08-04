@@ -10,7 +10,7 @@ def test_parallel_loading_metrics_recorded(server, client, index_name, create_in
     batch = []
     batch_size = 1000
     max_hash = 2**18
-    total_inserts = 10000  # Should create multiple segments
+    total_inserts = 50000  # Should create multiple segments (matches working parallel test)
     
     for i in range(1, total_inserts + 1):
         rng = random.Random(i)
@@ -58,10 +58,17 @@ def test_parallel_loading_metrics_recorded(server, client, index_name, create_in
         for metric in parallel_metrics:
             if metric in line and not line.startswith('#'):
                 print(f"{line}")
-                # Extract the metric value
-                match = re.search(rf'{metric}[^\d]*(\d+(?:\.\d+)?)', line)
-                if match:
-                    found_metrics[metric] = float(match.group(1))
+                # Extract the metric value - for histograms, prefer the _sum value
+                if '_sum' in line:
+                    base_metric = metric.replace('_seconds', '').replace('_count', '')
+                    if base_metric in line:
+                        match = re.search(rf'{base_metric}_sum\s+(\d+(?:\.\d+)?)', line)
+                        if match:
+                            found_metrics[metric + '_sum'] = float(match.group(1))
+                else:
+                    match = re.search(rf'{metric}[^\d]*(\d+(?:\.\d+)?)', line)
+                    if match:
+                        found_metrics[metric] = float(match.group(1))
     
     print(f"\nFound metrics: {found_metrics}")
     
@@ -69,13 +76,13 @@ def test_parallel_loading_metrics_recorded(server, client, index_name, create_in
     assert 'parallel_loading_total' in found_metrics
     assert found_metrics['parallel_loading_total'] > 0, "Parallel loading should have been triggered"
     
-    # Verify that parallel segment count was recorded
-    if 'parallel_segment_count' in found_metrics:
-        assert found_metrics['parallel_segment_count'] >= 3, "Should have loaded 3+ segments in parallel"
+    # Verify that parallel segment count was recorded (check the sum value)
+    if 'parallel_segment_count_sum' in found_metrics:
+        assert found_metrics['parallel_segment_count_sum'] >= 3, "Should have loaded 3+ segments in parallel"
     
-    # Verify startup duration was recorded
-    if 'startup_duration_seconds' in found_metrics:
-        assert found_metrics['startup_duration_seconds'] > 0, "Startup duration should be positive"
+    # Verify startup duration was recorded (check sum value)
+    if 'startup_duration_seconds_sum' in found_metrics:
+        assert found_metrics['startup_duration_seconds_sum'] > 0, "Startup duration should be positive"
     
     print("✅ Parallel loading metrics verified successfully!")
 
