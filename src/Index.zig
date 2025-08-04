@@ -45,7 +45,6 @@ const Options = struct {
     parallel_loading_threshold: usize = 3,
 };
 
-const MAX_CONCURRENT_LOADS = 4;
 
 const SegmentLoadContext = struct {
     index: *Self,
