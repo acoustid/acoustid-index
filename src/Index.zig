@@ -6,6 +6,7 @@ const zul = @import("zul");
 
 const Deadline = @import("utils/Deadline.zig");
 const Scheduler = @import("utils/Scheduler.zig");
+const WaitGroup = @import("WaitGroup.zig").WaitGroup;
 const Change = @import("change.zig").Change;
 const SearchResult = @import("common.zig").SearchResult;
 const SearchResults = @import("common.zig").SearchResults;
@@ -51,7 +52,7 @@ const SegmentLoadContext = struct {
     segment_info: SegmentInfo,
     result: *?FileSegmentList.Node,
     load_error: *?anyerror,
-    completion_counter: *std.atomic.Value(usize),
+    wait_group: *WaitGroup,
     mutex: *std.Thread.Mutex,
 };
 
@@ -60,7 +61,7 @@ const ParallelLoadState = struct {
     results: []?FileSegmentList.Node,
     errors: []?anyerror,
     tasks: []?Scheduler.Task,
-    completion_counter: std.atomic.Value(usize),
+    wait_group: WaitGroup,
     mutex: std.Thread.Mutex,
     
     fn init(allocator: std.mem.Allocator, segment_count: usize) !ParallelLoadState {
@@ -82,7 +83,7 @@ const ParallelLoadState = struct {
             .results = results,
             .errors = errors,
             .tasks = tasks,
-            .completion_counter = std.atomic.Value(usize).init(segment_count),
+            .wait_group = WaitGroup.init(),
             .mutex = .{},
         };
     }
@@ -378,12 +379,12 @@ fn loadSegmentTask(ctx: SegmentLoadContext) void {
         ctx.mutex.lock();
         defer ctx.mutex.unlock();
         ctx.load_error.* = err;
-        _ = ctx.completion_counter.fetchSub(1, .release);
+        ctx.wait_group.done();
         return;
     };
     
     log.info("loaded segment {}", .{ctx.segment_info.version});
-    _ = ctx.completion_counter.fetchSub(1, .release);
+    ctx.wait_group.done();
 }
 
 fn load(self: *Self, manifest: []SegmentInfo) !void {
@@ -433,6 +434,9 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
     var load_state = try ParallelLoadState.init(self.allocator, manifest.len);
     defer load_state.deinit();
     
+    // Add all segments to the wait group
+    load_state.wait_group.add(manifest.len);
+    
     try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, manifest.len);
     
     // Create and schedule loading tasks (with basic bounded concurrency)
@@ -463,13 +467,13 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
             .segment_info = segment_info,
             .result = &load_state.results[i],
             .load_error = &load_state.errors[i],
-            .completion_counter = &load_state.completion_counter,
+            .wait_group = &load_state.wait_group,
             .mutex = &load_state.mutex,
         };
         
         load_state.tasks[i] = self.scheduler.createTask(.high, loadSegmentTask, .{load_context}) catch |err| {
             load_state.errors[i] = err;
-            _ = load_state.completion_counter.fetchSub(1, .release);
+            load_state.wait_group.done();
             continue;
         };
         
@@ -478,9 +482,7 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
     }
     
     // Wait for all tasks to complete
-    while (load_state.completion_counter.load(.acquire) > 0) {
-        std.time.sleep(std.time.ns_per_ms);
-    }
+    load_state.wait_group.wait();
     
     // Clean up tasks
     for (load_state.tasks) |maybe_task| {
