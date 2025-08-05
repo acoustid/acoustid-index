@@ -126,7 +126,7 @@ test "WaitGroup with threading" {
     wg.add(num_threads);
 
     const WorkerData = struct {
-        wg: *WaitGroup(),
+        wg: *WaitGroup,
         delay_ms: u64,
     };
 

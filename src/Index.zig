@@ -349,10 +349,6 @@ fn load(self: *Self, manifest: []SegmentInfo) !void {
 }
 
 fn loadSequential(self: *Self, manifest: []SegmentInfo) !void {
-    const start_time = std.time.milliTimestamp();
-    defer metrics.startupDuration(std.time.milliTimestamp() - start_time);
-
-    metrics.sequentialLoading();
 
     try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, manifest.len);
     var last_commit_id: u64 = 0;
@@ -372,12 +368,7 @@ fn loadSequential(self: *Self, manifest: []SegmentInfo) !void {
 }
 
 fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
-    const start_time = std.time.milliTimestamp();
-    defer metrics.startupDuration(std.time.milliTimestamp() - start_time);
-
     log.info("using parallel loading for {} segments", .{manifest.len});
-
-    metrics.parallelLoading(manifest.len);
 
     // Allocate local array for results
     const results = try self.allocator.alloc(anyerror!FileSegmentList.Node, manifest.len);
