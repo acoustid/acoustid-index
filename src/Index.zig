@@ -429,7 +429,7 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
     for (results, 0..) |result, i| {
         if (result) |node| {
             self.file_segments.segments.value.nodes.appendAssumeCapacity(node);
-            last_commit_id = @max(last_commit_id, node.value.info.getLastCommitId());
+            last_commit_id = node.value.info.getLastCommitId();
         } else |err| {
             // If the result is an error, log it and continue
             log.err("segment {} failed to load: {}", .{ manifest[i].version, err });
