@@ -50,7 +50,6 @@ const SegmentLoadContext = struct {
     index: *Self,
     segment_info: SegmentInfo,
     result: *?FileSegmentList.Node,
-    load_error: *?anyerror,
     wait_group: *WaitGroup,
     concurrency_semaphore: *std.Thread.Semaphore,
 };
@@ -342,8 +341,7 @@ fn loadSegmentTask(ctx: SegmentLoadContext) void {
         ctx.segment_info,
         .{ .dir = ctx.index.dir }
     ) catch |err| {
-        // Store error without mutex - each task has its own error slot
-        ctx.load_error.* = err;
+        log.err("failed to load segment {}: {}", .{ ctx.segment_info.version, err });
         return;
     };
     
@@ -395,18 +393,14 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
     
     metrics.parallelLoading(manifest.len);
     
-    // Allocate local arrays for results, errors, and tasks
+    // Allocate local arrays for results and tasks
     const results = try self.allocator.alloc(?FileSegmentList.Node, manifest.len);
     defer self.allocator.free(results);
-    
-    const errors = try self.allocator.alloc(?anyerror, manifest.len);
-    defer self.allocator.free(errors);
     
     const tasks = try self.allocator.alloc(?Scheduler.Task, manifest.len);
     defer self.allocator.free(tasks);
     
     @memset(results, null);
-    @memset(errors, null);
     @memset(tasks, null);
     
     var wait_group = WaitGroup.init();
@@ -426,7 +420,6 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
             .index = self,
             .segment_info = segment_info,
             .result = &results[i],
-            .load_error = &errors[i],
             .wait_group = &wait_group,
             .concurrency_semaphore = &concurrency_semaphore,
         };
@@ -434,7 +427,7 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
         tasks[i] = self.scheduler.createTask(.high, loadSegmentTask, .{load_context}) catch |err| {
             // If task creation fails, release the semaphore and mark as done
             concurrency_semaphore.post();
-            errors[i] = err;
+            log.err("failed to create task for segment {}: {}", .{segment_info.version, err});
             wait_group.done();
             continue;
         };
@@ -452,28 +445,18 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
         }
     }
     
-    // Process results and handle errors
+    // Process results and fail early on any missing result
     var last_commit_id: u64 = 0;
-    var any_errors = false;
     
-    for (results, errors, 0..) |maybe_node, maybe_error, i| {
-        if (maybe_error) |err| {
-            log.err("failed to load segment {}: {}", .{manifest[i].version, err});
-            any_errors = true;
-            continue;
-        }
-        
+    for (results, 0..) |maybe_node, i| {
         if (maybe_node) |node| {
             self.file_segments.segments.value.nodes.appendAssumeCapacity(node);
             last_commit_id = @max(last_commit_id, node.value.info.getLastCommitId());
         } else {
-            log.err("segment {} loaded but no result or error", .{manifest[i].version});
-            any_errors = true;
+            // Task failed - error was already logged in loadSegmentTask
+            log.err("segment {} failed to load", .{manifest[i].version});
+            return error.SegmentLoadFailed;
         }
-    }
-    
-    if (any_errors) {
-        return error.SegmentLoadFailed;
     }
     
     log.info("parallel loading completed: {} segments", .{manifest.len});
