@@ -401,10 +401,6 @@ fn load(self: *Self, manifest: []SegmentInfo) !void {
 
     log.info("found {} segments in manifest", .{manifest.len});
 
-    if (manifest.len == 0) {
-        return self.loadEmpty();
-    }
-
     // Use parallel loading for manifests with 3+ segments
     if (manifest.len >= self.options.parallel_loading_threshold) {
         return self.loadParallel(manifest);
@@ -413,21 +409,6 @@ fn load(self: *Self, manifest: []SegmentInfo) !void {
     }
 }
 
-fn loadEmpty(self: *Self) !void {
-    const start_time = std.time.milliTimestamp();
-    defer metrics.startupDuration(std.time.milliTimestamp() - start_time);
-    
-    // Record that we used empty loading (which is technically sequential)
-    metrics.sequentialLoading();
-    
-    self.memory_segment_merge_task = try self.scheduler.createTask(.high, memorySegmentMergeTask, .{self});
-    self.checkpoint_task = try self.scheduler.createTask(.medium, checkpointTask, .{self});
-    self.file_segment_merge_task = try self.scheduler.createTask(.low, fileSegmentMergeTask, .{self});
-
-    try self.oplog.open(1, updateInternal, self);
-    log.info("index loaded (empty)", .{});
-    self.is_ready.set();
-}
 
 fn loadSequential(self: *Self, manifest: []SegmentInfo) !void {
     const start_time = std.time.milliTimestamp();
@@ -438,11 +419,15 @@ fn loadSequential(self: *Self, manifest: []SegmentInfo) !void {
     try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, manifest.len);
     var last_commit_id: u64 = 0;
     
-    for (manifest, 1..) |segment_info, i| {
-        const node = try FileSegmentList.loadSegment(self.allocator, segment_info, .{ .dir = self.dir });
-        self.file_segments.segments.value.nodes.appendAssumeCapacity(node);
-        last_commit_id = node.value.info.getLastCommitId();
-        log.info("loaded segment {} ({}/{})", .{ last_commit_id, i, manifest.len });
+    if (manifest.len == 0) {
+        log.info("index loaded (empty)", .{});
+    } else {
+        for (manifest, 1..) |segment_info, i| {
+            const node = try FileSegmentList.loadSegment(self.allocator, segment_info, .{ .dir = self.dir });
+            self.file_segments.segments.value.nodes.appendAssumeCapacity(node);
+            last_commit_id = node.value.info.getLastCommitId();
+            log.info("loaded segment {} ({}/{})", .{ last_commit_id, i, manifest.len });
+        }
     }
 
     try self.completeLoading(last_commit_id);
