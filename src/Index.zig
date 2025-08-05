@@ -55,52 +55,6 @@ const SegmentLoadContext = struct {
     concurrency_semaphore: *std.Thread.Semaphore,
 };
 
-const ParallelLoadState = struct {
-    allocator: std.mem.Allocator,
-    results: []?FileSegmentList.Node,
-    errors: []?anyerror,
-    tasks: []?Scheduler.Task,
-    wait_group: WaitGroup,
-    concurrency_semaphore: std.Thread.Semaphore,
-    
-    fn init(allocator: std.mem.Allocator, segment_count: usize, max_concurrent: u32) !ParallelLoadState {
-        const results = try allocator.alloc(?FileSegmentList.Node, segment_count);
-        errdefer allocator.free(results);
-        
-        const errors = try allocator.alloc(?anyerror, segment_count);
-        errdefer allocator.free(errors);
-        
-        const tasks = try allocator.alloc(?Scheduler.Task, segment_count);
-        errdefer allocator.free(tasks);
-        
-        @memset(results, null);
-        @memset(errors, null);
-        @memset(tasks, null);
-        
-        return ParallelLoadState{
-            .allocator = allocator,
-            .results = results,
-            .errors = errors,
-            .tasks = tasks,
-            .wait_group = WaitGroup.init(),
-            .concurrency_semaphore = std.Thread.Semaphore{ .permits = max_concurrent },
-        };
-    }
-    
-    fn deinit(self: *ParallelLoadState) void {
-        // Clean up any remaining tasks
-        for (self.tasks) |maybe_task| {
-            if (maybe_task) |task| {
-                // Tasks should be cleaned up by caller, but just in case
-                _ = task;
-            }
-        }
-        
-        self.allocator.free(self.results);
-        self.allocator.free(self.errors);
-        self.allocator.free(self.tasks);
-    }
-};
 
 options: Options,
 allocator: std.mem.Allocator,
@@ -441,44 +395,58 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
     
     metrics.parallelLoading(manifest.len);
     
-    var load_state = try ParallelLoadState.init(self.allocator, manifest.len, self.options.max_concurrent_loads);
-    defer load_state.deinit();
+    // Allocate local arrays for results, errors, and tasks
+    const results = try self.allocator.alloc(?FileSegmentList.Node, manifest.len);
+    defer self.allocator.free(results);
+    
+    const errors = try self.allocator.alloc(?anyerror, manifest.len);
+    defer self.allocator.free(errors);
+    
+    const tasks = try self.allocator.alloc(?Scheduler.Task, manifest.len);
+    defer self.allocator.free(tasks);
+    
+    @memset(results, null);
+    @memset(errors, null);
+    @memset(tasks, null);
+    
+    var wait_group = WaitGroup.init();
+    var concurrency_semaphore = std.Thread.Semaphore{ .permits = self.options.max_concurrent_loads };
     
     // Add all segments to the wait group
-    load_state.wait_group.add(manifest.len);
+    wait_group.add(manifest.len);
     
     try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, manifest.len);
     
     // Create and schedule loading tasks with semaphore-based concurrency control
     for (manifest, 0..) |segment_info, i| {
         // Acquire semaphore slot - this blocks if we're at the concurrency limit
-        load_state.concurrency_semaphore.wait();
+        concurrency_semaphore.wait();
         
         const load_context = SegmentLoadContext{
             .index = self,
             .segment_info = segment_info,
-            .result = &load_state.results[i],
-            .load_error = &load_state.errors[i],
-            .wait_group = &load_state.wait_group,
-            .concurrency_semaphore = &load_state.concurrency_semaphore,
+            .result = &results[i],
+            .load_error = &errors[i],
+            .wait_group = &wait_group,
+            .concurrency_semaphore = &concurrency_semaphore,
         };
         
-        load_state.tasks[i] = self.scheduler.createTask(.high, loadSegmentTask, .{load_context}) catch |err| {
+        tasks[i] = self.scheduler.createTask(.high, loadSegmentTask, .{load_context}) catch |err| {
             // If task creation fails, release the semaphore and mark as done
-            load_state.concurrency_semaphore.post();
-            load_state.errors[i] = err;
-            load_state.wait_group.done();
+            concurrency_semaphore.post();
+            errors[i] = err;
+            wait_group.done();
             continue;
         };
         
-        self.scheduler.scheduleTask(load_state.tasks[i].?);
+        self.scheduler.scheduleTask(tasks[i].?);
     }
     
     // Wait for all tasks to complete
-    load_state.wait_group.wait();
+    wait_group.wait();
     
     // Clean up tasks
-    for (load_state.tasks) |maybe_task| {
+    for (tasks) |maybe_task| {
         if (maybe_task) |task| {
             self.scheduler.destroyTask(task);
         }
@@ -488,7 +456,7 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
     var last_commit_id: u64 = 0;
     var any_errors = false;
     
-    for (load_state.results, load_state.errors, 0..) |maybe_node, maybe_error, i| {
+    for (results, errors, 0..) |maybe_node, maybe_error, i| {
         if (maybe_error) |err| {
             log.err("failed to load segment {}: {}", .{manifest[i].version, err});
             any_errors = true;
