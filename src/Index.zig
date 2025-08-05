@@ -393,25 +393,29 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
     
     metrics.parallelLoading(manifest.len);
     
-    // Allocate local arrays for results and tasks
+    // Allocate local array for results and list for tasks
     const results = try self.allocator.alloc(?FileSegmentList.Node, manifest.len);
     defer self.allocator.free(results);
     
-    const tasks = try self.allocator.alloc(?Scheduler.Task, manifest.len);
-    defer self.allocator.free(tasks);
+    var tasks = std.ArrayListUnmanaged(Scheduler.Task){};
+    defer {
+        for (tasks.items) |task| {
+            self.scheduler.destroyTask(task);
+        }
+        tasks.deinit(self.allocator);
+    }
     
     @memset(results, null);
-    @memset(tasks, null);
     
     var wait_group = WaitGroup.init();
     var concurrency_semaphore = std.Thread.Semaphore{ .permits = self.options.max_concurrent_loads };
     
-    // Add all segments to the wait group
-    wait_group.add(manifest.len);
-    
     try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, manifest.len);
     
-    // Create and schedule loading tasks with semaphore-based concurrency control
+    // Pre-allocate tasks list and create loading tasks with semaphore-based concurrency control
+    try tasks.ensureTotalCapacity(self.allocator, manifest.len);
+    var creation_error: ?anyerror = null;
+    
     for (manifest, 0..) |segment_info, i| {
         // Acquire semaphore slot - this blocks if we're at the concurrency limit
         concurrency_semaphore.wait();
@@ -424,25 +428,25 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
             .concurrency_semaphore = &concurrency_semaphore,
         };
         
-        tasks[i] = self.scheduler.createTask(.high, loadSegmentTask, .{load_context}) catch |err| {
-            // If task creation fails, release the semaphore and mark as done
+        const task = self.scheduler.createTask(.high, loadSegmentTask, .{load_context}) catch |err| {
+            // If task creation fails, release the semaphore and stop creating more tasks
             concurrency_semaphore.post();
+            creation_error = err;
             log.err("failed to create task for segment {}: {}", .{segment_info.version, err});
-            wait_group.done();
-            continue;
+            break;
         };
         
-        self.scheduler.scheduleTask(tasks[i].?);
+        self.scheduler.scheduleTask(task);
+        tasks.appendAssumeCapacity(task);
+        wait_group.add(1); // only add after successful creation
     }
     
-    // Wait for all tasks to complete
+    // Wait for all successfully created tasks to complete
     wait_group.wait();
     
-    // Clean up tasks
-    for (tasks) |maybe_task| {
-        if (maybe_task) |task| {
-            self.scheduler.destroyTask(task);
-        }
+    // Return error if task creation failed
+    if (creation_error) |err| {
+        return err;
     }
     
     // Process results and fail early on any missing result
