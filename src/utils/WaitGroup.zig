@@ -142,14 +142,28 @@ test "WaitGroup with threading" {
     try testing.expect(wg.isComplete());
 }
 
-test "WaitGroup normal operation test" {
+test "WaitGroup multiple add/done cycles" {
     var wg = WaitGroup.init();
 
-    // Verify the WaitGroup was initialized correctly
+    // First cycle: add multiple tasks, complete them all
+    wg.add(3);
+    try testing.expectEqual(@as(usize, 3), wg.getCount());
+    
+    wg.done();
+    wg.done(); 
+    wg.done();
     try testing.expect(wg.isComplete());
-    try testing.expectEqual(@as(usize, 0), wg.getCount());
 
-    // Add a task and then complete it properly to test normal operation
+    // Second cycle: add more tasks after completion
+    wg.add(2);
+    try testing.expectEqual(@as(usize, 2), wg.getCount());
+    try testing.expect(!wg.isComplete());
+    
+    wg.done();
+    wg.done();
+    try testing.expect(wg.isComplete());
+
+    // Third cycle: add single task
     wg.add(1);
     try testing.expect(!wg.isComplete());
     wg.done();
