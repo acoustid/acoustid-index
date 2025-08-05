@@ -6,7 +6,7 @@ const zul = @import("zul");
 
 const Deadline = @import("utils/Deadline.zig");
 const Scheduler = @import("utils/Scheduler.zig");
-const WaitGroup = @import("WaitGroup.zig").WaitGroup;
+const WaitGroup = @import("utils/WaitGroup.zig");
 const Change = @import("change.zig").Change;
 const SearchResult = @import("common.zig").SearchResult;
 const SearchResults = @import("common.zig").SearchResults;

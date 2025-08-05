@@ -43,6 +43,9 @@ def test_parallel_loading_on_restart_with_multiple_segments(server, client, inde
     index_info = json.loads(req.content)
     initial_segments = index_info['segments']
     
+    # Verify that multiple segments exist to ensure parallel loading will be triggered
+    assert initial_segments > 1, f"Test requires multiple segments for meaningful parallel loading test, but found only {initial_segments}"
+    
     print(f"Index has {initial_segments} segments before restart")
     
     # Force a shutdown to ensure segments are written
