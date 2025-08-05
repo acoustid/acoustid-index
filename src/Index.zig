@@ -41,19 +41,17 @@ const Self = @This();
 const Options = struct {
     min_segment_size: usize = 500_000,
     max_segment_size: usize = 750_000_000,
-    max_concurrent_loads: u32 = 4,
-    parallel_loading_threshold: usize = 3,
+    max_concurrent_segment_loads: u32 = 4,
+    parallel_segment_loading_threshold: usize = 8,
 };
-
 
 const SegmentLoadContext = struct {
     index: *Self,
     segment_info: SegmentInfo,
-    result: *?FileSegmentList.Node,
+    result: *anyerror!FileSegmentList.Node,
     wait_group: *WaitGroup,
     concurrency_semaphore: *std.Thread.Semaphore,
 };
-
 
 options: Options,
 allocator: std.mem.Allocator,
@@ -75,7 +73,6 @@ file_segments: SegmentListManager(FileSegment),
 checkpoint_task: ?Scheduler.Task = null,
 file_segment_merge_task: ?Scheduler.Task = null,
 memory_segment_merge_task: ?Scheduler.Task = null,
-
 
 fn getFileSegmentSize(segment: SharedPtr(FileSegment)) usize {
     return segment.value.getSize();
@@ -132,7 +129,6 @@ pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, parent_dir: std
 
 pub fn deinit(self: *Self) void {
     log.info("closing index {}", .{@intFromPtr(self)});
-
 
     if (self.load_task) |task| {
         self.scheduler.destroyTask(task);
@@ -330,16 +326,13 @@ fn loadSegmentTask(ctx: SegmentLoadContext) void {
         ctx.concurrency_semaphore.post();
         ctx.wait_group.done();
     }
-    
-    ctx.result.* = FileSegmentList.loadSegment(
-        ctx.index.allocator,
-        ctx.segment_info,
-        .{ .dir = ctx.index.dir }
-    ) catch |err| {
+
+    ctx.result.* = FileSegmentList.loadSegment(ctx.index.allocator, ctx.segment_info, .{ .dir = ctx.index.dir }) catch |err| {
         log.err("failed to load segment {}: {}", .{ ctx.segment_info.version, err });
+        ctx.result.* = err;
         return;
     };
-    
+
     log.info("loaded segment {}", .{ctx.segment_info.version});
 }
 
@@ -348,24 +341,22 @@ fn load(self: *Self, manifest: []SegmentInfo) !void {
 
     log.info("found {} segments in manifest", .{manifest.len});
 
-    // Use parallel loading for manifests with 3+ segments
-    if (manifest.len >= self.options.parallel_loading_threshold) {
+    if (manifest.len >= self.options.parallel_segment_loading_threshold) {
         return self.loadParallel(manifest);
     } else {
         return self.loadSequential(manifest);
     }
 }
 
-
 fn loadSequential(self: *Self, manifest: []SegmentInfo) !void {
     const start_time = std.time.milliTimestamp();
     defer metrics.startupDuration(std.time.milliTimestamp() - start_time);
-    
+
     metrics.sequentialLoading();
-    
+
     try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, manifest.len);
     var last_commit_id: u64 = 0;
-    
+
     if (manifest.len == 0) {
         log.info("index loaded (empty)", .{});
     } else {
@@ -383,15 +374,17 @@ fn loadSequential(self: *Self, manifest: []SegmentInfo) !void {
 fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
     const start_time = std.time.milliTimestamp();
     defer metrics.startupDuration(std.time.milliTimestamp() - start_time);
-    
+
     log.info("using parallel loading for {} segments", .{manifest.len});
-    
+
     metrics.parallelLoading(manifest.len);
-    
-    // Allocate local array for results and list for tasks
-    const results = try self.allocator.alloc(?FileSegmentList.Node, manifest.len);
+
+    // Allocate local array for results
+    const results = try self.allocator.alloc(anyerror!FileSegmentList.Node, manifest.len);
     defer self.allocator.free(results);
-    
+    @memset(results, error.NotLoaded);
+
+    // Allocate local array for tasks
     var tasks = std.ArrayListUnmanaged(Scheduler.Task){};
     defer {
         for (tasks.items) |task| {
@@ -399,22 +392,16 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
         }
         tasks.deinit(self.allocator);
     }
-    
-    @memset(results, null);
-    
-    var wait_group = WaitGroup.init();
-    var concurrency_semaphore = std.Thread.Semaphore{ .permits = self.options.max_concurrent_loads };
-    
-    try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, manifest.len);
-    
-    // Pre-allocate tasks list and create loading tasks with semaphore-based concurrency control
     try tasks.ensureTotalCapacity(self.allocator, manifest.len);
-    var creation_error: ?anyerror = null;
-    
+
+    var wait_group = WaitGroup.init();
+    var concurrency_semaphore = std.Thread.Semaphore{ .permits = self.options.max_concurrent_segment_loads };
+    var task_creation_error: ?anyerror = null;
+
     for (manifest, 0..) |segment_info, i| {
         // Acquire semaphore slot - this blocks if we're at the concurrency limit
         concurrency_semaphore.wait();
-        
+
         const load_context = SegmentLoadContext{
             .index = self,
             .segment_info = segment_info,
@@ -422,42 +409,43 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
             .wait_group = &wait_group,
             .concurrency_semaphore = &concurrency_semaphore,
         };
-        
+
         const task = self.scheduler.createTask(.high, loadSegmentTask, .{load_context}) catch |err| {
             // If task creation fails, release the semaphore and stop creating more tasks
             concurrency_semaphore.post();
-            creation_error = err;
-            log.err("failed to create task for segment {}: {}", .{segment_info.version, err});
+            task_creation_error = err;
+            log.err("failed to create task for segment {}: {}", .{ segment_info.version, err });
             break;
         };
-        
-        self.scheduler.scheduleTask(task);
+
         tasks.appendAssumeCapacity(task);
-        wait_group.add(1); // only add after successful creation
+        wait_group.add(1);
+        self.scheduler.scheduleTask(task);
     }
-    
+
     // Wait for all successfully created tasks to complete
     wait_group.wait();
-    
+
     // Return error if task creation failed
-    if (creation_error) |err| {
+    if (task_creation_error) |err| {
         return err;
     }
-    
+
     // Process results and fail early on any missing result
     var last_commit_id: u64 = 0;
-    
-    for (results, 0..) |maybe_node, i| {
-        if (maybe_node) |node| {
+
+    try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, manifest.len);
+    for (results, 0..) |result, i| {
+        if (result) |node| {
             self.file_segments.segments.value.nodes.appendAssumeCapacity(node);
             last_commit_id = @max(last_commit_id, node.value.info.getLastCommitId());
-        } else {
-            // Task failed - error was already logged in loadSegmentTask
-            log.err("segment {} failed to load", .{manifest[i].version});
-            return error.SegmentLoadFailed;
+        } else |err| {
+            // If the result is an error, log it and continue
+            log.err("segment {} failed to load: {}", .{ manifest[i].version, err });
+            return err;
         }
     }
-    
+
     log.info("parallel loading completed: {} segments", .{manifest.len});
     try self.completeLoading(last_commit_id);
 }
