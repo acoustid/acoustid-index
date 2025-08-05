@@ -27,6 +27,7 @@ class ServerManager:
             '--dir', str(self.data_dir),
             '--port', str(self.port),
             '--log-level', 'debug',
+            '--parallel-loading-threshold', '2',
         ]
         self.process = subprocess.Popen(
             command,
