@@ -3,16 +3,18 @@ const std = @import("std");
 /// A synchronization primitive that allows waiting for a collection of tasks to complete.
 /// Similar to Go's sync.WaitGroup, this provides a way to coordinate completion of
 /// multiple concurrent operations.
-counter: std.atomic.Value(usize),
-completion_event: std.Thread.ResetEvent,
+counter: std.atomic.Value(u32),
+mutex: std.Thread.Mutex,
+condition: std.Thread.Condition,
 
 const Self = @This();
 
 /// Initialize a new WaitGroup
 pub fn init() Self {
     return Self{
-        .counter = std.atomic.Value(usize).init(0),
-        .completion_event = .{},
+        .counter = std.atomic.Value(u32).init(0),
+        .mutex = .{},
+        .condition = .{},
     };
 }
 
@@ -20,29 +22,16 @@ pub fn init() Self {
 /// This should be called before starting tasks that will call done().
 /// The counter must not go negative.
 pub fn add(self: *Self, delta: usize) void {
-    while (true) {
-        const current_count = self.counter.load(.acquire);
-
-        // Check for overflow before attempting to add
-        if (current_count > std.math.maxInt(usize) - delta) {
-            @panic("WaitGroup counter overflow");
-        }
-
-        const new_count = current_count + delta;
-
-        // Attempt atomic compare-and-swap
-        if (self.counter.cmpxchgWeak(current_count, new_count, .acq_rel, .acquire)) |actual| {
-            // CAS failed, retry with the actual value we read
-            _ = actual;
-            continue;
-        } else {
-            // CAS succeeded, check if we went from 0 to non-zero
-            if (current_count == 0 and new_count > 0) {
-                // Reset the completion event since we now have work to wait for
-                self.completion_event.reset();
-            }
-            break;
-        }
+    if (delta > std.math.maxInt(u32)) {
+        @panic("WaitGroup delta too large");
+    }
+    
+    const delta_u32 = @as(u32, @intCast(delta));
+    const old_counter = self.counter.fetchAdd(delta_u32, .acq_rel);
+    
+    // Check for overflow
+    if (old_counter > std.math.maxInt(u32) - delta_u32) {
+        @panic("WaitGroup counter overflow");
     }
 }
 
@@ -50,31 +39,28 @@ pub fn add(self: *Self, delta: usize) void {
 /// This should be called when a task completes.
 /// If the counter reaches 0, any threads waiting on wait() will be unblocked.
 pub fn done(self: *Self) void {
-    const old_count = self.counter.fetchSub(1, .acq_rel);
-
-    if (old_count == 0) {
+    const old_counter = self.counter.fetchSub(1, .acq_rel);
+    
+    if (old_counter == 0) {
         @panic("WaitGroup counter went negative");
     }
-
-    if (old_count == 1) {
-        // Counter reached 0, signal completion to all waiters
-        self.completion_event.set();
+    
+    if (old_counter == 1) {
+        // Counter reached 0, wake all waiters
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        self.condition.broadcast();
     }
 }
 
 /// Wait until the WaitGroup counter reaches 0.
 /// This will block until all tasks that were added have called done().
 pub fn wait(self: *Self) void {
-    // Keep waiting until counter reaches 0
+    self.mutex.lock();
+    defer self.mutex.unlock();
+    
     while (self.counter.load(.acquire) != 0) {
-        // Wait for completion event - this will be set when counter reaches 0
-        self.completion_event.wait();
-
-        // After waking up, reset the event for potential next wait cycle
-        // This handles the case where more tasks might be added after completion
-        if (self.counter.load(.acquire) != 0) {
-            self.completion_event.reset();
-        }
+        self.condition.wait(&self.mutex);
     }
 }
 
