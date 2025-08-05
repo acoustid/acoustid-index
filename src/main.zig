@@ -41,12 +41,13 @@ fn printHelp() !void {
     const stdout = std.io.getStdOut().writer();
     try stdout.print("Usage: aindex [options]\n", .{});
     try stdout.print("Options:\n", .{});
-    try stdout.print("  --help       Show this help message and exit\n", .{});
-    try stdout.print("  --dir        Directory to index\n", .{});
-    try stdout.print("  --address    Address to listen on\n", .{});
-    try stdout.print("  --port       Port to listen on\n", .{});
-    try stdout.print("  --threads    Number of threads to use\n", .{});
-    try stdout.print("  --log-level  Log level (debug, info, warn, error)\n", .{});
+    try stdout.print("  --help                          Show this help message and exit\n", .{});
+    try stdout.print("  --dir                           Directory to index\n", .{});
+    try stdout.print("  --address                       Address to listen on\n", .{});
+    try stdout.print("  --port                          Port to listen on\n", .{});
+    try stdout.print("  --threads                       Number of threads to use\n", .{});
+    try stdout.print("  --log-level                     Log level (debug, info, warn, error)\n", .{});
+    try stdout.print("  --parallel-loading-threshold    Minimum segments to trigger parallel loading (default: 8)\n", .{});
 }
 
 pub fn main() !void {
@@ -93,13 +94,19 @@ pub fn main() !void {
     }
     log.info("using {} threads", .{threads});
 
+    const parallel_loading_threshold_str = args.get("parallel-loading-threshold") orelse "8";
+    const parallel_loading_threshold = try std.fmt.parseInt(usize, parallel_loading_threshold_str, 10);
+    log.info("using parallel loading threshold of {}", .{parallel_loading_threshold});
+
     try metrics.initializeMetrics(allocator, .{ .prefix = "aindex_" });
     defer metrics.deinitMetrics();
 
     var scheduler = Scheduler.init(allocator);
     defer scheduler.deinit();
 
-    var indexes = MultiIndex.init(allocator, &scheduler, dir);
+    var indexes = MultiIndex.init(allocator, &scheduler, dir, .{
+        .parallel_segment_loading_threshold = parallel_loading_threshold,
+    });
     defer indexes.deinit();
 
     try scheduler.start(threads);

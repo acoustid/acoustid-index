@@ -35,6 +35,7 @@ lock: std.Thread.Mutex = .{},
 allocator: std.mem.Allocator,
 scheduler: *Scheduler,
 dir: std.fs.Dir,
+index_options: Index.Options,
 indexes: std.StringHashMap(IndexRef),
 
 fn isValidName(name: []const u8) bool {
@@ -65,11 +66,12 @@ test "isValidName" {
     try std.testing.expect(!isValidName(".foo"));
 }
 
-pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, dir: std.fs.Dir) Self {
+pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, dir: std.fs.Dir, index_options: Index.Options) Self {
     return .{
         .allocator = allocator,
         .scheduler = scheduler,
         .dir = dir,
+        .index_options = index_options,
         .indexes = std.StringHashMap(IndexRef).init(allocator),
     };
 }
@@ -135,7 +137,7 @@ fn acquireIndex(self: *Self, name: []const u8, create: bool) !*IndexRef {
     errdefer self.allocator.free(result.key_ptr.*);
 
     result.value_ptr.* = .{
-        .index = try Index.init(self.allocator, self.scheduler, self.dir, result.key_ptr.*, .{}),
+        .index = try Index.init(self.allocator, self.scheduler, self.dir, result.key_ptr.*, self.index_options),
         .name = result.key_ptr.*,
     };
     errdefer result.value_ptr.index.deinit();

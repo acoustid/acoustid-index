@@ -11,6 +11,7 @@ const SearchDuration = m.Histogram(
     &.{ 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10 },
 );
 
+
 const ScannedDocsPerHash = m.Histogram(
     u64,
     &.{ 1, 2, 3, 5, 10, 50, 100, 500, 1000 },
@@ -78,6 +79,7 @@ pub fn fileSegmentMerge() void {
 pub fn docs(index_name: []const u8, value: u32) void {
     metrics.docs.set(.{ .index = index_name }, value) catch {};
 }
+
 
 pub fn initializeMetrics(allocator: std.mem.Allocator, comptime opts: m.RegistryOpts) !void {
     arena = std.heap.ArenaAllocator.init(allocator);
