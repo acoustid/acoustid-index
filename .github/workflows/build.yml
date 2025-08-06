@@ -27,8 +27,14 @@ jobs:
       - name: Install e2e test requirements
         run: pip install -r tests/requirements.txt
 
+      - name: Install cluster test requirements
+        run: pip install -r cluster/requirements.txt pytest
+
       - name: Run tests
         run: zig build test --summary all
+
+      - name: Run cluster tests
+        run: cd cluster && python -m pytest tests/ -v
 
       - name: Build release binary
         run: zig build --release=fast --summary all
