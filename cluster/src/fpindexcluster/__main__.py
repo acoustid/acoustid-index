@@ -10,6 +10,8 @@ import click
 from .config import Config
 from .proxy_service import ProxyService
 
+logger = logging.getLogger(__name__)
+
 
 def setup_logging(level: str):
     """Setup logging configuration"""
@@ -40,7 +42,7 @@ class ServiceManager:
     
     def signal_handler(self):
         """Handle shutdown signals"""
-        logging.info("Received shutdown signal")
+        logger.info("Received shutdown signal")
         self.shutdown_event.set()
     
     async def run(self):
@@ -50,7 +52,7 @@ class ServiceManager:
 
         try:
             await self.service.start()
-            logging.info("Service running. Press Ctrl+C to stop.")
+            logger.info("Service running. Press Ctrl+C to stop.")
             await self.shutdown_event.wait()
         finally:
             await self.service.stop()
@@ -83,7 +85,7 @@ def proxy(ctx, host, port):
     service = ProxyService(config)
 
     manager = ServiceManager(service)
-    logging.info(f"Starting proxy service on {config.proxy_host}:{config.proxy_port}")
+    logger.info(f"Starting proxy service on {config.proxy_host}:{config.proxy_port}")
 
     asyncio.run(manager.run())
 
