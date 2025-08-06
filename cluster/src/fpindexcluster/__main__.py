@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import signal
-from typing import Optional
+from typing import Optional, Protocol
 
 import click
 
@@ -19,11 +19,23 @@ def setup_logging(level: str):
     )
 
 
+class Service(Protocol):
+    """Base class for services"""
+
+    async def start(self) -> None:
+        """Start the service"""
+        ...
+
+    async def stop(self) -> None:
+        """Stop the service"""
+        ...
+
+
 class ServiceManager:
     """Manages service lifecycle"""
     
-    def __init__(self):
-        self.service: Optional[ProxyService] = None
+    def __init__(self, service: Service) -> None:
+        self.service = service
         self.shutdown_event = asyncio.Event()
     
     def signal_handler(self):
@@ -31,22 +43,18 @@ class ServiceManager:
         logging.info("Received shutdown signal")
         self.shutdown_event.set()
     
-    async def run_proxy(self, config: Config):
-        """Run proxy service"""
-        self.service = ProxyService(config)
-        
+    async def run(self):
+        loop = asyncio.get_event_loop()
+        for sig in [signal.SIGTERM, signal.SIGINT]:
+            loop.add_signal_handler(sig, self.signal_handler)
+
         try:
             await self.service.start()
-            logging.info("Proxy service running. Press Ctrl+C to stop.")
+            logging.info("Service running. Press Ctrl+C to stop.")
             await self.shutdown_event.wait()
         finally:
             if self.service:
                 await self.service.stop()
-    
-    async def run_updater(self, config: Config):
-        """Run updater service (placeholder for milestone 3)"""
-        logging.info("Updater service not implemented yet")
-        await self.shutdown_event.wait()
 
 
 @click.group()
@@ -66,28 +74,19 @@ def cli(ctx, log_level):
 def proxy(ctx, host, port):
     """Run HTTP proxy service"""
     config = Config.from_env()
-    
+
     # Override with command line arguments
     if host:
         config.proxy_host = host
     if port:
         config.proxy_port = port
-    
-    manager = ServiceManager()
-    
-    # Setup signal handlers
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
-    for sig in [signal.SIGTERM, signal.SIGINT]:
-        loop.add_signal_handler(sig, manager.signal_handler)
-    
-    try:
-        loop.run_until_complete(manager.run_proxy(config))
-    except KeyboardInterrupt:
-        pass
-    finally:
-        loop.close()
+
+    service = ProxyService(config)
+
+    manager = ServiceManager(service)
+    logging.info(f"Starting proxy service on {config.proxy_host}:{config.proxy_port}")
+
+    asyncio.run(manager.run())
 
 
 @cli.command()
@@ -99,22 +98,8 @@ def updater(ctx, consumer_name):
     
     if consumer_name:
         config.consumer_name = consumer_name
-    
-    manager = ServiceManager()
-    
-    # Setup signal handlers
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
-    for sig in [signal.SIGTERM, signal.SIGINT]:
-        loop.add_signal_handler(sig, manager.signal_handler)
-    
-    try:
-        loop.run_until_complete(manager.run_updater(config))
-    except KeyboardInterrupt:
-        pass
-    finally:
-        loop.close()
+
+    logging.warning("Updater service is not implemented yet.")
 
 
 if __name__ == "__main__":
