@@ -1,15 +1,16 @@
 """HTTP proxy service that forwards requests to NATS JetStream"""
 
-import asyncio
 import json
 import logging
 from typing import Any, Dict, Optional
 
+import msgspec.msgpack
 import nats
 from aiohttp import web, ClientSession
 from nats.js import JetStreamContext
 
 from .config import Config
+from .models import FingerprintData
 
 
 logger = logging.getLogger(__name__)
@@ -68,20 +69,20 @@ class ProxyService:
             await self.nc.close()
         logger.info("Proxy service stopped")
     
-    async def _publish_to_nats(self, index_name: str, fp_id: str, operation: str, data: Dict[str, Any]):
+    async def _publish_to_nats(self, index_name: str, fp_id: int, hashes: list[int] | None) -> None:
         """Publish message to NATS JetStream"""
-        subject = f"{self.config.nats_stream}.{index_name}.{fp_id}"
-        
-        # Simple message format:
-        # - Insert/Update: {"h": [hashes]}
-        # - Delete: {}
-        if operation == "delete":
-            message = {}
+        subject = f"{self.config.nats_stream}.{index_name}.{fp_id:08x}"
+
+        if hashes is None:
+            operation = "delete"
+            message = b""
         else:
-            message = {"h": data["h"]} if "h" in data else {}
-        
+            operation = "insert"
+            message = msgspec.msgpack.encode(FingerprintData(hashes=hashes))
+
+        assert self.js is not None, "JetStream context is not initialized"
         try:
-            await self.js.publish(subject, json.dumps(message).encode())
+            await self.js.publish(subject, message)
             logger.debug(f"Published to {subject}: {operation} -> {message}")
         except Exception as e:
             logger.error(f"Failed to publish to NATS: {e}")
@@ -136,28 +137,25 @@ class ProxyService:
         """Insert/update a single fingerprint"""
         index_name = request.match_info["index"]
         fp_id_str = request.match_info["fp_id"]
-        
+
         # Validate fingerprint ID is 32-bit unsigned integer
         is_valid, fp_id = self._validate_fingerprint_id(fp_id_str)
         if not is_valid:
             return web.json_response({"error": "Fingerprint ID must be a 32-bit unsigned integer"}, status=400)
-        
+
         try:
             data = await request.json()
         except Exception:
             return web.json_response({"error": "Invalid JSON"}, status=400)
-        
+
         if "hashes" not in data:
             return web.json_response({"error": "Missing 'hashes' field"}, status=400)
-        
+
         # Publish to NATS using hex-encoded fingerprint ID as subject
-        fp_id_hex = f"{fp_id:08x}"
-        await self._publish_to_nats(index_name, fp_id_hex, "insert", {
-            "h": data["hashes"]
-        })
-        
+        await self._publish_to_nats(index_name, fp_id, data["hashes"])
+
         return web.json_response({"status": "ok", "id": fp_id})
-    
+
     async def get_fingerprint(self, request: web.Request) -> web.Response:
         """Get fingerprint info - this needs to query actual fpindex"""
         # For now, return a placeholder
@@ -165,8 +163,7 @@ class ProxyService:
         index_name = request.match_info["index"]
         fp_id = request.match_info["fp_id"]
         return web.json_response({"id": fp_id, "index": index_name})
-    
-    
+
     async def delete_fingerprint(self, request: web.Request) -> web.Response:
         """Delete a fingerprint"""
         index_name = request.match_info["index"]
@@ -178,8 +175,7 @@ class ProxyService:
             return web.json_response({"error": "Fingerprint ID must be a 32-bit unsigned integer"}, status=400)
         
         # Delete publishes empty message using hex-encoded ID
-        fp_id_hex = f"{fp_id:08x}"
-        await self._publish_to_nats(index_name, fp_id_hex, "delete", {})
+        await self._publish_to_nats(index_name, fp_id, None)
         return web.json_response({"status": "deleted", "id": fp_id})
     
     # Bulk operations
@@ -206,10 +202,7 @@ class ProxyService:
                         results.append({"error": "Invalid fingerprint ID", "change": change})
                         continue
                     
-                    fp_id_hex = f"{fp_id:08x}"
-                    await self._publish_to_nats(index_name, fp_id_hex, "insert", {
-                        "h": insert_data["hashes"]
-                    })
+                    await self._publish_to_nats(index_name, fp_id, insert_data["hashes"])
                     results.append({"id": fp_id, "status": "inserted"})
                 
                 elif "update" in change:
@@ -219,10 +212,7 @@ class ProxyService:
                         results.append({"error": "Invalid fingerprint ID", "change": change})
                         continue
                     
-                    fp_id_hex = f"{fp_id:08x}"
-                    await self._publish_to_nats(index_name, fp_id_hex, "update", {
-                        "h": update_data["hashes"]
-                    })
+                    await self._publish_to_nats(index_name, fp_id, update_data["hashes"])
                     results.append({"id": fp_id, "status": "updated"})
                 
                 elif "delete" in change:
@@ -233,8 +223,7 @@ class ProxyService:
                         continue
                     
                     # Delete sends empty message using hex-encoded ID
-                    fp_id_hex = f"{fp_id:08x}"
-                    await self._publish_to_nats(index_name, fp_id_hex, "delete", {})
+                    await self._publish_to_nats(index_name, fp_id, None)
                     results.append({"id": fp_id, "status": "deleted"})
                 
             except Exception as e:

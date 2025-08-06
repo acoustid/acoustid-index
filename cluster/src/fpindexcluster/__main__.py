@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import signal
-from typing import Optional, Protocol
+from typing import Protocol
 
 import click
 
