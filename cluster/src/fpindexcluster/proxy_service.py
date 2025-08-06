@@ -1,8 +1,7 @@
 """HTTP proxy service that forwards requests to NATS JetStream"""
 
-import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import msgspec.msgpack
 import nats
@@ -10,7 +9,16 @@ from aiohttp import web, ClientSession
 from nats.js import JetStreamContext
 
 from .config import Config
-from .models import FingerprintData
+from .models import (
+    FingerprintData,
+    SearchRequest,
+    BulkUpdateRequest,
+    PutFingerprintRequest,
+    ErrorResponse,
+    EmptyResponse,
+    BulkUpdateResponse,
+    BulkUpdateResult,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -89,7 +97,7 @@ class ProxyService:
         assert self.js is not None, "JetStream context is not initialized"
         try:
             await self.js.publish(subject, message)
-            logger.debug(f"Published to {subject}: {operation} -> {message}")
+            logger.debug(f"Published to {subject}: {operation}")
         except Exception as e:
             logger.error(f"Failed to publish to NATS: {e}")
             raise
@@ -97,36 +105,40 @@ class ProxyService:
     # Health endpoints
     async def health(self, request: web.Request) -> web.Response:
         """Global health check"""
-        return web.json_response({"status": "ok"})
+        # Health endpoints return plain text "OK\n" in fpindex
+        return web.Response(text="OK\n", content_type="text/plain")
     
     async def index_health(self, request: web.Request) -> web.Response:
         """Index-specific health check"""
-        index_name = request.match_info["index"]
-        return web.json_response({"status": "ok", "index": index_name})
+        # Index health also returns plain text "OK\n" in fpindex
+        return web.Response(text="OK\n", content_type="text/plain")
     
     # Index management
     async def create_index(self, request: web.Request) -> web.Response:
         """Create an index"""
-        index_name = request.match_info["index"]
-        
         # No need to publish anything for index creation - 
         # indexes are created implicitly when first fingerprint is added
-        
-        return web.json_response({"status": "created", "index": index_name})
+        # fpindex returns EmptyResponse for PUT operations
+        response = EmptyResponse()
+        response_data = msgspec.msgpack.encode(response)
+        return web.Response(body=response_data, content_type="application/vnd.msgpack")
     
     async def get_index_info(self, request: web.Request) -> web.Response:
         """Get index information - this needs to query the actual fpindex"""
-        # For now, return a simple response
-        # In practice, this might need to query one of the fpindex instances
-        index_name = request.match_info["index"]
-        return web.json_response({"index": index_name, "status": "active"})
+        # This should forward to actual fpindex instance 
+        # For now, return placeholder - fpindex returns GetIndexResponse with version/segments/docs/attributes
+        # TODO: Forward this to actual fpindex instance
+        error_response = ErrorResponse(error="NotImplemented")
+        response_data = msgspec.msgpack.encode(error_response)
+        return web.Response(body=response_data, status=501, content_type="application/vnd.msgpack")
     
     async def delete_index(self, request: web.Request) -> web.Response:
         """Delete an index"""
-        index_name = request.match_info["index"]
         # Index deletion would require purging all messages for the index
-        # This is a more complex operation - for now just return success
-        return web.json_response({"status": "deleted", "index": index_name})
+        # This is a more complex operation - fpindex returns EmptyResponse for DELETE operations
+        response = EmptyResponse()
+        response_data = msgspec.msgpack.encode(response)
+        return web.Response(body=response_data, content_type="application/vnd.msgpack")
     
     # Single fingerprint operations
     def _validate_fingerprint_id(self, fp_id_str: str) -> tuple[bool, int]:
@@ -147,28 +159,40 @@ class ProxyService:
         # Validate fingerprint ID is 32-bit unsigned integer
         is_valid, fp_id = self._validate_fingerprint_id(fp_id_str)
         if not is_valid:
-            return web.json_response({"error": "Fingerprint ID must be a 32-bit unsigned integer"}, status=400)
+            error_response = ErrorResponse(error="Fingerprint ID must be a 32-bit unsigned integer")
+            response_data = msgspec.msgpack.encode(error_response)
+            return web.Response(body=response_data, status=400, content_type="application/vnd.msgpack")
 
         try:
-            data = await request.json()
+            body = await request.read()
+            request_data = msgspec.msgpack.decode(
+                body, type=PutFingerprintRequest
+            )
         except Exception:
-            return web.json_response({"error": "Invalid JSON"}, status=400)
-
-        if "hashes" not in data:
-            return web.json_response({"error": "Missing 'hashes' field"}, status=400)
+            error_response = ErrorResponse(error="Invalid MessagePack")
+            response_data = msgspec.msgpack.encode(error_response)
+            return web.Response(
+                body=response_data,
+                status=400,
+                content_type="application/vnd.msgpack"
+            )
 
         # Publish to NATS using hex-encoded fingerprint ID as subject
-        await self._publish_to_nats(index_name, fp_id, data["hashes"])
+        await self._publish_to_nats(index_name, fp_id, request_data.hashes)
 
-        return web.json_response({"status": "ok", "id": fp_id})
+        # fpindex returns EmptyResponse for PUT fingerprint operations
+        response = EmptyResponse()
+        response_data = msgspec.msgpack.encode(response)
+        return web.Response(body=response_data, content_type="application/vnd.msgpack")
 
     async def get_fingerprint(self, request: web.Request) -> web.Response:
         """Get fingerprint info - this needs to query actual fpindex"""
-        # For now, return a placeholder
-        # In practice, this might need to query one of the fpindex instances
-        index_name = request.match_info["index"]
-        fp_id = request.match_info["fp_id"]
-        return web.json_response({"id": fp_id, "index": index_name})
+        # This should forward to actual fpindex instance
+        # fpindex returns GetFingerprintResponse with version field or 404 error
+        # TODO: Forward this to actual fpindex instance  
+        error_response = ErrorResponse(error="NotImplemented")
+        response_data = msgspec.msgpack.encode(error_response)
+        return web.Response(body=response_data, status=501, content_type="application/vnd.msgpack")
 
     async def delete_fingerprint(self, request: web.Request) -> web.Response:
         """Delete a fingerprint"""
@@ -178,11 +202,17 @@ class ProxyService:
         # Validate fingerprint ID is 32-bit unsigned integer
         is_valid, fp_id = self._validate_fingerprint_id(fp_id_str)
         if not is_valid:
-            return web.json_response({"error": "Fingerprint ID must be a 32-bit unsigned integer"}, status=400)
+            error_response = ErrorResponse(error="Fingerprint ID must be a 32-bit unsigned integer")
+            response_data = msgspec.msgpack.encode(error_response)
+            return web.Response(body=response_data, status=400, content_type="application/vnd.msgpack")
         
         # Delete publishes empty message using hex-encoded ID
         await self._publish_to_nats(index_name, fp_id, None)
-        return web.json_response({"status": "deleted", "id": fp_id})
+        
+        # fpindex returns EmptyResponse for DELETE fingerprint operations
+        response = EmptyResponse()
+        response_data = msgspec.msgpack.encode(response)
+        return web.Response(body=response_data, content_type="application/vnd.msgpack")
     
     # Bulk operations
     async def bulk_update(self, request: web.Request) -> web.Response:
@@ -190,72 +220,79 @@ class ProxyService:
         index_name = request.match_info["index"]
         
         try:
-            data = await request.json()
+            body = await request.read()
+            request_data = msgspec.msgpack.decode(body, type=BulkUpdateRequest)
         except Exception:
-            return web.json_response({"error": "Invalid JSON"}, status=400)
-        
-        if "changes" not in data:
-            return web.json_response({"error": "Missing 'changes' field"}, status=400)
+            error_response = ErrorResponse(error="Invalid MessagePack")
+            response_data = msgspec.msgpack.encode(error_response)
+            return web.Response(body=response_data, status=400, content_type="application/vnd.msgpack")
         
         # Process each change and publish to NATS
         results = []
-        for change in data["changes"]:
+        for change in request_data.changes:
             try:
-                if "insert" in change:
-                    insert_data = change["insert"]
-                    is_valid, fp_id = self._validate_fingerprint_id(str(insert_data["id"]))
-                    if not is_valid:
-                        results.append({"error": "Invalid fingerprint ID", "change": change})
-                        continue
-                    
-                    await self._publish_to_nats(index_name, fp_id, insert_data["hashes"])
-                    results.append({"id": fp_id, "status": "inserted"})
+                if change.insert:
+                    insert_data = change.insert
+                    await self._publish_to_nats(index_name, insert_data.id, insert_data.hashes)
+                    results.append(BulkUpdateResult(id=insert_data.id, status="inserted"))
                 
-                elif "update" in change:
-                    update_data = change["update"]
-                    is_valid, fp_id = self._validate_fingerprint_id(str(update_data["id"]))
-                    if not is_valid:
-                        results.append({"error": "Invalid fingerprint ID", "change": change})
-                        continue
-                    
-                    await self._publish_to_nats(index_name, fp_id, update_data["hashes"])
-                    results.append({"id": fp_id, "status": "updated"})
+                elif change.update:
+                    update_data = change.update
+                    await self._publish_to_nats(index_name, update_data.id, update_data.hashes)
+                    results.append(BulkUpdateResult(id=update_data.id, status="updated"))
                 
-                elif "delete" in change:
-                    delete_data = change["delete"]
-                    is_valid, fp_id = self._validate_fingerprint_id(str(delete_data["id"]))
-                    if not is_valid:
-                        results.append({"error": "Invalid fingerprint ID", "change": change})
-                        continue
-                    
+                elif change.delete:
+                    delete_data = change.delete
                     # Delete sends empty message using hex-encoded ID
-                    await self._publish_to_nats(index_name, fp_id, None)
-                    results.append({"id": fp_id, "status": "deleted"})
+                    await self._publish_to_nats(index_name, delete_data.id, None)
+                    results.append(BulkUpdateResult(id=delete_data.id, status="deleted"))
                 
             except Exception as e:
                 logger.error(f"Failed to process change {change}: {e}")
-                results.append({"error": str(e), "change": change})
+                results.append(BulkUpdateResult(error=str(e)))
         
-        return web.json_response({"results": results})
+        response = BulkUpdateResponse(results=results)
+        response_data = msgspec.msgpack.encode(response)
+        return web.Response(body=response_data, content_type="application/vnd.msgpack")
     
     async def search(self, request: web.Request) -> web.Response:
         """Handle search requests - forward to actual fpindex"""
         index_name = request.match_info["index"]
         
         try:
-            query_data = await request.json()
+            body = await request.read()
+            search_request = msgspec.msgpack.decode(body, type=SearchRequest)
         except Exception:
-            return web.json_response({"error": "Invalid JSON"}, status=400)
+            error_response = ErrorResponse(error="Invalid MessagePack")
+            response_data = msgspec.msgpack.encode(error_response)
+            return web.Response(body=response_data, status=400, content_type="application/vnd.msgpack")
         
         # For search, we need to forward to an actual fpindex instance
         # For now, forward to the configured fpindex_url
         try:
+            # Forward as MessagePack to fpindex
+            request_data = msgspec.msgpack.encode(search_request)
+            assert self.http_session is not None
             async with self.http_session.post(
                 f"{self.config.fpindex_url}/{index_name}/_search",
-                json=query_data
+                data=request_data,
+                headers={
+                    "Content-Type": "application/vnd.msgpack",
+                    "Accept": "application/vnd.msgpack"
+                }
             ) as resp:
-                result = await resp.json()
-                return web.json_response(result, status=resp.status)
+                result_body = await resp.read()
+                return web.Response(
+                    body=result_body,
+                    status=resp.status,
+                    content_type="application/vnd.msgpack"
+                )
         except Exception as e:
             logger.error(f"Failed to forward search request: {e}")
-            return web.json_response({"error": "Search service unavailable"}, status=503)
+            error_response = ErrorResponse(error="Search service unavailable")
+            response_data = msgspec.msgpack.encode(error_response)
+            return web.Response(
+                body=response_data,
+                status=503,
+                content_type="application/vnd.msgpack"
+            )
