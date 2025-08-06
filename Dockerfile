@@ -1,6 +1,6 @@
 FROM ubuntu:24.04
 
-RUN apt-get update && apt-get install -y glibc-tools
+RUN apt-get update && apt-get install -y glibc-tools wget
 
 RUN useradd -m -s /bin/bash -u 6081 acoustid
 
@@ -11,5 +11,9 @@ VOLUME ["/var/lib/acoustid-index"]
 
 USER acoustid
 EXPOSE 6081
+
+# Add health check
+HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:6081/_health || exit 1
 
 CMD ["fpindex", "--dir", "/var/lib/acoustid-index", "--address", "0.0.0.0", "--port", "6081"]
