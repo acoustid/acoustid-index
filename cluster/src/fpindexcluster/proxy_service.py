@@ -102,6 +102,19 @@ class ProxyService:
             logger.error(f"Failed to publish to NATS: {e}")
             raise
     
+    def _msgpack_response(self, data: msgspec.Struct, status: int = 200) -> web.Response:
+        """Create a MessagePack response from a msgspec.Struct"""
+        response_data = msgspec.msgpack.encode(data)
+        return web.Response(
+            body=response_data, 
+            status=status, 
+            content_type="application/vnd.msgpack"
+        )
+    
+    def _error_response(self, error_msg: str, status: int = 400) -> web.Response:
+        """Create an error response"""
+        return self._msgpack_response(ErrorResponse(error=error_msg), status)
+    
     # Health endpoints
     async def health(self, request: web.Request) -> web.Response:
         """Global health check"""
@@ -119,26 +132,20 @@ class ProxyService:
         # No need to publish anything for index creation - 
         # indexes are created implicitly when first fingerprint is added
         # fpindex returns EmptyResponse for PUT operations
-        response = EmptyResponse()
-        response_data = msgspec.msgpack.encode(response)
-        return web.Response(body=response_data, content_type="application/vnd.msgpack")
+        return self._msgpack_response(EmptyResponse())
     
     async def get_index_info(self, request: web.Request) -> web.Response:
         """Get index information - this needs to query the actual fpindex"""
         # This should forward to actual fpindex instance 
         # For now, return placeholder - fpindex returns GetIndexResponse with version/segments/docs/attributes
         # TODO: Forward this to actual fpindex instance
-        error_response = ErrorResponse(error="NotImplemented")
-        response_data = msgspec.msgpack.encode(error_response)
-        return web.Response(body=response_data, status=501, content_type="application/vnd.msgpack")
+        return self._error_response("NotImplemented", 501)
     
     async def delete_index(self, request: web.Request) -> web.Response:
         """Delete an index"""
         # Index deletion would require purging all messages for the index
         # This is a more complex operation - fpindex returns EmptyResponse for DELETE operations
-        response = EmptyResponse()
-        response_data = msgspec.msgpack.encode(response)
-        return web.Response(body=response_data, content_type="application/vnd.msgpack")
+        return self._msgpack_response(EmptyResponse())
     
     # Single fingerprint operations
     def _validate_fingerprint_id(self, fp_id_str: str) -> tuple[bool, int]:
@@ -159,9 +166,7 @@ class ProxyService:
         # Validate fingerprint ID is 32-bit unsigned integer
         is_valid, fp_id = self._validate_fingerprint_id(fp_id_str)
         if not is_valid:
-            error_response = ErrorResponse(error="Fingerprint ID must be a 32-bit unsigned integer")
-            response_data = msgspec.msgpack.encode(error_response)
-            return web.Response(body=response_data, status=400, content_type="application/vnd.msgpack")
+            return self._error_response("Fingerprint ID must be a 32-bit unsigned integer")
 
         try:
             body = await request.read()
@@ -169,30 +174,20 @@ class ProxyService:
                 body, type=PutFingerprintRequest
             )
         except Exception:
-            error_response = ErrorResponse(error="Invalid MessagePack")
-            response_data = msgspec.msgpack.encode(error_response)
-            return web.Response(
-                body=response_data,
-                status=400,
-                content_type="application/vnd.msgpack"
-            )
+            return self._error_response("Invalid MessagePack")
 
         # Publish to NATS using hex-encoded fingerprint ID as subject
         await self._publish_to_nats(index_name, fp_id, request_data.hashes)
 
         # fpindex returns EmptyResponse for PUT fingerprint operations
-        response = EmptyResponse()
-        response_data = msgspec.msgpack.encode(response)
-        return web.Response(body=response_data, content_type="application/vnd.msgpack")
+        return self._msgpack_response(EmptyResponse())
 
     async def get_fingerprint(self, request: web.Request) -> web.Response:
         """Get fingerprint info - this needs to query actual fpindex"""
         # This should forward to actual fpindex instance
         # fpindex returns GetFingerprintResponse with version field or 404 error
         # TODO: Forward this to actual fpindex instance  
-        error_response = ErrorResponse(error="NotImplemented")
-        response_data = msgspec.msgpack.encode(error_response)
-        return web.Response(body=response_data, status=501, content_type="application/vnd.msgpack")
+        return self._error_response("NotImplemented", 501)
 
     async def delete_fingerprint(self, request: web.Request) -> web.Response:
         """Delete a fingerprint"""
@@ -202,17 +197,13 @@ class ProxyService:
         # Validate fingerprint ID is 32-bit unsigned integer
         is_valid, fp_id = self._validate_fingerprint_id(fp_id_str)
         if not is_valid:
-            error_response = ErrorResponse(error="Fingerprint ID must be a 32-bit unsigned integer")
-            response_data = msgspec.msgpack.encode(error_response)
-            return web.Response(body=response_data, status=400, content_type="application/vnd.msgpack")
+            return self._error_response("Fingerprint ID must be a 32-bit unsigned integer")
         
         # Delete publishes empty message using hex-encoded ID
         await self._publish_to_nats(index_name, fp_id, None)
         
         # fpindex returns EmptyResponse for DELETE fingerprint operations
-        response = EmptyResponse()
-        response_data = msgspec.msgpack.encode(response)
-        return web.Response(body=response_data, content_type="application/vnd.msgpack")
+        return self._msgpack_response(EmptyResponse())
     
     # Bulk operations
     async def bulk_update(self, request: web.Request) -> web.Response:
@@ -223,9 +214,7 @@ class ProxyService:
             body = await request.read()
             request_data = msgspec.msgpack.decode(body, type=BulkUpdateRequest)
         except Exception:
-            error_response = ErrorResponse(error="Invalid MessagePack")
-            response_data = msgspec.msgpack.encode(error_response)
-            return web.Response(body=response_data, status=400, content_type="application/vnd.msgpack")
+            return self._error_response("Invalid MessagePack")
         
         # Process each change and publish to NATS
         results = []
@@ -251,9 +240,7 @@ class ProxyService:
                 logger.error(f"Failed to process change {change}: {e}")
                 results.append(BulkUpdateResult(error=str(e)))
         
-        response = BulkUpdateResponse(results=results)
-        response_data = msgspec.msgpack.encode(response)
-        return web.Response(body=response_data, content_type="application/vnd.msgpack")
+        return self._msgpack_response(BulkUpdateResponse(results=results))
     
     async def search(self, request: web.Request) -> web.Response:
         """Handle search requests - forward to actual fpindex"""
@@ -263,9 +250,7 @@ class ProxyService:
             body = await request.read()
             search_request = msgspec.msgpack.decode(body, type=SearchRequest)
         except Exception:
-            error_response = ErrorResponse(error="Invalid MessagePack")
-            response_data = msgspec.msgpack.encode(error_response)
-            return web.Response(body=response_data, status=400, content_type="application/vnd.msgpack")
+            return self._error_response("Invalid MessagePack")
         
         # For search, we need to forward to an actual fpindex instance
         # For now, forward to the configured fpindex_url
@@ -289,10 +274,4 @@ class ProxyService:
                 )
         except Exception as e:
             logger.error(f"Failed to forward search request: {e}")
-            error_response = ErrorResponse(error="Search service unavailable")
-            response_data = msgspec.msgpack.encode(error_response)
-            return web.Response(
-                body=response_data,
-                status=503,
-                content_type="application/vnd.msgpack"
-            )
+            return self._error_response("Search service unavailable", 503)
