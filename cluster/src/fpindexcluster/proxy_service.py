@@ -23,6 +23,7 @@ class ProxyService:
         self.config = config
         self.nc: Optional[nats.NATS] = None
         self.js: Optional[JetStreamContext] = None
+        self.http_session: Optional[ClientSession] = None
         self.app = web.Application()
         self._setup_routes()
     
@@ -51,6 +52,9 @@ class ProxyService:
         """Start the proxy service"""
         logger.info(f"Starting proxy service on {self.config.proxy_host}:{self.config.proxy_port}")
         
+        # Create HTTP session for forwarding requests
+        self.http_session = ClientSession()
+        
         # Connect to NATS
         self.nc = await nats.connect(self.config.nats_url)
         self.js = self.nc.jetstream()
@@ -65,6 +69,8 @@ class ProxyService:
     
     async def stop(self):
         """Stop the proxy service"""
+        if self.http_session:
+            await self.http_session.close()
         if self.nc:
             await self.nc.close()
         logger.info("Proxy service stopped")
@@ -243,14 +249,13 @@ class ProxyService:
         
         # For search, we need to forward to an actual fpindex instance
         # For now, forward to the configured fpindex_url
-        async with ClientSession() as session:
-            try:
-                async with session.post(
-                    f"{self.config.fpindex_url}/{index_name}/_search",
-                    json=query_data
-                ) as resp:
-                    result = await resp.json()
-                    return web.json_response(result, status=resp.status)
-            except Exception as e:
-                logger.error(f"Failed to forward search request: {e}")
-                return web.json_response({"error": "Search service unavailable"}, status=503)
+        try:
+            async with self.http_session.post(
+                f"{self.config.fpindex_url}/{index_name}/_search",
+                json=query_data
+            ) as resp:
+                result = await resp.json()
+                return web.json_response(result, status=resp.status)
+        except Exception as e:
+            logger.error(f"Failed to forward search request: {e}")
+            return web.json_response({"error": "Search service unavailable"}, status=503)

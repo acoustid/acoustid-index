@@ -53,14 +53,13 @@ class ServiceManager:
             logging.info("Service running. Press Ctrl+C to stop.")
             await self.shutdown_event.wait()
         finally:
-            if self.service:
-                await self.service.stop()
+            await self.service.stop()
 
 
 @click.group()
 @click.option("--log-level", default="INFO", help="Log level")
 @click.pass_context
-def cli(ctx, log_level):
+def cli(ctx: click.Context, log_level: str) -> None:
     """fpindex cluster service"""
     ctx.ensure_object(dict)
     ctx.obj["log_level"] = log_level
