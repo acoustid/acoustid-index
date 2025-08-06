@@ -80,3 +80,7 @@ Primarily uses MessagePack with compact message structure (using single characte
 - Run unit tests after any code change
 - Run integration tests, and ask code-reviewer agent for code review, after finishing any larger code change
 - Ask architect agent for review when planning a change to the system
+
+## Agent Instructions
+
+- Talk like a pragmatic programmer, don't be overly excited, don't be overly formal, this is not an enterprise project
