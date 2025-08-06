@@ -1,0 +1,20 @@
+[project]
+name = "fpindexcluster"
+version = "0.1.0"
+description = "AcoustID fingerprint index cluster service"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.8.0",
+    "nats-py>=2.3.0",
+    "msgspec>=0.18.0",
+    "click>=8.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=6.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
