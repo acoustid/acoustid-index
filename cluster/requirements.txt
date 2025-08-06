@@ -1,0 +1,4 @@
+aiohttp>=3.8.0
+nats-py>=2.3.0
+msgspec>=0.18.0
+click>=8.0.0
