@@ -15,11 +15,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . ./cluster/
 
 # Set Python path so we can import cluster module
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app/src
 
 # Health check
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
     CMD wget --quiet --tries=1 --spider http://localhost:8080/_health || exit 1
 
 # Default command (can be overridden)
-CMD ["python", "-m", "cluster", "proxy"]
+CMD ["python", "-m", "fpindexcluster", "proxy"]
