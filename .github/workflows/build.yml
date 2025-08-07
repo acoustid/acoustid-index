@@ -14,6 +14,18 @@ jobs:
     permissions:
       contents: read
       packages: write
+    services:
+      nats:
+        image: nats:2.10-alpine
+        ports:
+          - 4222:4222
+          - 6222:6222
+          - 8222:8222
+        options: >-
+          --health-cmd "nats-server --help"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
