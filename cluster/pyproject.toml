@@ -15,6 +15,7 @@ dev = [
     "pytest>=6.0.0",
     "pytest-aiohttp>=1.0.0",
     "pytest-asyncio>=0.21.0",
+    "nats-py>=2.3.0",  # For real NATS connections in tests
 ]
 
 [tool.pytest.ini_options]
