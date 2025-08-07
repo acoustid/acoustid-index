@@ -34,7 +34,7 @@ jobs:
         run: zig build test --summary all
 
       - name: Run cluster tests
-        run: cd cluster && python -m pytest tests/ -v
+        run: cd cluster && PYTHONPATH=src python -m pytest tests/ -v
 
       - name: Build release binary
         run: zig build --release=fast --summary all
