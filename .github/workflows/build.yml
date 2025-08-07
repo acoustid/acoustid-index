@@ -40,7 +40,7 @@ jobs:
         run: pip install -r tests/requirements.txt
 
       - name: Install cluster test requirements
-        run: pip install -r cluster/requirements.txt pytest
+        run: cd cluster && pip install -e .[dev]
 
       - name: Run tests
         run: zig build test --summary all
