@@ -1,0 +1,96 @@
+services:
+  # NATS JetStream server
+  nats:
+    image: nats:2.10-alpine
+    container_name: nats-server
+    ports:
+      - "4222:4222"   # NATS client connections
+      - "8222:8222"   # NATS monitoring
+      - "6222:6222"   # NATS clustering
+    command: ["--jetstream", "--store_dir=/data", "--http_port=8222"]
+    volumes:
+      - nats_data:/data
+    networks:
+      - fpindex-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # fpindex server (built from local source)
+  # Initialize fpindex data directory with correct permissions
+  fpindex-init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fpindex-init
+    volumes:
+      - fpindex_data:/data
+    command: ["sh", "-c", "chown -R 6081:6081 /data && chmod 755 /data"]
+    user: root
+
+  fpindex:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fpindex-server
+    ports:
+      - "6081:6081"   # fpindex HTTP API
+    command: ["fpindex", "--dir", "/data", "--address", "0.0.0.0", "--port", "6081", "--log-level", "info"]
+    user: "6081:6081"  # Run as acoustid user
+    volumes:
+      - fpindex_data:/data
+    networks:
+      - fpindex-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:6081/_health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      - nats
+      - fpindex-init
+
+  # Cluster proxy service
+  cluster-proxy:
+    build:
+      context: ./cluster
+      dockerfile: Dockerfile
+    container_name: cluster-proxy
+    ports:
+      - "8080:8080"   # Proxy HTTP API
+    environment:
+      - NATS_URL=nats://nats:4222
+      - FPINDEX_URL=http://fpindex:6081
+      - PROXY_HOST=0.0.0.0
+      - PROXY_PORT=8080
+      - LOG_LEVEL=DEBUG
+    networks:
+      - fpindex-net
+    depends_on:
+      - nats
+      - fpindex
+    command: ["python", "-m", "cluster", "proxy"]
+
+  # NATS management UI (optional, for development convenience)
+  nats-box:
+    image: natsio/nats-box:latest
+    container_name: nats-box
+    networks:
+      - fpindex-net
+    depends_on:
+      - nats
+    entrypoint: /bin/sh
+    stdin_open: true
+    tty: true
+
+volumes:
+  nats_data:
+    driver: local
+  fpindex_data:
+    driver: local
+
+networks:
+  fpindex-net:
+    driver: bridge

@@ -1,0 +1,12 @@
+# Development and testing dependencies
+requests>=2.31.0
+msgpack>=1.0.0
+
+# For implementing the proxy service
+aiohttp>=3.8.0
+nats-py>=2.6.0
+msgspec>=0.18.0
+
+# Development tools
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
