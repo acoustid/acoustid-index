@@ -9,6 +9,7 @@ import click
 
 from .config import Config
 from .proxy_service import ProxyService
+from .updater_service import UpdaterService
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ def setup_logging(level: str):
     """Setup logging configuration"""
     logging.basicConfig(
         level=getattr(logging, level.upper()),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
 
@@ -35,16 +36,16 @@ class Service(Protocol):
 
 class ServiceManager:
     """Manages service lifecycle"""
-    
+
     def __init__(self, service: Service) -> None:
         self.service = service
         self.shutdown_event = asyncio.Event()
-    
+
     def signal_handler(self):
         """Handle shutdown signals"""
         logger.info("Received shutdown signal")
         self.shutdown_event.set()
-    
+
     async def run(self):
         loop = asyncio.get_event_loop()
         for sig in [signal.SIGTERM, signal.SIGINT]:
@@ -94,13 +95,18 @@ def proxy(ctx, host, port):
 @click.option("--consumer-name", default=None, help="Consumer name")
 @click.pass_context
 def updater(ctx, consumer_name):
-    """Run updater service (not implemented yet)"""
+    """Run updater service"""
     config = Config.from_env()
-    
+
     if consumer_name:
         config.consumer_name = consumer_name
 
-    logging.warning("Updater service is not implemented yet.")
+    service = UpdaterService(config)
+
+    manager = ServiceManager(service)
+    logger.info(f"Starting updater service with consumer: {config.consumer_name}")
+
+    asyncio.run(manager.run())
 
 
 if __name__ == "__main__":
