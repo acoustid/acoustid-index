@@ -91,7 +91,7 @@ class ProxyService:
         await self._ensure_control_stream()
         
         # Setup HTTP server
-        self.runner = web.AppRunner(self.app)
+        self.runner = web.AppRunner(self.app, handle_signals=True)
         await self.runner.setup()
         self._exit_stack.callback(self.runner.cleanup)
         
