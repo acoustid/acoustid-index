@@ -126,7 +126,7 @@ class ProxyService:
         stream_name = self.config.get_stream_name(index_name)
         stream_config = StreamConfig(
             name=stream_name,
-            subjects=[f"fpindex.{index_name}.>"],
+            subjects=[f"{self.config.get_subject_prefix()}.{index_name}.>"],
             retention=RetentionPolicy.LIMITS,
             max_msgs_per_subject=1,
             storage=StorageType.FILE,
@@ -148,7 +148,7 @@ class ProxyService:
         # Ensure stream exists for this index
         await self._ensure_index_stream(index_name)
 
-        subject = f"fpindex.{index_name}.{fp_id:08x}"
+        subject = f"{self.config.get_subject_prefix()}.{index_name}.{fp_id:08x}"
 
         if hashes is None:
             operation = "delete"

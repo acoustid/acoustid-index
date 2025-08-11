@@ -16,15 +16,19 @@ class UpdaterTestConfig:
     """Test configuration"""
 
     def __init__(self):
+        unique_suffix = f"{int(time.time())}-{uuid.uuid4().hex[:8]}"
         self.nats_url = os.getenv("TEST_NATS_URL", "nats://localhost:4222")
-        self.nats_stream = "fpindex-test"
-        self.nats_stream_prefix = "fpindex-test"
+        self.nats_stream_prefix = f"fpindex-test-{unique_suffix}"
         self.fpindex_url = os.getenv("TEST_FPINDEX_URL", "http://localhost:6081")
-        self.consumer_name = f"test-consumer-{uuid.uuid4().hex[:8]}"
+        self.consumer_name = f"test-consumer-{unique_suffix}"
     
     def get_stream_name(self, index_name: str) -> str:
         """Get stream name for a specific index"""
         return f"{self.nats_stream_prefix}-{index_name}"
+    
+    def get_subject_prefix(self) -> str:
+        """Get subject prefix for NATS messages"""
+        return self.nats_stream_prefix
 
 
 @pytest.fixture
@@ -46,9 +50,8 @@ async def updater_service(test_config):
     from aiohttp import ClientSession
     from nats.js.api import StreamConfig, RetentionPolicy
     
-    # Create unique stream name for this test
-    test_stream_name = f"test-updater-{int(time.time())}-{id(test_config) % 10000}"
-    test_config.nats_stream = test_stream_name
+    # Create unique stream name for this test  
+    test_stream_name = test_config.get_stream_name("test")
     
     service = UpdaterService(test_config)
     
@@ -60,7 +63,7 @@ async def updater_service(test_config):
     # Create test stream
     stream_config = StreamConfig(
         name=test_stream_name,
-        subjects=[f"{test_stream_name}.>"],
+        subjects=[f"{test_config.get_subject_prefix()}.test.>"],
         retention=RetentionPolicy.LIMITS,
         max_msgs_per_subject=1,
         max_age=300  # 5 minutes retention
@@ -194,9 +197,10 @@ def test_updater_service_init(updater_config):
 async def test_stream_info_check(updater_service):
     """Test that we can get stream info from real NATS"""
     # The stream should exist (created by fixture)
-    stream_info = await updater_service.js.stream_info(updater_service.config.nats_stream)
+    test_stream_name = updater_service.config.get_stream_name("test")
+    stream_info = await updater_service.js.stream_info(test_stream_name)
     assert stream_info is not None
-    assert stream_info.config.name == updater_service.config.nats_stream
+    assert stream_info.config.name == test_stream_name
 
 
 async def test_stream_info_nonexistent(updater_service):
@@ -216,14 +220,30 @@ async def test_message_processing_integration(updater_service, fpindex_session):
     async with session.put(f"{fpindex_url}/testindex") as resp:
         assert resp.status == 200
     
+    # Create stream for testindex messages
+    from nats.js.api import StreamConfig, RetentionPolicy
+    testindex_stream_name = updater_service.config.get_stream_name("testindex")
+    stream_config = StreamConfig(
+        name=testindex_stream_name,
+        subjects=[f"{updater_service.config.get_subject_prefix()}.testindex.>"],
+        retention=RetentionPolicy.LIMITS,
+        max_msgs_per_subject=1,
+        max_age=300
+    )
+    try:
+        await updater_service.js.add_stream(config=stream_config)
+    except Exception:
+        # Stream might already exist
+        pass
+    
     # Publish test messages to NATS stream
     test_messages = [
         {
-            "subject": f"{updater_service.config.nats_stream}.testindex.000001f4",  # ID 500
+            "subject": f"{updater_service.config.get_subject_prefix()}.testindex.000001f4",  # ID 500
             "data": msgspec.msgpack.encode(FingerprintData(hashes=[1001, 2002, 3003]))
         },
         {
-            "subject": f"{updater_service.config.nats_stream}.testindex.000003e8",  # ID 1000
+            "subject": f"{updater_service.config.get_subject_prefix()}.testindex.000003e8",  # ID 1000
             "data": b""  # Delete message
         }
     ]
@@ -242,10 +262,11 @@ async def test_message_processing_integration(updater_service, fpindex_session):
         ack_policy=AckPolicy.EXPLICIT,
     )
     
-    await updater_service.js.add_consumer(updater_service.config.nats_stream, config=consumer_config)
+    test_stream_name = updater_service.config.get_stream_name("testindex")
+    await updater_service.js.add_consumer(test_stream_name, config=consumer_config)
     
     subscription = await updater_service.js.pull_subscribe(
-        f"{updater_service.config.nats_stream}.>", 
+        f"{updater_service.config.get_subject_prefix()}.testindex.>", 
         durable=consumer_config.name
     )
     
@@ -271,8 +292,8 @@ async def test_message_processing_integration(updater_service, fpindex_session):
 
 def test_message_parsing():
     """Test message subject parsing logic"""
-    # Test valid subject
-    subject = "fpindex.main.075bcd15"
+    # Test valid subject format
+    subject = "testprefix.main.075bcd15"
     parts = subject.split(".")
 
     assert len(parts) == 3

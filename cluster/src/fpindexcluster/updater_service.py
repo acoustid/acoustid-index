@@ -129,7 +129,7 @@ class UpdaterService:
                 raise
         
         subscription = await self.js.pull_subscribe(
-            f"fpindex.{index_name}.>", durable=consumer_name
+            f"{self.config.get_subject_prefix()}.{index_name}.>", durable=consumer_name
         )
         
         self.subscriptions[index_name] = subscription
@@ -175,7 +175,7 @@ class UpdaterService:
 
         for msg in messages:
             try:
-                # Parse subject: fpindex.{indexname}.{fpid_hex}
+                # Parse subject: {prefix}.{indexname}.{fpid_hex}
                 subject_parts = msg.subject.split(".")
                 if len(subject_parts) != 3:
                     logger.warning(f"Invalid subject format: {msg.subject}")
@@ -205,7 +205,7 @@ class UpdaterService:
                         fingerprint_data = msgspec.msgpack.decode(
                             msg.data, type=FingerprintData
                         )
-                        change = ChangeInsert(
+                        change = Change(
                             insert=Insert(id=fp_id, hashes=fingerprint_data.hashes)
                         )
                         changes.append(change)
@@ -216,7 +216,7 @@ class UpdaterService:
                         continue
                 else:
                     # Empty message = delete
-                    change = ChangeDelete(delete=Delete(id=fp_id))
+                    change = Change(delete=Delete(id=fp_id))
                     changes.append(change)
                     messages_for_ack.append(msg)
 

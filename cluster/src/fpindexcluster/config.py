@@ -28,6 +28,10 @@ class Config:
     def get_stream_name(self, index_name: str) -> str:
         """Get stream name for a specific index or control stream"""
         return f"{self.nats_stream_prefix}-{index_name}"
+    
+    def get_subject_prefix(self) -> str:
+        """Get subject prefix for NATS messages"""
+        return self.nats_stream_prefix
 
     @classmethod
     def from_env(cls) -> "Config":

@@ -23,16 +23,22 @@ from fpindexcluster.models import (
 class ProxyTestConfig:
     """Test configuration with environment variable support"""
     def __init__(self):
+        import time
+        import random
+        unique_suffix = f"{int(time.time())}-{random.randint(1000, 9999)}"
         self.proxy_host = os.getenv("TEST_PROXY_HOST", "127.0.0.1")
         self.proxy_port = int(os.getenv("TEST_PROXY_PORT", "8080"))
         self.nats_url = os.getenv("TEST_NATS_URL", "nats://localhost:4222")
-        self.nats_stream = os.getenv("TEST_NATS_STREAM", "fpindex-test")
-        self.nats_stream_prefix = "fpindex-test"
+        self.nats_stream_prefix = f"fpindex-test-{unique_suffix}"
         self.fpindex_url = os.getenv("TEST_FPINDEX_URL", "http://localhost:8081")
     
     def get_stream_name(self, index_name: str) -> str:
         """Get stream name for a specific index"""
         return f"{self.nats_stream_prefix}-{index_name}"
+    
+    def get_subject_prefix(self) -> str:
+        """Get subject prefix for NATS messages"""
+        return self.nats_stream_prefix
 
 
 @pytest.fixture
@@ -80,7 +86,7 @@ async def client(aiohttp_client, proxy_service):
     return await aiohttp_client(proxy_service.app)
 
 
-async def get_stream_messages(js, stream_name, subject_filter=None, max_messages=10):
+async def get_stream_messages(js, stream_name, subject_filter=None, max_messages=10, subject_prefix="fpindex"):
     """Helper to get messages from a NATS stream for testing"""
     from nats.js.api import ConsumerConfig, DeliverPolicy, AckPolicy
     import uuid
@@ -101,9 +107,9 @@ async def get_stream_messages(js, stream_name, subject_filter=None, max_messages
         messages = []
         try:
             # Use pull consumer to get messages
-            # Stream accepts subjects like "fpindex.main.>" regardless of stream name
+            # Stream accepts subjects like "{prefix}.main.>" regardless of stream name
             pull_sub = await js.pull_subscribe(
-                "fpindex.>",  # Subscribe to all fpindex subjects
+                f"{subject_prefix}.>",  # Subscribe to all subjects with this prefix
                 stream=stream_name,  # But only from this specific stream
                 durable=consumer_name
             )
@@ -138,19 +144,19 @@ async def get_stream_messages(js, stream_name, subject_filter=None, max_messages
         return []
 
 
-async def wait_for_message(js, stream_name, subject_filter, timeout=3.0):
+async def wait_for_message(js, stream_name, subject_filter, timeout=3.0, subject_prefix="fpindex"):
     """Wait for a specific message to appear in the stream"""
     import time
     start_time = time.time()
     
     while time.time() - start_time < timeout:
-        messages = await get_stream_messages(js, stream_name, subject_filter, 1)
+        messages = await get_stream_messages(js, stream_name, subject_filter, 1, subject_prefix)
         if messages:
             return messages[0]
         await asyncio.sleep(0.2)
     
     # Try one more time without filter to see all messages
-    all_messages = await get_stream_messages(js, stream_name, None, 10)
+    all_messages = await get_stream_messages(js, stream_name, None, 10, subject_prefix)
     print(f"All messages when looking for {subject_filter}: {[msg['subject'] for msg in all_messages]}")
     return None
 
@@ -303,14 +309,14 @@ async def test_put_fingerprint_valid(client, proxy_service):
     print(f"Config prefix: {proxy_service.config.nats_stream_prefix}")
     
     # Debug: check all messages in the stream
-    all_messages = await get_stream_messages(proxy_service.js, actual_stream_name)
+    all_messages = await get_stream_messages(proxy_service.js, actual_stream_name, subject_prefix=proxy_service.config.get_subject_prefix())
     print(f"All messages in stream: {len(all_messages)}")
     for msg in all_messages:
         print(f"Subject: {msg['subject']}, Data length: {len(msg['data'])}")
     
     # Verify message was published to NATS stream
-    expected_subject = "fpindex.main.075bcd15"
-    message = await wait_for_message(proxy_service.js, actual_stream_name, expected_subject)
+    expected_subject = f"{proxy_service.config.get_subject_prefix()}.main.075bcd15"
+    message = await wait_for_message(proxy_service.js, actual_stream_name, expected_subject, subject_prefix=proxy_service.config.get_subject_prefix())
     
     assert message is not None, f"Message should have been published to NATS. Expected subject: {expected_subject}. Found messages: {[msg['subject'] for msg in all_messages]}"
     assert message["subject"] == expected_subject
@@ -340,7 +346,7 @@ async def test_put_fingerprint_invalid_id(client, proxy_service):
 
     # Verify no message was published to NATS stream (should timeout quickly)
     actual_stream_name = proxy_service.config.get_stream_name("main")
-    messages = await get_stream_messages(proxy_service.js, actual_stream_name)
+    messages = await get_stream_messages(proxy_service.js, actual_stream_name, subject_prefix=proxy_service.config.get_subject_prefix())
     # We only expect no new messages related to invalid_id
     invalid_messages = [m for m in messages if "invalid_id" in m["subject"]]
     assert len(invalid_messages) == 0, "No messages should be published for invalid ID"
@@ -374,8 +380,8 @@ async def test_delete_fingerprint_valid(client, proxy_service):
 
     # Verify message was published to NATS stream with empty body (delete)
     actual_stream_name = proxy_service.config.get_stream_name("main")
-    expected_subject = "fpindex.main.075bcd15"
-    message = await wait_for_message(proxy_service.js, actual_stream_name, expected_subject)
+    expected_subject = f"{proxy_service.config.get_subject_prefix()}.main.075bcd15"
+    message = await wait_for_message(proxy_service.js, actual_stream_name, expected_subject, subject_prefix=proxy_service.config.get_subject_prefix())
     
     assert message is not None, "Delete message should have been published to NATS"
     assert message["subject"] == expected_subject
@@ -395,7 +401,7 @@ async def test_delete_fingerprint_invalid_id(client, proxy_service):
 
     # Verify no message was published to NATS stream for invalid ID
     actual_stream_name = proxy_service.config.get_stream_name("main")
-    messages = await get_stream_messages(proxy_service.js, actual_stream_name)
+    messages = await get_stream_messages(proxy_service.js, actual_stream_name, subject_prefix=proxy_service.config.get_subject_prefix())
     invalid_messages = [m for m in messages if "invalid_id" in m["subject"]]
     assert len(invalid_messages) == 0, "No messages should be published for invalid ID"
 
@@ -448,7 +454,7 @@ async def test_bulk_update_valid(client, proxy_service):
     # Wait a bit for all messages to be published
     await asyncio.sleep(0.5)
     actual_stream_name = proxy_service.config.get_stream_name("main")
-    messages = await get_stream_messages(proxy_service.js, actual_stream_name, max_messages=50)
+    messages = await get_stream_messages(proxy_service.js, actual_stream_name, max_messages=50, subject_prefix=proxy_service.config.get_subject_prefix())
     
     # Filter messages for this bulk update (by subject patterns)
     bulk_messages = [m for m in messages if 
