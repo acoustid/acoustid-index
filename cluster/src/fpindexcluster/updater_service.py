@@ -28,8 +28,8 @@ class UpdaterService:
 
     def __init__(self, config: Config):
         self.config = config
-        self.nc: Optional[nats.NATS] = None
-        self.js: Optional[JetStreamContext] = None
+        self.nc: nats.NATS | None = None
+        self.js: JetStreamContext | None = None
         self.http_session: Optional[ClientSession] = None
         self.subscription = None
 
@@ -87,6 +87,7 @@ class UpdaterService:
 
     async def _ensure_stream(self, stream_name: str):
         """Ensure NATS stream exists (should already be created by proxy)"""
+        assert self.js is not None
         try:
             stream_info = await self.js.stream_info(stream_name)
             logger.info(
@@ -99,6 +100,7 @@ class UpdaterService:
 
     async def _message_processing_loop(self):
         """Main message processing loop - processes messages in batches"""
+        assert self.subscription is not None
         while True:
             try:
                 # Fetch messages in batches for efficient bulk updates
