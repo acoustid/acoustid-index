@@ -45,21 +45,11 @@ class Delete(msgspec.Struct):
     id: int = msgspec.field(name="i")
 
 
-# Tagged union for Change - exactly matches fpindex format
-class ChangeInsert(msgspec.Struct):
-    """Insert change - encoded as {'i': Insert}"""
-
-    insert: Insert = msgspec.field(name="i")
-
-
-class ChangeDelete(msgspec.Struct):
-    """Delete change - encoded as {'d': Delete}"""
-
-    delete: Delete = msgspec.field(name="d")
-
-
-# Union type
-Change = ChangeInsert | ChangeDelete
+# Change struct with optional insert/delete fields
+class Change(msgspec.Struct, omit_defaults=True):
+    """Change operation - either insert or delete (one field will be None/omitted)"""
+    insert: Insert | None = msgspec.field(name="i", default=None)
+    delete: Delete | None = msgspec.field(name="d", default=None)
 
 
 class BulkUpdateRequest(msgspec.Struct):

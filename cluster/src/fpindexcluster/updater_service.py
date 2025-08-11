@@ -15,8 +15,7 @@ from .config import Config
 from .models import (
     FingerprintData,
     BulkUpdateRequest,
-    ChangeInsert,
-    ChangeDelete,
+    Change,
     Insert,
     Delete,
 )

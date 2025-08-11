@@ -12,8 +12,7 @@ from fpindexcluster.models import (
     SearchRequest,
     PutFingerprintRequest,
     BulkUpdateRequest,
-    ChangeInsert,
-    ChangeDelete,
+    Change,
     Insert,
     Delete,
     EmptyResponse,
@@ -56,37 +55,19 @@ async def proxy_service():
     
     test_stream_name = f"test-{int(time.time())}-{id(service) % 10000}"
     
-    # Create stream with proper configuration matching production setup
-    stream_config = StreamConfig(
-        name=test_stream_name,
-        subjects=[f"{test_stream_name}.>"],
-        retention=RetentionPolicy.LIMITS,
-        max_msgs_per_subject=1,  # Enable compaction like production
-        max_age=300  # 5 minutes retention for test data
-    )
-    
-    try:
-        await service.js.add_stream(config=stream_config)
-        print(f"Created test stream: {test_stream_name}")
-    except Exception as e:
-        print(f"Stream creation error: {e}")
-        # Stream might already exist, which is fine
-        pass
-    
-    # Override the stream name to use our test stream
-    original_stream = config.nats_stream
-    config.nats_stream = test_stream_name
+    # Don't create the stream here - let the proxy service create it
+    # This avoids configuration conflicts
+    main_stream_name = config.get_stream_name("main")
+    print(f"Will use test stream: {main_stream_name}")
     
     yield service
     
     # Cleanup: delete test stream and stop connections
     try:
-        await service.js.delete_stream(test_stream_name)
+        await service.js.delete_stream(main_stream_name)
     except Exception:
         # Stream might not exist, which is fine
         pass
-    
-    config.nats_stream = original_stream
     if service.http_session:
         await service.http_session.close()
     if service.nc:
@@ -120,8 +101,10 @@ async def get_stream_messages(js, stream_name, subject_filter=None, max_messages
         messages = []
         try:
             # Use pull consumer to get messages
+            # Stream accepts subjects like "fpindex.main.>" regardless of stream name
             pull_sub = await js.pull_subscribe(
-                f"{stream_name}.>", 
+                "fpindex.>",  # Subscribe to all fpindex subjects
+                stream=stream_name,  # But only from this specific stream
                 durable=consumer_name
             )
             
@@ -203,6 +186,11 @@ async def test_create_index(client):
 
 async def test_delete_index(client):
     """Test index deletion"""
+    # First create the index so we can delete it
+    create_resp = await client.put("/main")
+    assert create_resp.status == 200
+    
+    # Now delete it
     resp = await client.delete("/main")
 
     assert resp.status == 200
@@ -215,6 +203,11 @@ async def test_delete_index(client):
 
 async def test_get_index_info_existing_stream(client):
     """Test GET index info returns version from stream"""
+    # First create the index so it exists
+    create_resp = await client.put("/main")
+    assert create_resp.status == 200
+    
+    # Now get info for the existing stream
     resp = await client.get("/main")
 
     assert resp.status == 200
@@ -222,10 +215,10 @@ async def test_get_index_info_existing_stream(client):
 
     body = await resp.read()
     decoded = msgspec.msgpack.decode(body)
-    # Stream exists, version should be >= 0 (could have messages from setup)
+    # Stream exists and is empty, version should be 0
     assert "v" in decoded
     assert isinstance(decoded["v"], int)
-    assert decoded["v"] >= 0
+    assert decoded["v"] == 0  # New empty stream
 
 async def test_get_index_info_nonexistent_stream(client):
     """Test GET index info returns 404 for nonexistent stream"""
@@ -240,11 +233,16 @@ async def test_get_index_info_nonexistent_stream(client):
 
 async def test_get_index_info_version_increases_after_updates(client):
     """Test that index version increases after adding fingerprints"""
-    # Get initial version
+    # First create the index
+    create_resp = await client.put("/main")
+    assert create_resp.status == 200
+    
+    # Get initial version (should be 0 for new empty stream)
     resp = await client.get("/main")
     assert resp.status == 200
     body = await resp.read()
     initial_version = msgspec.msgpack.decode(body)["v"]
+    assert initial_version == 0
     
     # Add a fingerprint
     request_data = PutFingerprintRequest(hashes=[1001, 2002, 3003])
@@ -261,8 +259,9 @@ async def test_get_index_info_version_increases_after_updates(client):
     body = await resp.read()
     new_version = msgspec.msgpack.decode(body)["v"]
     
-    # Version should have increased
+    # Version should have increased (should be 1 after one message)
     assert new_version > initial_version
+    assert new_version == 1
 
 async def test_get_fingerprint_not_implemented(client):
     """Test GET fingerprint returns not implemented"""
@@ -298,8 +297,12 @@ async def test_put_fingerprint_valid(client, proxy_service):
     # Wait a bit for message to be published
     await asyncio.sleep(0.5)
     
-    # Debug: check all messages in the stream
+    # Debug: check what stream the proxy service is actually using
     actual_stream_name = proxy_service.config.get_stream_name("main")
+    print(f"Proxy service stream name: {actual_stream_name}")
+    print(f"Config prefix: {proxy_service.config.nats_stream_prefix}")
+    
+    # Debug: check all messages in the stream
     all_messages = await get_stream_messages(proxy_service.js, actual_stream_name)
     print(f"All messages in stream: {len(all_messages)}")
     for msg in all_messages:
@@ -400,9 +403,9 @@ async def test_bulk_update_valid(client, proxy_service):
     """Test bulk update with valid changes"""
     # Prepare bulk update request
     changes = [
-        ChangeInsert(insert=Insert(id=111, hashes=[100, 200, 300])),
-        ChangeInsert(insert=Insert(id=222, hashes=[400, 500, 600])),
-        ChangeDelete(delete=Delete(id=333))
+        Change(insert=Insert(id=111, hashes=[100, 200, 300])),
+        Change(insert=Insert(id=222, hashes=[400, 500, 600])),
+        Change(delete=Delete(id=333))
     ]
     request_data = BulkUpdateRequest(changes=changes)
     body = msgspec.msgpack.encode(request_data)
@@ -413,6 +416,12 @@ async def test_bulk_update_valid(client, proxy_service):
         headers={"Content-Type": "application/vnd.msgpack"}
     )
 
+    # Debug: check response if not 200
+    if resp.status != 200:
+        response_body = await resp.read()
+        decoded = msgspec.msgpack.decode(response_body)
+        print(f"Error response: {decoded}")
+    
     assert resp.status == 200
     assert resp.headers["Content-Type"] == "application/vnd.msgpack"
 
@@ -430,7 +439,7 @@ async def test_bulk_update_valid(client, proxy_service):
     assert results[0]["s"] == "inserted"  # status
 
     assert results[1]["i"] == 222
-    assert results[1]["s"] == "updated"
+    assert results[1]["s"] == "inserted"  # Both inserts return "inserted"
 
     assert results[2]["i"] == 333
     assert results[2]["s"] == "deleted"
@@ -509,9 +518,10 @@ async def test_search_request_forwarding(client, proxy_service):
     assert resp.status == 200
     assert resp.headers["Content-Type"] == "application/vnd.msgpack"
 
-    # Verify forwarding was attempted
+    # Verify forwarding was attempted - use the actual fpindex URL from config
+    expected_url = f"{proxy_service.config.fpindex_url}/main/_search"
     proxy_service.http_session.post.assert_called_once_with(
-        "http://localhost:8081/main/_search",
+        expected_url,
         data=body,
         headers={
             "Content-Type": "application/vnd.msgpack",
