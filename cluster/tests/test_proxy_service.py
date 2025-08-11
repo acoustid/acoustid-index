@@ -1,11 +1,10 @@
 """Tests for the HTTP proxy service"""
 
-import os
+import asyncio
 from unittest.mock import AsyncMock, Mock
 from aiohttp import web
 import msgspec.msgpack
 import pytest
-import asyncio
 
 from fpindexcluster.proxy_service import ProxyService
 from fpindexcluster.models import (
@@ -20,64 +19,26 @@ from fpindexcluster.models import (
 )
 
 
-class ProxyTestConfig:
-    """Test configuration with environment variable support"""
-    def __init__(self):
-        import time
-        import random
-        unique_suffix = f"{int(time.time())}-{random.randint(1000, 9999)}"
-        self.proxy_host = os.getenv("TEST_PROXY_HOST", "127.0.0.1")
-        self.proxy_port = int(os.getenv("TEST_PROXY_PORT", "8080"))
-        self.nats_url = os.getenv("TEST_NATS_URL", "nats://localhost:4222")
-        self.nats_stream_prefix = f"fpindex-test-{unique_suffix}"
-        self.fpindex_url = os.getenv("TEST_FPINDEX_URL", "http://localhost:8081")
-    
-    def get_stream_name(self, index_name: str) -> str:
-        """Get stream name for a specific index"""
-        return f"{self.nats_stream_prefix}-{index_name}"
-    
-    def get_subject_prefix(self) -> str:
-        """Get subject prefix for NATS messages"""
-        return self.nats_stream_prefix
+# Test configuration is now provided by conftest.py
 
 
 @pytest.fixture
-async def proxy_service():
-    """Create a ProxyService instance for testing with real NATS"""
-    import nats
-    from aiohttp import ClientSession
+async def proxy_service(managed_test_resources):
+    """Create a ProxyService instance for testing with managed resources"""
+    resources = managed_test_resources
+    service = ProxyService(resources['config'])
     
-    config = ProxyTestConfig()
-    service = ProxyService(config)
+    # Use managed resources instead of creating new ones
+    service.http_session = resources['http_session']
+    service.nc = resources['nats_connection']
+    service.js = resources['jetstream_context']
     
-    # Connect to NATS manually instead of using service.start() to avoid HTTP server
-    service.http_session = ClientSession()
-    service.nc = await nats.connect(config.nats_url)
-    service.js = service.nc.jetstream()
-    
-    # Create a test stream with unique name
-    import time
-    from nats.js.api import StreamConfig, RetentionPolicy
-    
-    test_stream_name = f"test-{int(time.time())}-{id(service) % 10000}"
-    
-    # Don't create the stream here - let the proxy service create it
-    # This avoids configuration conflicts
-    main_stream_name = config.get_stream_name("main")
+    main_stream_name = resources['config'].get_stream_name("main")
     print(f"Will use test stream: {main_stream_name}")
     
     yield service
     
-    # Cleanup: delete test stream and stop connections
-    try:
-        await service.js.delete_stream(main_stream_name)
-    except Exception:
-        # Stream might not exist, which is fine
-        pass
-    if service.http_session:
-        await service.http_session.close()
-    if service.nc:
-        await service.nc.close()
+    # Cleanup is handled automatically by conftest.py
 
 
 @pytest.fixture
@@ -575,10 +536,9 @@ async def test_search_service_unavailable(client, proxy_service):
         assert decoded == {"e": "Search service unavailable"}
 
 
-def test_msgpack_response_helper():
+def test_msgpack_response_helper(test_config):
     """Test _msgpack_response helper method"""
-    config = ProxyTestConfig()
-    proxy_service = ProxyService(config)
+    proxy_service = ProxyService(test_config)
     response_struct = EmptyResponse()
 
     result = proxy_service._msgpack_response(response_struct)
@@ -592,10 +552,9 @@ def test_msgpack_response_helper():
     assert result.body == expected_body
 
 
-def test_msgpack_response_with_custom_status():
+def test_msgpack_response_with_custom_status(test_config):
     """Test _msgpack_response with custom status code"""
-    config = ProxyTestConfig()
-    proxy_service = ProxyService(config)
+    proxy_service = ProxyService(test_config)
     response_struct = ErrorResponse(error="Test error")
 
     result = proxy_service._msgpack_response(response_struct, 500)
@@ -604,10 +563,9 @@ def test_msgpack_response_with_custom_status():
     assert result.headers["Content-Type"] == "application/vnd.msgpack"
 
 
-def test_error_response_helper():
+def test_error_response_helper(test_config):
     """Test _error_response helper method"""
-    config = ProxyTestConfig()
-    proxy_service = ProxyService(config)
+    proxy_service = ProxyService(test_config)
     
     result = proxy_service._error_response("Test error message")
 
@@ -621,10 +579,9 @@ def test_error_response_helper():
     assert result.body == expected_body
 
 
-def test_error_response_with_custom_status():
+def test_error_response_with_custom_status(test_config):
     """Test _error_response with custom status code"""
-    config = ProxyTestConfig()
-    proxy_service = ProxyService(config)
+    proxy_service = ProxyService(test_config)
     
     result = proxy_service._error_response("Not found", 404)
 
@@ -637,10 +594,9 @@ def test_error_response_with_custom_status():
     ("123456789", True, 123456789),
     ("4294967295", True, 4294967295),  # Max 32-bit unsigned
 ])
-def test_validate_fingerprint_id_valid(id_str, expected_valid, expected_id):
+def test_validate_fingerprint_id_valid(id_str, expected_valid, expected_id, test_config):
     """Test fingerprint ID validation with valid IDs"""
-    config = ProxyTestConfig()
-    proxy_service = ProxyService(config)
+    proxy_service = ProxyService(test_config)
     
     is_valid, fp_id = proxy_service._validate_fingerprint_id(id_str)
     
@@ -657,10 +613,9 @@ def test_validate_fingerprint_id_valid(id_str, expected_valid, expected_id):
     "",
     "0x123",
 ])
-def test_validate_fingerprint_id_invalid(id_str):
+def test_validate_fingerprint_id_invalid(id_str, test_config):
     """Test fingerprint ID validation with invalid IDs"""
-    config = ProxyTestConfig()
-    proxy_service = ProxyService(config)
+    proxy_service = ProxyService(test_config)
     
     is_valid, _ = proxy_service._validate_fingerprint_id(id_str)
     

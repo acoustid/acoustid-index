@@ -1,7 +1,6 @@
 """Tests for the updater service"""
 
 import asyncio
-import os
 import time
 import uuid
 from unittest.mock import AsyncMock, Mock
@@ -12,58 +11,30 @@ from fpindexcluster.updater_service import UpdaterService
 from fpindexcluster.models import FingerprintData, Change, Insert, Delete, BulkUpdateRequest
 
 
-class UpdaterTestConfig:
-    """Test configuration"""
+# Test configuration is now provided by conftest.py
 
-    def __init__(self):
-        unique_suffix = f"{int(time.time())}-{uuid.uuid4().hex[:8]}"
-        self.nats_url = os.getenv("TEST_NATS_URL", "nats://localhost:4222")
-        self.nats_stream_prefix = f"fpindex-test-{unique_suffix}"
-        self.fpindex_url = os.getenv("TEST_FPINDEX_URL", "http://localhost:6081")
-        self.consumer_name = f"test-consumer-{unique_suffix}"
-    
-    def get_stream_name(self, index_name: str) -> str:
-        """Get stream name for a specific index"""
-        return f"{self.nats_stream_prefix}-{index_name}"
-    
-    def get_subject_prefix(self) -> str:
-        """Get subject prefix for NATS messages"""
-        return self.nats_stream_prefix
+
+# Test config fixtures are now provided by conftest.py
 
 
 @pytest.fixture
-async def test_config():
-    """Create test config for updater service"""
-    return UpdaterTestConfig()
-
-
-@pytest.fixture
-def updater_config():
-    """Create test config for updater service"""
-    return UpdaterTestConfig()
-
-
-@pytest.fixture
-async def updater_service(test_config):
-    """Create UpdaterService with real NATS connection"""
-    import nats
-    from aiohttp import ClientSession
+async def updater_service(managed_test_resources):
+    """Create UpdaterService with managed resources"""
     from nats.js.api import StreamConfig, RetentionPolicy
     
-    # Create unique stream name for this test  
-    test_stream_name = test_config.get_stream_name("test")
+    resources = managed_test_resources
+    service = UpdaterService(resources['config'])
     
-    service = UpdaterService(test_config)
-    
-    # Connect to NATS manually
-    service.http_session = ClientSession()
-    service.nc = await nats.connect(test_config.nats_url)
-    service.js = service.nc.jetstream()
+    # Use managed resources
+    service.http_session = resources['http_session']
+    service.nc = resources['nats_connection']
+    service.js = resources['jetstream_context']
     
     # Create test stream
+    test_stream_name = resources['config'].get_stream_name("test")
     stream_config = StreamConfig(
         name=test_stream_name,
-        subjects=[f"{test_config.get_subject_prefix()}.test.>"],
+        subjects=[f"{resources['config'].get_subject_prefix()}.test.>"],
         retention=RetentionPolicy.LIMITS,
         max_msgs_per_subject=1,
         max_age=300  # 5 minutes retention
@@ -77,22 +48,13 @@ async def updater_service(test_config):
     
     yield service
     
-    # Cleanup
-    try:
-        await service.js.delete_stream(test_stream_name)
-    except Exception:
-        pass
-    
-    if service.http_session:
-        await service.http_session.close()
-    if service.nc:
-        await service.nc.close()
+    # Cleanup is handled automatically by conftest.py
 
 
 @pytest.fixture
-def mock_updater_service(updater_config):
+def mock_updater_service(test_config):
     """Create UpdaterService with mocked dependencies"""
-    service = UpdaterService(updater_config)
+    service = UpdaterService(test_config)
 
     # Mock NATS connection
     service.nc = AsyncMock()
@@ -106,21 +68,10 @@ def mock_updater_service(updater_config):
 
 
 @pytest.fixture
-async def fpindex_session():
-    """Create HTTP session and verify fpindex is available"""
-    from aiohttp import ClientSession
-    
-    fpindex_url = os.getenv("TEST_FPINDEX_URL", "http://localhost:6081")
-    
-    session = ClientSession()
-    
-    # Ensure fpindex is available - test should fail if not
-    async with session.get(f"{fpindex_url}/_health") as resp:
-        assert resp.status == 200, f"fpindex not available at {fpindex_url}"
-    
-    yield session, fpindex_url
-    
-    await session.close()
+async def fpindex_session(managed_test_resources, skip_if_no_fpindex):
+    """Provide fpindex session using managed resources"""
+    resources = managed_test_resources
+    yield resources['http_session'], resources['config'].fpindex_url
 
 
 async def test_bulk_update_fpindex_real(fpindex_session):
@@ -184,11 +135,11 @@ async def test_updater_service_lifecycle(test_config):
         assert hasattr(service, 'http_session') and service.http_session is not None
 
 
-def test_updater_service_init(updater_config):
+def test_updater_service_init(test_config):
     """Test UpdaterService initialization"""
-    service = UpdaterService(updater_config)
+    service = UpdaterService(test_config)
 
-    assert service.config == updater_config
+    assert service.config == test_config
     assert service.subscriptions == {}
     assert service.tracked_indexes == set()
     assert service._exit_stack is None
@@ -348,64 +299,33 @@ def test_bulk_update_request_creation():
     assert delete_change["d"]["i"] == 456  # id field
 
 
-async def test_updater_service_real_nats():
+async def test_updater_service_real_nats(managed_test_resources, skip_if_no_nats, skip_if_no_fpindex):
     """Test updater service with real NATS integration"""
-    import os
     import time
-    import nats
     from nats.js.api import StreamConfig, RetentionPolicy
-    from aiohttp import ClientSession
 
-    nats_url = os.getenv("TEST_NATS_URL", "nats://localhost:4222")
-    fpindex_url = os.getenv("TEST_FPINDEX_URL", "http://localhost:6081")
-
-    # Skip if NATS not available
-    try:
-        nc = await nats.connect(nats_url)
-        await nc.close()
-    except Exception:
-        pytest.skip("NATS not available")
-
-    # Skip if fpindex not available
-    try:
-        async with ClientSession() as session:
-            async with session.get(f"{fpindex_url}/_health") as resp:
-                if resp.status != 200:
-                    pytest.skip("fpindex not available")
-    except Exception:
-        pytest.skip("fpindex not available")
-
+    resources = managed_test_resources
+    
     # Create test stream and setup
-    stream_name = f"test-updater-{int(time.time())}"
-
-    # Setup test stream and publish test message
-    nc = await nats.connect(nats_url)
-    js = nc.jetstream()
+    stream_name = f"{resources['config'].nats_stream_prefix}-test-updater-{int(time.time())}"
 
     try:
         # Create test stream
         stream_config = StreamConfig(
             name=stream_name,
-            subjects=[f"{stream_name}.>"],
+            subjects=[f"{resources['config'].get_subject_prefix()}.testindex.>"],
             retention=RetentionPolicy.LIMITS,
             max_msgs_per_subject=1,
             max_age=300,  # 5 minutes
         )
-        await js.add_stream(config=stream_config)
+        await resources['jetstream_context'].add_stream(config=stream_config)
 
         # Create test index in fpindex
-        async with ClientSession() as session:
-            async with session.put(f"{fpindex_url}/testindex") as resp:
-                assert resp.status == 200
+        async with resources['http_session'].put(f"{resources['config'].fpindex_url}/testindex") as resp:
+            assert resp.status == 200
 
         # Create updater service
-        config = UpdaterTestConfig()
-        config.nats_url = nats_url
-        config.nats_stream = stream_name
-        config.fpindex_url = fpindex_url
-        config.consumer_name = f"test-consumer-{int(time.time())}"
-
-        updater = UpdaterService(config)
+        updater = UpdaterService(resources['config'])
 
         # Use async context manager instead of start/stop
         async with updater:
@@ -413,10 +333,10 @@ async def test_updater_service_real_nats():
             test_fp_id = 555666777
             test_hashes = [9001, 9002, 9003]
 
-            subject = f"{stream_name}.testindex.{test_fp_id:08x}"
+            subject = f"{resources['config'].get_subject_prefix()}.testindex.{test_fp_id:08x}"
             message_data = msgspec.msgpack.encode(FingerprintData(hashes=test_hashes))
 
-            await js.publish(subject, message_data)
+            await resources['jetstream_context'].publish(subject, message_data)
 
             # Wait for message processing - note: the updater service might not 
             # automatically process messages in this test setup
@@ -426,69 +346,35 @@ async def test_updater_service_real_nats():
             # The actual message processing would require a more complex test setup
 
     finally:
-        # Cleanup
-        try:
-            await js.delete_stream(stream_name)
-        except Exception:
-            pass
-        await nc.close()
+        # Cleanup is handled automatically by conftest
+        pass
 
 
-async def test_message_batching_real_nats():
+async def test_message_batching_real_nats(managed_test_resources, skip_if_no_nats, skip_if_no_fpindex):
     """Test message batching with real NATS"""
-    import os
     import time
-    import nats
     from nats.js.api import StreamConfig, RetentionPolicy
-    from aiohttp import ClientSession
 
-    nats_url = os.getenv("TEST_NATS_URL", "nats://localhost:4222")
-    fpindex_url = os.getenv("TEST_FPINDEX_URL", "http://localhost:6081")
-
-    # Skip if services not available
-    try:
-        nc = await nats.connect(nats_url)
-        await nc.close()
-    except Exception:
-        pytest.skip("NATS not available")
-
-    try:
-        async with ClientSession() as session:
-            async with session.get(f"{fpindex_url}/_health") as resp:
-                if resp.status != 200:
-                    pytest.skip("fpindex not available")
-    except Exception:
-        pytest.skip("fpindex not available")
-
-    stream_name = f"test-batch-{int(time.time())}"
-
-    nc = await nats.connect(nats_url)
-    js = nc.jetstream()
+    resources = managed_test_resources
+    stream_name = f"{resources['config'].nats_stream_prefix}-test-batch-{int(time.time())}"
 
     try:
         # Create test stream
         stream_config = StreamConfig(
             name=stream_name,
-            subjects=[f"{stream_name}.>"],
+            subjects=[f"{resources['config'].get_subject_prefix()}.batchtest.>"],
             retention=RetentionPolicy.LIMITS,
             max_msgs_per_subject=1,
             max_age=300,
         )
-        await js.add_stream(config=stream_config)
+        await resources['jetstream_context'].add_stream(config=stream_config)
 
         # Create test index
-        async with ClientSession() as session:
-            async with session.put(f"{fpindex_url}/batchtest") as resp:
-                assert resp.status == 200
+        async with resources['http_session'].put(f"{resources['config'].fpindex_url}/batchtest") as resp:
+            assert resp.status == 200
 
         # Create updater
-        config = UpdaterTestConfig()
-        config.nats_url = nats_url
-        config.nats_stream = stream_name
-        config.fpindex_url = fpindex_url
-        config.consumer_name = f"batch-consumer-{int(time.time())}"
-
-        updater = UpdaterService(config)
+        updater = UpdaterService(resources['config'])
         
         async with updater:
             # Publish multiple messages quickly to test batching
@@ -501,20 +387,17 @@ async def test_message_batching_real_nats():
             ]
 
             for fp_id, hashes in test_fps:
-                subject = f"{stream_name}.batchtest.{fp_id:08x}"
+                subject = f"{resources['config'].get_subject_prefix()}.batchtest.{fp_id:08x}"
                 message_data = msgspec.msgpack.encode(FingerprintData(hashes=hashes))
-                await js.publish(subject, message_data)
+                await resources['jetstream_context'].publish(subject, message_data)
 
             # For this test, we'll just verify messages were published
             # Actual batch processing testing would need a more complex setup
             await asyncio.sleep(1)
 
     finally:
-        try:
-            await js.delete_stream(stream_name)
-        except Exception:
-            pass
-        await nc.close()
+        # Cleanup is handled automatically by conftest
+        pass
 
 
 if __name__ == "__main__":
