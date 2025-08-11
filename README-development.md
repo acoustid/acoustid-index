@@ -173,7 +173,7 @@ curl http://localhost:6081/_health
 docker-compose logs fpindex
 
 # Check if data persists
-ls -la /var/lib/docker/volumes/acoustid-index_fpindex_data/_data/
+docker volume inspect acoustid-index_fpindex_data --format '{{.Mountpoint}}' | xargs ls -la
 ```
 
 ### Docker Issues

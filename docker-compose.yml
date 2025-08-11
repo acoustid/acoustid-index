@@ -18,6 +18,18 @@ services:
       timeout: 5s
       retries: 5
 
+  # NATS management UI (optional, for development convenience)
+  nats-box:
+    image: natsio/nats-box:latest
+    container_name: nats-box
+    networks:
+      - fpindex-net
+    depends_on:
+      - nats
+    entrypoint: /bin/sh
+    stdin_open: true
+    tty: true
+
   # fpindex server (built from local source)
   # Initialize fpindex data directory with correct permissions
   fpindex-init:
@@ -49,7 +61,6 @@ services:
       timeout: 5s
       retries: 5
     depends_on:
-      - nats
       - fpindex-init
 
   # Cluster proxy service
@@ -71,19 +82,24 @@ services:
     depends_on:
       - nats
       - fpindex
-    command: ["python", "-m", "cluster", "proxy"]
+    command: ["python", "-m", "fpindexcluster", "proxy"]
 
-  # NATS management UI (optional, for development convenience)
-  nats-box:
-    image: natsio/nats-box:latest
-    container_name: nats-box
+  # Cluster updater service
+  cluster-updater:
+    build:
+      context: ./cluster
+      dockerfile: Dockerfile
+    container_name: cluster-updater
+    environment:
+      - NATS_URL=nats://nats:4222
+      - FPINDEX_URL=http://fpindex:6081
+      - LOG_LEVEL=DEBUG
     networks:
       - fpindex-net
     depends_on:
       - nats
-    entrypoint: /bin/sh
-    stdin_open: true
-    tty: true
+      - fpindex
+    command: ["python", "-m", "fpindexcluster", "updater"]
 
 volumes:
   nats_data:
