@@ -17,8 +17,8 @@ COPY . ./cluster/
 # Create non-root user
 RUN useradd -m -s /bin/bash -u 6081 acoustid
 
-# Set Python path so we can import cluster module
-ENV PYTHONPATH=/app/src
+# Set Python path so we can import fpindexcluster module
+ENV PYTHONPATH=/app/cluster/src
 
 # Switch to non-root user
 USER acoustid

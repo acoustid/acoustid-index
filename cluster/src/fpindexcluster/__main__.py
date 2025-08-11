@@ -12,7 +12,7 @@ from .updater_service import UpdaterService
 logger = logging.getLogger(__name__)
 
 
-def setup_logging(level: str):
+def setup_logging(level: str) -> None:
     """Setup logging configuration"""
     logging.basicConfig(
         level=getattr(logging, level.upper()),
