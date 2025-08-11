@@ -2,8 +2,6 @@
 
 import asyncio
 import logging
-import signal
-from typing import Protocol
 
 import click
 
@@ -22,43 +20,6 @@ def setup_logging(level: str):
     )
 
 
-class Service(Protocol):
-    """Base class for services"""
-
-    async def start(self) -> None:
-        """Start the service"""
-        ...
-
-    async def stop(self) -> None:
-        """Stop the service"""
-        ...
-
-
-class ServiceManager:
-    """Manages service lifecycle"""
-
-    def __init__(self, service: Service) -> None:
-        self.service = service
-        self.shutdown_event = asyncio.Event()
-
-    def signal_handler(self):
-        """Handle shutdown signals"""
-        logger.info("Received shutdown signal")
-        self.shutdown_event.set()
-
-    async def run(self):
-        loop = asyncio.get_event_loop()
-        for sig in [signal.SIGTERM, signal.SIGINT]:
-            loop.add_signal_handler(sig, self.signal_handler)
-
-        try:
-            await self.service.start()
-            logger.info("Service running. Press Ctrl+C to stop.")
-            await self.shutdown_event.wait()
-        finally:
-            await self.service.stop()
-
-
 @click.group()
 @click.option("--log-level", default="INFO", help="Log level")
 @click.pass_context
@@ -72,8 +33,7 @@ def cli(ctx: click.Context, log_level: str) -> None:
 @cli.command()
 @click.option("--host", default=None, help="Proxy host")
 @click.option("--port", default=None, type=int, help="Proxy port")
-@click.pass_context
-def proxy(ctx, host, port):
+def proxy(host, port):
     """Run HTTP proxy service"""
     config = Config.from_env()
 
@@ -83,30 +43,31 @@ def proxy(ctx, host, port):
     if port:
         config.proxy_port = port
 
-    service = ProxyService(config)
+    async def run_proxy():
+        async with ProxyService(config) as svc:
+            logger.info("Service initialized. Starting...")
+            await svc.run()
 
-    manager = ServiceManager(service)
     logger.info(f"Starting proxy service on {config.proxy_host}:{config.proxy_port}")
-
-    asyncio.run(manager.run())
+    asyncio.run(run_proxy())
 
 
 @cli.command()
 @click.option("--consumer-name", default=None, help="Consumer name")
-@click.pass_context
-def updater(ctx, consumer_name):
+def updater(consumer_name):
     """Run updater service"""
     config = Config.from_env()
 
     if consumer_name:
         config.consumer_name = consumer_name
 
-    service = UpdaterService(config)
+    async def run_updater():
+        async with UpdaterService(config) as svc:
+            logger.info("Service initialized. Starting...")
+            await svc.run()
 
-    manager = ServiceManager(service)
     logger.info(f"Starting updater service with consumer: {config.consumer_name}")
-
-    asyncio.run(manager.run())
+    asyncio.run(run_updater())
 
 
 if __name__ == "__main__":

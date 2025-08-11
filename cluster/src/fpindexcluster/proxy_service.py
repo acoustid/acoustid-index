@@ -1,8 +1,10 @@
 """HTTP proxy service that forwards requests to NATS JetStream"""
 
+import asyncio
 import logging
 import time
-from typing import Optional
+from contextlib import AsyncExitStack
+from typing import Optional, Any
 
 import msgspec.msgpack
 import nats
@@ -33,11 +35,16 @@ class ProxyService:
 
     def __init__(self, config: Config):
         self.config = config
-        self.nc: Optional[nats.NATS] = None
-        self.js: Optional[JetStreamContext] = None
-        self.http_session: Optional[ClientSession] = None
         self.app = web.Application()
         self._setup_routes()
+        self._exit_stack: Optional[AsyncExitStack] = None
+        
+        # These will be set during async context manager entry
+        self.nc: Any  # nats.NATS connection
+        self.js: JetStreamContext
+        self.http_session: ClientSession
+        self.runner: web.AppRunner
+        self.site: web.TCPSite
 
     def _setup_routes(self):
         """Setup HTTP routes that mirror fpindex API"""
@@ -60,37 +67,70 @@ class ProxyService:
         # HEAD is automatically handled by aiohttp for GET routes
         self.app.router.add_delete("/{index}/{fp_id}", self.delete_fingerprint)
 
-    async def start(self):
-        """Start the proxy service"""
+    async def __aenter__(self):
+        """Async context manager entry - initialize resources"""
         logger.info(
-            f"Starting proxy service on {self.config.proxy_host}:{self.config.proxy_port}"
+            f"Initializing proxy service on {self.config.proxy_host}:{self.config.proxy_port}"
         )
-
+        
+        self._exit_stack = AsyncExitStack()
+        
         # Create HTTP session for forwarding requests
-        self.http_session = ClientSession()
-
+        self.http_session = await self._exit_stack.enter_async_context(
+            ClientSession()
+        )
+        
         # Connect to NATS
         self.nc = await nats.connect(self.config.nats_url)
+        # Register NATS connection for cleanup
+        self._exit_stack.callback(self.nc.close)
         self.js = self.nc.jetstream()
         logger.info(f"Connected to NATS at {self.config.nats_url}")
-
+        
         # Ensure control stream exists
         await self._ensure_control_stream()
-
-        # Start HTTP server
-        runner = web.AppRunner(self.app)
-        await runner.setup()
-        site = web.TCPSite(runner, self.config.proxy_host, self.config.proxy_port)
-        await site.start()
-        logger.info("Proxy service started")
-
-    async def stop(self):
-        """Stop the proxy service"""
-        if self.http_session:
-            await self.http_session.close()
-        if self.nc:
-            await self.nc.close()
+        
+        # Setup HTTP server
+        self.runner = web.AppRunner(self.app)
+        await self.runner.setup()
+        self._exit_stack.callback(self.runner.cleanup)
+        
+        self.site = web.TCPSite(self.runner, self.config.proxy_host, self.config.proxy_port)
+        
+        logger.info("Proxy service resources initialized")
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit - cleanup resources"""
+        # Stop HTTP server
+        if hasattr(self, 'site'):
+            await self.site.stop()
+        
+        # Close all resources via exit stack
+        if self._exit_stack:
+            await self._exit_stack.aclose()
+        
         logger.info("Proxy service stopped")
+    
+    async def run(self):
+        """Run the proxy service - must be called within async context manager"""
+        if not hasattr(self, 'nc') or not hasattr(self, 'site'):
+            raise RuntimeError("ProxyService.run() must be called within async context manager")
+        
+        logger.info("Starting proxy service...")
+        
+        # Start HTTP server
+        await self.site.start()
+        logger.info(f"Proxy service running on {self.config.proxy_host}:{self.config.proxy_port}")
+        
+        # Keep running until context manager exits
+        try:
+            while True:
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            logger.info("Proxy service shutting down...")
+            raise
+
 
     async def _ensure_control_stream(self):
         """Ensure control stream exists for index lifecycle events"""

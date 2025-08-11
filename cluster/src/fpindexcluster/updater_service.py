@@ -2,7 +2,8 @@
 
 import asyncio
 import logging
-from typing import Optional
+from contextlib import AsyncExitStack
+from typing import Optional, Any
 
 import msgspec.msgpack
 import nats
@@ -28,46 +29,83 @@ class UpdaterService:
 
     def __init__(self, config: Config):
         self.config = config
-        self.nc: nats.NATS | None = None
-        self.js: JetStreamContext | None = None
-        self.http_session: Optional[ClientSession] = None
         self.subscriptions: dict[str, object] = {}  # index_name -> subscription
         self.control_subscription = None
         self.tracked_indexes: set[str] = set()
+        self._exit_stack: Optional[AsyncExitStack] = None
+        
+        # These will be set during async context manager entry
+        self.nc: Any  # nats.NATS connection
+        self.js: JetStreamContext  
+        self.http_session: ClientSession
 
-    async def start(self):
-        """Start the updater service"""
+    async def __aenter__(self):
+        """Async context manager entry - initialize resources"""
         logger.info(
-            f"Starting updater service with consumer name: {self.config.consumer_name}"
+            f"Initializing updater service with consumer name: {self.config.consumer_name}"
         )
-
+        
+        self._exit_stack = AsyncExitStack()
+        
         # Create HTTP session for fpindex updates
-        self.http_session = ClientSession()
-
+        self.http_session = await self._exit_stack.enter_async_context(
+            ClientSession()
+        )
+        
         # Connect to NATS
         self.nc = await nats.connect(self.config.nats_url)
+        # Register NATS connection for cleanup
+        self._exit_stack.callback(self.nc.close)
         self.js = self.nc.jetstream()
         logger.info(f"Connected to NATS at {self.config.nats_url}")
+        
+        logger.info("Updater service resources initialized")
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit - cleanup resources"""
+        # Unsubscribe from all subscriptions
+        for subscription in self.subscriptions.values():
+            try:
+                await subscription.unsubscribe()  # type: ignore
+            except Exception as e:
+                logger.error(f"Error unsubscribing: {e}")
+        
+        if self.control_subscription:
+            try:
+                await self.control_subscription.unsubscribe()  # type: ignore
+            except Exception as e:
+                logger.error(f"Error unsubscribing from control stream: {e}")
+        
+        # Close all resources via exit stack
+        if self._exit_stack:
+            await self._exit_stack.aclose()
+        
+        logger.info("Updater service stopped")
 
+    async def run(self):
+        """Run the updater service - must be called within async context manager"""
+        if not hasattr(self, 'nc') or not hasattr(self, 'js'):
+            raise RuntimeError("UpdaterService.run() must be called within async context manager")
+        
+        logger.info("Starting updater service...")
+        
         # Subscribe to control events for dynamic index discovery
         await self._subscribe_to_control_events()
         
         # Discover and subscribe to existing indexes
         await self._discover_and_subscribe_indexes()
-
-        logger.info("Updater service started, consuming messages...")
-
-    async def stop(self):
-        """Stop the updater service"""
-        for subscription in self.subscriptions.values():
-            await subscription.unsubscribe()
-        if self.control_subscription:
-            await self.control_subscription.unsubscribe()
-        if self.http_session:
-            await self.http_session.close()
-        if self.nc:
-            await self.nc.close()
-        logger.info("Updater service stopped")
+        
+        logger.info("Updater service running, consuming messages...")
+        
+        # Keep running until context manager exits
+        try:
+            while True:
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            logger.info("Updater service shutting down...")
+            raise
+    
 
     async def _subscribe_to_control_events(self):
         """Subscribe to control stream for index lifecycle events"""
@@ -138,7 +176,7 @@ class UpdaterService:
     async def _unsubscribe_from_index(self, index_name: str):
         """Unsubscribe from a deleted index"""
         if index_name in self.subscriptions:
-            await self.subscriptions[index_name].unsubscribe()
+            await self.subscriptions[index_name].unsubscribe()  # type: ignore
             del self.subscriptions[index_name]
             
         self.tracked_indexes.discard(index_name)
