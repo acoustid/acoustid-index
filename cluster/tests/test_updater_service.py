@@ -18,8 +18,13 @@ class UpdaterTestConfig:
     def __init__(self):
         self.nats_url = os.getenv("TEST_NATS_URL", "nats://localhost:4222")
         self.nats_stream = "fpindex-test"
+        self.nats_stream_prefix = "fpindex-test"
         self.fpindex_url = os.getenv("TEST_FPINDEX_URL", "http://localhost:6081")
         self.consumer_name = f"test-consumer-{uuid.uuid4().hex[:8]}"
+    
+    def get_stream_name(self, index_name: str) -> str:
+        """Get stream name for a specific index"""
+        return f"{self.nats_stream_prefix}-{index_name}"
 
 
 @pytest.fixture

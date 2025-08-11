@@ -12,7 +12,8 @@ from fpindexcluster.models import (
     SearchRequest,
     PutFingerprintRequest,
     BulkUpdateRequest,
-    Change,
+    ChangeInsert,
+    ChangeDelete,
     Insert,
     Delete,
     EmptyResponse,
@@ -27,7 +28,12 @@ class ProxyTestConfig:
         self.proxy_port = int(os.getenv("TEST_PROXY_PORT", "8080"))
         self.nats_url = os.getenv("TEST_NATS_URL", "nats://localhost:4222")
         self.nats_stream = os.getenv("TEST_NATS_STREAM", "fpindex-test")
+        self.nats_stream_prefix = "fpindex-test"
         self.fpindex_url = os.getenv("TEST_FPINDEX_URL", "http://localhost:8081")
+    
+    def get_stream_name(self, index_name: str) -> str:
+        """Get stream name for a specific index"""
+        return f"{self.nats_stream_prefix}-{index_name}"
 
 
 @pytest.fixture
@@ -207,16 +213,56 @@ async def test_delete_index(client):
     decoded = msgspec.msgpack.decode(body)
     assert decoded == {}
 
-async def test_get_index_info_not_implemented(client):
-    """Test GET index info returns not implemented"""
+async def test_get_index_info_existing_stream(client):
+    """Test GET index info returns version from stream"""
     resp = await client.get("/main")
 
-    assert resp.status == 501
+    assert resp.status == 200
     assert resp.headers["Content-Type"] == "application/vnd.msgpack"
 
     body = await resp.read()
     decoded = msgspec.msgpack.decode(body)
-    assert decoded == {"e": "NotImplemented"}
+    # Stream exists, version should be >= 0 (could have messages from setup)
+    assert "v" in decoded
+    assert isinstance(decoded["v"], int)
+    assert decoded["v"] >= 0
+
+async def test_get_index_info_nonexistent_stream(client):
+    """Test GET index info returns 404 for nonexistent stream"""
+    resp = await client.get("/nonexistent")
+
+    assert resp.status == 404
+    assert resp.headers["Content-Type"] == "application/vnd.msgpack"
+
+    body = await resp.read()
+    decoded = msgspec.msgpack.decode(body)
+    assert decoded == {"e": "Index not found"}
+
+async def test_get_index_info_version_increases_after_updates(client):
+    """Test that index version increases after adding fingerprints"""
+    # Get initial version
+    resp = await client.get("/main")
+    assert resp.status == 200
+    body = await resp.read()
+    initial_version = msgspec.msgpack.decode(body)["v"]
+    
+    # Add a fingerprint
+    request_data = PutFingerprintRequest(hashes=[1001, 2002, 3003])
+    body = msgspec.msgpack.encode(request_data)
+    resp = await client.put("/main/123", data=body, headers={"Content-Type": "application/vnd.msgpack"})
+    assert resp.status == 200
+    
+    # Wait a bit for message to be processed
+    await asyncio.sleep(0.1)
+    
+    # Get version again
+    resp = await client.get("/main")
+    assert resp.status == 200
+    body = await resp.read()
+    new_version = msgspec.msgpack.decode(body)["v"]
+    
+    # Version should have increased
+    assert new_version > initial_version
 
 async def test_get_fingerprint_not_implemented(client):
     """Test GET fingerprint returns not implemented"""
@@ -253,14 +299,15 @@ async def test_put_fingerprint_valid(client, proxy_service):
     await asyncio.sleep(0.5)
     
     # Debug: check all messages in the stream
-    all_messages = await get_stream_messages(proxy_service.js, proxy_service.config.nats_stream)
+    actual_stream_name = proxy_service.config.get_stream_name("main")
+    all_messages = await get_stream_messages(proxy_service.js, actual_stream_name)
     print(f"All messages in stream: {len(all_messages)}")
     for msg in all_messages:
         print(f"Subject: {msg['subject']}, Data length: {len(msg['data'])}")
     
     # Verify message was published to NATS stream
-    expected_subject = f"{proxy_service.config.nats_stream}.main.075bcd15"
-    message = await wait_for_message(proxy_service.js, proxy_service.config.nats_stream, expected_subject)
+    expected_subject = "fpindex.main.075bcd15"
+    message = await wait_for_message(proxy_service.js, actual_stream_name, expected_subject)
     
     assert message is not None, f"Message should have been published to NATS. Expected subject: {expected_subject}. Found messages: {[msg['subject'] for msg in all_messages]}"
     assert message["subject"] == expected_subject
@@ -289,7 +336,8 @@ async def test_put_fingerprint_invalid_id(client, proxy_service):
     assert decoded == {"e": expected_error}
 
     # Verify no message was published to NATS stream (should timeout quickly)
-    messages = await get_stream_messages(proxy_service.js, proxy_service.config.nats_stream)
+    actual_stream_name = proxy_service.config.get_stream_name("main")
+    messages = await get_stream_messages(proxy_service.js, actual_stream_name)
     # We only expect no new messages related to invalid_id
     invalid_messages = [m for m in messages if "invalid_id" in m["subject"]]
     assert len(invalid_messages) == 0, "No messages should be published for invalid ID"
@@ -322,8 +370,9 @@ async def test_delete_fingerprint_valid(client, proxy_service):
     assert decoded == {}
 
     # Verify message was published to NATS stream with empty body (delete)
-    expected_subject = f"{proxy_service.config.nats_stream}.main.075bcd15"
-    message = await wait_for_message(proxy_service.js, proxy_service.config.nats_stream, expected_subject)
+    actual_stream_name = proxy_service.config.get_stream_name("main")
+    expected_subject = "fpindex.main.075bcd15"
+    message = await wait_for_message(proxy_service.js, actual_stream_name, expected_subject)
     
     assert message is not None, "Delete message should have been published to NATS"
     assert message["subject"] == expected_subject
@@ -342,7 +391,8 @@ async def test_delete_fingerprint_invalid_id(client, proxy_service):
     assert decoded == {"e": expected_error}
 
     # Verify no message was published to NATS stream for invalid ID
-    messages = await get_stream_messages(proxy_service.js, proxy_service.config.nats_stream)
+    actual_stream_name = proxy_service.config.get_stream_name("main")
+    messages = await get_stream_messages(proxy_service.js, actual_stream_name)
     invalid_messages = [m for m in messages if "invalid_id" in m["subject"]]
     assert len(invalid_messages) == 0, "No messages should be published for invalid ID"
 
@@ -350,9 +400,9 @@ async def test_bulk_update_valid(client, proxy_service):
     """Test bulk update with valid changes"""
     # Prepare bulk update request
     changes = [
-        Change(insert=Insert(id=111, hashes=[100, 200, 300])),
-        Change(update=Insert(id=222, hashes=[400, 500, 600])),
-        Change(delete=Delete(id=333))
+        ChangeInsert(insert=Insert(id=111, hashes=[100, 200, 300])),
+        ChangeInsert(insert=Insert(id=222, hashes=[400, 500, 600])),
+        ChangeDelete(delete=Delete(id=333))
     ]
     request_data = BulkUpdateRequest(changes=changes)
     body = msgspec.msgpack.encode(request_data)
@@ -388,7 +438,8 @@ async def test_bulk_update_valid(client, proxy_service):
     # Verify 3 messages were published to NATS stream
     # Wait a bit for all messages to be published
     await asyncio.sleep(0.5)
-    messages = await get_stream_messages(proxy_service.js, proxy_service.config.nats_stream, max_messages=50)
+    actual_stream_name = proxy_service.config.get_stream_name("main")
+    messages = await get_stream_messages(proxy_service.js, actual_stream_name, max_messages=50)
     
     # Filter messages for this bulk update (by subject patterns)
     bulk_messages = [m for m in messages if 

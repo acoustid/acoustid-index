@@ -30,7 +30,6 @@ class UpdaterService:
     def __init__(self, config: Config):
         self.config = config
         self.subscriptions: dict[str, object] = {}  # index_name -> subscription
-        self.control_subscription = None
         self.tracked_indexes: set[str] = set()
         self._exit_stack: Optional[AsyncExitStack] = None
         
@@ -71,11 +70,6 @@ class UpdaterService:
             except Exception as e:
                 logger.error(f"Error unsubscribing: {e}")
         
-        if self.control_subscription:
-            try:
-                await self.control_subscription.unsubscribe()  # type: ignore
-            except Exception as e:
-                logger.error(f"Error unsubscribing from control stream: {e}")
         
         # Close all resources via exit stack
         if self._exit_stack:
@@ -90,8 +84,6 @@ class UpdaterService:
         
         logger.info("Starting updater service...")
         
-        # Subscribe to control events for dynamic index discovery
-        await self._subscribe_to_control_events()
         
         # Discover and subscribe to existing indexes
         await self._discover_and_subscribe_indexes()
@@ -107,38 +99,13 @@ class UpdaterService:
             raise
     
 
-    async def _subscribe_to_control_events(self):
-        """Subscribe to control stream for index lifecycle events"""
-        control_consumer_name = f"{self.config.consumer_name}-ctrl"
-        control_stream_name = self.config.get_stream_name("_ctrl")
-        
-        consumer_config = ConsumerConfig(
-            name=control_consumer_name,
-            deliver_policy=DeliverPolicy.NEW,  # Only new events, not historical
-            ack_policy=AckPolicy.EXPLICIT,
-        )
-        
-        try:
-            await self.js.add_consumer(control_stream_name, config=consumer_config)
-        except Exception as e:
-            if "already exists" not in str(e).lower():
-                raise
-        
-        self.control_subscription = await self.js.pull_subscribe(
-            "fpindex._ctrl.>", durable=control_consumer_name
-        )
-        
-        # Start control event processing loop
-        asyncio.create_task(self._control_event_processing_loop())
-        logger.info("Subscribed to control events")
 
     async def _discover_and_subscribe_indexes(self):
         """Discover existing index streams and subscribe"""
         try:
             streams = await self.js.streams_info()
             for stream in streams:
-                if (stream.config.name.startswith(self.config.nats_stream_prefix + "-") and 
-                    not stream.config.name.endswith("-_ctrl")):
+                if stream.config.name.startswith(self.config.nats_stream_prefix + "-"):
                     index_name = stream.config.name[len(self.config.nats_stream_prefix + "-"):]
                     if index_name not in self.tracked_indexes:
                         await self._subscribe_to_index(index_name)
@@ -182,45 +149,7 @@ class UpdaterService:
         self.tracked_indexes.discard(index_name)
         logger.info(f"Unsubscribed from deleted index: {index_name}")
 
-    async def _control_event_processing_loop(self):
-        """Process control events for dynamic index management"""
-        while True:
-            try:
-                messages = await self.control_subscription.fetch(batch=10, timeout=5.0)
-                
-                for msg in messages:
-                    try:
-                        await self._handle_control_event(msg)
-                        await msg.ack()
-                    except Exception as e:
-                        logger.error(f"Error processing control event {msg.subject}: {e}")
-                        await msg.nak()
-                        
-            except asyncio.TimeoutError:
-                continue
-            except Exception as e:
-                logger.error(f"Error in control event loop: {e}")
-                await asyncio.sleep(1)
 
-    async def _handle_control_event(self, msg):
-        """Handle individual control event"""
-        # Parse subject: fpindex._ctrl.index.{event_type}.{index_name}
-        parts = msg.subject.split(".")
-        if len(parts) != 5:
-            logger.warning(f"Invalid control event subject: {msg.subject}")
-            return
-            
-        _, _, _, event_type, index_name = parts
-        
-        if event_type == "created":
-            logger.info(f"Index created event: {index_name}")
-            if index_name not in self.tracked_indexes:
-                await self._subscribe_to_index(index_name)
-                
-        elif event_type == "deleted": 
-            logger.info(f"Index deleted event: {index_name}")
-            if index_name in self.tracked_indexes:
-                await self._unsubscribe_from_index(index_name)
 
     async def _message_processing_loop_for_index(self, index_name: str):
         """Message processing loop for a specific index"""
