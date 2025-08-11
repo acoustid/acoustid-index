@@ -31,7 +31,9 @@ class UpdaterService:
         self.nc: nats.NATS | None = None
         self.js: JetStreamContext | None = None
         self.http_session: Optional[ClientSession] = None
-        self.subscription = None
+        self.subscriptions: dict[str, object] = {}  # index_name -> subscription
+        self.control_subscription = None
+        self.tracked_indexes: set[str] = set()
 
     async def start(self):
         """Start the updater service"""
@@ -47,79 +49,163 @@ class UpdaterService:
         self.js = self.nc.jetstream()
         logger.info(f"Connected to NATS at {self.config.nats_url}")
 
-        # Ensure the stream exists (should already be created by proxy)
-        await self._ensure_stream(self.config.nats_stream)
-
-        # Create durable consumer
-        consumer_config = ConsumerConfig(
-            name=self.config.consumer_name,
-            deliver_policy=DeliverPolicy.ALL,  # Replay from beginning for new instances
-            ack_policy=AckPolicy.EXPLICIT,
-        )
-
-        try:
-            await self.js.add_consumer(self.config.nats_stream, config=consumer_config)
-            logger.info(f"Created consumer: {self.config.consumer_name}")
-        except Exception as e:
-            if "already exists" not in str(e).lower():
-                logger.error(f"Failed to create consumer: {e}")
-                raise
-
-        # Subscribe to all fpindex messages
-        self.subscription = await self.js.pull_subscribe(
-            f"{self.config.nats_stream}.>", durable=self.config.consumer_name
-        )
+        # Subscribe to control events for dynamic index discovery
+        await self._subscribe_to_control_events()
+        
+        # Discover and subscribe to existing indexes
+        await self._discover_and_subscribe_indexes()
 
         logger.info("Updater service started, consuming messages...")
 
-        # Start message processing loop
-        asyncio.create_task(self._message_processing_loop())
-
     async def stop(self):
         """Stop the updater service"""
-        if self.subscription:
-            await self.subscription.unsubscribe()
+        for subscription in self.subscriptions.values():
+            await subscription.unsubscribe()
+        if self.control_subscription:
+            await self.control_subscription.unsubscribe()
         if self.http_session:
             await self.http_session.close()
         if self.nc:
             await self.nc.close()
         logger.info("Updater service stopped")
 
-    async def _ensure_stream(self, stream_name: str):
-        """Ensure NATS stream exists (should already be created by proxy)"""
-        assert self.js is not None
+    async def _subscribe_to_control_events(self):
+        """Subscribe to control stream for index lifecycle events"""
+        control_consumer_name = f"{self.config.consumer_name}-ctrl"
+        control_stream_name = self.config.get_stream_name("_ctrl")
+        
+        consumer_config = ConsumerConfig(
+            name=control_consumer_name,
+            deliver_policy=DeliverPolicy.NEW,  # Only new events, not historical
+            ack_policy=AckPolicy.EXPLICIT,
+        )
+        
         try:
-            stream_info = await self.js.stream_info(stream_name)
-            logger.info(
-                f"Stream {stream_name} exists with {stream_info.state.messages} messages"
-            )
-        except Exception:
-            logger.warning(
-                f"Stream {stream_name} does not exist - will be created by proxy service"
-            )
+            await self.js.add_consumer(control_stream_name, config=consumer_config)
+        except Exception as e:
+            if "already exists" not in str(e).lower():
+                raise
+        
+        self.control_subscription = await self.js.pull_subscribe(
+            "fpindex._ctrl.>", durable=control_consumer_name
+        )
+        
+        # Start control event processing loop
+        asyncio.create_task(self._control_event_processing_loop())
+        logger.info("Subscribed to control events")
 
-    async def _message_processing_loop(self):
-        """Main message processing loop - processes messages in batches"""
-        assert self.subscription is not None
+    async def _discover_and_subscribe_indexes(self):
+        """Discover existing index streams and subscribe"""
+        try:
+            streams = await self.js.streams_info()
+            for stream in streams:
+                if (stream.config.name.startswith(self.config.nats_stream_prefix + "-") and 
+                    not stream.config.name.endswith("-_ctrl")):
+                    index_name = stream.config.name[len(self.config.nats_stream_prefix + "-"):]
+                    if index_name not in self.tracked_indexes:
+                        await self._subscribe_to_index(index_name)
+        except Exception as e:
+            logger.error(f"Failed to discover indexes: {e}")
+
+    async def _subscribe_to_index(self, index_name: str):
+        """Subscribe to a specific index"""
+        stream_name = self.config.get_stream_name(index_name)
+        consumer_name = f"{self.config.consumer_name}-{index_name}"
+        
+        consumer_config = ConsumerConfig(
+            name=consumer_name,
+            deliver_policy=DeliverPolicy.ALL,
+            ack_policy=AckPolicy.EXPLICIT,
+        )
+        
+        try:
+            await self.js.add_consumer(stream_name, config=consumer_config)
+        except Exception as e:
+            if "already exists" not in str(e).lower():
+                raise
+        
+        subscription = await self.js.pull_subscribe(
+            f"fpindex.{index_name}.>", durable=consumer_name
+        )
+        
+        self.subscriptions[index_name] = subscription
+        self.tracked_indexes.add(index_name)
+        
+        # Start processing loop for this index
+        asyncio.create_task(self._message_processing_loop_for_index(index_name))
+        logger.info(f"Subscribed to index: {index_name}")
+
+    async def _unsubscribe_from_index(self, index_name: str):
+        """Unsubscribe from a deleted index"""
+        if index_name in self.subscriptions:
+            await self.subscriptions[index_name].unsubscribe()
+            del self.subscriptions[index_name]
+            
+        self.tracked_indexes.discard(index_name)
+        logger.info(f"Unsubscribed from deleted index: {index_name}")
+
+    async def _control_event_processing_loop(self):
+        """Process control events for dynamic index management"""
         while True:
             try:
+                messages = await self.control_subscription.fetch(batch=10, timeout=5.0)
+                
+                for msg in messages:
+                    try:
+                        await self._handle_control_event(msg)
+                        await msg.ack()
+                    except Exception as e:
+                        logger.error(f"Error processing control event {msg.subject}: {e}")
+                        await msg.nak()
+                        
+            except asyncio.TimeoutError:
+                continue
+            except Exception as e:
+                logger.error(f"Error in control event loop: {e}")
+                await asyncio.sleep(1)
+
+    async def _handle_control_event(self, msg):
+        """Handle individual control event"""
+        # Parse subject: fpindex._ctrl.index.{event_type}.{index_name}
+        parts = msg.subject.split(".")
+        if len(parts) != 5:
+            logger.warning(f"Invalid control event subject: {msg.subject}")
+            return
+            
+        _, _, _, event_type, index_name = parts
+        
+        if event_type == "created":
+            logger.info(f"Index created event: {index_name}")
+            if index_name not in self.tracked_indexes:
+                await self._subscribe_to_index(index_name)
+                
+        elif event_type == "deleted": 
+            logger.info(f"Index deleted event: {index_name}")
+            if index_name in self.tracked_indexes:
+                await self._unsubscribe_from_index(index_name)
+
+    async def _message_processing_loop_for_index(self, index_name: str):
+        """Message processing loop for a specific index"""
+        subscription = self.subscriptions[index_name]
+        while index_name in self.subscriptions:
+            try:
                 # Fetch messages in batches for efficient bulk updates
-                messages = await self.subscription.fetch(batch=50, timeout=5.0)
+                messages = await subscription.fetch(batch=50, timeout=5.0)
 
                 if messages:
-                    await self._process_message_batch(messages)
+                    await self._process_message_batch(messages, index_name)
 
             except asyncio.TimeoutError:
                 # No messages available, continue loop
                 continue
             except Exception as e:
-                logger.error(f"Error in message processing loop: {e}")
+                logger.error(f"Error in message processing loop for {index_name}: {e}")
                 await asyncio.sleep(1)  # Brief delay before retrying
 
-    async def _process_message_batch(self, messages):
+    async def _process_message_batch(self, messages, index_name: str):
         """Process a batch of messages using bulk update operations"""
-        # Group messages by index name for efficient bulk updates
-        index_groups = {}
+        changes = []
+        messages_for_ack = []
 
         for msg in messages:
             try:
@@ -130,7 +216,13 @@ class UpdaterService:
                     await msg.ack()
                     continue
 
-                _, index_name, fpid_hex = subject_parts
+                _, msg_index_name, fpid_hex = subject_parts
+                
+                # Sanity check - should match the index we're processing
+                if msg_index_name != index_name:
+                    logger.warning(f"Message index {msg_index_name} doesn't match expected {index_name}")
+                    await msg.ack()
+                    continue
 
                 # Convert hex fingerprint ID back to integer
                 try:
@@ -139,10 +231,6 @@ class UpdaterService:
                     logger.warning(f"Invalid hex fingerprint ID: {fpid_hex}")
                     await msg.ack()
                     continue
-
-                # Group by index name
-                if index_name not in index_groups:
-                    index_groups[index_name] = []
 
                 # Create change object based on message data
                 if msg.data:
@@ -154,7 +242,8 @@ class UpdaterService:
                         change = ChangeInsert(
                             insert=Insert(id=fp_id, hashes=fingerprint_data.hashes)
                         )
-                        index_groups[index_name].append((change, msg))
+                        changes.append(change)
+                        messages_for_ack.append(msg)
                     except Exception as e:
                         logger.error(f"Failed to decode fingerprint data: {e}")
                         await msg.nak()  # Requeue for retry
@@ -162,34 +251,31 @@ class UpdaterService:
                 else:
                     # Empty message = delete
                     change = ChangeDelete(delete=Delete(id=fp_id))
-                    index_groups[index_name].append((change, msg))
+                    changes.append(change)
+                    messages_for_ack.append(msg)
 
             except Exception as e:
                 logger.error(f"Error parsing message {msg.subject}: {e}")
                 await msg.nak()  # Requeue for retry
 
-        # Process each index group with bulk updates
-        for index_name, change_msgs in index_groups.items():
-            if change_msgs:
-                changes = [change for change, msg in change_msgs]
-                messages_for_ack = [msg for change, msg in change_msgs]
+        # Process the batch for this index
+        if changes:
+            try:
+                await self._bulk_update_fpindex(index_name, changes)
+                logger.info(
+                    f"Bulk updated {len(changes)} changes in index {index_name}"
+                )
 
-                try:
-                    await self._bulk_update_fpindex(index_name, changes)
-                    logger.info(
-                        f"Bulk updated {len(changes)} changes in index {index_name}"
-                    )
+                # Acknowledge all messages in this batch
+                for msg in messages_for_ack:
+                    await msg.ack()
 
-                    # Acknowledge all messages in this batch
-                    for msg in messages_for_ack:
-                        await msg.ack()
+            except Exception as e:
+                logger.error(f"Bulk update failed for index {index_name}: {e}")
 
-                except Exception as e:
-                    logger.error(f"Bulk update failed for index {index_name}: {e}")
-
-                    # Requeue all messages in this batch for retry
-                    for msg in messages_for_ack:
-                        await msg.nak()
+                # Requeue all messages in this batch for retry
+                for msg in messages_for_ack:
+                    await msg.nak()
 
     async def _bulk_update_fpindex(self, index_name: str, changes: list):
         """Send bulk update to local fpindex instance"""

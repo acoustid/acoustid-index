@@ -1,12 +1,14 @@
 """HTTP proxy service that forwards requests to NATS JetStream"""
 
 import logging
+import time
 from typing import Optional
 
 import msgspec.msgpack
 import nats
 from aiohttp import web, ClientSession
 from nats.js import JetStreamContext
+from nats.js.api import StreamConfig, RetentionPolicy, StorageType
 
 from .config import Config
 from .models import (
@@ -18,6 +20,8 @@ from .models import (
     EmptyResponse,
     BulkUpdateResponse,
     BulkUpdateResult,
+    IndexCreatedEvent,
+    IndexDeletedEvent,
 )
 
 
@@ -70,6 +74,9 @@ class ProxyService:
         self.js = self.nc.jetstream()
         logger.info(f"Connected to NATS at {self.config.nats_url}")
 
+        # Ensure control stream exists
+        await self._ensure_control_stream()
+
         # Start HTTP server
         runner = web.AppRunner(self.app)
         await runner.setup()
@@ -85,11 +92,61 @@ class ProxyService:
             await self.nc.close()
         logger.info("Proxy service stopped")
 
+    async def _ensure_control_stream(self):
+        """Ensure control stream exists for index lifecycle events"""
+        stream_config = StreamConfig(
+            name=self.config.get_stream_name("_ctrl"),
+            subjects=["fpindex._ctrl.>"],
+            retention=RetentionPolicy.LIMITS,
+            max_age=7*24*3600,  # Keep events for 7 days
+            storage=StorageType.FILE,
+        )
+        
+        try:
+            await self.js.add_stream(stream_config)
+            logger.info(f"Control stream {self.config.get_stream_name('_ctrl')} created/verified")
+        except Exception as e:
+            if "already exists" not in str(e).lower():
+                raise
+
+    async def _ensure_index_stream(self, index_name: str):
+        """Ensure stream exists for specific index"""
+        stream_name = self.config.get_stream_name(index_name)
+        stream_config = StreamConfig(
+            name=stream_name,
+            subjects=[f"fpindex.{index_name}.>"],
+            retention=RetentionPolicy.LIMITS,
+            max_msgs_per_subject=1,
+            storage=StorageType.FILE,
+        )
+        
+        try:
+            await self.js.add_stream(stream_config)
+            logger.info(f"Stream {stream_name} created/verified for index {index_name}")
+        except Exception as e:
+            if "already exists" not in str(e).lower():
+                raise
+
+    async def _publish_control_event(self, event_type: str, index_name: str, event_data):
+        """Publish control event to management stream"""
+        subject = f"fpindex._ctrl.index.{event_type}.{index_name}"
+        message = msgspec.msgpack.encode(event_data)
+        
+        try:
+            await self.js.publish(subject, message)
+            logger.info(f"Published control event: {subject}")
+        except Exception as e:
+            logger.error(f"Failed to publish control event {subject}: {e}")
+            # Don't fail the main operation if control event fails
+
     async def _publish_to_nats(
         self, index_name: str, fp_id: int, hashes: list[int] | None
     ) -> None:
         """Publish message to NATS JetStream"""
-        subject = f"{self.config.nats_stream}.{index_name}.{fp_id:08x}"
+        # Ensure stream exists for this index
+        await self._ensure_index_stream(index_name)
+        
+        subject = f"fpindex.{index_name}.{fp_id:08x}"
 
         if hashes is None:
             operation = "delete"
@@ -133,9 +190,19 @@ class ProxyService:
     # Index management
     async def create_index(self, request: web.Request) -> web.Response:
         """Create an index"""
-        # No need to publish anything for index creation -
-        # indexes are created implicitly when first fingerprint is added
-        # fpindex returns EmptyResponse for PUT operations
+        index_name = request.match_info["index"]
+        
+        # Create the index stream
+        await self._ensure_index_stream(index_name)
+        
+        # Publish creation event
+        event = IndexCreatedEvent(
+            index_name=index_name,
+            created_at=int(time.time()),
+            stream_name=self.config.get_stream_name(index_name)
+        )
+        await self._publish_control_event("created", index_name, event)
+        
         return self._msgpack_response(EmptyResponse())
 
     async def get_index_info(self, request: web.Request) -> web.Response:
@@ -146,10 +213,28 @@ class ProxyService:
         return self._error_response("NotImplemented", 501)
 
     async def delete_index(self, request: web.Request) -> web.Response:
-        """Delete an index"""
-        # Index deletion would require purging all messages for the index
-        # This is a more complex operation - fpindex returns EmptyResponse for DELETE operations
-        return self._msgpack_response(EmptyResponse())
+        """Delete an index and all its data"""
+        index_name = request.match_info["index"]
+        stream_name = self.config.get_stream_name(index_name)
+        
+        try:
+            # Delete the entire stream = delete all fingerprints in index
+            await self.js.delete_stream(stream_name)
+            logger.info(f"Deleted stream {stream_name} for index {index_name}")
+            
+            # Publish deletion event  
+            event = IndexDeletedEvent(
+                index_name=index_name,
+                deleted_at=int(time.time()),
+                stream_name=stream_name
+            )
+            await self._publish_control_event("deleted", index_name, event)
+            
+            return self._msgpack_response(EmptyResponse())
+            
+        except Exception as e:
+            logger.error(f"Failed to delete index stream: {e}")
+            return self._error_response(f"Failed to delete index: {e}", 500)
 
     # Single fingerprint operations
     def _validate_fingerprint_id(self, fp_id_str: str) -> tuple[bool, int]:

@@ -105,3 +105,25 @@ class BulkUpdateResponse(msgspec.Struct):
     """Bulk update response"""
 
     results: list[BulkUpdateResult] = msgspec.field(name="r")
+
+
+# Control event structures for index lifecycle management
+
+class IndexCreatedEvent(msgspec.Struct):
+    """Index creation event"""
+    
+    index_name: str = msgspec.field(name="n")
+    created_at: int = msgspec.field(name="t")  # Unix timestamp
+    stream_name: str = msgspec.field(name="s")  # fpindex-{index_name}
+
+
+class IndexDeletedEvent(msgspec.Struct):  
+    """Index deletion event"""
+    
+    index_name: str = msgspec.field(name="n")
+    deleted_at: int = msgspec.field(name="t")  # Unix timestamp
+    stream_name: str = msgspec.field(name="s")
+
+
+# Union type for control events
+ControlEvent = IndexCreatedEvent | IndexDeletedEvent

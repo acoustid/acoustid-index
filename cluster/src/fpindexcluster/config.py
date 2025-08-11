@@ -10,7 +10,7 @@ class Config:
 
     # NATS configuration
     nats_url: str = "nats://localhost:4222"
-    nats_stream: str = "fpindex"
+    nats_stream_prefix: str = "fpindex"
 
     # fpindex configuration
     fpindex_url: str = "http://localhost:6081"
@@ -24,13 +24,17 @@ class Config:
 
     # Logging
     log_level: str = "INFO"
+    
+    def get_stream_name(self, index_name: str) -> str:
+        """Get stream name for a specific index or control stream"""
+        return f"{self.nats_stream_prefix}-{index_name}"
 
     @classmethod
     def from_env(cls) -> "Config":
         """Create config from environment variables"""
         return cls(
             nats_url=os.getenv("NATS_URL", cls.nats_url),
-            nats_stream=os.getenv("NATS_STREAM", cls.nats_stream),
+            nats_stream_prefix=os.getenv("NATS_STREAM_PREFIX", cls.nats_stream_prefix),
             fpindex_url=os.getenv("FPINDEX_URL", cls.fpindex_url),
             proxy_host=os.getenv("PROXY_HOST", cls.proxy_host),
             proxy_port=int(os.getenv("PROXY_PORT", str(cls.proxy_port))),
