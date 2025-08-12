@@ -42,33 +42,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    // Always link libc for C StreamVByte implementation
+    // Link libc for C allocator used in ReleaseFast mode
     main_exe.linkLibC();
     
-    // Add C source files for StreamVByte with architecture-specific flags
-    const c_flags = blk: {
-        const target_info = target.result;
-        if (target_info.cpu.arch.isX86()) {
-            break :blk &[_][]const u8{
-                "-std=c99",
-                "-O3",
-                "-msse4.1",
-            };
-        } else {
-            // ARM and other architectures - use generic optimization
-            break :blk &[_][]const u8{
-                "-std=c99",
-                "-O3",
-            };
-        }
-    };
-    
-    main_exe.addCSourceFile(.{
-        .file = b.path("src/streamvbyte_decode.c"),
-        .flags = c_flags,
-    });
-    
-    main_exe.addIncludePath(b.path("src"));
     main_exe.root_module.addImport("httpz", httpz.module("httpz"));
     main_exe.root_module.addImport("metrics", metrics.module("metrics"));
     main_exe.root_module.addImport("zul", zul.module("zul"));
@@ -93,14 +69,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    // Add C StreamVByte to tests too
+    // Link libc for C allocator used in ReleaseFast mode
     main_tests.linkLibC();
-    main_tests.addCSourceFile(.{
-        .file = b.path("src/streamvbyte_decode.c"),
-        .flags = c_flags,
-    });
-    main_tests.addIncludePath(b.path("src"));
-
+    
     main_tests.root_module.addImport("httpz", httpz.module("httpz"));
     main_tests.root_module.addImport("metrics", metrics.module("metrics"));
     main_tests.root_module.addImport("zul", zul.module("zul"));
