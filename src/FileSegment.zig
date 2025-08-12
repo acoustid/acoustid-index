@@ -14,6 +14,7 @@ const metrics = @import("metrics.zig");
 
 const filefmt = @import("filefmt.zig");
 const streamvbyte = @import("streamvbyte.zig");
+const BlockReader = @import("block.zig").BlockReader;
 
 const Self = @This();
 
@@ -70,13 +71,14 @@ pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
     }
 }
 
-pub fn getBlockData(self: Self, block: usize) []const u8 {
-    std.debug.assert(block < self.num_blocks);
-    const start = block * self.block_size;
-    const end = (block + 1) * self.block_size;
+pub fn loadBlockData(self: Self, block_no: usize, block_reader: *BlockReader, lazy: bool) void {
+    std.debug.assert(block_no < self.num_blocks);
+    const start = block_no * self.block_size;
+    const end = (block_no + 1) * self.block_size;
     // Add extra SIMD padding for safe decoding - ensure we don't exceed blocks bounds
     const padded_end = @min(end + streamvbyte.SIMD_DECODE_PADDING, self.blocks.len);
-    return self.blocks[start..padded_end];
+    const block_data = self.blocks[start..padded_end];
+    block_reader.load(block_data, lazy);
 }
 
 fn compareHashes(a: u32, b: u32) std.math.Order {
@@ -87,11 +89,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
     var prev_block_no: usize = std.math.maxInt(usize);
     var prev_block_range_start: usize = 0;
 
-    var block_hashes: [streamvbyte.MAX_ITEMS_PER_BLOCK]u32 = undefined;
-    var block_docids: [streamvbyte.MAX_ITEMS_PER_BLOCK]u32 = undefined;
-    var current_block_header: streamvbyte.BlockHeader = .{ .num_items = 0, .docid_list_offset = 0, .first_hash = 0 };
-    var hashes_loaded: bool = false;
-    var docids_loaded: bool = false;
+    var block_reader = BlockReader.init(self.min_doc_id);
 
     // Let's say we have blocks like this:
     //
@@ -114,43 +112,16 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
         while (block_no < self.index.items.len and self.index.items[block_no] <= hash) : (block_no += 1) {
             if (block_no != prev_block_no) {
                 prev_block_no = block_no;
-                hashes_loaded = false;
-                docids_loaded = false;
+                self.loadBlockData(block_no, &block_reader, true);
             }
 
-            // Load hashes if not already loaded for this block
-            if (!hashes_loaded) {
-                const block_data = self.getBlockData(block_no);
-                current_block_header = streamvbyte.decodeBlockHeader(block_data);
-                const num_hashes = streamvbyte.decodeBlockHashes(current_block_header, block_data, &block_hashes);
-                assert(num_hashes == current_block_header.num_items);
-                hashes_loaded = true;
+            // Search for hash matches and get docids
+            const matched_docids = block_reader.searchHash(hash);
+            for (matched_docids) |docid| {
+                try results.incr(docid, self.info.version);
             }
 
-            const num_items = current_block_header.num_items;
-
-            if (num_items == 0) {
-                continue;
-            }
-
-            // Search for hash matches in the decoded hashes
-            const matches = std.sort.equalRange(u32, block_hashes[0..num_items], hash, compareHashes);
-            if (matches[1] > matches[0]) {
-                // We have matches - load docids if not already loaded
-                if (!docids_loaded) {
-                    const block_data = self.getBlockData(block_no);
-                    const num_docids = streamvbyte.decodeBlockDocids(current_block_header, block_hashes[0..num_items], block_data, self.min_doc_id, &block_docids);
-                    assert(num_docids == current_block_header.num_items);
-                    docids_loaded = true;
-                }
-
-                // Process the matched docids
-                for (matches[0]..matches[1]) |j| {
-                    try results.incr(block_docids[j], self.info.version);
-                }
-            }
-
-            num_docs += matches[1] - matches[0];
+            num_docs += matched_docids.len;
             if (num_docs > 1000) {
                 break; // XXX explain why
             }
@@ -244,35 +215,35 @@ pub fn getSize(self: Self) usize {
 pub fn reader(self: *const Self) Reader {
     return .{
         .segment = self,
-        .items = std.ArrayList(Item).init(self.allocator),
+        .block_reader = BlockReader.init(self.min_doc_id),
     };
 }
 
 pub const Reader = struct {
     segment: *const Self,
-    items: std.ArrayList(Item),
     index: usize = 0,
     block_no: usize = 0,
+    block_reader: BlockReader,
 
-    pub fn close(self: *Reader) void {
-        self.items.deinit();
-    }
+    pub fn close(_: *Reader) void {}
 
     pub fn read(self: *Reader) !?Item {
-        while (self.index >= self.items.items.len) {
+        while (self.index >= self.block_reader.getNumItems()) {
             if (self.block_no >= self.segment.index.items.len) {
                 return null;
             }
             self.index = 0;
-            const block_data = self.segment.getBlockData(self.block_no);
+            self.segment.loadBlockData(self.block_no, &self.block_reader, true);
             self.block_no += 1;
-            try filefmt.readBlock(block_data, &self.items, self.segment.min_doc_id);
         }
-        return self.items.items[self.index];
+        return Item{
+            .hash = self.block_reader.hashes[self.index],
+            .id = self.block_reader.docids[self.index],
+        };
     }
 
     pub fn advance(self: *Reader) void {
-        if (self.index < self.items.items.len) {
+        if (self.index < self.block_reader.getNumItems()) {
             self.index += 1;
         }
     }

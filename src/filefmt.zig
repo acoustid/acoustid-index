@@ -23,6 +23,7 @@ const Item = @import("segment.zig").Item;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
 const MemorySegment = @import("MemorySegment.zig");
 const FileSegment = @import("FileSegment.zig");
+const BlockReader = @import("block.zig").BlockReader;
 
 pub const default_block_size = 1024;
 pub const min_block_size = streamvbyte.MIN_BLOCK_SIZE;
@@ -43,36 +44,6 @@ pub fn buildSegmentFileName(buf: []u8, info: SegmentInfo) []u8 {
 
 // Use StreamVByte block header
 const BlockHeader = streamvbyte.BlockHeader;
-
-pub fn readBlock(data: []const u8, items: *std.ArrayList(Item), min_doc_id: u32) !void {
-    const header = streamvbyte.decodeBlockHeader(data);
-    if (header.num_items == 0) {
-        items.clearRetainingCapacity();
-        return;
-    }
-
-    // Sanity check the header
-    if (header.num_items > streamvbyte.MAX_ITEMS_PER_BLOCK) {
-        return error.InvalidBlock;
-    }
-
-    items.clearRetainingCapacity();
-    try items.ensureUnusedCapacity(header.num_items);
-
-    var hashes: [streamvbyte.MAX_ITEMS_PER_BLOCK]u32 = undefined;
-    var docids: [streamvbyte.MAX_ITEMS_PER_BLOCK]u32 = undefined;
-
-    const num_hashes = streamvbyte.decodeBlockHashes(header, data, &hashes);
-    const num_docids = streamvbyte.decodeBlockDocids(header, hashes[0..header.num_items], data, min_doc_id, &docids);
-
-    assert(num_hashes == header.num_items);
-    assert(num_docids == header.num_items);
-
-    for (0..header.num_items) |i| {
-        const item = items.addOneAssumeCapacity();
-        item.* = .{ .hash = hashes[i], .id = docids[i] };
-    }
-}
 
 pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime block_size: u32) !SegmentFileFooter {
     var encoder = streamvbyte.BlockEncoder.init();
@@ -117,47 +88,6 @@ pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime b
         .num_blocks = num_blocks,
         .checksum = crc.final(),
     };
-}
-
-test "writeBlock/readBlock/readFirstItemFromBlock" {
-    var segment = MemorySegment.init(std.testing.allocator, .{});
-    defer segment.deinit(.delete);
-
-    try segment.items.ensureTotalCapacity(std.testing.allocator, 5);
-    segment.items.appendAssumeCapacity(.{ .hash = 1, .id = 1 });
-    segment.items.appendAssumeCapacity(.{ .hash = 2, .id = 1 });
-    segment.items.appendAssumeCapacity(.{ .hash = 3, .id = 1 });
-    segment.items.appendAssumeCapacity(.{ .hash = 3, .id = 2 });
-    segment.items.appendAssumeCapacity(.{ .hash = 4, .id = 1 });
-
-    const block_size = 1024;
-    var block_data: [block_size]u8 = undefined;
-
-    const min_doc_id: u32 = 1;
-
-    var encoder = streamvbyte.BlockEncoder.init();
-    const num_items = encoder.encodeBlock(segment.items.items, min_doc_id, block_data[0..]);
-    try testing.expectEqual(segment.items.items.len, num_items);
-
-    var items = std.ArrayList(Item).init(std.testing.allocator);
-    defer items.deinit();
-
-    try readBlock(block_data[0..], &items, min_doc_id);
-    try testing.expectEqualSlices(
-        Item,
-        &[_]Item{
-            .{ .hash = 1, .id = 1 },
-            .{ .hash = 2, .id = 1 },
-            .{ .hash = 3, .id = 1 },
-            .{ .hash = 3, .id = 2 },
-            .{ .hash = 4, .id = 1 },
-        },
-        items.items,
-    );
-
-    const header = streamvbyte.decodeBlockHeader(block_data[0..]);
-    try testing.expectEqual(items.items.len, header.num_items);
-    try testing.expectEqual(items.items[0].hash, header.first_hash);
 }
 
 const segment_file_header_magic_v1: u32 = 0x53474D31; // "SGM1" in big endian
@@ -444,14 +374,11 @@ test "writeFile/readFile" {
         try testing.expectEqual(1, segment.index.items.len);
         try testing.expectEqual(1, segment.index.items[0]);
 
-        var items = std.ArrayList(Item).init(testing.allocator);
-        defer items.deinit();
+        var block_reader = BlockReader.init(segment.min_doc_id);
+        segment.loadBlockData(0, &block_reader, false);
 
-        try readBlock(segment.getBlockData(0), &items, segment.min_doc_id);
-        try std.testing.expectEqualSlices(Item, &[_]Item{
-            Item{ .hash = 1, .id = 1 },
-            Item{ .hash = 2, .id = 1 },
-        }, items.items);
+        try std.testing.expectEqualSlices(u32, &[_]u32{ 1, 2 }, block_reader.getHashes());
+        try std.testing.expectEqualSlices(u32, &[_]u32{ 1, 1 }, block_reader.getDocids());
     }
 }
 
