@@ -23,13 +23,15 @@ const Item = @import("segment.zig").Item;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
 const MemorySegment = @import("MemorySegment.zig");
 const FileSegment = @import("FileSegment.zig");
-const BlockReader = @import("block.zig").BlockReader;
-const BlockEncoder = @import("block.zig").BlockEncoder;
-const BlockHeader = @import("block.zig").BlockHeader;
+const block = @import("block.zig");
+const BlockReader = block.BlockReader;
+const BlockEncoder = block.BlockEncoder;
+const BlockHeader = block.BlockHeader;
+const decodeBlockHeader = block.decodeBlockHeader;
 
 pub const default_block_size = 1024;
-pub const min_block_size = @import("block.zig").MIN_BLOCK_SIZE;
-pub const max_block_size = @import("block.zig").MAX_BLOCK_SIZE;
+pub const min_block_size = block.MIN_BLOCK_SIZE;
+pub const max_block_size = block.MAX_BLOCK_SIZE;
 
 pub fn maxItemsPerBlock(block_size: usize) usize {
     return block_size / 2;
@@ -48,7 +50,7 @@ pub fn buildSegmentFileName(buf: []u8, info: SegmentInfo) []u8 {
 
 pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime block_size: u32) !SegmentFileFooter {
     var encoder = BlockEncoder.init();
-    var items_buffer: [@import("block.zig").MAX_ITEMS_PER_BLOCK]Item = undefined;
+    var items_buffer: [block.MAX_ITEMS_PER_BLOCK]Item = undefined;
     var items_in_buffer: usize = 0;
     var num_items: u32 = 0;
     var num_blocks: u32 = 0;
@@ -307,7 +309,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     while (ptr + block_size <= raw_data.len) {
         const block_data = raw_data[ptr .. ptr + block_size];
         ptr += block_size;
-        const block_header = @import("block.zig").decodeBlockHeader(block_data);
+        const block_header = decodeBlockHeader(block_data);
         if (block_header.num_items == 0) {
             break;
         }
