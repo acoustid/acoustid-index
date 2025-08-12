@@ -233,7 +233,7 @@ pub const Reader = struct {
                 return null;
             }
             self.index = 0;
-            self.segment.loadBlockData(self.block_no, &self.block_reader, true);
+            self.segment.loadBlockData(self.block_no, &self.block_reader, false);
             self.block_no += 1;
         }
         return Item{
