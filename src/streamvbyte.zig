@@ -28,22 +28,22 @@ const has_sse41 = switch (builtin.cpu.arch) {
 };
 
 // Backend detection - only use LLVM intrinsics with LLVM backend
-const use_builtins = switch (builtin.zig_backend) {
+const use_llvm_intrinsics = switch (builtin.zig_backend) {
     .stage2_llvm => true,
     else => false,
 };
-const use_asm = has_ssse3;
+const use_inline_asm = true;
 
 // StreamVByte shuffle implementation with multi-tier fallback
 // Uses pshufb/vpshufb behavior: high bit set in mask -> output 0
 fn shuffle(x: Vu8x16, m: Vu8x16) Vu8x16 {
-    if (use_builtins and has_ssse3) {
+    if (use_llvm_intrinsics and has_ssse3) {
         // Use LLVM intrinsic - compiles to single pshufb/vpshufb
         const builtin_fn = struct {
             extern fn @"llvm.x86.ssse3.pshuf.b.128"(Vu8x16, Vu8x16) Vu8x16;
         }.@"llvm.x86.ssse3.pshuf.b.128";
         return builtin_fn(x, m);
-    } else if (use_asm and has_ssse3) {
+    } else if (use_inline_asm and has_ssse3) {
         // Use inline assembly fallback
         var result = x;
         asm ("pshufb %[mask], %[result]"
@@ -306,45 +306,52 @@ pub fn svbDeltaDecodeInPlace(data: []u32, first_value: u32) void {
     }
 }
 
+fn shiftLeft(x: Vu32x4, comptime shift: u8) Vu32x4 {
+    // This is equivalent to _mm_slli_si128(vec, x*4) - shift left by x*4 bytes
+    // Negative indices select from the first vector (zeros), positive from the second (vec)
+    const zeroes: Vu32x4 = @splat(0);
+    const indexes = switch (shift) {
+        1 => [4]i32{ 0, -1, -2, -3 },
+        2 => [4]i32{ 0, 1, -1, -2 },
+        3 => [4]i32{ 0, 1, 2, -1 },
+        else => unreachable,
+    };
+    return @shuffle(u32, zeroes, x, indexes);
+}
+
 // SIMD-accelerated delta decode using SSE4.1 intrinsics
 fn svbDeltaDecodeInPlaceSSE41(data: []u32, first_value: u32) void {
     if (data.len == 0) return;
-    
+
     data[0] += first_value;
     if (data.len == 1) return;
-    
+
     var carry = data[0];
     var i: usize = 1;
-    
+
     // Process 4 elements at a time with SIMD
     while (i + 3 < data.len) {
         // Load 4 values
-        var vec: Vu32x4 = data[i..i+4][0..4].*;
-        
+        var vec: Vu32x4 = data[i..][0..4].*;
+
         // Compute prefix sum within the vector FIRST: [a, b, c, d] -> [a, a+b, a+b+c, a+b+c+d]
         // Step 1: [a, b, c, d] + [0, a, b, c] = [a, a+b, b+c, c+d]
-        // This is equivalent to _mm_slli_si128(vec, 4) - shift left by 4 bytes (1 u32)
-        const zeros: Vu32x4 = @splat(0);
-        const temp1: Vu32x4 = @shuffle(u32, zeros, vec, [4]i32{ 0, -1, -2, -3 });
-        vec = vec + temp1;
-        
+        vec += shiftLeft(vec, 1);
         // Step 2: [a, a+b, b+c, c+d] + [0, 0, a, a+b] = [a, a+b, a+b+c, a+b+c+d]
-        // This is equivalent to _mm_slli_si128(vec, 8) - shift left by 8 bytes (2 u32s)
-        const temp2: Vu32x4 = @shuffle(u32, zeros, vec, [4]i32{ 0, 1, -1, -2 });
-        vec = vec + temp2;
-        
+        vec += shiftLeft(vec, 2);
+
         // THEN add carry to all elements: [a, a+b, a+b+c, a+b+c+d] + [carry, carry, carry, carry]
         const carry_vec: Vu32x4 = @splat(carry);
         vec = vec + carry_vec;
-        
+
         // Store result
-        data[i..i+4][0..4].* = vec;
-        
+        data[i..][0..4].* = vec;
+
         // Extract last element as new carry
         carry = vec[3];
         i += 4;
     }
-    
+
     // Handle remaining elements (1-3) with scalar code
     while (i < data.len) {
         data[i] += carry;
