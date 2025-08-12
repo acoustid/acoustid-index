@@ -7,6 +7,7 @@
 - HTTP API that can be used for managing multiple indexes
 - Fast and concurrent write operations using WAL and in-memory segments
 - Simplified internal file format, using msgpack for serialization wherever possible
+- StreamVByte compression for efficient storage of posting lists with SIMD-accelerated decoding
 
 ## Building
 
