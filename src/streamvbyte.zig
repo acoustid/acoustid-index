@@ -22,6 +22,11 @@ const has_ssse3 = switch (builtin.cpu.arch) {
     else => false,
 };
 
+const has_sse41 = switch (builtin.cpu.arch) {
+    .x86_64, .x86 => std.Target.x86.featureSetHas(builtin.cpu.features, .sse4_1),
+    else => false,
+};
+
 // Backend detection - only use LLVM intrinsics with LLVM backend
 const use_builtins = switch (builtin.zig_backend) {
     .stage2_llvm => true,
@@ -289,11 +294,61 @@ pub fn svbDecodeQuad1234(control: u8, in_data: []const u8, out: []u32) usize {
 // Apply delta decoding in-place with SIMD acceleration
 // Computes prefix sum in-place: data[i] += data[i-1] for i > 0, data[0] += first_value
 pub fn svbDeltaDecodeInPlace(data: []u32, first_value: u32) void {
-    if (data.len == 0) return;
+    if (use_builtins and has_sse41) {
+        svbDeltaDecodeInPlaceSSE41(data, first_value);
+    } else {
+        // Scalar fallback
+        if (data.len == 0) return;
+        data[0] += first_value;
+        for (1..data.len) |i| {
+            data[i] += data[i - 1];
+        }
+    }
+}
 
+// SIMD-accelerated delta decode using SSE4.1 intrinsics
+fn svbDeltaDecodeInPlaceSSE41(data: []u32, first_value: u32) void {
+    if (data.len == 0) return;
+    
     data[0] += first_value;
-    for (1..data.len) |i| {
-        data[i] += data[i - 1];
+    if (data.len == 1) return;
+    
+    var carry = data[0];
+    var i: usize = 1;
+    
+    // Process 4 elements at a time with SIMD
+    while (i + 3 < data.len) {
+        // Load 4 values
+        var vec: Vu32x4 = data[i..i+4][0..4].*;
+        
+        // Compute prefix sum within the vector FIRST: [a, b, c, d] -> [a, a+b, a+b+c, a+b+c+d]
+        // Step 1: [a, b, c, d] + [0, a, b, c] = [a, a+b, b+c, c+d]
+        // This is equivalent to _mm_slli_si128(vec, 4) - shift left by 4 bytes (1 u32)
+        const temp1: Vu32x4 = .{ 0, vec[0], vec[1], vec[2] };
+        vec = vec + temp1;
+        
+        // Step 2: [a, a+b, b+c, c+d] + [0, 0, a, a+b] = [a, a+b, a+b+c, a+b+c+d]
+        // This is equivalent to _mm_slli_si128(vec, 8) - shift left by 8 bytes (2 u32s)
+        const temp2: Vu32x4 = .{ 0, 0, vec[0], vec[1] };
+        vec = vec + temp2;
+        
+        // THEN add carry to all elements: [a, a+b, a+b+c, a+b+c+d] + [carry, carry, carry, carry]
+        const carry_vec: Vu32x4 = @splat(carry);
+        vec = vec + carry_vec;
+        
+        // Store result
+        data[i..i+4][0..4].* = vec;
+        
+        // Extract last element as new carry
+        carry = vec[3];
+        i += 4;
+    }
+    
+    // Handle remaining elements (1-3) with scalar code
+    while (i < data.len) {
+        data[i] += carry;
+        carry = data[i];
+        i += 1;
     }
 }
 
