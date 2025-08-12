@@ -354,18 +354,30 @@ fn svbDeltaDecodeInPlaceSSE41(data: []u32, first_value: u32) void {
     }
 }
 
-pub fn decodeBlockHashes(header: BlockHeader, in: []const u8, out: []u32) usize {
-    const num_quads = (header.num_items + 3) / 4;
+pub fn decodeValues(n: usize, in: []const u8, out: []u32, decodeFn: anytype) usize {
+    const num_quads = (n + 3) / 4;
 
-    var in_ptr = in[BLOCK_HEADER_SIZE..];
-    var in_control_ptr = in_ptr[0..num_quads];
-    var in_data_ptr = in_ptr[num_quads..];
+    var in_control_ptr = in[0..num_quads];
+    var in_data_ptr = in[num_quads..];
 
     var out_ptr = out;
 
-    var remaining = header.num_items;
+    var remaining = n;
+
+    while (remaining >= 32) {
+        const controls = std.mem.readInt(u64, in_control_ptr[0..8], .little);
+        inline for (0..8) |i| {
+            const control: u8 = @intCast((controls >> (8 * i)) & 0xFF);
+            const consumed = decodeFn(control, in_data_ptr, out_ptr[i * 4 ..]);
+            in_data_ptr = in_data_ptr[consumed..];
+        }
+        in_control_ptr = in_control_ptr[8..];
+        out_ptr = out_ptr[32..]; // 8 quads * 4 items per quad
+        remaining -= 32; // 8 quads * 4 items per quad
+    }
+
     while (remaining >= 4) {
-        const consumed = svbDecodeQuad0124(in_control_ptr[0], in_data_ptr, out_ptr);
+        const consumed = decodeFn(in_control_ptr[0], in_data_ptr, out_ptr);
         in_control_ptr = in_control_ptr[1..];
         in_data_ptr = in_data_ptr[consumed..];
         out_ptr = out_ptr[4..];
@@ -373,46 +385,41 @@ pub fn decodeBlockHashes(header: BlockHeader, in: []const u8, out: []u32) usize 
     }
 
     if (remaining > 0) {
-        const consumed = svbDecodeQuad0124(in_control_ptr[0], in_data_ptr, out_ptr);
+        const consumed = decodeFn(in_control_ptr[0], in_data_ptr, out_ptr);
         in_control_ptr = in_control_ptr[1..];
         in_data_ptr = in_data_ptr[consumed..];
         out_ptr = out_ptr[remaining..];
         remaining = 0;
     }
-
-    // Apply delta decoding - first item is absolute, rest are deltas
-    svbDeltaDecodeInPlace(out[0..header.num_items], header.first_hash);
 
     return out.len - out_ptr.len;
 }
 
+pub fn decodeBlockHashes(header: BlockHeader, in: []const u8, out: []u32) usize {
+    // Read StreamVByte-encoded deltas
+    const offset = BLOCK_HEADER_SIZE;
+    const num_decoded = decodeValues(
+        header.num_items,
+        in[offset..],
+        out,
+        svbDecodeQuad0124,
+    );
+
+    // Apply delta decoding - first item is absolute, rest are deltas
+    svbDeltaDecodeInPlace(out[0..header.num_items], header.first_hash);
+
+    return num_decoded;
+}
+
 pub fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u8, min_doc_id: u32, out: []u32) usize {
-    const num_quads = (header.num_items + 3) / 4;
-
-    var in_ptr = in[BLOCK_HEADER_SIZE + header.docid_list_offset ..];
-    var in_control_ptr = in_ptr[0..num_quads];
-    var in_data_ptr = in_ptr[num_quads..];
-
-    var out_ptr = out;
-
-    std.debug.assert(out.len >= header.num_items);
-
-    var remaining = header.num_items;
-    while (remaining >= 4) {
-        const consumed = svbDecodeQuad1234(in_control_ptr[0], in_data_ptr, out_ptr);
-        in_control_ptr = in_control_ptr[1..];
-        in_data_ptr = in_data_ptr[consumed..];
-        out_ptr = out_ptr[4..];
-        remaining -= 4;
-    }
-
-    if (remaining > 0) {
-        const consumed = svbDecodeQuad1234(in_control_ptr[0], in_data_ptr, out_ptr);
-        in_control_ptr = in_control_ptr[1..];
-        in_data_ptr = in_data_ptr[consumed..];
-        out_ptr = out_ptr[remaining..];
-        remaining = 0;
-    }
+    // Read StreamVByte-encoded docids
+    const offset = BLOCK_HEADER_SIZE + header.docid_list_offset;
+    const num_decoded = decodeValues(
+        header.num_items,
+        in[offset..],
+        out,
+        svbDecodeQuad1234,
+    );
 
     // First item is always absolute, add min_doc_id back
     if (header.num_items > 0) {
@@ -430,7 +437,7 @@ pub fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u
         }
     }
 
-    return out.len - out_ptr.len;
+    return num_decoded;
 }
 
 // Encode single value into a StreamVByte encoded byte array.
@@ -710,6 +717,21 @@ test "shuffle" {
     try std.testing.expectEqual(expected, result);
 }
 
+test "shiftLeft" {
+    const vec: Vu32x4 = .{ 1, 2, 3, 4 };
+    const shifted1 = shiftLeft(vec, 1);
+    const expected1: Vu32x4 = .{ 0, 1, 2, 3 };
+    try std.testing.expectEqual(expected1, shifted1);
+
+    const shifted2 = shiftLeft(vec, 2);
+    const expected2: Vu32x4 = .{ 0, 0, 1, 2 };
+    try std.testing.expectEqual(expected2, shifted2);
+
+    const shifted3 = shiftLeft(vec, 3);
+    const expected3: Vu32x4 = .{ 0, 0, 0, 1 };
+    try std.testing.expectEqual(expected3, shifted3);
+}
+
 test "svbDecodeQuad0124 SIMD" {
     // Test simple case: [1, 2, 0, 4] with control byte
     // 1 (1 byte), 2 (1 byte), 0 (0 bytes), 4 (1 byte)
@@ -787,4 +809,47 @@ test "svbDeltaDecodeInPlace SIMD edge cases" {
     try std.testing.expectEqual(@as(u32, 1), three[0]);
     try std.testing.expectEqual(@as(u32, 3), three[1]);
     try std.testing.expectEqual(@as(u32, 6), three[2]);
+}
+
+test "decodeValues with unrolled loop (32+ items)" {
+    // Test the new unrolled loop that processes 32 items at a time
+    const n = 40; // More than 32 to trigger the unrolled loop
+    var output: [40]u32 = undefined;
+
+    // Create control bytes and data for 40 items (10 quads)
+    var control_bytes: [10]u8 = undefined;
+    var data_bytes: [56]u8 = undefined; // Extra space for SIMD padding
+    var data_offset: usize = 0;
+
+    // Fill with simple pattern: each value is i+1 encoded as 1 byte
+    for (0..10) |i| {
+        // Control byte: all 1-byte codes (01 01 01 01)
+        control_bytes[i] = 0b01_01_01_01;
+
+        // Data: 4 values per quad, each 1 byte
+        data_bytes[data_offset] = @as(u8, @intCast(i * 4 + 1));
+        data_bytes[data_offset + 1] = @as(u8, @intCast(i * 4 + 2));
+        data_bytes[data_offset + 2] = @as(u8, @intCast(i * 4 + 3));
+        data_bytes[data_offset + 3] = @as(u8, @intCast(i * 4 + 4));
+        data_offset += 4;
+    }
+
+    // Zero out the remaining data bytes for SIMD padding
+    @memset(data_bytes[40..56], 0);
+
+    // Construct input buffer: control bytes followed by data bytes
+    var input_buffer: [66]u8 = undefined; // 10 control + 56 data
+    @memcpy(input_buffer[0..10], &control_bytes);
+    @memcpy(input_buffer[10..66], &data_bytes);
+
+    // Test decodeValues with svbDecodeQuad0124
+    const num_decoded = decodeValues(n, &input_buffer, &output, svbDecodeQuad0124);
+
+    // Should have processed 40 items
+    try std.testing.expectEqual(@as(usize, 40), num_decoded);
+
+    // Verify output values
+    for (0..40) |i| {
+        try std.testing.expectEqual(@as(u32, @intCast(i + 1)), output[i]);
+    }
 }
