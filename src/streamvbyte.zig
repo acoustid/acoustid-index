@@ -55,7 +55,7 @@ fn shuffle(x: Vu8x16, m: Vu8x16) Vu8x16 {
         // Safe scalar fallback - implements exact Intel pshufb specification
         var r: Vu8x16 = undefined;
         inline for (0..16) |i| {
-            if ((m[i] & 0x80) == 0x80) { // Check bit 7
+            if ((m[i] & 0x80) != 0) { // Check bit 7
                 r[i] = 0;
             } else {
                 const index = m[i] & 0x0F; // Use only low 4 bits
@@ -92,10 +92,8 @@ const length_table_1234: [256]u8 = blk: {
 // Initialize shuffle table for 0124 variant at comptime
 fn initShuffleTable0124() [256]Vu8x16 {
     var table: [256]Vu8x16 = undefined;
-    @memset(&table, @splat(@as(u8, 0xFF)));
-
     for (0..256) |control| {
-        var mask: Vu8x16 = @splat(@as(u8, 0xFF));
+        var mask: Vu8x16 = @splat(@as(u8, 0x80));
         var offset: usize = 0;
         for (0..4) |i| {
             const code: u2 = @intCast((control >> (2 * i)) & 0x3);
@@ -131,10 +129,8 @@ fn initShuffleTable0124() [256]Vu8x16 {
 // Initialize shuffle table for 1234 variant at comptime
 fn initShuffleTable1234() [256]Vu8x16 {
     var table: [256]Vu8x16 = undefined;
-    @memset(&table, @splat(@as(u8, 0xFF)));
-
     for (0..256) |control| {
-        var mask: Vu8x16 = @splat(@as(u8, 0xFF));
+        var mask: Vu8x16 = @splat(@as(u8, 0x80));
         var offset: usize = 0;
         for (0..4) |i| {
             const code: u2 = @intCast((control >> (2 * i)) & 0x3);
@@ -173,7 +169,6 @@ fn initShuffleTable1234() [256]Vu8x16 {
 // Initialize length table for 0124 variant at comptime
 fn initLengthTable0124() [256]u8 {
     var table: [256]u8 = undefined;
-
     for (0..256) |control| {
         var total: u8 = 0;
         for (0..4) |i| {
@@ -193,7 +188,6 @@ fn initLengthTable0124() [256]u8 {
 // Initialize length table for 1234 variant at comptime
 fn initLengthTable1234() [256]u8 {
     var table: [256]u8 = undefined;
-
     for (0..256) |control| {
         var total: u8 = 0;
         for (0..4) |i| {
