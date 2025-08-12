@@ -294,7 +294,7 @@ pub fn svbDecodeQuad1234(control: u8, in_data: []const u8, out: []u32) usize {
 // Apply delta decoding in-place with SIMD acceleration
 // Computes prefix sum in-place: data[i] += data[i-1] for i > 0, data[0] += first_value
 pub fn svbDeltaDecodeInPlace(data: []u32, first_value: u32) void {
-    if (use_builtins and has_sse41) {
+    if (has_sse41) {
         svbDeltaDecodeInPlaceSSE41(data, first_value);
     } else {
         // Scalar fallback
@@ -324,12 +324,13 @@ fn svbDeltaDecodeInPlaceSSE41(data: []u32, first_value: u32) void {
         // Compute prefix sum within the vector FIRST: [a, b, c, d] -> [a, a+b, a+b+c, a+b+c+d]
         // Step 1: [a, b, c, d] + [0, a, b, c] = [a, a+b, b+c, c+d]
         // This is equivalent to _mm_slli_si128(vec, 4) - shift left by 4 bytes (1 u32)
-        const temp1: Vu32x4 = .{ 0, vec[0], vec[1], vec[2] };
+        const zeros: Vu32x4 = @splat(0);
+        const temp1: Vu32x4 = @shuffle(u32, zeros, vec, [4]i32{ 0, -1, -2, -3 });
         vec = vec + temp1;
         
         // Step 2: [a, a+b, b+c, c+d] + [0, 0, a, a+b] = [a, a+b, a+b+c, a+b+c+d]
         // This is equivalent to _mm_slli_si128(vec, 8) - shift left by 8 bytes (2 u32s)
-        const temp2: Vu32x4 = .{ 0, 0, vec[0], vec[1] };
+        const temp2: Vu32x4 = @shuffle(u32, zeros, vec, [4]i32{ 0, 1, -1, -2 });
         vec = vec + temp2;
         
         // THEN add carry to all elements: [a, a+b, a+b+c, a+b+c+d] + [carry, carry, carry, carry]
