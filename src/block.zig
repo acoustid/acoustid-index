@@ -574,8 +574,9 @@ pub fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u
     return num_decoded;
 }
 
-// Decode docids for a specific range within a block
+// Decode docids for a specific range within a block for a single hash
 // ASSUMPTION: start_idx must be at a hash boundary (start_idx == 0 OR hashes[start_idx] != hashes[start_idx-1])
+// AND all items in the range [start_idx, end_idx) have the same hash value
 // This is guaranteed when called with ranges from findHash()
 pub fn decodeBlockDocidsRange(header: BlockHeader, hashes: []const u32, in: []const u8, min_doc_id: u32, start_idx: usize, end_idx: usize, out: []u32) usize {
     const actual_end = @min(end_idx, header.num_items);
@@ -597,21 +598,15 @@ pub fn decodeBlockDocidsRange(header: BlockHeader, hashes: []const u32, in: []co
     );
     
     // Apply delta decoding to the range
-    // Since ranges always start at hash boundaries, first item is always absolute
+    // Since all items have the same hash and we start at a hash boundary,
+    // the first item is absolute, all subsequent items are deltas
     const range_size = actual_end - start_idx;
     out[start_idx] = out[start_idx] + min_doc_id;
     
-    // Apply delta decoding to rest of range
+    // Apply delta decoding to rest of range - all are deltas since same hash
     for (1..range_size) |i| {
         const global_idx = start_idx + i;
-        
-        if (hashes[global_idx] != hashes[global_idx - 1]) {
-            // Different hash - absolute encoding
-            out[global_idx] = out[global_idx] + min_doc_id;
-        } else {
-            // Same hash - delta encoding
-            out[global_idx] = out[global_idx] + out[global_idx - 1];
-        }
+        out[global_idx] = out[global_idx] + out[global_idx - 1];
     }
     
     return range_size;
