@@ -73,12 +73,12 @@ const shuffle_table_1234: [256]Vu8x16 = blk: {
 };
 
 // Length tables for each control byte
-const length_table_0124: [256]u8 = blk: {
+pub const length_table_0124: [256]u8 = blk: {
     @setEvalBranchQuota(10000);
     break :blk initLengthTable0124();
 };
 
-const length_table_1234: [256]u8 = blk: {
+pub const length_table_1234: [256]u8 = blk: {
     @setEvalBranchQuota(10000);
     break :blk initLengthTable1234();
 };
@@ -537,7 +537,8 @@ pub fn decodeValuesRange(
     end_item: usize,
     in: []const u8, 
     out: []u32, // Full array where items [start_item..end_item] will be written
-    decodeFn: anytype
+    decodeFn: anytype,
+    length_table: *const [256]u8
 ) usize {
     if (start_item >= end_item or start_item >= total_items) return 0;
     
@@ -550,7 +551,7 @@ pub fn decodeValuesRange(
     var data_offset: usize = 0;
     for (0..start_quad) |quad_idx| {
         if (quad_idx >= total_quads) break;
-        data_offset += length_table_1234[in[quad_idx]];
+        data_offset += length_table[in[quad_idx]];
     }
     
     // Decode quads directly into the output array at the right positions
