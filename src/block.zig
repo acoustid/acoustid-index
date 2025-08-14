@@ -170,12 +170,7 @@ pub const BlockReader = struct {
             &self.counts,
             .variant1234,
         );
-        // Convert counts to offsets via prefix sum
-        var sum: u32 = 0;
-        for (0..self.block_header.num_unique_hashes) |i| {
-            sum += self.counts[i];
-            self.counts[i] = sum;
-        }
+        streamvbyte.svbDeltaDecodeInPlace(self.counts[0..self.block_header.num_unique_hashes], 0);
         self.counts_loaded = true;
     }
 
@@ -183,11 +178,13 @@ pub const BlockReader = struct {
     fn ensureDocidsLoaded(self: *BlockReader) void {
         if (self.docids_loaded) return;
 
-        self.ensureCountsLoaded(); // Need total items from counts
         if (self.isEmpty()) {
             self.docids_loaded = true;
             return;
         }
+
+        self.ensureHashesLoaded();
+        self.ensureCountsLoaded();
 
         const offset = BLOCK_HEADER_SIZE + self.block_header.docid_list_offset;
         streamvbyte.decodeValues(
@@ -198,21 +195,13 @@ pub const BlockReader = struct {
             &self.docids,
             .variant1234,
         );
+
         // Apply docid delta decoding similar to current approach
-        self.ensureHashesLoaded();
         var docid_idx: usize = 0;
         for (0..self.block_header.num_unique_hashes) |hash_idx| {
             const count = if (hash_idx == 0) self.counts[0] else self.counts[hash_idx] - self.counts[hash_idx - 1];
-            if (docid_idx < self.block_header.num_items) {
-                self.docids[docid_idx] = self.docids[docid_idx] + self.min_doc_id;
-                docid_idx += 1;
-            }
-            for (1..count) |_| {
-                if (docid_idx < self.block_header.num_items) {
-                    self.docids[docid_idx] = self.docids[docid_idx] + self.docids[docid_idx - 1];
-                    docid_idx += 1;
-                }
-            }
+            streamvbyte.svbDeltaDecodeInPlace(self.docids[docid_idx .. docid_idx + count], self.min_doc_id);
+            docid_idx += count;
         }
         self.docids_loaded = true;
     }
@@ -235,7 +224,6 @@ pub const BlockReader = struct {
         }
 
         self.ensureHashesLoaded();
-        self.ensureCountsLoaded();
 
         // Binary search in unique hashes
         const hashes_slice = self.hashes[0..self.block_header.num_unique_hashes];
@@ -245,6 +233,8 @@ pub const BlockReader = struct {
             // Hash not found - return empty range at end of items
             return HashRange{ .start = 0, .end = 0 };
         }
+
+        self.ensureCountsLoaded();
 
         // O(1) range calculation from offsets
         const start = if (hash_idx.? == 0) 0 else self.counts[hash_idx.? - 1];
@@ -317,7 +307,6 @@ test "BlockReader basic functionality" {
     try testing.expectEqual(@as(u16, 4), reader.getNumItems());
     try testing.expectEqual(@as(u32, 100), reader.getFirstHash());
     try testing.expectEqual(false, reader.isEmpty());
-
 
     // Test findHash
     const range100 = reader.findHash(100);
@@ -735,7 +724,6 @@ test "BlockEncoder basic functionality" {
     const docids5 = reader.searchHash(5);
     try testing.expectEqualSlices(u32, &[_]u32{500}, docids5);
 }
-
 
 // Decode docids for a specific range within a block, for a single hash
 // ASSUMPTION: the range must start and end at a hash boundary and all items in the range have the same hash
