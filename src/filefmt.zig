@@ -67,7 +67,7 @@ pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime b
         }
 
         // Encode a block from the buffer
-        const consumed = encoder.encodeBlock(items_buffer[0..items_in_buffer], min_doc_id, &block_data);
+        const consumed = try encoder.encodeBlock(items_buffer[0..items_in_buffer], min_doc_id, &block_data);
         try writer.writeAll(&block_data);
         if (consumed == 0) {
             break;
