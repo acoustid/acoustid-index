@@ -76,20 +76,6 @@ const shuffle_table_1234: [256]Vu8x16 = blk: {
 pub const Variant = enum {
     variant0124,
     variant1234,
-
-    pub fn getLengthTable(self: Variant) *const [256]u8 {
-        return switch (self) {
-            .variant0124 => &length_table_0124,
-            .variant1234 => &length_table_1234,
-        };
-    }
-
-    pub fn getDecodeFn(self: Variant) *const fn (u8, []const u8, []u32) usize {
-        return switch (self) {
-            .variant0124 => svbDecodeQuad0124,
-            .variant1234 => svbDecodeQuad1234,
-        };
-    }
 };
 
 // Length tables for each control byte
@@ -337,9 +323,16 @@ fn svbDeltaDecodeInPlaceSSE41(data: []u32, first_value: u32) void {
     }
 }
 
-pub fn decodeValues(total_items: usize, start_item: usize, end_item: usize, in: []const u8, out: []u32, variant: Variant) void {
-    const decodeFn = variant.getDecodeFn();
-    const length_table = variant.getLengthTable();
+pub fn decodeValues(total_items: usize, start_item: usize, end_item: usize, in: []const u8, out: []u32, comptime variant: Variant) void {
+    const decodeFn = switch (variant) {
+        .variant0124 => svbDecodeQuad0124,
+        .variant1234 => svbDecodeQuad1234,
+    };
+
+    const length_table = switch (variant) {
+        .variant0124 => length_table_0124,
+        .variant1234 => length_table_1234,
+    };
 
     const start_quad = start_item / 4;
     const end_quad = (end_item + 3) / 4;
