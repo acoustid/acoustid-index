@@ -337,7 +337,8 @@ fn svbDeltaDecodeInPlaceSSE41(data: []u32, first_value: u32) void {
     }
 }
 
-pub fn decodeValues(n: usize, in: []const u8, out: []u32, decodeFn: anytype) usize {
+pub fn decodeValues(n: usize, in: []const u8, out: []u32, variant: Variant) usize {
+    const decodeFn = variant.getDecodeFn();
     const num_quads = (n + 3) / 4;
 
     var in_control_ptr = in[0..num_quads];
@@ -623,7 +624,7 @@ test "decodeValues with unrolled loop (32+ items)" {
     @memcpy(input_buffer[10..66], &data_bytes);
 
     // Test decodeValues with svbDecodeQuad0124
-    const num_decoded = decodeValues(n, &input_buffer, &output, svbDecodeQuad0124);
+    const num_decoded = decodeValues(n, &input_buffer, &output, Variant.variant0124);
 
     // Should have processed 40 items
     try std.testing.expectEqual(@as(usize, 40), num_decoded);

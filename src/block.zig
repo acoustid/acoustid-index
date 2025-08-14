@@ -536,7 +536,7 @@ pub fn decodeBlockHashes(header: BlockHeader, in: []const u8, out: []u32) usize 
         header.num_items,
         in[offset..],
         out,
-        streamvbyte.svbDecodeQuad0124,
+        streamvbyte.Variant.variant0124,
     );
 
     // Apply delta decoding - first item is absolute, rest are deltas
@@ -552,7 +552,7 @@ pub fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u
         header.num_items,
         in[offset..],
         out,
-        streamvbyte.svbDecodeQuad1234,
+        streamvbyte.Variant.variant1234,
     );
 
     // First item is always absolute, add min_doc_id back
