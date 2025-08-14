@@ -21,7 +21,6 @@ pub const MAX_BLOCK_SIZE = 4096;
 pub const MAX_ITEMS_PER_BLOCK = MAX_BLOCK_SIZE / 2;
 pub const BLOCK_HEADER_SIZE = 8; // u16 + u16 + u32
 
-
 pub const BlockHeader = struct {
     num_items: u16,
     docid_list_offset: u16,
@@ -182,17 +181,15 @@ pub const BlockReader = struct {
 
         // Always use optimized range decoding to avoid decompressing entire block
         self.ensureHashesLoaded();
-        const num_decoded = decodeBlockDocidsRange(
+        return decodeBlockDocidsForSingleHash(
             self.block_header,
             self.hashes[0..self.block_header.num_items],
             self.block_data.?,
             self.min_doc_id,
             range.start,
             range.end,
-            self.docids[0..] // Pass full array for proper SIMD padding
+            self.docids[0..],
         );
-        std.debug.assert(num_decoded == range.end - range.start);
-        return self.docids[range.start..range.end];
     }
 
     /// Convenience method: find hash and return corresponding docids
@@ -298,7 +295,7 @@ test "BlockReader range-based docid decoding" {
     const range100 = reader.findHash(100);
     try testing.expectEqual(@as(usize, 0), range100.start);
     try testing.expectEqual(@as(usize, 3), range100.end);
-    
+
     const docids100 = reader.getDocidsForRange(range100);
     try testing.expectEqual(@as(usize, 3), docids100.len);
     try testing.expectEqual(@as(u32, 1001), docids100[0]);
@@ -309,7 +306,7 @@ test "BlockReader range-based docid decoding" {
     const range200 = reader.findHash(200);
     try testing.expectEqual(@as(usize, 3), range200.start);
     try testing.expectEqual(@as(usize, 5), range200.end);
-    
+
     const docids200 = reader.getDocidsForRange(range200);
     try testing.expectEqual(@as(usize, 2), docids200.len);
     try testing.expectEqual(@as(u32, 2001), docids200[0]);
@@ -319,7 +316,7 @@ test "BlockReader range-based docid decoding" {
     const range300 = reader.findHash(300);
     try testing.expectEqual(@as(usize, 5), range300.start);
     try testing.expectEqual(@as(usize, 8), range300.end);
-    
+
     const docids300 = reader.getDocidsForRange(range300);
     try testing.expectEqual(@as(usize, 3), docids300.len);
     try testing.expectEqual(@as(u32, 3001), docids300[0]);
@@ -529,14 +526,14 @@ test "BlockEncoder basic functionality" {
     try testing.expectEqualSlices(u32, &[_]u32{ 100, 200, 300, 400, 500 }, docids[0..num_docids]);
 }
 
-pub fn decodeBlockHashes(header: BlockHeader, in: []const u8, out: []u32) usize {
+fn decodeBlockHashes(header: BlockHeader, in: []const u8, out: []u32) usize {
     // Read StreamVByte-encoded deltas
     const offset = BLOCK_HEADER_SIZE;
     const num_decoded = streamvbyte.decodeValues(
         header.num_items,
         in[offset..],
         out,
-        streamvbyte.Variant.variant0124,
+        .variant0124,
     );
 
     // Apply delta decoding - first item is absolute, rest are deltas
@@ -545,14 +542,14 @@ pub fn decodeBlockHashes(header: BlockHeader, in: []const u8, out: []u32) usize 
     return num_decoded;
 }
 
-pub fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u8, min_doc_id: u32, out: []u32) usize {
+fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u8, min_doc_id: u32, out: []u32) usize {
     // Read StreamVByte-encoded docids
     const offset = BLOCK_HEADER_SIZE + header.docid_list_offset;
     const num_decoded = streamvbyte.decodeValues(
         header.num_items,
         in[offset..],
         out,
-        streamvbyte.Variant.variant1234,
+        .variant1234,
     );
 
     // First item is always absolute, add min_doc_id back
@@ -574,36 +571,28 @@ pub fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u
     return num_decoded;
 }
 
-// Decode docids for a specific range within a block for a single hash
-// ASSUMPTION: start_idx must be at a hash boundary (start_idx == 0 OR hashes[start_idx] != hashes[start_idx-1])
-// AND all items in the range [start_idx, end_idx) have the same hash value
+// Decode docids for a specific range within a block, for a single hash
+// ASSUMPTION: the range must start and end at a hash boundary and all items in the range have the same hash
 // This is guaranteed when called with ranges from findHash()
-pub fn decodeBlockDocidsRange(header: BlockHeader, hashes: []const u32, in: []const u8, min_doc_id: u32, start_idx: usize, end_idx: usize, out: []u32) usize {
-    const actual_end = @min(end_idx, header.num_items);
-    if (start_idx >= actual_end) return 0;
-    
+fn decodeBlockDocidsForSingleHash(header: BlockHeader, hashes: []const u32, in: []const u8, min_doc_id: u32, start_idx: usize, end_idx: usize, out: []u32) []u32 {
     // Debug assertion to verify our hash boundary assumption
     std.debug.assert(start_idx == 0 or hashes[start_idx] != hashes[start_idx - 1]);
-    
+    std.debug.assert(end_idx <= hashes.len);
+
     const offset = BLOCK_HEADER_SIZE + header.docid_list_offset;
-    
+
     // Decode the range directly into the output array
     _ = streamvbyte.decodeValuesRange(
         header.num_items,
         start_idx,
-        actual_end,
+        end_idx,
         in[offset..],
         out,
-        streamvbyte.Variant.variant1234
+        .variant1234,
     );
-    
-    // Apply delta decoding to the range using the optimized SIMD function
-    // Since all items have the same hash and we start at a hash boundary,
-    // the first item is absolute, all subsequent items are deltas
-    const range_size = actual_end - start_idx;
-    
-    // Use the existing optimized delta decoding function
-    streamvbyte.svbDeltaDecodeInPlace(out[start_idx..actual_end], min_doc_id);
-    
-    return range_size;
+
+    // Delta decode the docids
+    streamvbyte.svbDeltaDecodeInPlace(out[start_idx..end_idx], min_doc_id);
+
+    return out[start_idx..end_idx];
 }

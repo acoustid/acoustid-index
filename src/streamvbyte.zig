@@ -76,14 +76,14 @@ const shuffle_table_1234: [256]Vu8x16 = blk: {
 pub const Variant = enum {
     variant0124,
     variant1234,
-    
+
     pub fn getLengthTable(self: Variant) *const [256]u8 {
         return switch (self) {
             .variant0124 => &length_table_0124,
             .variant1234 => &length_table_1234,
         };
     }
-    
+
     pub fn getDecodeFn(self: Variant) *const fn (u8, []const u8, []u32) usize {
         return switch (self) {
             .variant0124 => svbDecodeQuad0124,
@@ -379,7 +379,6 @@ pub fn decodeValues(n: usize, in: []const u8, out: []u32, variant: Variant) usiz
     return out.len - out_ptr.len;
 }
 
-
 // Encode single value into a StreamVByte encoded byte array.
 /// Encodes a single 32-bit integer using the StreamVByte "0124" variant,
 /// where the control byte uses bits to indicate the encoded size:
@@ -554,33 +553,31 @@ test "svbDeltaDecodeInPlace SIMD edge cases" {
 // Decodes directly into the target array at the specified offset
 pub fn decodeValuesRange(
     total_items: usize,
-    start_item: usize, 
+    start_item: usize,
     end_item: usize,
-    in: []const u8, 
+    in: []const u8,
     out: []u32, // Full array where items [start_item..end_item] will be written
-    variant: Variant
+    variant: Variant,
 ) usize {
     if (start_item >= end_item or start_item >= total_items) return 0;
-    
-    const actual_end = @min(end_item, total_items);
+
     const start_quad = start_item / 4;
-    const end_quad = (actual_end + 3) / 4;
+    const end_quad = (end_item + 3) / 4;
     const total_quads = (total_items + 3) / 4;
     const length_table = variant.getLengthTable();
     const decodeFn = variant.getDecodeFn();
-    
+
     // Skip to the starting quad by calculating data offset
     var data_offset: usize = 0;
     for (0..start_quad) |quad_idx| {
-        if (quad_idx >= total_quads) break;
         data_offset += length_table[in[quad_idx]];
     }
-    
+
     // Decode quads directly into the output array at the right positions
     var in_control_ptr = in[start_quad..total_quads];
-    var in_data_ptr = in[total_quads + data_offset..];
+    var in_data_ptr = in[total_quads + data_offset ..];
     var quad_idx = start_quad;
-    
+
     while (quad_idx < end_quad and in_control_ptr.len > 0) {
         const out_offset = quad_idx * 4;
         const consumed = decodeFn(in_control_ptr[0], in_data_ptr, out[out_offset..]);
@@ -588,8 +585,8 @@ pub fn decodeValuesRange(
         in_data_ptr = in_data_ptr[consumed..];
         quad_idx += 1;
     }
-    
-    return actual_end - start_item;
+
+    return end_item - start_item;
 }
 
 test "decodeValues with unrolled loop (32+ items)" {
