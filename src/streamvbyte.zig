@@ -60,6 +60,12 @@ fn shuffle(x: Vu8x16, m: Vu8x16) Vu8x16 {
     }
 }
 
+// Variant enum for StreamVByte decoding
+pub const Variant = enum {
+    variant0124,
+    variant1234,
+};
+
 // Shuffle tables for 0124 variant (0 bytes for zero, 1 byte for <256, 2 bytes for <65536, 4 bytes otherwise)
 const shuffle_table_0124: [256]Vu8x16 = blk: {
     @setEvalBranchQuota(10000);
@@ -72,19 +78,13 @@ const shuffle_table_1234: [256]Vu8x16 = blk: {
     break :blk initShuffleTable1234();
 };
 
-// Variant enum for StreamVByte decoding
-pub const Variant = enum {
-    variant0124,
-    variant1234,
-};
-
 // Length tables for each control byte
-pub const length_table_0124: [256]u8 = blk: {
+const length_table_0124: [256]u8 = blk: {
     @setEvalBranchQuota(10000);
     break :blk initLengthTable0124();
 };
 
-pub const length_table_1234: [256]u8 = blk: {
+const length_table_1234: [256]u8 = blk: {
     @setEvalBranchQuota(10000);
     break :blk initLengthTable1234();
 };
