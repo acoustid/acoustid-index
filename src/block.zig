@@ -398,10 +398,17 @@ pub const BlockEncoder = struct {
 
     out_header: BlockHeader = .{ .first_hash = 0, .num_hashes = 0, .num_items = 0, .counts_offset = 0, .docids_offset = 0 },
 
-    // Buffers for collecting unique hashes and their counts before writing to compressed output
+    // Unique hash buffering strategy:
+    // Why 8 elements instead of encoding immediately at 4?
+    //   1. Must check if entire chunk fits BEFORE committing (no partial chunks)
+    //   2. When buffer has 4 hashes, next chunk might increment counts of existing hashes
+    //   3. If next chunk doesn't fit, we'd need to rollback those count changes
+    //   4. Easier to buffer up to 8, calculate total size, then encode if chunk fits
+    //   5. When >4: encode first 4 hashes to output, keep remaining 4 for next batch
+    // Worst case: 4 existing hashes + 4 new hashes from current chunk = 8 total
     num_buffered_hashes: usize = 0,
-    buffered_hashes: [8]u32 = undefined,
-    buffered_counts: [8]u32 = undefined,
+    buffered_hashes: [8]u32 = undefined,   // Delta-encoded hash values
+    buffered_counts: [8]u32 = undefined,   // Count of items per unique hash
 
     out_hashes: std.BoundedArray(u8, MAX_BLOCK_SIZE) = .{},
     out_hashes_control: std.BoundedArray(u8, MAX_BLOCK_SIZE) = .{},
@@ -510,12 +517,15 @@ pub const BlockEncoder = struct {
         var buffered_hashes_size: usize = undefined;
         var buffered_counts_size: usize = undefined;
 
+        // Handle buffered hash encoding based on buffer state:
         if (num_buffered_hashes <= 4) {
-            // Just calculate size for the first 4 hashes/counts, as if they were encoded
+            // Buffer fits in one quad - just calculate size without encoding yet
+            // (we'll encode later if this chunk fits in the block)
             buffered_hashes_size = streamvbyte.svbEncodeQuadSize1234(buffered_hashes[0..4].*) + 1;
             buffered_counts_size = streamvbyte.svbEncodeQuadSize1234(buffered_counts[0..4].*) + 1;
         } else {
-            // For the first set of 4, actually encode them
+            // Buffer overflow (>4) - must encode first quad now to free up space
+            // Encode first 4 hashes/counts to output buffers
             const encoded_hashes_size = streamvbyte.svbEncodeQuad1234(
                 buffered_hashes[0..4].*,
                 self.out_hashes.unusedCapacitySlice(),
@@ -532,7 +542,7 @@ pub const BlockEncoder = struct {
             new_out_counts_len += encoded_counts_size;
             new_out_counts_control_len += 1;
 
-            // For the second set of 4, calculate size as if they were encoded
+            // Calculate size for remaining 4 hashes (elements 4-7)
             buffered_hashes_size = streamvbyte.svbEncodeQuadSize1234(buffered_hashes[4..8].*) + 1;
             buffered_counts_size = streamvbyte.svbEncodeQuadSize1234(buffered_counts[4..8].*) + 1;
         }
@@ -557,15 +567,17 @@ pub const BlockEncoder = struct {
         self.out_docids.len = new_out_docids_len;
         self.out_docids_control.len = new_out_docids_control_len;
 
-        // Update buffered hashes and counts
+        // Update buffer state after successful chunk processing:
         if (num_buffered_hashes <= 4) {
+            // All hashes still fit in buffer - just update buffer contents
             self.num_buffered_hashes = num_buffered_hashes;
             @memcpy(self.buffered_hashes[0..4], buffered_hashes[0..4]);
             @memcpy(self.buffered_counts[0..4], buffered_counts[0..4]);
         } else {
-            self.out_header.num_hashes += 4;
-            self.num_buffered_hashes = num_buffered_hashes - 4;
-            @memcpy(self.buffered_hashes[0..4], buffered_hashes[4..8]);
+            // Buffer overflowed - first 4 were encoded, shift remaining 4 to front
+            self.out_header.num_hashes += 4;  // Account for the 4 hashes we just encoded
+            self.num_buffered_hashes = num_buffered_hashes - 4;  // Remaining buffered count
+            @memcpy(self.buffered_hashes[0..4], buffered_hashes[4..8]);  // Shift elements 4-7 to 0-3
             @memcpy(self.buffered_counts[0..4], buffered_counts[4..8]);
         }
     }
