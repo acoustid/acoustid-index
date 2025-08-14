@@ -67,7 +67,7 @@ pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime b
         }
 
         // Encode a block from the buffer
-        const consumed = encoder.encodeBlock(items_buffer[0..items_in_buffer], min_doc_id, &block_data);
+        const consumed = try encoder.encodeBlock(items_buffer[0..items_in_buffer], min_doc_id, &block_data);
         try writer.writeAll(&block_data);
         if (consumed == 0) {
             break;
@@ -310,7 +310,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
         const block_data = raw_data[ptr .. ptr + block_size];
         ptr += block_size;
         const block_header = decodeBlockHeader(block_data);
-        if (block_header.num_items == 0) {
+        if (block_header.num_hashes == 0) {
             break;
         }
         segment.index.appendAssumeCapacity(block_header.first_hash);

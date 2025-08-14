@@ -441,6 +441,42 @@ pub fn svbEncodeQuad1234(in: [4]u32, out_data: []u8, out_control: *u8) usize {
     return out_data.len - out_data_ptr.len;
 }
 
+// Calculate the size needed to encode four 32-bit integers with StreamVByte (0124 variant)
+pub fn svbEncodeQuadSize0124(in: [4]u32) usize {
+    var size: usize = 0;
+    inline for (0..4) |i| {
+        const val = in[i];
+        if (val == 0) {
+            size += 0;
+        } else if (val < (1 << 8)) {
+            size += 1;
+        } else if (val < (1 << 16)) {
+            size += 2;
+        } else {
+            size += 4;
+        }
+    }
+    return size;
+}
+
+// Calculate the size needed to encode four 32-bit integers with StreamVByte (1234 variant)
+pub fn svbEncodeQuadSize1234(in: [4]u32) usize {
+    var size: usize = 0;
+    inline for (0..4) |i| {
+        const val = in[i];
+        if (val < (1 << 8)) {
+            size += 1;
+        } else if (val < (1 << 16)) {
+            size += 2;
+        } else if (val < (1 << 24)) {
+            size += 3;
+        } else {
+            size += 4;
+        }
+    }
+    return size;
+}
+
 test "shuffle" {
     const data: Vu8x16 = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
     const mask: Vu8x16 = .{ 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 };
@@ -588,4 +624,142 @@ test "decodeValues with unrolled loop (32+ items)" {
     for (0..40) |i| {
         try std.testing.expectEqual(@as(u32, @intCast(i + 1)), output[i]);
     }
+}
+
+test "svbEncodeQuad0124" {
+    // Test encoding values: [1, 2, 0, 4]
+    // Expected: 1 (1 byte), 2 (1 byte), 0 (0 bytes), 4 (1 byte)
+    // Control bits: 01 01 00 01 = 0b01_00_01_01 = 0x45
+    const input = [4]u32{ 1, 2, 0, 4 };
+    var output_data: [16]u8 = undefined;
+    var control_byte: u8 = undefined;
+
+    const bytes_written = svbEncodeQuad0124(input, &output_data, &control_byte);
+
+    try std.testing.expectEqual(@as(usize, 3), bytes_written);
+    try std.testing.expectEqual(@as(u8, 0b01_00_01_01), control_byte);
+    try std.testing.expectEqual(@as(u8, 1), output_data[0]);
+    try std.testing.expectEqual(@as(u8, 2), output_data[1]);
+    try std.testing.expectEqual(@as(u8, 4), output_data[2]);
+}
+
+test "svbEncodeQuad0124 various sizes" {
+    // Test values with different sizes: [0, 255, 65535, 0x12345678]
+    // Expected: 0 (0 bytes), 255 (1 byte), 65535 (2 bytes), 0x12345678 (4 bytes)
+    // Control bits: 00 01 10 11 = 0b11_10_01_00 = 0xE4
+    const input = [4]u32{ 0, 255, 65535, 0x12345678 };
+    var output_data: [16]u8 = undefined;
+    var control_byte: u8 = undefined;
+
+    const bytes_written = svbEncodeQuad0124(input, &output_data, &control_byte);
+
+    try std.testing.expectEqual(@as(usize, 7), bytes_written); // 0 + 1 + 2 + 4
+    try std.testing.expectEqual(@as(u8, 0b11_10_01_00), control_byte);
+    
+    // Check data bytes
+    try std.testing.expectEqual(@as(u8, 255), output_data[0]);
+    try std.testing.expectEqual(@as(u16, 65535), std.mem.readInt(u16, output_data[1..3], .little));
+    try std.testing.expectEqual(@as(u32, 0x12345678), std.mem.readInt(u32, output_data[3..7], .little));
+}
+
+test "svbEncodeQuad1234" {
+    // Test encoding values: [1, 2, 3, 4]
+    // Expected: 1 (1 byte), 2 (1 byte), 3 (1 byte), 4 (1 byte)
+    // Control bits: 00 00 00 00 = 0b00_00_00_00 = 0x00
+    const input = [4]u32{ 1, 2, 3, 4 };
+    var output_data: [16]u8 = undefined;
+    var control_byte: u8 = undefined;
+
+    const bytes_written = svbEncodeQuad1234(input, &output_data, &control_byte);
+
+    try std.testing.expectEqual(@as(usize, 4), bytes_written);
+    try std.testing.expectEqual(@as(u8, 0b00_00_00_00), control_byte);
+    try std.testing.expectEqual(@as(u8, 1), output_data[0]);
+    try std.testing.expectEqual(@as(u8, 2), output_data[1]);
+    try std.testing.expectEqual(@as(u8, 3), output_data[2]);
+    try std.testing.expectEqual(@as(u8, 4), output_data[3]);
+}
+
+test "svbEncodeQuad1234 various sizes" {
+    // Test values with different sizes: [255, 65535, 0xFFFFFF, 0x12345678]
+    // Expected: 255 (1 byte), 65535 (2 bytes), 0xFFFFFF (3 bytes), 0x12345678 (4 bytes)
+    // Control bits: 00 01 10 11 = 0b11_10_01_00 = 0xE4
+    const input = [4]u32{ 255, 65535, 0xFFFFFF, 0x12345678 };
+    var output_data: [16]u8 = undefined;
+    var control_byte: u8 = undefined;
+
+    const bytes_written = svbEncodeQuad1234(input, &output_data, &control_byte);
+
+    try std.testing.expectEqual(@as(usize, 10), bytes_written); // 1 + 2 + 3 + 4
+    try std.testing.expectEqual(@as(u8, 0b11_10_01_00), control_byte);
+    
+    // Check data bytes
+    try std.testing.expectEqual(@as(u8, 255), output_data[0]);
+    try std.testing.expectEqual(@as(u16, 65535), std.mem.readInt(u16, output_data[1..3], .little));
+    try std.testing.expectEqual(@as(u24, 0xFFFFFF), std.mem.readInt(u24, output_data[3..6], .little));
+    try std.testing.expectEqual(@as(u32, 0x12345678), std.mem.readInt(u32, output_data[6..10], .little));
+}
+
+test "svbEncodeQuad1234 with zeros" {
+    // Test encoding values with zeros: [0, 1, 0, 255]
+    // Expected: 0 (1 byte), 1 (1 byte), 0 (1 byte), 255 (1 byte)
+    // Control bits: 00 00 00 00 = 0b00_00_00_00 = 0x00
+    const input = [4]u32{ 0, 1, 0, 255 };
+    var output_data: [16]u8 = undefined;
+    var control_byte: u8 = undefined;
+
+    const bytes_written = svbEncodeQuad1234(input, &output_data, &control_byte);
+
+    try std.testing.expectEqual(@as(usize, 4), bytes_written); // 1 + 1 + 1 + 1
+    try std.testing.expectEqual(@as(u8, 0b00_00_00_00), control_byte);
+    try std.testing.expectEqual(@as(u8, 0), output_data[0]);
+    try std.testing.expectEqual(@as(u8, 1), output_data[1]);
+    try std.testing.expectEqual(@as(u8, 0), output_data[2]);
+    try std.testing.expectEqual(@as(u8, 255), output_data[3]);
+}
+
+test "svbEncodeQuadSize0124" {
+    // Test size calculation for [0, 255, 65535, 0x12345678]
+    const input = [4]u32{ 0, 255, 65535, 0x12345678 };
+    const size = svbEncodeQuadSize0124(input);
+    try std.testing.expectEqual(@as(usize, 7), size); // 0 + 1 + 2 + 4
+}
+
+test "svbEncodeQuadSize0124 all zeros" {
+    const input = [4]u32{ 0, 0, 0, 0 };
+    const size = svbEncodeQuadSize0124(input);
+    try std.testing.expectEqual(@as(usize, 0), size);
+}
+
+test "svbEncodeQuadSize0124 all max values" {
+    const input = [4]u32{ 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF };
+    const size = svbEncodeQuadSize0124(input);
+    try std.testing.expectEqual(@as(usize, 16), size); // 4 + 4 + 4 + 4
+}
+
+test "svbEncodeQuadSize1234" {
+    // Test size calculation for [255, 65535, 0xFFFFFF, 0x12345678]
+    const input = [4]u32{ 255, 65535, 0xFFFFFF, 0x12345678 };
+    const size = svbEncodeQuadSize1234(input);
+    try std.testing.expectEqual(@as(usize, 10), size); // 1 + 2 + 3 + 4
+}
+
+test "svbEncodeQuadSize1234 all small values" {
+    const input = [4]u32{ 1, 2, 3, 4 };
+    const size = svbEncodeQuadSize1234(input);
+    try std.testing.expectEqual(@as(usize, 4), size); // 1 + 1 + 1 + 1
+}
+
+test "svbEncodeQuadSize1234 all max values" {
+    const input = [4]u32{ 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF };
+    const size = svbEncodeQuadSize1234(input);
+    try std.testing.expectEqual(@as(usize, 16), size); // 4 + 4 + 4 + 4
+}
+
+test "svbEncodeQuadSize1234 with zeros" {
+    // Test size calculation with zeros: [0, 1, 0, 255]
+    // Expected: 0 (1 byte), 1 (1 byte), 0 (1 byte), 255 (1 byte)
+    const input = [4]u32{ 0, 1, 0, 255 };
+    const size = svbEncodeQuadSize1234(input);
+    try std.testing.expectEqual(@as(usize, 4), size); // 1 + 1 + 1 + 1
 }
