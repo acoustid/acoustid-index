@@ -33,6 +33,9 @@ class BenchmarkConfig:
     # Hash space configuration (24-bit hashes by default for more collisions)
     hash_bits: int = 24
     
+    # Profiling configuration
+    enable_profiling: bool = False
+    
     # Insert mode configurations
     bulk_batch_size: int = 1000
     medium_batch_min: int = 10
@@ -87,6 +90,7 @@ class ServerManager:
     def __init__(self, base_dir: str, port: int, config: BenchmarkConfig):
         self.data_dir = Path(base_dir)
         self.log_file = self.data_dir / 'server.log'
+        self.profile_file = self.data_dir / 'callgrind.out'
         self.port = port
         self.config = config
         self.process: asyncio.subprocess.Process | None = None
@@ -96,12 +100,38 @@ class ServerManager:
             shutil.rmtree(self.data_dir)
         self.data_dir.mkdir(parents=True)
         
-        command = [
-            self.config.server_exe,
-            '--dir', str(self.data_dir),
-            '--port', str(self.port),
-            '--log-level', 'debug',
-        ]
+        # Check if profiling is enabled and valgrind is available
+        if self.config.enable_profiling:
+            valgrind_cmd = shutil.which('valgrind')
+            if valgrind_cmd is None:
+                print("Warning: valgrind not found. Running without profiling.")
+                command = [
+                    self.config.server_exe,
+                    '--dir', str(self.data_dir),
+                    '--port', str(self.port),
+                    '--log-level', 'debug',
+                ]
+            else:
+                print("Running with valgrind callgrind profiling for kcachegrind analysis")
+                command = [
+                    valgrind_cmd,
+                    '--tool=callgrind',
+                    '--callgrind-out-file=' + str(self.profile_file),
+                    '--dump-instr=yes',
+                    '--collect-jumps=yes',
+                    self.config.server_exe,
+                    '--dir', str(self.data_dir),
+                    '--port', str(self.port),
+                    '--log-level', 'debug',
+                ]
+        else:
+            command = [
+                self.config.server_exe,
+                '--dir', str(self.data_dir),
+                '--port', str(self.port),
+                '--log-level', 'debug',
+            ]
+        
         print(' '.join(command))
         
         # Open log file for stderr redirection
@@ -125,6 +155,12 @@ class ServerManager:
                 await self.process.wait()
         if exc_type is not None:
             self.print_error_log()
+        
+        # Report profile file location
+        if self.profile_file.exists():
+            print(f"Performance profile saved to: {self.profile_file}")
+            print("You can analyze this file with kcachegrind:")
+            print(f"  kcachegrind {self.profile_file}")
 
     async def wait_for_ready(self, timeout: float | None = None) -> None:
         if timeout is None:
@@ -813,6 +849,8 @@ def create_config_from_args() -> BenchmarkConfig:
                        help=f'Number of bits for hash values (default: {config.hash_bits}, range: 8-32)')
     parser.add_argument('--server-exe', type=str, default=config.server_exe, 
                        help=f'Path to server executable (default: {config.server_exe})')
+    parser.add_argument('--enable-profiling', action='store_true',
+                       help='Enable valgrind callgrind profiling for kcachegrind analysis')
     args = parser.parse_args()
     
     config.num_docs = args.num_docs
@@ -828,6 +866,7 @@ def create_config_from_args() -> BenchmarkConfig:
     config.random_seed = args.random_seed
     config.hash_bits = max(8, min(32, args.hash_bits))  # Clamp to reasonable range
     config.server_exe = args.server_exe
+    config.enable_profiling = args.enable_profiling
     
     return config
 
