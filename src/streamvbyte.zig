@@ -222,7 +222,7 @@ fn initLengthTable1234() [256]u8 {
 // 0124 means: 0 bytes for zero, 1 byte for <256, 2 bytes for <65536, 4 bytes otherwise
 // Requires: in_data must be padded so that at least 16 bytes starting at in_data are readable
 // Returns number of bytes consumed from in_data
-pub fn svbDecodeQuad0124(control: u8, in_data: []const u8, out: []u32) usize {
+inline fn svbDecodeQuad0124(control: u8, in_data: []const u8, out: []u32) usize {
     std.debug.assert(out.len >= 4);
     std.debug.assert(in_data.len >= SIMD_DECODE_PADDING); // SIMD implementation requires padding
 
@@ -247,7 +247,7 @@ pub fn svbDecodeQuad0124(control: u8, in_data: []const u8, out: []u32) usize {
 // 1234 means: 1 byte for <256, 2 bytes for <65536, 3 bytes for <16M, 4 bytes otherwise
 // Requires: in_data must be padded so that at least 16 bytes starting at in_data are readable
 // Returns number of bytes consumed from in_data
-pub fn svbDecodeQuad1234(control: u8, in_data: []const u8, out: []u32) usize {
+inline fn svbDecodeQuad1234(control: u8, in_data: []const u8, out: []u32) usize {
     std.debug.assert(out.len >= 4);
     std.debug.assert(in_data.len >= SIMD_DECODE_PADDING); // SIMD implementation requires padding
 
