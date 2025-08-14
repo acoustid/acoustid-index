@@ -441,6 +441,44 @@ pub fn svbEncodeQuad1234(in: [4]u32, out_data: []u8, out_control: *u8) usize {
     return out_data.len - out_data_ptr.len;
 }
 
+// Calculate the size needed to encode four 32-bit integers with StreamVByte (0124 variant)
+pub fn svbEncodeQuadSize0124(in: [4]u32) usize {
+    var size: usize = 0;
+    inline for (0..4) |i| {
+        const val = in[i];
+        if (val < (1 << 8)) {
+            size += 1;
+        } else if (val < (1 << 16)) {
+            size += 2;
+        } else if (val < (1 << 24)) {
+            size += 3;
+        } else {
+            size += 4;
+        }
+    }
+    return size;
+}
+
+// Calculate the size needed to encode four 32-bit integers with StreamVByte (1234 variant)
+pub fn svbEncodeQuadSize1234(in: [4]u32) usize {
+    var size: usize = 0;
+    inline for (0..4) |i| {
+        const val = in[i];
+        if (val == 0) {
+            size += 1;
+        } else if (val < (1 << 8)) {
+            size += 1;
+        } else if (val < (1 << 16)) {
+            size += 2;
+        } else if (val < (1 << 24)) {
+            size += 3;
+        } else {
+            size += 4;
+        }
+    }
+    return size;
+}
+
 test "shuffle" {
     const data: Vu8x16 = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
     const mask: Vu8x16 = .{ 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 };
