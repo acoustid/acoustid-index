@@ -604,7 +604,6 @@ pub fn decodeBlockDocidsRange(header: BlockHeader, hashes: []const u32, in: []co
     // Apply delta decoding to rest of range
     for (1..range_size) |i| {
         const global_idx = start_idx + i;
-        if (global_idx >= header.num_items) break;
         
         if (hashes[global_idx] != hashes[global_idx - 1]) {
             // Different hash - absolute encoding
