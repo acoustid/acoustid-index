@@ -126,8 +126,11 @@ pub const BlockReader = struct {
             return;
         }
 
-        const num_hashes = decodeBlockHashes(self.block_header, self.block_data.?, &self.hashes);
-        assert(num_hashes == self.block_header.num_items);
+        decodeBlockHashes(
+            self.block_header,
+            self.block_data.?,
+            &self.hashes,
+        );
         self.hashes_loaded = true;
     }
 
@@ -141,8 +144,13 @@ pub const BlockReader = struct {
             return;
         }
 
-        const num_docids = decodeBlockDocids(self.block_header, self.hashes[0..self.block_header.num_items], self.block_data.?, self.min_doc_id, &self.docids);
-        assert(num_docids == self.block_header.num_items);
+        decodeBlockDocids(
+            self.block_header,
+            self.hashes[0..self.block_header.num_items],
+            self.block_data.?,
+            self.min_doc_id,
+            &self.docids,
+        );
         self.docids_loaded = true;
     }
 
@@ -255,13 +263,10 @@ test "BlockReader basic functionality" {
 
     // Test getDocidsForRange
     const docids100 = reader.getDocidsForRange(range100);
-    try testing.expectEqual(@as(usize, 2), docids100.len);
-    try testing.expectEqual(@as(u32, 1), docids100[0]);
-    try testing.expectEqual(@as(u32, 2), docids100[1]);
+    try std.testing.expectEqualSlices(u32, &[_]u32{ 1, 2 }, docids100);
 
     const docids200 = reader.getDocidsForRange(range200);
-    try testing.expectEqual(@as(usize, 1), docids200.len);
-    try testing.expectEqual(@as(u32, 3), docids200[0]);
+    try std.testing.expectEqualSlices(u32, &[_]u32{3}, docids200);
 
     // Test searchHash convenience method
     const docids_direct = reader.searchHash(100);
@@ -516,20 +521,20 @@ test "BlockEncoder basic functionality" {
     try testing.expectEqual(1, header.first_hash);
 
     var hashes: [MAX_ITEMS_PER_BLOCK]u32 = undefined;
-    const num_hashes = decodeBlockHashes(header, &block, &hashes);
-    try testing.expectEqual(5, num_hashes);
-    try testing.expectEqualSlices(u32, &[_]u32{ 1, 1, 3, 4, 5 }, hashes[0..num_hashes]);
+    decodeBlockHashes(header, &block, &hashes);
+    try testing.expectEqualSlices(u32, &[_]u32{ 1, 1, 3, 4, 5 }, hashes[0..header.num_items]);
 
     var docids: [MAX_ITEMS_PER_BLOCK]u32 = undefined;
-    const num_docids = decodeBlockDocids(header, hashes[0..num_hashes], &block, min_doc_id, &docids);
-    try testing.expectEqual(5, num_docids);
-    try testing.expectEqualSlices(u32, &[_]u32{ 100, 200, 300, 400, 500 }, docids[0..num_docids]);
+    decodeBlockDocids(header, hashes[0..header.num_items], &block, min_doc_id, &docids);
+    try testing.expectEqualSlices(u32, &[_]u32{ 100, 200, 300, 400, 500 }, docids[0..header.num_items]);
 }
 
-fn decodeBlockHashes(header: BlockHeader, in: []const u8, out: []u32) usize {
+fn decodeBlockHashes(header: BlockHeader, in: []const u8, out: []u32) void {
     // Read StreamVByte-encoded deltas
     const offset = BLOCK_HEADER_SIZE;
-    const num_decoded = streamvbyte.decodeValues(
+    streamvbyte.decodeValues(
+        header.num_items,
+        0,
         header.num_items,
         in[offset..],
         out,
@@ -538,14 +543,14 @@ fn decodeBlockHashes(header: BlockHeader, in: []const u8, out: []u32) usize {
 
     // Apply delta decoding - first item is absolute, rest are deltas
     streamvbyte.svbDeltaDecodeInPlace(out[0..header.num_items], header.first_hash);
-
-    return num_decoded;
 }
 
-fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u8, min_doc_id: u32, out: []u32) usize {
+fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u8, min_doc_id: u32, out: []u32) void {
     // Read StreamVByte-encoded docids
     const offset = BLOCK_HEADER_SIZE + header.docid_list_offset;
-    const num_decoded = streamvbyte.decodeValues(
+    streamvbyte.decodeValues(
+        header.num_items,
+        0,
         header.num_items,
         in[offset..],
         out,
@@ -567,8 +572,6 @@ fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u8, m
             out[i] = out[i] + min_doc_id;
         }
     }
-
-    return num_decoded;
 }
 
 // Decode docids for a specific range within a block, for a single hash
@@ -582,7 +585,7 @@ fn decodeBlockDocidsForSingleHash(header: BlockHeader, hashes: []const u32, in: 
     const offset = BLOCK_HEADER_SIZE + header.docid_list_offset;
 
     // Decode the range directly into the output array
-    _ = streamvbyte.decodeValuesRange(
+    _ = streamvbyte.decodeValues(
         header.num_items,
         start_idx,
         end_idx,
