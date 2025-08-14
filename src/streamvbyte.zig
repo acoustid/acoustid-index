@@ -72,6 +72,26 @@ const shuffle_table_1234: [256]Vu8x16 = blk: {
     break :blk initShuffleTable1234();
 };
 
+// Variant enum for StreamVByte decoding
+pub const Variant = enum {
+    variant0124,
+    variant1234,
+    
+    pub fn getLengthTable(self: Variant) *const [256]u8 {
+        return switch (self) {
+            .variant0124 => &length_table_0124,
+            .variant1234 => &length_table_1234,
+        };
+    }
+    
+    pub fn getDecodeFn(self: Variant) *const fn (u8, []const u8, []u32) usize {
+        return switch (self) {
+            .variant0124 => svbDecodeQuad0124,
+            .variant1234 => svbDecodeQuad1234,
+        };
+    }
+};
+
 // Length tables for each control byte
 pub const length_table_0124: [256]u8 = blk: {
     @setEvalBranchQuota(10000);
@@ -537,8 +557,7 @@ pub fn decodeValuesRange(
     end_item: usize,
     in: []const u8, 
     out: []u32, // Full array where items [start_item..end_item] will be written
-    decodeFn: anytype,
-    length_table: *const [256]u8
+    variant: Variant
 ) usize {
     if (start_item >= end_item or start_item >= total_items) return 0;
     
@@ -546,6 +565,8 @@ pub fn decodeValuesRange(
     const start_quad = start_item / 4;
     const end_quad = (actual_end + 3) / 4;
     const total_quads = (total_items + 3) / 4;
+    const length_table = variant.getLengthTable();
+    const decodeFn = variant.getDecodeFn();
     
     // Skip to the starting quad by calculating data offset
     var data_offset: usize = 0;

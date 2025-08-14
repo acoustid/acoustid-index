@@ -593,8 +593,7 @@ pub fn decodeBlockDocidsRange(header: BlockHeader, hashes: []const u32, in: []co
         actual_end,
         in[offset..],
         out,
-        streamvbyte.svbDecodeQuad1234,
-        &streamvbyte.length_table_1234
+        streamvbyte.Variant.variant1234
     );
     
     // Apply delta decoding to the range
