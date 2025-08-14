@@ -475,6 +475,12 @@ pub const BlockEncoder = struct {
 
             const is_new_hash = num_items == 0 or current_hash != self.last_hash;
 
+            // Enforce sorted/grouped input assumptions to prevent unsigned underflow
+            if (num_items > 0) {
+                // After first item, hashes must be non-decreasing (sorted)
+                std.debug.assert(current_hash >= self.last_hash);
+            }
+            
             if (is_new_hash) {
                 // New unique hash found - store as delta
                 const delta = current_hash - self.last_hash;
@@ -486,10 +492,15 @@ pub const BlockEncoder = struct {
                 buffered_counts[num_buffered_hashes - 1] += 1;
             }
 
+            // Enforce docid ordering assumptions to prevent unsigned underflow
             if (!is_new_hash) {
+                // Same hash: docids must be non-decreasing within the hash group
+                std.debug.assert(current_docid >= self.last_docid);
                 // Same hash, encode docid delta
                 chunk_docids[i] = current_docid - self.last_docid;
             } else {
+                // Different hash: docid must be >= min_doc_id (our baseline)
+                std.debug.assert(current_docid >= min_doc_id);
                 // Different hash, encode absolute docid minus min_doc_id
                 chunk_docids[i] = current_docid - min_doc_id;
             }
