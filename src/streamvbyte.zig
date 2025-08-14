@@ -60,6 +60,12 @@ fn shuffle(x: Vu8x16, m: Vu8x16) Vu8x16 {
     }
 }
 
+// Variant enum for StreamVByte decoding
+pub const Variant = enum {
+    variant0124,
+    variant1234,
+};
+
 // Shuffle tables for 0124 variant (0 bytes for zero, 1 byte for <256, 2 bytes for <65536, 4 bytes otherwise)
 const shuffle_table_0124: [256]Vu8x16 = blk: {
     @setEvalBranchQuota(10000);
@@ -202,7 +208,7 @@ fn initLengthTable1234() [256]u8 {
 // 0124 means: 0 bytes for zero, 1 byte for <256, 2 bytes for <65536, 4 bytes otherwise
 // Requires: in_data must be padded so that at least 16 bytes starting at in_data are readable
 // Returns number of bytes consumed from in_data
-pub fn svbDecodeQuad0124(control: u8, in_data: []const u8, out: []u32) usize {
+inline fn svbDecodeQuad0124(control: u8, in_data: []const u8, out: []u32) usize {
     std.debug.assert(out.len >= 4);
     std.debug.assert(in_data.len >= SIMD_DECODE_PADDING); // SIMD implementation requires padding
 
@@ -227,7 +233,7 @@ pub fn svbDecodeQuad0124(control: u8, in_data: []const u8, out: []u32) usize {
 // 1234 means: 1 byte for <256, 2 bytes for <65536, 3 bytes for <16M, 4 bytes otherwise
 // Requires: in_data must be padded so that at least 16 bytes starting at in_data are readable
 // Returns number of bytes consumed from in_data
-pub fn svbDecodeQuad1234(control: u8, in_data: []const u8, out: []u32) usize {
+inline fn svbDecodeQuad1234(control: u8, in_data: []const u8, out: []u32) usize {
     std.debug.assert(out.len >= 4);
     std.debug.assert(in_data.len >= SIMD_DECODE_PADDING); // SIMD implementation requires padding
 
@@ -317,17 +323,36 @@ fn svbDeltaDecodeInPlaceSSE41(data: []u32, first_value: u32) void {
     }
 }
 
-pub fn decodeValues(n: usize, in: []const u8, out: []u32, decodeFn: anytype) usize {
-    const num_quads = (n + 3) / 4;
+pub fn decodeValues(total_items: usize, start_item: usize, end_item: usize, in: []const u8, out: []u32, comptime variant: Variant) void {
+    const decodeFn = switch (variant) {
+        .variant0124 => svbDecodeQuad0124,
+        .variant1234 => svbDecodeQuad1234,
+    };
 
-    var in_control_ptr = in[0..num_quads];
-    var in_data_ptr = in[num_quads..];
+    const length_table = switch (variant) {
+        .variant0124 => length_table_0124,
+        .variant1234 => length_table_1234,
+    };
 
-    var out_ptr = out;
+    const start_quad = start_item / 4;
+    const end_quad = (end_item + 3) / 4;
+    const total_quads = (total_items + 3) / 4;
 
-    var remaining = n;
+    // Skip to the starting quad by calculating data offset
+    var data_offset: usize = total_quads;
+    for (0..start_quad) |quad_idx| {
+        data_offset += length_table[in[quad_idx]];
+    }
+    var in_control_ptr = in[start_quad..total_quads];
+    var in_data_ptr = in[data_offset..];
 
-    while (remaining >= 32) {
+    const aligned_start_item = start_quad * 4;
+    const aligned_end_item = end_quad * 4;
+
+    var out_ptr = out[aligned_start_item..aligned_end_item];
+    var remaining: usize = end_quad - start_quad;
+
+    while (remaining >= 8) {
         const controls = std.mem.readInt(u64, in_control_ptr[0..8], .little);
         inline for (0..8) |i| {
             const control: u8 = @intCast((controls >> (8 * i)) & 0xFF);
@@ -336,28 +361,17 @@ pub fn decodeValues(n: usize, in: []const u8, out: []u32, decodeFn: anytype) usi
         }
         in_control_ptr = in_control_ptr[8..];
         out_ptr = out_ptr[32..]; // 8 quads * 4 items per quad
-        remaining -= 32; // 8 quads * 4 items per quad
+        remaining -= 8;
     }
 
-    while (remaining >= 4) {
+    while (remaining > 0) {
         const consumed = decodeFn(in_control_ptr[0], in_data_ptr, out_ptr);
         in_control_ptr = in_control_ptr[1..];
         in_data_ptr = in_data_ptr[consumed..];
         out_ptr = out_ptr[4..];
-        remaining -= 4;
+        remaining -= 1;
     }
-
-    if (remaining > 0) {
-        const consumed = decodeFn(in_control_ptr[0], in_data_ptr, out_ptr);
-        in_control_ptr = in_control_ptr[1..];
-        in_data_ptr = in_data_ptr[consumed..];
-        out_ptr = out_ptr[remaining..];
-        remaining = 0;
-    }
-
-    return out.len - out_ptr.len;
 }
-
 
 // Encode single value into a StreamVByte encoded byte array.
 /// Encodes a single 32-bit integer using the StreamVByte "0124" variant,
@@ -561,10 +575,14 @@ test "decodeValues with unrolled loop (32+ items)" {
     @memcpy(input_buffer[10..66], &data_bytes);
 
     // Test decodeValues with svbDecodeQuad0124
-    const num_decoded = decodeValues(n, &input_buffer, &output, svbDecodeQuad0124);
-
-    // Should have processed 40 items
-    try std.testing.expectEqual(@as(usize, 40), num_decoded);
+    decodeValues(
+        n,
+        0,
+        n,
+        &input_buffer,
+        &output,
+        Variant.variant0124,
+    );
 
     // Verify output values
     for (0..40) |i| {
