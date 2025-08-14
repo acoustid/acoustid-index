@@ -180,8 +180,25 @@ pub const BlockReader = struct {
             return &[_]u32{};
         }
 
-        self.ensureDocidsLoaded();
-        return self.docids[range.start..range.end];
+        const range_size = range.end - range.start;
+        
+        // For small ranges, use optimized range decoding to avoid decompressing entire block
+        if (range_size < self.block_header.num_items / 3 and range_size < 100) {
+            self.ensureHashesLoaded();
+            const num_decoded = decodeBlockDocidsRange(
+                self.block_header,
+                self.hashes[0..self.block_header.num_items],
+                self.block_data.?,
+                self.min_doc_id,
+                range.start,
+                range.end,
+                self.docids[range.start..range.end]
+            );
+            return self.docids[range.start..range.start + num_decoded];
+        } else {
+            self.ensureDocidsLoaded();
+            return self.docids[range.start..range.end];
+        }
     }
 
     /// Convenience method: find hash and return corresponding docids
@@ -258,6 +275,62 @@ test "BlockReader basic functionality" {
     // Test searchHash convenience method
     const docids_direct = reader.searchHash(100);
     try testing.expectEqualSlices(u32, docids100, docids_direct);
+}
+
+test "BlockReader range-based docid decoding" {
+    // Create a test block with multiple hashes
+    var encoder = BlockEncoder.init();
+    const items = [_]@import("segment.zig").Item{
+        .{ .hash = 100, .id = 1001 },
+        .{ .hash = 100, .id = 1005 },
+        .{ .hash = 100, .id = 1010 },
+        .{ .hash = 200, .id = 2001 },
+        .{ .hash = 200, .id = 2002 },
+        .{ .hash = 300, .id = 3001 },
+        .{ .hash = 300, .id = 3002 },
+        .{ .hash = 300, .id = 3003 },
+    };
+
+    const min_doc_id: u32 = 1000;
+    var block_data: [512]u8 = undefined;
+    const num_items = encoder.encodeBlock(&items, min_doc_id, &block_data);
+    try testing.expectEqual(8, num_items);
+
+    // Test BlockReader with range optimization
+    var reader = BlockReader.init(min_doc_id);
+    reader.load(&block_data, false);
+
+    // Test small range (should use optimization)
+    const range100 = reader.findHash(100);
+    try testing.expectEqual(@as(usize, 0), range100.start);
+    try testing.expectEqual(@as(usize, 3), range100.end);
+    
+    const docids100 = reader.getDocidsForRange(range100);
+    try testing.expectEqual(@as(usize, 3), docids100.len);
+    try testing.expectEqual(@as(u32, 1001), docids100[0]);
+    try testing.expectEqual(@as(u32, 1005), docids100[1]);
+    try testing.expectEqual(@as(u32, 1010), docids100[2]);
+
+    // Test another small range
+    const range200 = reader.findHash(200);
+    try testing.expectEqual(@as(usize, 3), range200.start);
+    try testing.expectEqual(@as(usize, 5), range200.end);
+    
+    const docids200 = reader.getDocidsForRange(range200);
+    try testing.expectEqual(@as(usize, 2), docids200.len);
+    try testing.expectEqual(@as(u32, 2001), docids200[0]);
+    try testing.expectEqual(@as(u32, 2002), docids200[1]);
+
+    // Test range at end
+    const range300 = reader.findHash(300);
+    try testing.expectEqual(@as(usize, 5), range300.start);
+    try testing.expectEqual(@as(usize, 8), range300.end);
+    
+    const docids300 = reader.getDocidsForRange(range300);
+    try testing.expectEqual(@as(usize, 3), docids300.len);
+    try testing.expectEqual(@as(u32, 3001), docids300[0]);
+    try testing.expectEqual(@as(u32, 3002), docids300[1]);
+    try testing.expectEqual(@as(u32, 3003), docids300[2]);
 }
 
 /// BlockEncoder handles encoding of (hash, docid) items into compressed blocks
@@ -505,4 +578,48 @@ pub fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u
     }
 
     return num_decoded;
+}
+
+pub fn decodeBlockDocidsRange(header: BlockHeader, hashes: []const u32, in: []const u8, min_doc_id: u32, start_idx: usize, end_idx: usize, out: []u32) usize {
+    const actual_end = @min(end_idx, header.num_items);
+    const range_size = actual_end - start_idx;
+    if (range_size == 0) return 0;
+    
+    const start_quad = start_idx / 4;
+    const end_quad = (actual_end + 3) / 4;
+    const quad_range_size = (end_quad - start_quad) * 4;
+    
+    var temp_docids: [MAX_ITEMS_PER_BLOCK]u32 = undefined;
+    const offset = BLOCK_HEADER_SIZE + header.docid_list_offset;
+    const total_quads = (header.num_items + 3) / 4;
+    
+    _ = streamvbyte.decodeValuesRange(
+        start_quad, 
+        end_quad, 
+        in[offset..], 
+        temp_docids[0..quad_range_size], 
+        streamvbyte.svbDecodeQuad1234,
+        total_quads
+    );
+    
+    // Apply delta decoding
+    const quad_start_idx = start_quad * 4;
+    var prev_docid: u32 = 0;
+    
+    for (0..quad_range_size) |i| {
+        const actual_idx = quad_start_idx + i;
+        if (actual_idx >= header.num_items) break;
+        
+        if (actual_idx == start_idx or (actual_idx > start_idx and hashes[actual_idx] != hashes[actual_idx - 1])) {
+            temp_docids[i] = temp_docids[i] + min_doc_id;
+            prev_docid = temp_docids[i];
+        } else {
+            temp_docids[i] = temp_docids[i] + prev_docid;
+            prev_docid = temp_docids[i];
+        }
+    }
+    
+    const start_offset = start_idx - quad_start_idx;
+    @memcpy(out[0..range_size], temp_docids[start_offset..start_offset + range_size]);
+    return range_size;
 }

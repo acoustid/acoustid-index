@@ -529,6 +529,32 @@ test "svbDeltaDecodeInPlace SIMD edge cases" {
     try std.testing.expectEqual(@as(u32, 6), three[2]);
 }
 
+pub fn decodeValuesRange(start_quad: usize, end_quad: usize, in: []const u8, out: []u32, decodeFn: anytype, total_quads: usize) usize {
+    if (start_quad >= end_quad) return 0;
+    
+    // Calculate data offset to skip to start_quad
+    var data_offset: usize = 0;
+    for (0..start_quad) |quad_idx| {
+        if (quad_idx >= total_quads) break;
+        data_offset += length_table_1234[in[quad_idx]];
+    }
+    
+    var in_control_ptr = in[start_quad..total_quads];
+    var in_data_ptr = in[total_quads + data_offset..];
+    var out_ptr = out;
+    var quads_remaining = end_quad - start_quad;
+    
+    while (quads_remaining > 0 and in_control_ptr.len > 0 and out_ptr.len >= 4) {
+        const consumed = decodeFn(in_control_ptr[0], in_data_ptr, out_ptr);
+        in_control_ptr = in_control_ptr[1..];
+        in_data_ptr = in_data_ptr[consumed..];
+        out_ptr = out_ptr[4..];
+        quads_remaining -= 1;
+    }
+    
+    return out.len - out_ptr.len;
+}
+
 test "decodeValues with unrolled loop (32+ items)" {
     // Test the new unrolled loop that processes 32 items at a time
     const n = 40; // More than 32 to trigger the unrolled loop
