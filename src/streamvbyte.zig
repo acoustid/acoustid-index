@@ -446,12 +446,12 @@ pub fn svbEncodeQuadSize0124(in: [4]u32) usize {
     var size: usize = 0;
     inline for (0..4) |i| {
         const val = in[i];
-        if (val < (1 << 8)) {
+        if (val == 0) {
+            size += 0;
+        } else if (val < (1 << 8)) {
             size += 1;
         } else if (val < (1 << 16)) {
             size += 2;
-        } else if (val < (1 << 24)) {
-            size += 3;
         } else {
             size += 4;
         }
@@ -464,9 +464,7 @@ pub fn svbEncodeQuadSize1234(in: [4]u32) usize {
     var size: usize = 0;
     inline for (0..4) |i| {
         const val = in[i];
-        if (val == 0) {
-            size += 1;
-        } else if (val < (1 << 8)) {
+        if (val < (1 << 8)) {
             size += 1;
         } else if (val < (1 << 16)) {
             size += 2;
