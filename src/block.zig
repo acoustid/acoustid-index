@@ -180,25 +180,18 @@ pub const BlockReader = struct {
             return &[_]u32{};
         }
 
-        const range_size = range.end - range.start;
-        
-        // For small ranges, use optimized range decoding to avoid decompressing entire block
-        if (range_size < self.block_header.num_items / 3 and range_size < 100) {
-            self.ensureHashesLoaded();
-            const num_decoded = decodeBlockDocidsRange(
-                self.block_header,
-                self.hashes[0..self.block_header.num_items],
-                self.block_data.?,
-                self.min_doc_id,
-                range.start,
-                range.end,
-                self.docids[range.start..range.end]
-            );
-            return self.docids[range.start..range.start + num_decoded];
-        } else {
-            self.ensureDocidsLoaded();
-            return self.docids[range.start..range.end];
-        }
+        // Always use optimized range decoding to avoid decompressing entire block
+        self.ensureHashesLoaded();
+        const num_decoded = decodeBlockDocidsRange(
+            self.block_header,
+            self.hashes[0..self.block_header.num_items],
+            self.block_data.?,
+            self.min_doc_id,
+            range.start,
+            range.end,
+            self.docids[range.start..range.end]
+        );
+        return self.docids[range.start..range.start + num_decoded];
     }
 
     /// Convenience method: find hash and return corresponding docids
@@ -580,46 +573,46 @@ pub fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u
     return num_decoded;
 }
 
+// Decode docids for a specific range within a block
+// ASSUMPTION: start_idx must be at a hash boundary (start_idx == 0 OR hashes[start_idx] != hashes[start_idx-1])
+// This is guaranteed when called with ranges from findHash()
 pub fn decodeBlockDocidsRange(header: BlockHeader, hashes: []const u32, in: []const u8, min_doc_id: u32, start_idx: usize, end_idx: usize, out: []u32) usize {
     const actual_end = @min(end_idx, header.num_items);
-    const range_size = actual_end - start_idx;
-    if (range_size == 0) return 0;
+    if (start_idx >= actual_end) return 0;
     
-    const start_quad = start_idx / 4;
-    const end_quad = (actual_end + 3) / 4;
-    const quad_range_size = (end_quad - start_quad) * 4;
+    // Debug assertion to verify our hash boundary assumption
+    std.debug.assert(start_idx == 0 or hashes[start_idx] != hashes[start_idx - 1]);
     
-    var temp_docids: [MAX_ITEMS_PER_BLOCK]u32 = undefined;
     const offset = BLOCK_HEADER_SIZE + header.docid_list_offset;
-    const total_quads = (header.num_items + 3) / 4;
     
+    // Decode the range directly into the output array
     _ = streamvbyte.decodeValuesRange(
-        start_quad, 
-        end_quad, 
-        in[offset..], 
-        temp_docids[0..quad_range_size], 
-        streamvbyte.svbDecodeQuad1234,
-        total_quads
+        header.num_items,
+        start_idx,
+        actual_end,
+        in[offset..],
+        out,
+        streamvbyte.svbDecodeQuad1234
     );
     
-    // Apply delta decoding
-    const quad_start_idx = start_quad * 4;
-    var prev_docid: u32 = 0;
+    // Apply delta decoding to the range
+    // Since ranges always start at hash boundaries, first item is always absolute
+    const range_size = actual_end - start_idx;
+    out[start_idx] = out[start_idx] + min_doc_id;
     
-    for (0..quad_range_size) |i| {
-        const actual_idx = quad_start_idx + i;
-        if (actual_idx >= header.num_items) break;
+    // Apply delta decoding to rest of range
+    for (1..range_size) |i| {
+        const global_idx = start_idx + i;
+        if (global_idx >= header.num_items) break;
         
-        if (actual_idx == start_idx or (actual_idx > start_idx and hashes[actual_idx] != hashes[actual_idx - 1])) {
-            temp_docids[i] = temp_docids[i] + min_doc_id;
-            prev_docid = temp_docids[i];
+        if (hashes[global_idx] != hashes[global_idx - 1]) {
+            // Different hash - absolute encoding
+            out[global_idx] = out[global_idx] + min_doc_id;
         } else {
-            temp_docids[i] = temp_docids[i] + prev_docid;
-            prev_docid = temp_docids[i];
+            // Same hash - delta encoding
+            out[global_idx] = out[global_idx] + out[global_idx - 1];
         }
     }
     
-    const start_offset = start_idx - quad_start_idx;
-    @memcpy(out[0..range_size], temp_docids[start_offset..start_offset + range_size]);
     return range_size;
 }

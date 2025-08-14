@@ -529,30 +529,44 @@ test "svbDeltaDecodeInPlace SIMD edge cases" {
     try std.testing.expectEqual(@as(u32, 6), three[2]);
 }
 
-pub fn decodeValuesRange(start_quad: usize, end_quad: usize, in: []const u8, out: []u32, decodeFn: anytype, total_quads: usize) usize {
-    if (start_quad >= end_quad) return 0;
+// Range-based decoding that skips to a specific item range
+// Decodes directly into the target array at the specified offset
+pub fn decodeValuesRange(
+    total_items: usize,
+    start_item: usize, 
+    end_item: usize,
+    in: []const u8, 
+    out: []u32, // Full array where items [start_item..end_item] will be written
+    decodeFn: anytype
+) usize {
+    if (start_item >= end_item or start_item >= total_items) return 0;
     
-    // Calculate data offset to skip to start_quad
+    const actual_end = @min(end_item, total_items);
+    const start_quad = start_item / 4;
+    const end_quad = (actual_end + 3) / 4;
+    const total_quads = (total_items + 3) / 4;
+    
+    // Skip to the starting quad by calculating data offset
     var data_offset: usize = 0;
     for (0..start_quad) |quad_idx| {
         if (quad_idx >= total_quads) break;
         data_offset += length_table_1234[in[quad_idx]];
     }
     
+    // Decode quads directly into the output array at the right positions
     var in_control_ptr = in[start_quad..total_quads];
     var in_data_ptr = in[total_quads + data_offset..];
-    var out_ptr = out;
-    var quads_remaining = end_quad - start_quad;
+    var quad_idx = start_quad;
     
-    while (quads_remaining > 0 and in_control_ptr.len > 0 and out_ptr.len >= 4) {
-        const consumed = decodeFn(in_control_ptr[0], in_data_ptr, out_ptr);
+    while (quad_idx < end_quad and in_control_ptr.len > 0) {
+        const out_offset = quad_idx * 4;
+        const consumed = decodeFn(in_control_ptr[0], in_data_ptr, out[out_offset..]);
         in_control_ptr = in_control_ptr[1..];
         in_data_ptr = in_data_ptr[consumed..];
-        out_ptr = out_ptr[4..];
-        quads_remaining -= 1;
+        quad_idx += 1;
     }
     
-    return out.len - out_ptr.len;
+    return actual_end - start_item;
 }
 
 test "decodeValues with unrolled loop (32+ items)" {
