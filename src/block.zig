@@ -597,17 +597,13 @@ pub fn decodeBlockDocidsRange(header: BlockHeader, hashes: []const u32, in: []co
         streamvbyte.Variant.variant1234
     );
     
-    // Apply delta decoding to the range
+    // Apply delta decoding to the range using the optimized SIMD function
     // Since all items have the same hash and we start at a hash boundary,
     // the first item is absolute, all subsequent items are deltas
     const range_size = actual_end - start_idx;
-    out[start_idx] = out[start_idx] + min_doc_id;
     
-    // Apply delta decoding to rest of range - all are deltas since same hash
-    for (1..range_size) |i| {
-        const global_idx = start_idx + i;
-        out[global_idx] = out[global_idx] + out[global_idx - 1];
-    }
+    // Use the existing optimized delta decoding function
+    streamvbyte.svbDeltaDecodeInPlace(out[start_idx..actual_end], min_doc_id);
     
     return range_size;
 }
