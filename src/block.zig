@@ -407,8 +407,9 @@ pub const BlockEncoder = struct {
     out_header: BlockHeader = .{ .first_hash = 0, .num_unique_hashes = 0, .num_items = 0, .counts_offset = 0, .docid_list_offset = 0 },
 
     // Buffers for collecting unique hashes and their counts before writing to compressed output
-    temp_hashes: std.BoundedArray(u32, 4) = .{},
-    temp_counts: std.BoundedArray(u32, 4) = .{},
+    num_buffered_hashes: usize = 0,
+    buffered_hashes: [8]u32 = undefined,
+    buffered_counts: [8]u32 = undefined,
 
     out_hashes: std.BoundedArray(u8, MAX_BLOCK_SIZE) = .{},
     out_hashes_control: std.BoundedArray(u8, MAX_BLOCK_SIZE) = .{},
@@ -427,58 +428,30 @@ pub const BlockEncoder = struct {
         return .{};
     }
 
-    fn flushTempBuffers(self: *Self, block_size: usize) void {
-        if (self.temp_hashes.len == 0) return;
+    fn flushTempBuffers(self: *Self) void {
+        if (self.num_buffered_hashes == 0) {
+            return; // Nothing to flush
+        }
 
-        const old_block_size = BLOCK_HEADER_SIZE +
-            self.out_hashes.len + self.out_hashes_control.len +
-            self.out_counts.len + self.out_counts_control.len +
-            self.out_docids.len + self.out_docids_control.len;
-
-        std.debug.print("Old block size: {d}\n", .{old_block_size});
-
-        std.debug.print("Flushing temp buffers: hashes: {any}, counts: {any}\n", .{
-            self.temp_hashes.buffer[0..self.temp_hashes.len],
-            self.temp_counts.buffer[0..self.temp_counts.len],
-        });
-
-        // Try encoding to get actual sizes
-        const encoded_hash_size = streamvbyte.svbEncodeQuad1234(
-            self.temp_hashes.buffer[0..4].*,
+        // For the first set of 4, actually encode them
+        const buffered_hashes_size = streamvbyte.svbEncodeQuad1234(
+            self.buffered_hashes[0..4].*,
             self.out_hashes.unusedCapacitySlice(),
             &self.out_hashes_control.buffer[self.out_hashes_control.len],
         );
+        self.out_hashes.len += buffered_hashes_size;
+        self.out_hashes_control.len += 1;
 
-        const encoded_count_size = streamvbyte.svbEncodeQuad1234(
-            self.temp_counts.buffer[0..4].*,
+        const buffered_counts_size = streamvbyte.svbEncodeQuad1234(
+            self.buffered_counts[0..4].*,
             self.out_counts.unusedCapacitySlice(),
             &self.out_counts_control.buffer[self.out_counts_control.len],
         );
-
-        // Check if block has enough space with actual encoded sizes
-        const new_block_size = BLOCK_HEADER_SIZE +
-            self.out_hashes.len + encoded_hash_size + self.out_hashes_control.len + 1 +
-            self.out_counts.len + encoded_count_size + self.out_counts_control.len + 1 +
-            self.out_docids.len + self.out_docids_control.len;
-
-        if (new_block_size > block_size) {
-            std.debug.panic("Block size exceeded: {} > {}", .{ new_block_size, block_size });
-        }
-
-        std.debug.print("New block size after flushing: {d}\n", .{new_block_size});
-
-        // Commit the encoding by updating buffer lengths
-        self.out_hashes.len += encoded_hash_size;
-        self.out_hashes_control.len += 1;
-        self.out_counts.len += encoded_count_size;
+        self.out_counts.len += buffered_counts_size;
         self.out_counts_control.len += 1;
 
-        // Update header and state
-        self.out_header.num_unique_hashes += @intCast(self.temp_hashes.len);
-
-        // Clear temp buffers
-        self.temp_hashes.clear();
-        self.temp_counts.clear();
+        self.out_header.num_unique_hashes += @intCast(self.num_buffered_hashes);
+        self.num_buffered_hashes = 0;
     }
 
     pub fn encodeChunk(self: *Self, items: []const Item, min_doc_id: u32, block_size: usize, comptime full_chunk: bool) !void {
@@ -489,30 +462,29 @@ pub const BlockEncoder = struct {
             std.debug.assert(items.len == 4);
         }
 
-        var chunk_docids: [4]u32 = undefined;
+        var num_buffered_hashes = self.num_buffered_hashes;
+        var buffered_hashes: [8]u32 = self.buffered_hashes;
+        var buffered_counts: [8]u32 = self.buffered_counts;
+
+        var num_items = self.out_header.num_items;
+
+        var chunk_docids: [4]u32 = .{ 0, 0, 0, 0 };
 
         for (0..items.len) |i| {
             const current_hash = items[i].hash;
             const current_docid = items[i].id;
 
-            const is_new_hash = self.temp_hashes.len == 0 or current_hash != self.last_hash;
+            const is_new_hash = num_items == 0 or current_hash != self.last_hash;
 
             if (is_new_hash) {
                 // New unique hash found - store as delta
                 const delta = current_hash - self.last_hash;
-                std.debug.print("Encoding new hash: {d} (delta: {d})\n", .{ current_hash, delta });
-
-                if (self.temp_hashes.len < self.temp_hashes.buffer.len) {
-                    self.temp_hashes.appendAssumeCapacity(delta);
-                    self.temp_counts.appendAssumeCapacity(1);
-                } else {
-                    self.flushTempBuffers(block_size);
-                    self.temp_hashes.appendAssumeCapacity(delta);
-                    self.temp_counts.appendAssumeCapacity(1);
-                }
+                buffered_hashes[num_buffered_hashes] = delta;
+                buffered_counts[num_buffered_hashes] = 1;
+                num_buffered_hashes += 1;
             } else {
                 // Same hash as last - increment count for current unique hash
-                self.temp_counts.buffer[self.temp_counts.len - 1] += 1;
+                buffered_counts[num_buffered_hashes - 1] += 1;
             }
 
             if (!is_new_hash) {
@@ -525,9 +497,7 @@ pub const BlockEncoder = struct {
 
             self.last_hash = current_hash;
             self.last_docid = current_docid;
-        }
-        for (items.len..4) |i| {
-            chunk_docids[i] = 0;
+            num_items += 1;
         }
 
         const encoded_docid_size = streamvbyte.svbEncodeQuad1234(
@@ -539,28 +509,73 @@ pub const BlockEncoder = struct {
         const new_out_docids_len = self.out_docids.len + encoded_docid_size;
         const new_out_docids_control_len = self.out_docids_control.len + 1;
 
-        const temp_hash_size = streamvbyte.svbEncodeQuadSize1234(self.temp_hashes.buffer) + 1;
-        const temp_count_size = streamvbyte.svbEncodeQuadSize1234(self.temp_counts.buffer) + 1;
+        var new_out_hashes_len = self.out_hashes.len;
+        var new_out_hashes_control_len = self.out_hashes_control.len;
+
+        var new_out_counts_len = self.out_counts.len;
+        var new_out_counts_control_len = self.out_counts_control.len;
+
+        var buffered_hashes_size: usize = undefined;
+        var buffered_counts_size: usize = undefined;
+
+        if (num_buffered_hashes <= 4) {
+            // Just calculate size for the first 4 hashes/counts, as if they were encoded
+            buffered_hashes_size = streamvbyte.svbEncodeQuadSize1234(buffered_hashes[0..4].*) + 1;
+            buffered_counts_size = streamvbyte.svbEncodeQuadSize1234(buffered_counts[0..4].*) + 1;
+        } else {
+            // For the first set of 4, actually encode them
+            buffered_hashes_size = streamvbyte.svbEncodeQuad1234(
+                buffered_hashes[0..4].*,
+                self.out_hashes.unusedCapacitySlice(),
+                &self.out_hashes_control.buffer[self.out_hashes_control.len],
+            );
+            new_out_hashes_len = buffered_hashes_size;
+            new_out_hashes_control_len += 1;
+
+            buffered_counts_size = streamvbyte.svbEncodeQuad1234(
+                buffered_counts[0..4].*,
+                self.out_counts.unusedCapacitySlice(),
+                &self.out_counts_control.buffer[self.out_counts_control.len],
+            );
+            new_out_counts_len = buffered_counts_size;
+            new_out_counts_control_len += 1;
+
+            // For the second set of 4, calculate size as if they were encoded
+            buffered_hashes_size += streamvbyte.svbEncodeQuadSize1234(buffered_hashes[4..8].*) + 1;
+            buffered_counts_size += streamvbyte.svbEncodeQuadSize1234(buffered_counts[4..8].*) + 1;
+        }
 
         const new_block_size = BLOCK_HEADER_SIZE +
-            self.out_hashes.len + self.out_hashes_control.len + temp_hash_size +
-            self.out_counts.len + self.out_counts_control.len + temp_count_size +
+            self.out_hashes.len + self.out_hashes_control.len + buffered_hashes_size +
+            self.out_counts.len + self.out_counts_control.len + buffered_counts_size +
             new_out_docids_len + new_out_docids_control_len;
-
-        std.debug.print("New block size: {d} (hashes: {d}, counts: {d}, docids: {d})\n", .{
-            new_block_size,
-            self.out_hashes.len + self.out_hashes_control.len + temp_hash_size,
-            self.out_counts.len + self.out_counts_control.len + temp_count_size,
-            new_out_docids_len + new_out_docids_control_len,
-        });
 
         if (new_block_size > block_size) {
             return error.BlockFull;
         }
 
+        self.out_header.num_items = num_items;
+
+        self.out_hashes.len = new_out_hashes_len;
+        self.out_hashes_control.len = new_out_hashes_control_len;
+
+        self.out_counts.len = new_out_counts_len;
+        self.out_counts_control.len = new_out_counts_control_len;
+
         self.out_docids.len = new_out_docids_len;
         self.out_docids_control.len = new_out_docids_control_len;
-        self.out_header.num_items += if (full_chunk) 4 else @intCast(items.len);
+
+        // Update buffered hashes and counts
+        if (num_buffered_hashes <= 4) {
+            self.num_buffered_hashes = num_buffered_hashes;
+            @memcpy(self.buffered_hashes[0..4], buffered_hashes[0..4]);
+            @memcpy(self.buffered_counts[0..4], buffered_counts[0..4]);
+        } else {
+            self.out_header.num_unique_hashes += 4;
+            self.num_buffered_hashes = num_buffered_hashes - 4;
+            @memcpy(self.buffered_hashes[0..4], buffered_hashes[4..8]);
+            @memcpy(self.buffered_counts[0..4], buffered_counts[4..8]);
+        }
     }
 
     /// Encode items into a block and return the number of items consumed.
@@ -579,12 +594,15 @@ pub const BlockEncoder = struct {
 
         // Reset encoder state for this block
         self.out_header.num_items = 0;
-        self.last_docid = min_doc_id;
-        self.temp_hashes.clear();
-        self.temp_counts.clear();
-        @memset(&self.temp_hashes.buffer, 0);
-        @memset(&self.temp_counts.buffer, 0);
+        self.out_header.num_unique_hashes = 0;
+
         self.last_hash = first_hash;
+        self.last_docid = min_doc_id;
+
+        self.num_buffered_hashes = 0;
+        @memset(&self.buffered_hashes, 0);
+        @memset(&self.buffered_counts, 0);
+
         self.out_hashes.clear();
         self.out_hashes_control.clear();
         self.out_counts.clear();
@@ -616,11 +634,10 @@ pub const BlockEncoder = struct {
         }
 
         // Flush any remaining unique hashes in temp buffers
-        self.flushTempBuffers(block_size);
+        self.flushTempBuffers();
 
         // Write the block
         self.out_header.first_hash = first_hash;
-        // num_unique_hashes already updated by flushTempBuffers
         self.out_header.counts_offset = @intCast(self.out_hashes.len + self.out_hashes_control.len);
         self.out_header.docid_list_offset = @intCast(self.out_hashes.len + self.out_hashes_control.len + self.out_counts.len + self.out_counts_control.len);
 
