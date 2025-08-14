@@ -189,9 +189,10 @@ pub const BlockReader = struct {
             self.min_doc_id,
             range.start,
             range.end,
-            self.docids[range.start..range.end]
+            self.docids[0..] // Pass full array for proper SIMD padding
         );
-        return self.docids[range.start..range.start + num_decoded];
+        std.debug.assert(num_decoded == range.end - range.start);
+        return self.docids[range.start..range.end];
     }
 
     /// Convenience method: find hash and return corresponding docids
