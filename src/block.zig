@@ -8,12 +8,14 @@ const Item = @import("segment.zig").Item;
 // Each block has a fixed size and are written into a file, they need to be fixed size for easier indexing.
 //
 // Block format:
-//  - u16   num items
-//  - u16   docid list offset
 //  - u32   first hash
-//  - []u8  encoded hash list
-//  - []u8  padding
-//  - []u8  encoded docid list
+//  - u16   num unique hashes
+//  - u16   num items
+//  - u16   counts offset
+//  - u16   docid list offset
+//  - []u8  encoded unique hash deltas
+//  - []u8  encoded hash counts
+//  - []u8  encoded docid deltas
 
 // Block-related constants
 pub const MIN_BLOCK_SIZE = 64;
@@ -146,10 +148,7 @@ pub const BlockReader = struct {
             &self.hashes,
             .variant1234,
         );
-        std.debug.print("reading hashes from offset {any} {d} {d}\n", .{ self.block_data.?[offset..][0..5], offset, self.block_header.num_unique_hashes });
-        std.debug.print("raw hash deltas: {any}\n", .{self.hashes[0..self.block_header.num_unique_hashes]});
         streamvbyte.svbDeltaDecodeInPlace(self.hashes[0..self.block_header.num_unique_hashes], self.block_header.first_hash);
-        std.debug.print("decoded hashes: {any}\n", .{self.hashes[0..self.block_header.num_unique_hashes]});
         self.hashes_loaded = true;
     }
 
@@ -319,7 +318,6 @@ test "BlockReader basic functionality" {
     try testing.expectEqual(@as(u32, 100), reader.getFirstHash());
     try testing.expectEqual(false, reader.isEmpty());
 
-    std.debug.print("hashes: {any}\n", .{reader.getHashes()});
 
     // Test findHash
     const range100 = reader.findHash(100);
@@ -626,10 +624,7 @@ pub const BlockEncoder = struct {
         // Try to encode remaining items in partial chunk (max 3 items)
         if (items_ptr.len > 0) {
             self.encodeChunk(items_ptr, min_doc_id, block_size, false) catch |err| switch (err) {
-                error.BlockFull => {
-                    // Remaining items will be encoded in next block
-                    std.debug.print("Block full, flushing current data before writing final items\n", .{});
-                },
+                error.BlockFull => {}, // Remaining items will be encoded in next block
             };
         }
 
@@ -649,12 +644,6 @@ pub const BlockEncoder = struct {
         encodeBlockHeader(self.out_header, &header_bytes);
         try writer.writeAll(&header_bytes);
 
-        // Write data in order
-        std.debug.print("Writing hashes: ctrl={any}, data={any} at {any}\n", .{
-            self.out_hashes_control.buffer[0..self.out_hashes_control.len],
-            self.out_hashes.buffer[0..self.out_hashes.len],
-            try stream.getPos(),
-        });
         try writer.writeAll(self.out_hashes_control.slice());
         try writer.writeAll(self.out_hashes.slice());
         try writer.writeAll(self.out_counts_control.slice());
@@ -709,7 +698,7 @@ test "BlockEncoder basic functionality" {
     try testing.expectEqual(1, header.first_hash);
     try testing.expectEqual(5, header.num_items);
 
-    // Test with BlockReader (hybrid format)
+    // Test with BlockReader
     var reader = BlockReader.init(min_doc_id);
     reader.load(&block, false);
 
@@ -747,50 +736,6 @@ test "BlockEncoder basic functionality" {
     try testing.expectEqualSlices(u32, &[_]u32{500}, docids5);
 }
 
-fn decodeBlockHashes(header: BlockHeader, in: []const u8, out: []u32) void {
-    // Read StreamVByte-encoded deltas
-    const offset = BLOCK_HEADER_SIZE;
-    streamvbyte.decodeValues(
-        header.num_items,
-        0,
-        header.num_items,
-        in[offset..],
-        out,
-        .variant0124,
-    );
-
-    // Apply delta decoding - first item is absolute, rest are deltas
-    streamvbyte.svbDeltaDecodeInPlace(out[0..header.num_items], header.first_hash);
-}
-
-fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u8, min_doc_id: u32, out: []u32) void {
-    // Read StreamVByte-encoded docids
-    const offset = BLOCK_HEADER_SIZE + header.docid_list_offset;
-    streamvbyte.decodeValues(
-        header.num_items,
-        0,
-        header.num_items,
-        in[offset..],
-        out,
-        .variant1234,
-    );
-
-    // First item is always absolute, add min_doc_id back
-    if (header.num_items > 0) {
-        out[0] = out[0] + min_doc_id;
-    }
-
-    // Apply delta decoding for docids and add min_doc_id back to absolute values
-    for (1..header.num_items) |i| {
-        if (hashes[i] == hashes[i - 1]) {
-            // Same hash - this is a delta, just add to previous
-            out[i] = out[i] + out[i - 1];
-        } else {
-            // Different hash - this was an absolute value, add min_doc_id back
-            out[i] = out[i] + min_doc_id;
-        }
-    }
-}
 
 // Decode docids for a specific range within a block, for a single hash
 // ASSUMPTION: the range must start and end at a hash boundary and all items in the range have the same hash
