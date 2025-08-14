@@ -191,7 +191,6 @@ pub const BlockReader = struct {
         self.ensureHashesLoaded();
         return decodeBlockDocidsForSingleHash(
             self.block_header,
-            self.hashes[0..self.block_header.num_items],
             self.block_data.?,
             self.min_doc_id,
             range.start,
@@ -577,14 +576,9 @@ fn decodeBlockDocids(header: BlockHeader, hashes: []const u32, in: []const u8, m
 // Decode docids for a specific range within a block, for a single hash
 // ASSUMPTION: the range must start and end at a hash boundary and all items in the range have the same hash
 // This is guaranteed when called with ranges from findHash()
-fn decodeBlockDocidsForSingleHash(header: BlockHeader, hashes: []const u32, in: []const u8, min_doc_id: u32, start_idx: usize, end_idx: usize, out: []u32) []u32 {
-    // Debug assertion to verify our hash boundary assumption
-    std.debug.assert(start_idx == 0 or hashes[start_idx] != hashes[start_idx - 1]);
-    std.debug.assert(end_idx <= hashes.len);
-
+fn decodeBlockDocidsForSingleHash(header: BlockHeader, in: []const u8, min_doc_id: u32, start_idx: usize, end_idx: usize, out: []u32) []u32 {
+    // Read StreamVByte-encoded docids
     const offset = BLOCK_HEADER_SIZE + header.docid_list_offset;
-
-    // Decode the range directly into the output array
     _ = streamvbyte.decodeValues(
         header.num_items,
         start_idx,
@@ -594,7 +588,7 @@ fn decodeBlockDocidsForSingleHash(header: BlockHeader, hashes: []const u32, in: 
         .variant1234,
     );
 
-    // Delta decode the docids
+    // Apply delta decoding for docids and add min_doc_id back to absolute values
     streamvbyte.svbDeltaDecodeInPlace(out[start_idx..end_idx], min_doc_id);
 
     return out[start_idx..end_idx];
