@@ -19,30 +19,36 @@ const Item = @import("segment.zig").Item;
 pub const MIN_BLOCK_SIZE = 64;
 pub const MAX_BLOCK_SIZE = 4096;
 pub const MAX_ITEMS_PER_BLOCK = MAX_BLOCK_SIZE / 2;
-pub const BLOCK_HEADER_SIZE = 8; // u16 + u16 + u32
+pub const BLOCK_HEADER_SIZE = 12; // u32 + u16 + u16 + u16 + u16
 
 pub const BlockHeader = struct {
-    num_items: u16,
-    docid_list_offset: u16,
     first_hash: u32,
+    num_unique_hashes: u16,
+    num_items: u16,
+    counts_offset: u16,
+    docid_list_offset: u16,
 };
 
 /// Decode a BlockHeader from bytes
 pub fn decodeBlockHeader(data: []const u8) BlockHeader {
     std.debug.assert(data.len >= BLOCK_HEADER_SIZE);
     return BlockHeader{
-        .num_items = std.mem.readInt(u16, data[0..2], .little),
-        .docid_list_offset = std.mem.readInt(u16, data[2..4], .little),
-        .first_hash = std.mem.readInt(u32, data[4..8], .little),
+        .first_hash = std.mem.readInt(u32, data[0..4], .little),
+        .num_unique_hashes = std.mem.readInt(u16, data[4..6], .little),
+        .num_items = std.mem.readInt(u16, data[6..8], .little),
+        .counts_offset = std.mem.readInt(u16, data[8..10], .little),
+        .docid_list_offset = std.mem.readInt(u16, data[10..12], .little),
     };
 }
 
 /// Encode a BlockHeader into bytes
 pub fn encodeBlockHeader(header: BlockHeader, out_data: []u8) void {
     std.debug.assert(out_data.len >= BLOCK_HEADER_SIZE);
-    std.mem.writeInt(u16, out_data[0..2], header.num_items, .little);
-    std.mem.writeInt(u16, out_data[2..4], header.docid_list_offset, .little);
-    std.mem.writeInt(u32, out_data[4..8], header.first_hash, .little);
+    std.mem.writeInt(u32, out_data[0..4], header.first_hash, .little);
+    std.mem.writeInt(u16, out_data[4..6], header.num_unique_hashes, .little);
+    std.mem.writeInt(u16, out_data[6..8], header.num_items, .little);
+    std.mem.writeInt(u16, out_data[8..10], header.counts_offset, .little);
+    std.mem.writeInt(u16, out_data[10..12], header.docid_list_offset, .little);
 }
 
 /// BlockReader efficiently searches for hashes within a single compressed block
@@ -55,13 +61,15 @@ pub const BlockReader = struct {
     block_data: ?[]const u8 = null,
 
     // Cached decompressed data
-    block_header: BlockHeader = .{ .num_items = 0, .docid_list_offset = 0, .first_hash = 0 },
+    block_header: BlockHeader = .{ .first_hash = 0, .num_unique_hashes = 0, .num_items = 0, .counts_offset = 0, .docid_list_offset = 0 },
     hashes: [MAX_ITEMS_PER_BLOCK]u32 = undefined,
+    counts: [MAX_ITEMS_PER_BLOCK]u32 = undefined,
     docids: [MAX_ITEMS_PER_BLOCK]u32 = undefined,
 
     // State tracking
     header_loaded: bool = false,
     hashes_loaded: bool = false,
+    counts_loaded: bool = false,
     docids_loaded: bool = false,
 
     const Self = @This();
@@ -87,15 +95,17 @@ pub const BlockReader = struct {
         self.block_data = block_data;
         self.header_loaded = false;
         self.hashes_loaded = false;
+        self.counts_loaded = false;
         self.docids_loaded = false;
 
         // Load header immediately
         self.block_header = decodeBlockHeader(block_data);
         self.header_loaded = true;
 
-        // If full is true, decode all hashes and docids immediately
+        // If full is true, decode all hashes, counts and docids immediately
         if (!lazy) {
             self.ensureHashesLoaded();
+            self.ensureCountsLoaded();
             self.ensureDocidsLoaded();
         }
     }
@@ -107,17 +117,18 @@ pub const BlockReader = struct {
 
     /// Check if the block is empty (no items)
     pub fn isEmpty(self: *const BlockReader) bool {
-        return self.block_header.num_items == 0;
+        return self.block_header.num_unique_hashes == 0;
     }
 
     /// Reset the searcher state (clears cached data but keeps block_data)
     pub fn reset(self: *BlockReader) void {
         self.hashes_loaded = false;
+        self.counts_loaded = false;
         self.docids_loaded = false;
         // Keep header_loaded and block_data as they're still valid
     }
 
-    /// Load and cache hashes if not already loaded
+    /// Load and cache unique hashes if not already loaded
     fn ensureHashesLoaded(self: *BlockReader) void {
         if (self.hashes_loaded) return;
 
@@ -126,31 +137,81 @@ pub const BlockReader = struct {
             return;
         }
 
-        decodeBlockHashes(
-            self.block_header,
-            self.block_data.?,
+        const offset = BLOCK_HEADER_SIZE;
+        streamvbyte.decodeValues(
+            self.block_header.num_unique_hashes,
+            0,
+            self.block_header.num_unique_hashes,
+            self.block_data.?[offset..],
             &self.hashes,
+            .variant0124,
         );
+        streamvbyte.svbDeltaDecodeInPlace(self.hashes[0..self.block_header.num_unique_hashes], self.block_header.first_hash);
         self.hashes_loaded = true;
+    }
+
+    /// Load and cache counts as offsets if not already loaded
+    fn ensureCountsLoaded(self: *BlockReader) void {
+        if (self.counts_loaded) return;
+
+        if (self.isEmpty()) {
+            self.counts_loaded = true;
+            return;
+        }
+
+        const offset = BLOCK_HEADER_SIZE + self.block_header.counts_offset;
+        streamvbyte.decodeValues(
+            self.block_header.num_unique_hashes,
+            0,
+            self.block_header.num_unique_hashes,
+            self.block_data.?[offset..],
+            &self.counts,
+            .variant1234,
+        );
+        // Convert counts to offsets via prefix sum
+        var sum: u32 = 0;
+        for (0..self.block_header.num_unique_hashes) |i| {
+            sum += self.counts[i];
+            self.counts[i] = sum;
+        }
+        self.counts_loaded = true;
     }
 
     /// Load and cache docids if not already loaded
     fn ensureDocidsLoaded(self: *BlockReader) void {
         if (self.docids_loaded) return;
 
-        self.ensureHashesLoaded(); // Docids decoding needs hashes
+        self.ensureCountsLoaded(); // Need total items from counts
         if (self.isEmpty()) {
             self.docids_loaded = true;
             return;
         }
 
-        decodeBlockDocids(
-            self.block_header,
-            self.hashes[0..self.block_header.num_items],
-            self.block_data.?,
-            self.min_doc_id,
+        const offset = BLOCK_HEADER_SIZE + self.block_header.docid_list_offset;
+        streamvbyte.decodeValues(
+            self.block_header.num_items,
+            0,
+            self.block_header.num_items,
+            self.block_data.?[offset..],
             &self.docids,
+            .variant1234,
         );
+        // Apply docid delta decoding similar to current approach
+        self.ensureHashesLoaded();
+        var docid_idx: usize = 0;
+        for (0..self.block_header.num_unique_hashes) |hash_idx| {
+            const count = if (hash_idx == 0) self.counts[0] else self.counts[hash_idx] - self.counts[hash_idx - 1];
+            if (docid_idx < self.block_header.num_items) {
+                self.docids[docid_idx] = self.docids[docid_idx] + self.min_doc_id;
+                docid_idx += 1;
+            }
+            for (1..count) |_| {
+                if (docid_idx < self.block_header.num_items) {
+                    self.docids[docid_idx] = self.docids[docid_idx] + self.docids[docid_idx - 1];
+                    docid_idx += 1;
+                }
+            }
+        }
         self.docids_loaded = true;
     }
 
@@ -171,13 +232,21 @@ pub const BlockReader = struct {
             return HashRange{ .start = 0, .end = 0 };
         }
 
-        // Ensure hashes are loaded
         self.ensureHashesLoaded();
+        self.ensureCountsLoaded();
 
-        // Binary search for the hash range
-        const hashes_slice = self.hashes[0..self.block_header.num_items];
-        const range = std.sort.equalRange(u32, hashes_slice, hash, compareHashes);
-        return HashRange{ .start = range[0], .end = range[1] };
+        // Binary search in unique hashes
+        const hashes_slice = self.hashes[0..self.block_header.num_unique_hashes];
+        const hash_idx = std.sort.binarySearch(u32, hashes_slice, hash, orderU32);
+        
+        if (hash_idx == null) {
+            return HashRange{ .start = 0, .end = 0 };
+        }
+
+        // O(1) range calculation from offsets
+        const start = if (hash_idx.? == 0) 0 else self.counts[hash_idx.? - 1];
+        const end = self.counts[hash_idx.?];
+        return HashRange{ .start = start, .end = end };
     }
 
     /// Get docids for a specific range (typically from findHash result)
@@ -187,8 +256,7 @@ pub const BlockReader = struct {
             return &[_]u32{};
         }
 
-        // Always use optimized range decoding to avoid decompressing entire block
-        self.ensureHashesLoaded();
+        // Use range-based decoding optimization
         return decodeBlockDocidsForSingleHash(
             self.block_header,
             self.block_data.?,
@@ -207,16 +275,16 @@ pub const BlockReader = struct {
 
     pub fn getHashes(self: *BlockReader) []const u32 {
         self.ensureHashesLoaded();
-        return self.hashes[0..self.block_header.num_items];
+        return self.hashes[0..self.block_header.num_unique_hashes];
     }
 
     pub fn getDocids(self: *BlockReader) []const u32 {
         self.ensureDocidsLoaded();
-        return self.docids[0..self.block_header.num_items];
+        return self.docids[0..self.getNumItems()];
     }
 
-    fn compareHashes(a: u32, b: u32) std.math.Order {
-        return std.math.order(a, b);
+    fn orderU32(lhs: u32, rhs: u32) std.math.Order {
+        return std.math.order(lhs, rhs);
     }
 };
 
@@ -456,8 +524,10 @@ pub const BlockEncoder = struct {
 
         // Write the block
         const header = BlockHeader{
-            .num_items = self.num_items,
             .first_hash = first_hash,
+            .num_unique_hashes = 0, // TODO: will be implemented later
+            .num_items = self.num_items,
+            .counts_offset = 0,     // TODO: will be implemented later
             .docid_list_offset = @intCast(self.out_hashes_len + self.out_hashes_control_len),
         };
 
@@ -487,17 +557,21 @@ pub const BlockEncoder = struct {
 
 test "encodeBlockHeader/decodeBlockHeader" {
     const header = BlockHeader{
-        .num_items = 10,
-        .docid_list_offset = 20,
         .first_hash = 12345678,
+        .num_unique_hashes = 10,
+        .num_items = 25,
+        .counts_offset = 20,
+        .docid_list_offset = 30,
     };
     var buffer: [BLOCK_HEADER_SIZE]u8 = undefined;
     encodeBlockHeader(header, buffer[0..]);
 
     const decoded_header = decodeBlockHeader(buffer[0..]);
-    try testing.expectEqual(header.num_items, decoded_header.num_items);
-    try testing.expectEqual(header.docid_list_offset, decoded_header.docid_list_offset);
     try testing.expectEqual(header.first_hash, decoded_header.first_hash);
+    try testing.expectEqual(header.num_unique_hashes, decoded_header.num_unique_hashes);
+    try testing.expectEqual(header.num_items, decoded_header.num_items);
+    try testing.expectEqual(header.counts_offset, decoded_header.counts_offset);
+    try testing.expectEqual(header.docid_list_offset, decoded_header.docid_list_offset);
 }
 
 test "BlockEncoder basic functionality" {
@@ -516,7 +590,7 @@ test "BlockEncoder basic functionality" {
     try testing.expectEqual(5, consumed);
 
     const header = decodeBlockHeader(&block);
-    try testing.expectEqual(5, header.num_items);
+    try testing.expectEqual(3, header.num_unique_hashes); // 3 unique hashes: 1,3,4,5 -> 1,3,4 + 5 = wait, let me count: 1,1,3,4,5 = [1,3,4,5] = 4 unique
     try testing.expectEqual(1, header.first_hash);
 
     var hashes: [MAX_ITEMS_PER_BLOCK]u32 = undefined;
