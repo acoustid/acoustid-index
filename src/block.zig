@@ -524,30 +524,30 @@ pub const BlockEncoder = struct {
             buffered_counts_size = streamvbyte.svbEncodeQuadSize1234(buffered_counts[0..4].*) + 1;
         } else {
             // For the first set of 4, actually encode them
-            buffered_hashes_size = streamvbyte.svbEncodeQuad1234(
+            const encoded_hashes_size = streamvbyte.svbEncodeQuad1234(
                 buffered_hashes[0..4].*,
                 self.out_hashes.unusedCapacitySlice(),
                 &self.out_hashes_control.buffer[self.out_hashes_control.len],
             );
-            new_out_hashes_len = buffered_hashes_size;
+            new_out_hashes_len += encoded_hashes_size;
             new_out_hashes_control_len += 1;
 
-            buffered_counts_size = streamvbyte.svbEncodeQuad1234(
+            const encoded_counts_size = streamvbyte.svbEncodeQuad1234(
                 buffered_counts[0..4].*,
                 self.out_counts.unusedCapacitySlice(),
                 &self.out_counts_control.buffer[self.out_counts_control.len],
             );
-            new_out_counts_len = buffered_counts_size;
+            new_out_counts_len += encoded_counts_size;
             new_out_counts_control_len += 1;
 
             // For the second set of 4, calculate size as if they were encoded
-            buffered_hashes_size += streamvbyte.svbEncodeQuadSize1234(buffered_hashes[4..8].*) + 1;
-            buffered_counts_size += streamvbyte.svbEncodeQuadSize1234(buffered_counts[4..8].*) + 1;
+            buffered_hashes_size = streamvbyte.svbEncodeQuadSize1234(buffered_hashes[4..8].*) + 1;
+            buffered_counts_size = streamvbyte.svbEncodeQuadSize1234(buffered_counts[4..8].*) + 1;
         }
 
         const new_block_size = BLOCK_HEADER_SIZE +
-            self.out_hashes.len + self.out_hashes_control.len + buffered_hashes_size +
-            self.out_counts.len + self.out_counts_control.len + buffered_counts_size +
+            new_out_hashes_len + new_out_hashes_control_len + buffered_hashes_size +
+            new_out_counts_len + new_out_counts_control_len + buffered_counts_size +
             new_out_docids_len + new_out_docids_control_len;
 
         if (new_block_size > block_size) {
