@@ -24,7 +24,7 @@ pub const MAX_ITEMS_PER_BLOCK = MAX_BLOCK_SIZE / 2;
 pub const BLOCK_HEADER_SIZE = 12; // u32 + u16 + u16 + u16 + u16
 
 pub const BlockHeader = struct {
-    first_hash: u32,
+    min_hash: u32,
     num_hashes: u16,
     num_items: u16,
     counts_offset: u16,
@@ -35,7 +35,7 @@ pub const BlockHeader = struct {
 pub fn decodeBlockHeader(data: []const u8) BlockHeader {
     std.debug.assert(data.len >= BLOCK_HEADER_SIZE);
     return BlockHeader{
-        .first_hash = std.mem.readInt(u32, data[0..4], .little),
+        .min_hash = std.mem.readInt(u32, data[0..4], .little),
         .num_hashes = std.mem.readInt(u16, data[4..6], .little),
         .num_items = std.mem.readInt(u16, data[6..8], .little),
         .counts_offset = std.mem.readInt(u16, data[8..10], .little),
@@ -46,7 +46,7 @@ pub fn decodeBlockHeader(data: []const u8) BlockHeader {
 /// Encode a BlockHeader into bytes
 pub fn encodeBlockHeader(header: BlockHeader, out_data: []u8) void {
     std.debug.assert(out_data.len >= BLOCK_HEADER_SIZE);
-    std.mem.writeInt(u32, out_data[0..4], header.first_hash, .little);
+    std.mem.writeInt(u32, out_data[0..4], header.min_hash, .little);
     std.mem.writeInt(u16, out_data[4..6], header.num_hashes, .little);
     std.mem.writeInt(u16, out_data[6..8], header.num_items, .little);
     std.mem.writeInt(u16, out_data[8..10], header.counts_offset, .little);
@@ -63,7 +63,13 @@ pub const BlockReader = struct {
     block_data: ?[]const u8 = null,
 
     // Cached decompressed data
-    block_header: BlockHeader = .{ .first_hash = 0, .num_hashes = 0, .num_items = 0, .counts_offset = 0, .docids_offset = 0 },
+    block_header: BlockHeader = .{
+        .min_hash = 0,
+        .num_hashes = 0,
+        .num_items = 0,
+        .counts_offset = 0,
+        .docids_offset = 0,
+    },
     hashes: [MAX_ITEMS_PER_BLOCK]u32 = undefined,
     counts: [MAX_ITEMS_PER_BLOCK]u32 = undefined,
     docids: [MAX_ITEMS_PER_BLOCK]u32 = undefined,
@@ -145,7 +151,7 @@ pub const BlockReader = struct {
             &self.hashes,
             .variant1234,
         );
-        streamvbyte.svbDeltaDecodeInPlace(self.hashes[0..self.block_header.num_hashes], self.block_header.first_hash);
+        streamvbyte.svbDeltaDecodeInPlace(self.hashes[0..self.block_header.num_hashes], self.block_header.min_hash);
         self.hashes_loaded = true;
     }
 
@@ -205,7 +211,7 @@ pub const BlockReader = struct {
 
     /// Get the range of the first hash in this block (for block-level filtering)
     pub fn getFirstHash(self: *BlockReader) u32 {
-        return self.block_header.first_hash;
+        return self.block_header.min_hash;
     }
 
     /// Get the number of items in this block
@@ -301,16 +307,16 @@ pub const BlockReader = struct {
         // The docids array is already properly decoded and ordered by ensureDocidsLoaded()
         for (0..self.block_header.num_hashes) |hash_idx| {
             const hash = self.hashes[hash_idx];
-            const count = if (hash_idx == 0) 
-                self.counts[0] 
-            else 
+            const count = if (hash_idx == 0)
+                self.counts[0]
+            else
                 self.counts[hash_idx] - self.counts[hash_idx - 1];
 
             // Create (hash, docid) pairs for this unique hash
             for (0..count) |_| {
                 output[item_idx] = Item{
                     .hash = hash,
-                    .id = self.docids[item_idx],  // Use item_idx directly since docids are in order
+                    .id = self.docids[item_idx], // Use item_idx directly since docids are in order
                 };
                 item_idx += 1;
             }
@@ -434,7 +440,13 @@ pub const BlockEncoder = struct {
     last_hash: u32 = 0,
     last_docid: u32 = 0,
 
-    out_header: BlockHeader = .{ .first_hash = 0, .num_hashes = 0, .num_items = 0, .counts_offset = 0, .docids_offset = 0 },
+    out_header: BlockHeader = .{
+        .min_hash = 0,
+        .num_hashes = 0,
+        .num_items = 0,
+        .counts_offset = 0,
+        .docids_offset = 0,
+    },
 
     // Unique hash buffering strategy:
     // Why 8 elements instead of encoding immediately at 4?
@@ -445,8 +457,8 @@ pub const BlockEncoder = struct {
     //   5. When >4: encode first 4 hashes to output, keep remaining 4 for next batch
     // Worst case: 4 existing hashes + 4 new hashes from current chunk = 8 total
     num_buffered_hashes: usize = 0,
-    buffered_hashes: [8]u32 = undefined,   // Delta-encoded hash values
-    buffered_counts: [8]u32 = undefined,   // Count of items per unique hash
+    buffered_hashes: [8]u32 = undefined, // Delta-encoded hash values
+    buffered_counts: [8]u32 = undefined, // Count of items per unique hash
 
     out_hashes: std.BoundedArray(u8, MAX_BLOCK_SIZE) = .{},
     out_hashes_control: std.BoundedArray(u8, MAX_BLOCK_SIZE) = .{},
@@ -518,7 +530,7 @@ pub const BlockEncoder = struct {
                 // After first item, hashes must be non-decreasing (sorted)
                 std.debug.assert(current_hash >= self.last_hash);
             }
-            
+
             if (is_new_hash) {
                 // New unique hash found - store as delta
                 const delta = current_hash - self.last_hash;
@@ -624,9 +636,9 @@ pub const BlockEncoder = struct {
             @memcpy(self.buffered_counts[0..4], buffered_counts[0..4]);
         } else {
             // Buffer overflowed - first 4 were encoded, shift remaining 4 to front
-            self.out_header.num_hashes += 4;  // Account for the 4 hashes we just encoded
-            self.num_buffered_hashes = num_buffered_hashes - 4;  // Remaining buffered count
-            @memcpy(self.buffered_hashes[0..4], buffered_hashes[4..8]);  // Shift elements 4-7 to 0-3
+            self.out_header.num_hashes += 4; // Account for the 4 hashes we just encoded
+            self.num_buffered_hashes = num_buffered_hashes - 4; // Remaining buffered count
+            @memcpy(self.buffered_hashes[0..4], buffered_hashes[4..8]); // Shift elements 4-7 to 0-3
             @memcpy(self.buffered_counts[0..4], buffered_counts[4..8]);
         }
     }
@@ -687,7 +699,7 @@ pub const BlockEncoder = struct {
         self.flushTempBuffers();
 
         // Write the block
-        self.out_header.first_hash = first_hash;
+        self.out_header.min_hash = first_hash;
         self.out_header.counts_offset = @intCast(self.out_hashes.len + self.out_hashes_control.len);
         self.out_header.docids_offset = @intCast(self.out_hashes.len + self.out_hashes_control.len + self.out_counts.len + self.out_counts_control.len);
 
@@ -716,7 +728,7 @@ pub const BlockEncoder = struct {
 
 test "encodeBlockHeader/decodeBlockHeader" {
     const header = BlockHeader{
-        .first_hash = 12345678,
+        .min_hash = 12345678,
         .num_hashes = 10,
         .num_items = 25,
         .counts_offset = 20,
@@ -726,7 +738,7 @@ test "encodeBlockHeader/decodeBlockHeader" {
     encodeBlockHeader(header, buffer[0..]);
 
     const decoded_header = decodeBlockHeader(buffer[0..]);
-    try testing.expectEqual(header.first_hash, decoded_header.first_hash);
+    try testing.expectEqual(header.min_hash, decoded_header.min_hash);
     try testing.expectEqual(header.num_hashes, decoded_header.num_hashes);
     try testing.expectEqual(header.num_items, decoded_header.num_items);
     try testing.expectEqual(header.counts_offset, decoded_header.counts_offset);
@@ -750,7 +762,7 @@ test "BlockEncoder with mixed hashes and docids" {
 
     const header = decodeBlockHeader(&block);
     try testing.expectEqual(4, header.num_hashes); // Unique hashes: [1,3,4,5] = 4 unique
-    try testing.expectEqual(1, header.first_hash);
+    try testing.expectEqual(1, header.min_hash);
     try testing.expectEqual(5, header.num_items);
 
     // Test with BlockReader
@@ -796,9 +808,9 @@ test "BlockEncoder with duplicate hashes" {
 
     // Test case: multiple items with the same hash to verify correct encoding
     const items: []const Item = &.{
-        .{ .hash = 100, .id = 1 },  // First item should be encoded as (1 - 1) = 0
-        .{ .hash = 100, .id = 2 },  // Same hash, should be encoded as (2 - 1) = 1  
-        .{ .hash = 100, .id = 3 },  // Same hash, should be encoded as (3 - 2) = 1
+        .{ .hash = 100, .id = 1 }, // First item should be encoded as (1 - 1) = 0
+        .{ .hash = 100, .id = 2 }, // Same hash, should be encoded as (2 - 1) = 1
+        .{ .hash = 100, .id = 3 }, // Same hash, should be encoded as (3 - 2) = 1
     };
 
     const min_doc_id: u32 = 1;
@@ -809,7 +821,7 @@ test "BlockEncoder with duplicate hashes" {
     // Verify that the encoding produced the correct header
     const header = decodeBlockHeader(&block);
     try testing.expectEqual(@as(u16, 1), header.num_hashes); // Only 1 unique hash
-    try testing.expectEqual(@as(u32, 100), header.first_hash);
+    try testing.expectEqual(@as(u32, 100), header.min_hash);
     try testing.expectEqual(@as(u16, 3), header.num_items);
 
     // Test that decoding produces the original docids
@@ -825,7 +837,7 @@ test "BlockEncoder with duplicate hashes" {
     var items_output: [3]Item = undefined;
     const num_items = reader.getItems(&items_output);
     try testing.expectEqual(@as(usize, 3), num_items);
-    
+
     // All items should have hash 100 and docids 1, 2, 3
     for (items_output, 0..) |item, i| {
         try testing.expectEqual(@as(u32, 100), item.hash);
@@ -856,8 +868,8 @@ test "BlockEncoder reuse across multiple blocks" {
     // Second block: more items with hash=100 (same hash as previous block)
     // This tests that encoder properly handles state across multiple blocks
     const items2: []const Item = &.{
-        .{ .hash = 100, .id = 3 },  // This should be encoded as (3 - 1) = 2, but...
-        .{ .hash = 100, .id = 4 },  // This should be encoded as (4 - 3) = 1
+        .{ .hash = 100, .id = 3 }, // This should be encoded as (3 - 1) = 2, but...
+        .{ .hash = 100, .id = 4 }, // This should be encoded as (4 - 3) = 1
     };
 
     var block2: [256]u8 = undefined;
@@ -868,7 +880,7 @@ test "BlockEncoder reuse across multiple blocks" {
     var reader2 = BlockReader.init(min_doc_id);
     reader2.load(&block2, false);
     const docids2 = reader2.searchHash(100);
-    
+
     // Should correctly encode and decode the second block
     try testing.expectEqualSlices(u32, &[_]u32{ 3, 4 }, docids2);
 }

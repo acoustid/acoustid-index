@@ -313,7 +313,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
         if (block_header.num_hashes == 0) {
             break;
         }
-        segment.index.appendAssumeCapacity(block_header.first_hash);
+        segment.index.appendAssumeCapacity(block_header.min_hash);
         num_items += block_header.num_items;
         num_blocks += 1;
         crc.update(block_data);
