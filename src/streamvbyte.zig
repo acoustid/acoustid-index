@@ -269,19 +269,6 @@ pub fn svbDeltaDecodeInPlace(data: []u32, first_value: u32) void {
     }
 }
 
-fn shiftLeft(x: Vu32x4, comptime shift: u8) Vu32x4 {
-    // This is equivalent to _mm_slli_si128(vec, x*4) - shift left by x*4 bytes
-    // Negative indices select from the first vector (zeros), positive from the second (vec)
-    const zeroes: Vu32x4 = @splat(0);
-    const indexes = switch (shift) {
-        1 => [4]i32{ 0, -1, -2, -3 },
-        2 => [4]i32{ 0, 1, -1, -2 },
-        3 => [4]i32{ 0, 1, 2, -1 },
-        else => unreachable,
-    };
-    return @shuffle(u32, zeroes, x, indexes);
-}
-
 // SIMD-accelerated delta decode using SSE4.1 intrinsics
 fn svbDeltaDecodeInPlaceSSE41(data: []u32, first_value: u32) void {
     if (data.len == 0) return;
@@ -299,9 +286,9 @@ fn svbDeltaDecodeInPlaceSSE41(data: []u32, first_value: u32) void {
 
         // Compute prefix sum within the vector FIRST: [a, b, c, d] -> [a, a+b, a+b+c, a+b+c+d]
         // Step 1: [a, b, c, d] + [0, a, b, c] = [a, a+b, b+c, c+d]
-        vec += shiftLeft(vec, 1);
+        vec += std.simd.shiftElementsRight(vec, 1, 0);
         // Step 2: [a, a+b, b+c, c+d] + [0, 0, a, a+b] = [a, a+b, a+b+c, a+b+c+d]
-        vec += shiftLeft(vec, 2);
+        vec += std.simd.shiftElementsRight(vec, 2, 0);
 
         // THEN add carry to all elements: [a, a+b, a+b+c, a+b+c+d] + [carry, carry, carry, carry]
         const carry_vec: Vu32x4 = @splat(carry);
@@ -485,21 +472,6 @@ test "shuffle" {
     try std.testing.expectEqual(expected, result);
 }
 
-test "shiftLeft" {
-    const vec: Vu32x4 = .{ 1, 2, 3, 4 };
-    const shifted1 = shiftLeft(vec, 1);
-    const expected1: Vu32x4 = .{ 0, 1, 2, 3 };
-    try std.testing.expectEqual(expected1, shifted1);
-
-    const shifted2 = shiftLeft(vec, 2);
-    const expected2: Vu32x4 = .{ 0, 0, 1, 2 };
-    try std.testing.expectEqual(expected2, shifted2);
-
-    const shifted3 = shiftLeft(vec, 3);
-    const expected3: Vu32x4 = .{ 0, 0, 0, 1 };
-    try std.testing.expectEqual(expected3, shifted3);
-}
-
 test "svbDecodeQuad0124 SIMD" {
     // Test simple case: [1, 2, 0, 4] with control byte
     // 1 (1 byte), 2 (1 byte), 0 (0 bytes), 4 (1 byte)
@@ -655,7 +627,7 @@ test "svbEncodeQuad0124 various sizes" {
 
     try std.testing.expectEqual(@as(usize, 7), bytes_written); // 0 + 1 + 2 + 4
     try std.testing.expectEqual(@as(u8, 0b11_10_01_00), control_byte);
-    
+
     // Check data bytes
     try std.testing.expectEqual(@as(u8, 255), output_data[0]);
     try std.testing.expectEqual(@as(u16, 65535), std.mem.readInt(u16, output_data[1..3], .little));
@@ -692,7 +664,7 @@ test "svbEncodeQuad1234 various sizes" {
 
     try std.testing.expectEqual(@as(usize, 10), bytes_written); // 1 + 2 + 3 + 4
     try std.testing.expectEqual(@as(u8, 0b11_10_01_00), control_byte);
-    
+
     // Check data bytes
     try std.testing.expectEqual(@as(u8, 255), output_data[0]);
     try std.testing.expectEqual(@as(u16, 65535), std.mem.readInt(u16, output_data[1..3], .little));
