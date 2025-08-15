@@ -106,30 +106,24 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
         .block_reader = BlockReader.init(self.min_doc_id),
     }} ** MAX_BLOCKS_PER_HASH;
 
-    // Let's say we have blocks like this:
-    //
-    // |4.......|6.......|9.......|
-    //
-    // We want to find hash=2, lowerBound returns block=0 (4), so we start at that block.
-    // We want to find hash=6, lowerBound returns block=1 (6), but block=0 could still contain hash=6, so we go one back.
-    // We want to find hash=7, lowerBound returns block=2 (9), but block=1 could still contain hash=6, so we go one back.
-    // We want to find hash=10, lowerBound returns block=3 (EOF), but block=2 could still contain hash=6, so we go one back.
-
     for (sorted_hashes, 1..) |hash, i| {
-        var block_no = std.sort.lowerBound(u32, self.index.items[prev_block_range_start..], hash, compareHashes) + prev_block_range_start;
-        if (block_no > 0) {
-            block_no -= 1;
-        }
+        // Find first block where max_hash >= hash
+        var block_no = prev_block_range_start + std.sort.lowerBound(
+            u32,
+            self.index.items[prev_block_range_start..],
+            hash,
+            compareHashes,
+        );
         prev_block_range_start = block_no;
 
         var num_docs: usize = 0;
         var num_blocks: u64 = 0;
-        
-        while (block_no < self.index.items.len and self.index.items[block_no] <= hash) : (block_no += 1) {
-            // Use block_no % MAX_BLOCKS_PER_HASH as cache key
+
+        // Scan forward while blocks could contain the hash
+        while (block_no < self.index.items.len) : (block_no += 1) {
             const cache_key = block_no % MAX_BLOCKS_PER_HASH;
             var block_reader: *BlockReader = undefined;
-            
+
             if (block_cache[cache_key].block_no == block_no) {
                 // Cache hit - reuse existing block_reader
                 block_reader = &block_cache[cache_key].block_reader;
@@ -140,9 +134,10 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
                 self.loadBlockData(block_no, block_reader, true);
             }
 
-            // Quick check if this block could contain the hash
-            if (!block_reader.couldContainHash(hash)) {
-                continue;
+            if (block_reader.getMinHash() > hash) {
+                // If min_hash > hash, all subsequent blocks will also have min_hash > hash
+                // since blocks are sorted by max_hash, so we can exit early
+                break;
             }
 
             // Search for hash matches and get docids
@@ -151,8 +146,9 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
                 try results.incr(docid, self.info.version);
             }
 
-            num_docs += matched_docids.len;
             num_blocks += 1;
+            num_docs += matched_docids.len;
+
             if (num_blocks >= MAX_BLOCKS_PER_HASH) {
                 break; // Limit the number of scanned blocks per hash
             }
@@ -222,7 +218,7 @@ test "build and reader with duplicate hashes" {
 
     source.info = .{ .version = 1 };
     source.status.frozen = true;
-    
+
     // Create data where the same hash appears multiple times (multiple documents with same hash)
     // This creates a scenario where num_hashes < num_items in the hybrid format
     // Use proper Change API to add fingerprints
@@ -231,7 +227,7 @@ test "build and reader with duplicate hashes" {
         .{ .insert = .{ .id = 2, .hashes = &[_]u32{100} } },
         .{ .insert = .{ .id = 3, .hashes = &[_]u32{100} } },
     };
-    
+
     try source.build(&changes);
 
     var source_reader = source.reader();
@@ -250,22 +246,22 @@ test "build and reader with duplicate hashes" {
     // Collect all items from the FileSegment reader
     var file_reader = segment.reader();
     defer file_reader.close();
-    
+
     var actual_items = std.ArrayList(Item).init(std.testing.allocator);
     defer actual_items.deinit();
-    
+
     while (try file_reader.read()) |item| {
         try actual_items.append(item);
         file_reader.advance();
     }
-    
+
     // Expected items (same as what we inserted)
     const expected_items = [_]Item{
         .{ .hash = 100, .id = 1 },
         .{ .hash = 100, .id = 2 },
         .{ .hash = 100, .id = 3 },
     };
-    
+
     // Compare the slices directly
     try std.testing.expectEqualSlices(Item, &expected_items, actual_items.items);
 }

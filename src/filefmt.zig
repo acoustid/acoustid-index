@@ -313,7 +313,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
         if (block_header.num_hashes == 0) {
             break;
         }
-        segment.index.appendAssumeCapacity(block_header.min_hash);
+        segment.index.appendAssumeCapacity(block_header.max_hash);
         num_items += block_header.num_items;
         num_blocks += 1;
         crc.update(block_data);
@@ -375,7 +375,7 @@ test "writeFile/readFile" {
         try testing.expectEqualDeep(info, segment.info);
         try testing.expectEqual(1, segment.docs.count());
         try testing.expectEqual(1, segment.index.items.len);
-        try testing.expectEqual(1, segment.index.items[0]);
+        try testing.expectEqual(2, segment.index.items[0]); // max_hash of the block
 
         var block_reader = BlockReader.init(segment.min_doc_id);
         segment.loadBlockData(0, &block_reader, false);
