@@ -8,7 +8,8 @@ const Item = @import("segment.zig").Item;
 // Each block has a fixed size and are written into a file, they need to be fixed size for easier indexing.
 //
 // Block format:
-//  - u32   first hash
+//  - u32   min_hash
+//  - u32   max_hash
 //  - u16   num unique hashes
 //  - u16   num items
 //  - u16   counts offset
@@ -213,9 +214,14 @@ pub const BlockReader = struct {
         self.docids_loaded = true;
     }
 
-    /// Get the range of the first hash in this block (for block-level filtering)
-    pub fn getFirstHash(self: *BlockReader) u32 {
+    /// Get the minimum hash in this block (for block-level filtering)
+    pub fn getMinHash(self: *BlockReader) u32 {
         return self.block_header.min_hash;
+    }
+
+    /// Get the maximum hash in this block (for block-level filtering)
+    pub fn getMaxHash(self: *BlockReader) u32 {
+        return self.block_header.max_hash;
     }
 
     /// Get the number of items in this block
@@ -364,7 +370,8 @@ test "BlockReader basic functionality" {
 
     // Test basic properties
     try testing.expectEqual(@as(u16, 4), reader.getNumItems());
-    try testing.expectEqual(@as(u32, 100), reader.getFirstHash());
+    try testing.expectEqual(@as(u32, 100), reader.getMinHash());
+    try testing.expectEqual(@as(u32, 300), reader.getMaxHash());
     try testing.expectEqual(false, reader.isEmpty());
 
     // Test findHash
@@ -787,7 +794,8 @@ test "BlockEncoder with mixed hashes and docids" {
     reader.load(&block, false);
 
     try testing.expectEqual(@as(u16, 5), reader.getNumItems());
-    try testing.expectEqual(@as(u32, 1), reader.getFirstHash());
+    try testing.expectEqual(@as(u32, 1), reader.getMinHash());
+    try testing.expectEqual(@as(u32, 5), reader.getMaxHash());
 
     // Test hash ranges
     const range1 = reader.findHash(1);
@@ -846,8 +854,6 @@ test "BlockEncoder with duplicate hashes" {
     var reader = BlockReader.init(min_doc_id);
     reader.load(&block, false);
 
-    // This should return the original docids: [1, 2, 3]
-    // But due to the bug, it will return [2, 3, 4]
     const docids = reader.searchHash(100);
     try testing.expectEqualSlices(u32, &[_]u32{ 1, 2, 3 }, docids);
 
