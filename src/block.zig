@@ -8,7 +8,8 @@ const Item = @import("segment.zig").Item;
 // Each block has a fixed size and are written into a file, they need to be fixed size for easier indexing.
 //
 // Block format:
-//  - u32   last hash
+//  - u32   min hash (first hash in block)
+//  - u32   max hash (last hash in block)
 //  - u16   num unique hashes
 //  - u16   num items
 //  - u16   counts offset
@@ -21,21 +22,24 @@ const Item = @import("segment.zig").Item;
 pub const MIN_BLOCK_SIZE = 64;
 pub const MAX_BLOCK_SIZE = 4096;
 pub const MAX_ITEMS_PER_BLOCK = MAX_BLOCK_SIZE / 2;
-pub const BLOCK_HEADER_SIZE = 12; // u32 + u16 + u16 + u16 + u16
+pub const BLOCK_HEADER_SIZE = 16; // u32 + u32 + u16 + u16 + u16 + u16
 
 pub const BlockHeader = struct {
-    last_hash: u32,
+    min_hash: u32,
+    max_hash: u32,
     num_hashes: u16,
     num_items: u16,
     counts_offset: u16,
     docids_offset: u16,
 };
 
-/// Decode a BlockHeader from bytes
-pub fn decodeBlockHeader(data: []const u8) BlockHeader {
-    std.debug.assert(data.len >= BLOCK_HEADER_SIZE);
+/// Decode a BlockHeader from bytes (v1 format - first hash only)
+pub fn decodeBlockHeaderV1(data: []const u8) BlockHeader {
+    std.debug.assert(data.len >= 12); // v1 header size
+    const first_hash = std.mem.readInt(u32, data[0..4], .little);
     return BlockHeader{
-        .last_hash = std.mem.readInt(u32, data[0..4], .little),
+        .min_hash = first_hash,  // v1 stores first hash, use as min_hash
+        .max_hash = first_hash,  // will be calculated from decompressed data when needed
         .num_hashes = std.mem.readInt(u16, data[4..6], .little),
         .num_items = std.mem.readInt(u16, data[6..8], .little),
         .counts_offset = std.mem.readInt(u16, data[8..10], .little),
@@ -43,14 +47,28 @@ pub fn decodeBlockHeader(data: []const u8) BlockHeader {
     };
 }
 
+/// Decode a BlockHeader from bytes (v2 format with min_hash and max_hash)
+pub fn decodeBlockHeader(data: []const u8) BlockHeader {
+    std.debug.assert(data.len >= BLOCK_HEADER_SIZE);
+    return BlockHeader{
+        .min_hash = std.mem.readInt(u32, data[0..4], .little),
+        .max_hash = std.mem.readInt(u32, data[4..8], .little),
+        .num_hashes = std.mem.readInt(u16, data[8..10], .little),
+        .num_items = std.mem.readInt(u16, data[10..12], .little),
+        .counts_offset = std.mem.readInt(u16, data[12..14], .little),
+        .docids_offset = std.mem.readInt(u16, data[14..16], .little),
+    };
+}
+
 /// Encode a BlockHeader into bytes
 pub fn encodeBlockHeader(header: BlockHeader, out_data: []u8) void {
     std.debug.assert(out_data.len >= BLOCK_HEADER_SIZE);
-    std.mem.writeInt(u32, out_data[0..4], header.last_hash, .little);
-    std.mem.writeInt(u16, out_data[4..6], header.num_hashes, .little);
-    std.mem.writeInt(u16, out_data[6..8], header.num_items, .little);
-    std.mem.writeInt(u16, out_data[8..10], header.counts_offset, .little);
-    std.mem.writeInt(u16, out_data[10..12], header.docids_offset, .little);
+    std.mem.writeInt(u32, out_data[0..4], header.min_hash, .little);
+    std.mem.writeInt(u32, out_data[4..8], header.max_hash, .little);
+    std.mem.writeInt(u16, out_data[8..10], header.num_hashes, .little);
+    std.mem.writeInt(u16, out_data[10..12], header.num_items, .little);
+    std.mem.writeInt(u16, out_data[12..14], header.counts_offset, .little);
+    std.mem.writeInt(u16, out_data[14..16], header.docids_offset, .little);
 }
 
 /// BlockReader efficiently searches for hashes within a single compressed block
@@ -58,12 +76,13 @@ pub fn encodeBlockHeader(header: BlockHeader, out_data: []u8) void {
 pub const BlockReader = struct {
     // Configuration
     min_doc_id: u32,
+    format_version: u32 = 2,
 
     // Block data (set via load())
     block_data: ?[]const u8 = null,
 
     // Cached decompressed data
-    block_header: BlockHeader = .{ .last_hash = 0, .num_hashes = 0, .num_items = 0, .counts_offset = 0, .docids_offset = 0 },
+    block_header: BlockHeader = .{ .min_hash = 0, .max_hash = 0, .num_hashes = 0, .num_items = 0, .counts_offset = 0, .docids_offset = 0 },
     hashes: [MAX_ITEMS_PER_BLOCK]u32 = undefined,
     counts: [MAX_ITEMS_PER_BLOCK]u32 = undefined,
     docids: [MAX_ITEMS_PER_BLOCK]u32 = undefined,
@@ -87,10 +106,24 @@ pub const BlockReader = struct {
         };
     }
 
+    /// Initialize a reusable BlockReader with format version
+    pub fn initVersioned(min_doc_id: u32, format_version: u32) BlockReader {
+        return BlockReader{
+            .min_doc_id = min_doc_id,
+            .format_version = format_version,
+        };
+    }
+
     /// Load a new block for searching
     /// This resets all cached state and loads the block header
     pub fn load(self: *BlockReader, block_data: []const u8, lazy: bool) void {
-        assert(block_data.len >= BLOCK_HEADER_SIZE);
+        if (self.format_version == 1) {
+            assert(block_data.len >= 12); // v1 header size
+            self.block_header = decodeBlockHeaderV1(block_data);
+        } else {
+            assert(block_data.len >= BLOCK_HEADER_SIZE);
+            self.block_header = decodeBlockHeader(block_data);
+        }
 
         // Reset all state
         self.block_data = block_data;
@@ -98,15 +131,18 @@ pub const BlockReader = struct {
         self.counts_loaded = false;
         self.docids_loaded = false;
 
-        // Load header immediately
-        self.block_header = decodeBlockHeader(block_data);
-
         // If full is true, decode all hashes, counts and docids immediately
         if (!lazy) {
             self.ensureHashesLoaded();
             self.ensureCountsLoaded();
             self.ensureDocidsLoaded();
         }
+    }
+
+    /// Load a new block with explicit format version
+    pub fn loadVersioned(self: *BlockReader, block_data: []const u8, format_version: u32, lazy: bool) void {
+        self.format_version = format_version;
+        self.load(block_data, lazy);
     }
 
     /// Check if a block is currently loaded
@@ -136,23 +172,37 @@ pub const BlockReader = struct {
             return;
         }
 
-        const offset = BLOCK_HEADER_SIZE;
-        streamvbyte.decodeValues(
-            self.block_header.num_hashes,
-            0,
-            self.block_header.num_hashes,
-            self.block_data.?[offset..],
-            &self.hashes,
-            .variant1234,
-        );
-        
-        // Calculate first_hash by subtracting the sum of deltas from last_hash
-        var delta_sum: u32 = 0;
-        for (self.hashes[0..self.block_header.num_hashes]) |delta| {
-            delta_sum += delta;
+        if (self.format_version == 1) {
+            // v1 format: header has min_hash (first hash), decode deltas from there
+            const offset = 12; // v1 header size
+            streamvbyte.decodeValues(
+                self.block_header.num_hashes,
+                0,
+                self.block_header.num_hashes,
+                self.block_data.?[offset..],
+                &self.hashes,
+                .variant1234,
+            );
+            streamvbyte.svbDeltaDecodeInPlace(self.hashes[0..self.block_header.num_hashes], self.block_header.min_hash);
+            
+            // For v1, calculate max_hash from the decompressed hashes
+            if (self.block_header.num_hashes > 0) {
+                self.block_header.max_hash = self.hashes[self.block_header.num_hashes - 1];
+            }
+        } else {
+            // v2 format: header has both min_hash and max_hash
+            const offset = BLOCK_HEADER_SIZE;
+            streamvbyte.decodeValues(
+                self.block_header.num_hashes,
+                0,
+                self.block_header.num_hashes,
+                self.block_data.?[offset..],
+                &self.hashes,
+                .variant1234,
+            );
+            streamvbyte.svbDeltaDecodeInPlace(self.hashes[0..self.block_header.num_hashes], self.block_header.min_hash);
         }
-        const first_hash = self.block_header.last_hash - delta_sum;
-        streamvbyte.svbDeltaDecodeInPlace(self.hashes[0..self.block_header.num_hashes], first_hash);
+        
         self.hashes_loaded = true;
     }
 
@@ -165,7 +215,8 @@ pub const BlockReader = struct {
             return;
         }
 
-        const offset = BLOCK_HEADER_SIZE + self.block_header.counts_offset;
+        const header_size = if (self.format_version == 1) @as(usize, 12) else BLOCK_HEADER_SIZE;
+        const offset = header_size + self.block_header.counts_offset;
         streamvbyte.decodeValues(
             self.block_header.num_hashes,
             0,
@@ -190,7 +241,8 @@ pub const BlockReader = struct {
         self.ensureHashesLoaded();
         self.ensureCountsLoaded();
 
-        const offset = BLOCK_HEADER_SIZE + self.block_header.docids_offset;
+        const header_size = if (self.format_version == 1) @as(usize, 12) else BLOCK_HEADER_SIZE;
+        const offset = header_size + self.block_header.docids_offset;
         streamvbyte.decodeValues(
             self.block_header.num_items,
             0,
@@ -210,13 +262,29 @@ pub const BlockReader = struct {
         self.docids_loaded = true;
     }
 
-    /// Get the range of the first hash in this block (for block-level filtering)
+    /// Get the first hash in this block (for block-level filtering)
     pub fn getFirstHash(self: *BlockReader) u32 {
+        return self.getMinHash();
+    }
+    
+    /// Get the minimum hash in this block (for perfect block filtering)
+    pub fn getMinHash(self: *BlockReader) u32 {
         if (self.block_header.num_hashes == 0) {
             return 0;
         }
-        self.ensureHashesLoaded();
-        return self.hashes[0];
+        return self.block_header.min_hash;
+    }
+
+    /// Get the maximum hash in this block (for perfect block filtering) 
+    pub fn getMaxHash(self: *BlockReader) u32 {
+        if (self.block_header.num_hashes == 0) {
+            return 0;
+        }
+        if (self.format_version == 1 and self.block_header.max_hash == self.block_header.min_hash) {
+            // v1 format: need to load hashes to calculate max_hash
+            self.ensureHashesLoaded();
+        }
+        return self.block_header.max_hash;
     }
 
     /// Get the number of items in this block
@@ -258,7 +326,8 @@ pub const BlockReader = struct {
         }
 
         // Read StreamVByte-encoded docids
-        const offset = BLOCK_HEADER_SIZE + self.block_header.docids_offset;
+        const header_size = if (self.format_version == 1) @as(usize, 12) else BLOCK_HEADER_SIZE;
+        const offset = header_size + self.block_header.docids_offset;
         _ = streamvbyte.decodeValues(
             self.block_header.num_items,
             range.start,
@@ -442,10 +511,11 @@ test "BlockReader range-based docid decoding" {
 
 /// BlockEncoder handles encoding of (hash, docid) items into compressed blocks
 pub const BlockEncoder = struct {
+    first_hash: u32 = 0,
     last_hash: u32 = 0,
     last_docid: u32 = 0,
 
-    out_header: BlockHeader = .{ .last_hash = 0, .num_hashes = 0, .num_items = 0, .counts_offset = 0, .docids_offset = 0 },
+    out_header: BlockHeader = .{ .min_hash = 0, .max_hash = 0, .num_hashes = 0, .num_items = 0, .counts_offset = 0, .docids_offset = 0 },
 
     // Unique hash buffering strategy:
     // Why 8 elements instead of encoding immediately at 4?
@@ -660,6 +730,7 @@ pub const BlockEncoder = struct {
         self.out_header.num_items = 0;
         self.out_header.num_hashes = 0;
 
+        self.first_hash = first_hash;
         self.last_hash = first_hash;
         self.last_docid = min_doc_id;
 
@@ -698,7 +769,8 @@ pub const BlockEncoder = struct {
         self.flushTempBuffers();
 
         // Write the block
-        self.out_header.last_hash = self.last_hash;
+        self.out_header.min_hash = self.first_hash;
+        self.out_header.max_hash = self.last_hash;
         self.out_header.counts_offset = @intCast(self.out_hashes.len + self.out_hashes_control.len);
         self.out_header.docids_offset = @intCast(self.out_hashes.len + self.out_hashes_control.len + self.out_counts.len + self.out_counts_control.len);
 
@@ -727,7 +799,8 @@ pub const BlockEncoder = struct {
 
 test "encodeBlockHeader/decodeBlockHeader" {
     const header = BlockHeader{
-        .last_hash = 12345678,
+        .min_hash = 12345678,
+        .max_hash = 87654321,
         .num_hashes = 10,
         .num_items = 25,
         .counts_offset = 20,
@@ -737,7 +810,8 @@ test "encodeBlockHeader/decodeBlockHeader" {
     encodeBlockHeader(header, buffer[0..]);
 
     const decoded_header = decodeBlockHeader(buffer[0..]);
-    try testing.expectEqual(header.last_hash, decoded_header.last_hash);
+    try testing.expectEqual(header.min_hash, decoded_header.min_hash);
+    try testing.expectEqual(header.max_hash, decoded_header.max_hash);
     try testing.expectEqual(header.num_hashes, decoded_header.num_hashes);
     try testing.expectEqual(header.num_items, decoded_header.num_items);
     try testing.expectEqual(header.counts_offset, decoded_header.counts_offset);
@@ -761,7 +835,8 @@ test "BlockEncoder with mixed hashes and docids" {
 
     const header = decodeBlockHeader(&block);
     try testing.expectEqual(4, header.num_hashes); // Unique hashes: [1,3,4,5] = 4 unique
-    try testing.expectEqual(5, header.last_hash);  // Last unique hash is 5
+    try testing.expectEqual(1, header.min_hash);  // First unique hash is 1
+    try testing.expectEqual(5, header.max_hash);  // Last unique hash is 5
     try testing.expectEqual(5, header.num_items);
 
     // Test with BlockReader
@@ -820,7 +895,8 @@ test "BlockEncoder with duplicate hashes" {
     // Verify that the encoding produced the correct header
     const header = decodeBlockHeader(&block);
     try testing.expectEqual(@as(u16, 1), header.num_hashes); // Only 1 unique hash
-    try testing.expectEqual(@as(u32, 100), header.last_hash); // Last (and only) hash is 100
+    try testing.expectEqual(@as(u32, 100), header.min_hash); // First (and only) hash is 100
+    try testing.expectEqual(@as(u32, 100), header.max_hash); // Last (and only) hash is 100
     try testing.expectEqual(@as(u16, 3), header.num_items);
 
     // Test that decoding produces the original docids

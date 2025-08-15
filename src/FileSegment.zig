@@ -27,7 +27,7 @@ allocator: std.mem.Allocator,
 dir: std.fs.Dir,
 info: SegmentInfo = .{},
 status: SegmentStatus = .{},
-format_version: u32 = 1, // Always 1 for SGM1
+format_version: u32 = 2, // Default to v2, will be set by filefmt
 attributes: std.StringHashMapUnmanaged(u64) = .{},
 docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
 min_doc_id: u32 = 0,
@@ -80,7 +80,7 @@ pub fn loadBlockData(self: Self, block_no: usize, block_reader: *BlockReader, la
     // Add extra SIMD padding for safe decoding - ensure we don't exceed blocks bounds
     const padded_end = @min(end + streamvbyte.SIMD_DECODE_PADDING, self.blocks.len);
     const block_data = self.blocks[start..padded_end];
-    block_reader.load(block_data, lazy);
+    block_reader.loadVersioned(block_data, self.format_version, lazy);
 }
 
 fn compareHashes(a: u32, b: u32) std.math.Order {
@@ -104,7 +104,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
     // Initialize block cache with CACHE_SIZE BlockReaders
     var block_cache = [_]BlockCacheEntry{BlockCacheEntry{
         .block_no = std.math.maxInt(usize),
-        .block_reader = BlockReader.init(self.min_doc_id),
+        .block_reader = BlockReader.initVersioned(self.min_doc_id, self.format_version),
     }} ** MAX_BLOCKS_PER_HASH;
 
     // With max_hash indexing, lowerBound returns the first block that could contain the hash
@@ -134,7 +134,6 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
         var blocks_scanned: usize = 0;
         
         while (block_no < self.index.items.len and blocks_scanned < MAX_BLOCKS_PER_HASH) : (block_no += 1) {
-            // Using max_hash: scan up to MAX_BLOCKS_PER_HASH blocks
             // Use block_no % MAX_BLOCKS_PER_HASH as cache key
             const cache_key = block_no % MAX_BLOCKS_PER_HASH;
             var block_reader: *BlockReader = undefined;
@@ -147,6 +146,23 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
                 block_cache[cache_key].block_no = block_no;
                 block_reader = &block_cache[cache_key].block_reader;
                 self.loadBlockData(block_no, block_reader, true);
+            }
+
+            // Perfect block filtering: only process blocks that could contain the hash
+            if (self.format_version >= 2) {
+                // v2 format: use perfect min/max hash filtering
+                const min_hash = block_reader.getMinHash();
+                const max_hash = block_reader.getMaxHash();
+                if (hash < min_hash or hash > max_hash) {
+                    blocks_scanned += 1;
+                    continue; // Skip this block - hash is definitely not in here
+                }
+            } else {
+                // v1 format: use original logic for backward compatibility
+                const min_hash = block_reader.getMinHash();
+                if (hash < min_hash) {
+                    break; // v1: stop when we've passed the range
+                }
             }
 
             // Search for hash matches and get docids
@@ -279,7 +295,7 @@ pub fn getSize(self: Self) usize {
 pub fn reader(self: *const Self) Reader {
     return .{
         .segment = self,
-        .block_reader = BlockReader.init(self.min_doc_id),
+        .block_reader = BlockReader.initVersioned(self.min_doc_id, self.format_version),
     };
 }
 

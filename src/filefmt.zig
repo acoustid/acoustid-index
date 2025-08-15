@@ -86,7 +86,7 @@ pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime b
     }
 
     return SegmentFileFooter{
-        .magic = segment_file_footer_magic_v1,
+        .magic = segment_file_footer_magic_v2, // Use v2 for new files
         .num_items = num_items,
         .num_blocks = num_blocks,
         .checksum = crc.final(),
@@ -95,6 +95,9 @@ pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime b
 
 const segment_file_header_magic_v1: u32 = 0x53474D31; // "SGM1" in big endian
 const segment_file_footer_magic_v1: u32 = @byteSwap(segment_file_header_magic_v1);
+
+const segment_file_header_magic_v2: u32 = 0x53474D32; // "SGM2" in big endian  
+const segment_file_footer_magic_v2: u32 = @byteSwap(segment_file_header_magic_v2);
 
 pub const SegmentFileHeader = struct {
     magic: u32,
@@ -179,7 +182,7 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
     const packer = msgpack.packer(writer);
 
     const header = SegmentFileHeader{
-        .magic = segment_file_header_magic_v1,
+        .magic = segment_file_header_magic_v2, // Use v2 for new files
         .block_size = block_size,
         .info = segment.info,
         .has_attributes = true,
@@ -258,7 +261,10 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
 
     const header = try unpacker.read(SegmentFileHeader);
 
-    if (header.magic != segment_file_header_magic_v1) {
+    const is_v2 = header.magic == segment_file_header_magic_v2;
+    const is_v1 = header.magic == segment_file_header_magic_v1;
+    
+    if (!is_v1 and !is_v2) {
         return error.InvalidSegment;
     }
     if (header.block_size < min_block_size or header.block_size > max_block_size) {
@@ -267,7 +273,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
 
     segment.info = header.info;
     segment.block_size = header.block_size;
-    segment.format_version = 1;
+    segment.format_version = if (is_v2) @as(u32, 2) else @as(u32, 1);
 
     segment.attributes.clearRetainingCapacity();
     if (header.has_attributes) {
@@ -310,14 +316,18 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     while (ptr + block_size <= raw_data.len) {
         const block_data = raw_data[ptr .. ptr + block_size];
         ptr += block_size;
-        const block_header = block.decodeBlockHeader(block_data);
+        
+        const block_header = if (is_v1) 
+            block.decodeBlockHeaderV1(block_data) 
+        else 
+            block.decodeBlockHeader(block_data);
             
         if (block_header.num_hashes == 0) {
             break;
         }
         
-        // Use last_hash for indexing (max_hash approach)
-        segment.index.appendAssumeCapacity(block_header.last_hash);
+        // Use max_hash for indexing - both v1 and v2 store this appropriately
+        segment.index.appendAssumeCapacity(block_header.max_hash);
         num_items += block_header.num_items;
         num_blocks += 1;
         crc.update(block_data);
@@ -330,7 +340,8 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     try fixed_buffer_stream.seekBy(@intCast(segment.blocks.len));
 
     const footer = try unpacker.read(SegmentFileFooter);
-    if (footer.magic != segment_file_footer_magic_v1) {
+    const expected_footer_magic = if (is_v2) segment_file_footer_magic_v2 else segment_file_footer_magic_v1;
+    if (footer.magic != expected_footer_magic) {
         return error.InvalidSegment;
     }
     if (footer.num_items != num_items) {
@@ -381,7 +392,7 @@ test "writeFile/readFile" {
         try testing.expectEqual(1, segment.index.items.len);
         try testing.expectEqual(2, segment.index.items[0]);
 
-        var block_reader = BlockReader.init(segment.min_doc_id);
+        var block_reader = BlockReader.initVersioned(segment.min_doc_id, segment.format_version);
         segment.loadBlockData(0, &block_reader, false);
 
         try std.testing.expectEqualSlices(u32, &[_]u32{ 1, 2 }, block_reader.getHashes());
