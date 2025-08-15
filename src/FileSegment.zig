@@ -82,6 +82,7 @@ pub fn loadBlockData(self: Self, block_no: usize, block_reader: *BlockReader, la
     block_reader.load(block_data, lazy);
 }
 
+
 fn compareHashes(a: u32, b: u32) std.math.Order {
     return std.math.order(a, b);
 }
@@ -106,26 +107,25 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
         .block_reader = BlockReader.init(self.min_doc_id),
     }} ** MAX_BLOCKS_PER_HASH;
 
-    // Let's say we have blocks like this:
+    // Let's say we have blocks like this (indexing max_hash):
     //
     // |4.......|6.......|9.......|
     //
     // We want to find hash=2, lowerBound returns block=0 (4), so we start at that block.
-    // We want to find hash=6, lowerBound returns block=1 (6), but block=0 could still contain hash=6, so we go one back.
-    // We want to find hash=7, lowerBound returns block=2 (9), but block=1 could still contain hash=6, so we go one back.
-    // We want to find hash=10, lowerBound returns block=3 (EOF), but block=2 could still contain hash=6, so we go one back.
+    // We want to find hash=6, lowerBound returns block=1 (6), so we start at that block.
+    // We want to find hash=7, lowerBound returns block=2 (9), so we start at that block.
+    // We want to find hash=10, lowerBound returns block=3 (EOF), so we start at the last block.
 
     for (sorted_hashes, 1..) |hash, i| {
+        // Find first block where max_hash >= hash
         var block_no = std.sort.lowerBound(u32, self.index.items[prev_block_range_start..], hash, compareHashes) + prev_block_range_start;
-        if (block_no > 0) {
-            block_no -= 1;
-        }
         prev_block_range_start = block_no;
 
         var num_docs: usize = 0;
         var num_blocks: u64 = 0;
         
-        while (block_no < self.index.items.len and self.index.items[block_no] <= hash) : (block_no += 1) {
+        // Scan forward while blocks could contain the hash
+        while (block_no < self.index.items.len and self.index.items[block_no] >= hash) : (block_no += 1) {
             // Use block_no % MAX_BLOCKS_PER_HASH as cache key
             const cache_key = block_no % MAX_BLOCKS_PER_HASH;
             var block_reader: *BlockReader = undefined;
