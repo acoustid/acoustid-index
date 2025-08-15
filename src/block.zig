@@ -31,24 +31,11 @@ pub const BlockHeader = struct {
     docids_offset: u16,
 };
 
-/// Decode a BlockHeader from bytes (v2 format with last_hash)
+/// Decode a BlockHeader from bytes
 pub fn decodeBlockHeader(data: []const u8) BlockHeader {
     std.debug.assert(data.len >= BLOCK_HEADER_SIZE);
     return BlockHeader{
         .last_hash = std.mem.readInt(u32, data[0..4], .little),
-        .num_hashes = std.mem.readInt(u16, data[4..6], .little),
-        .num_items = std.mem.readInt(u16, data[6..8], .little),
-        .counts_offset = std.mem.readInt(u16, data[8..10], .little),
-        .docids_offset = std.mem.readInt(u16, data[10..12], .little),
-    };
-}
-
-/// Decode a BlockHeader from bytes (v1 format with first_hash)
-pub fn decodeBlockHeaderV1(data: []const u8) BlockHeader {
-    std.debug.assert(data.len >= BLOCK_HEADER_SIZE);
-    const first_hash = std.mem.readInt(u32, data[0..4], .little);
-    return BlockHeader{
-        .last_hash = first_hash,  // Store first_hash in last_hash field for v1 compatibility
         .num_hashes = std.mem.readInt(u16, data[4..6], .little),
         .num_items = std.mem.readInt(u16, data[6..8], .little),
         .counts_offset = std.mem.readInt(u16, data[8..10], .little),
@@ -71,7 +58,6 @@ pub fn encodeBlockHeader(header: BlockHeader, out_data: []u8) void {
 pub const BlockReader = struct {
     // Configuration
     min_doc_id: u32,
-    format_version: u32 = 2,
 
     // Block data (set via load())
     block_data: ?[]const u8 = null,
@@ -104,30 +90,20 @@ pub const BlockReader = struct {
     /// Load a new block for searching
     /// This resets all cached state and loads the block header
     pub fn load(self: *BlockReader, block_data: []const u8, lazy: bool) void {
-        self.loadVersioned(block_data, lazy, 2); // Default to v2 format
-    }
-
-    /// Load a new block for searching with format version
-    /// This resets all cached state and loads the block header
-    pub fn loadVersioned(self: *BlockReader, block_data: []const u8, lazy: bool, format_version: u32) void {
         assert(block_data.len >= BLOCK_HEADER_SIZE);
 
         // Reset all state
         self.block_data = block_data;
-        self.format_version = format_version;
         self.hashes_loaded = false;
         self.counts_loaded = false;
         self.docids_loaded = false;
 
-        // Load header immediately using appropriate version
-        self.block_header = if (format_version == 1) 
-            decodeBlockHeaderV1(block_data) 
-        else 
-            decodeBlockHeader(block_data);
+        // Load header immediately
+        self.block_header = decodeBlockHeader(block_data);
 
         // If full is true, decode all hashes, counts and docids immediately
         if (!lazy) {
-            self.ensureHashesLoadedVersioned(format_version);
+            self.ensureHashesLoaded();
             self.ensureCountsLoaded();
             self.ensureDocidsLoaded();
         }
@@ -153,11 +129,6 @@ pub const BlockReader = struct {
 
     /// Load and cache unique hashes if not already loaded
     fn ensureHashesLoaded(self: *BlockReader) void {
-        self.ensureHashesLoadedVersioned(self.format_version);
-    }
-
-    /// Load and cache unique hashes if not already loaded with format version
-    fn ensureHashesLoadedVersioned(self: *BlockReader, format_version: u32) void {
         if (self.hashes_loaded) return;
 
         if (self.isEmpty()) {
@@ -175,18 +146,13 @@ pub const BlockReader = struct {
             .variant1234,
         );
         
-        if (format_version == 1) {
-            // V1 format: last_hash field contains first_hash
-            streamvbyte.svbDeltaDecodeInPlace(self.hashes[0..self.block_header.num_hashes], self.block_header.last_hash);
-        } else {
-            // V2 format: Calculate first_hash by subtracting the sum of deltas from last_hash
-            var delta_sum: u32 = 0;
-            for (self.hashes[0..self.block_header.num_hashes]) |delta| {
-                delta_sum += delta;
-            }
-            const first_hash = self.block_header.last_hash - delta_sum;
-            streamvbyte.svbDeltaDecodeInPlace(self.hashes[0..self.block_header.num_hashes], first_hash);
+        // Calculate first_hash by subtracting the sum of deltas from last_hash
+        var delta_sum: u32 = 0;
+        for (self.hashes[0..self.block_header.num_hashes]) |delta| {
+            delta_sum += delta;
         }
+        const first_hash = self.block_header.last_hash - delta_sum;
+        streamvbyte.svbDeltaDecodeInPlace(self.hashes[0..self.block_header.num_hashes], first_hash);
         self.hashes_loaded = true;
     }
 

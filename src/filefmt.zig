@@ -86,7 +86,7 @@ pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime b
     }
 
     return SegmentFileFooter{
-        .magic = segment_file_footer_magic_v2,
+        .magic = segment_file_footer_magic_v1,
         .num_items = num_items,
         .num_blocks = num_blocks,
         .checksum = crc.final(),
@@ -94,9 +94,7 @@ pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime b
 }
 
 const segment_file_header_magic_v1: u32 = 0x53474D31; // "SGM1" in big endian
-const segment_file_header_magic_v2: u32 = 0x53474D32; // "SGM2" in big endian  
 const segment_file_footer_magic_v1: u32 = @byteSwap(segment_file_header_magic_v1);
-const segment_file_footer_magic_v2: u32 = @byteSwap(segment_file_header_magic_v2);
 
 pub const SegmentFileHeader = struct {
     magic: u32,
@@ -181,7 +179,7 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
     const packer = msgpack.packer(writer);
 
     const header = SegmentFileHeader{
-        .magic = segment_file_header_magic_v2,
+        .magic = segment_file_header_magic_v1,
         .block_size = block_size,
         .info = segment.info,
         .has_attributes = true,
@@ -260,7 +258,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
 
     const header = try unpacker.read(SegmentFileHeader);
 
-    if (header.magic != segment_file_header_magic_v1 and header.magic != segment_file_header_magic_v2) {
+    if (header.magic != segment_file_header_magic_v1) {
         return error.InvalidSegment;
     }
     if (header.block_size < min_block_size or header.block_size > max_block_size) {
@@ -269,7 +267,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
 
     segment.info = header.info;
     segment.block_size = header.block_size;
-    segment.format_version = if (header.magic == segment_file_header_magic_v1) 1 else 2;
+    segment.format_version = 1;
 
     segment.attributes.clearRetainingCapacity();
     if (header.has_attributes) {
@@ -312,23 +310,14 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     while (ptr + block_size <= raw_data.len) {
         const block_data = raw_data[ptr .. ptr + block_size];
         ptr += block_size;
-        const is_v1 = header.magic == segment_file_header_magic_v1;
-        const block_header = if (is_v1) 
-            block.decodeBlockHeaderV1(block_data) 
-        else 
-            block.decodeBlockHeader(block_data);
+        const block_header = block.decodeBlockHeader(block_data);
             
         if (block_header.num_hashes == 0) {
             break;
         }
         
-        if (is_v1) {
-            // V1 format uses first_hash for indexing
-            segment.index.appendAssumeCapacity(block_header.last_hash);  // contains first_hash for v1
-        } else {
-            // V2 format uses last_hash for indexing  
-            segment.index.appendAssumeCapacity(block_header.last_hash);
-        }
+        // Use last_hash for indexing (max_hash approach)
+        segment.index.appendAssumeCapacity(block_header.last_hash);
         num_items += block_header.num_items;
         num_blocks += 1;
         crc.update(block_data);
@@ -341,7 +330,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     try fixed_buffer_stream.seekBy(@intCast(segment.blocks.len));
 
     const footer = try unpacker.read(SegmentFileFooter);
-    if (footer.magic != segment_file_footer_magic_v1 and footer.magic != segment_file_footer_magic_v2) {
+    if (footer.magic != segment_file_footer_magic_v1) {
         return error.InvalidSegment;
     }
     if (footer.num_items != num_items) {

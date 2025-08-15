@@ -27,7 +27,7 @@ allocator: std.mem.Allocator,
 dir: std.fs.Dir,
 info: SegmentInfo = .{},
 status: SegmentStatus = .{},
-format_version: u32 = 2, // 1 for SGM1, 2 for SGM2
+format_version: u32 = 1, // Always 1 for SGM1
 attributes: std.StringHashMapUnmanaged(u64) = .{},
 docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
 min_doc_id: u32 = 0,
@@ -80,7 +80,7 @@ pub fn loadBlockData(self: Self, block_no: usize, block_reader: *BlockReader, la
     // Add extra SIMD padding for safe decoding - ensure we don't exceed blocks bounds
     const padded_end = @min(end + streamvbyte.SIMD_DECODE_PADDING, self.blocks.len);
     const block_data = self.blocks[start..padded_end];
-    block_reader.loadVersioned(block_data, lazy, self.format_version);
+    block_reader.load(block_data, lazy);
 }
 
 fn compareHashes(a: u32, b: u32) std.math.Order {
@@ -120,17 +120,10 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
     for (sorted_hashes, 1..) |hash, i| {
         var block_no = std.sort.lowerBound(u32, self.index.items[prev_block_range_start..], hash, compareHashes) + prev_block_range_start;
         
-        if (self.format_version == 1) {
-            // V1 format uses first_hash indexing - need to go back one block
-            if (block_no > 0) {
-                block_no -= 1;
-            }
-        } else {
-            // V2 format uses last_hash indexing - no need to go back one block
-            // However, if lowerBound returns beyond the last block, start from the last block
-            if (block_no >= self.index.items.len and self.index.items.len > 0) {
-                block_no = self.index.items.len - 1;
-            }
+        // Using max_hash indexing - no need to go back one block
+        // However, if lowerBound returns beyond the last block, start from the last block
+        if (block_no >= self.index.items.len and self.index.items.len > 0) {
+            block_no = self.index.items.len - 1;
         }
         prev_block_range_start = block_no;
 
@@ -141,11 +134,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
         var blocks_scanned: usize = 0;
         
         while (block_no < self.index.items.len and blocks_scanned < MAX_BLOCKS_PER_HASH) : (block_no += 1) {
-            // For v1 (min_hash): continue while min_hash <= target
-            // For v2 (max_hash): scan up to MAX_BLOCKS_PER_HASH blocks (simpler logic for now)
-            if (self.format_version == 1 and self.index.items[block_no] > hash) {
-                break;
-            }
+            // Using max_hash: scan up to MAX_BLOCKS_PER_HASH blocks
             // Use block_no % MAX_BLOCKS_PER_HASH as cache key
             const cache_key = block_no % MAX_BLOCKS_PER_HASH;
             var block_reader: *BlockReader = undefined;
