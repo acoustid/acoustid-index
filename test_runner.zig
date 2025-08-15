@@ -63,17 +63,7 @@ pub fn main() !void {
             }
         }
 
-        const friendly_name = blk: {
-            const name = t.name;
-            var it = std.mem.splitScalar(u8, name, '.');
-            while (it.next()) |value| {
-                if (std.mem.eql(u8, value, "test")) {
-                    const rest = it.rest();
-                    break :blk if (rest.len > 0) rest else name;
-                }
-            }
-            break :blk name;
-        };
+        const friendly_name = t.name;
 
         current_test = friendly_name;
         std.testing.allocator_instance = .{};
