@@ -89,7 +89,6 @@ fn compareHashes(a: u32, b: u32) std.math.Order {
 const BlockCacheEntry = struct {
     block_no: usize,
     block_reader: BlockReader,
-    valid: bool,
 };
 
 pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
@@ -97,10 +96,10 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
 
     // Initialize block cache with 4 BlockReaders
     var block_cache = [_]BlockCacheEntry{
-        .{ .block_no = std.math.maxInt(usize), .block_reader = BlockReader.init(self.min_doc_id), .valid = false },
-        .{ .block_no = std.math.maxInt(usize), .block_reader = BlockReader.init(self.min_doc_id), .valid = false },
-        .{ .block_no = std.math.maxInt(usize), .block_reader = BlockReader.init(self.min_doc_id), .valid = false },
-        .{ .block_no = std.math.maxInt(usize), .block_reader = BlockReader.init(self.min_doc_id), .valid = false },
+        .{ .block_no = std.math.maxInt(usize), .block_reader = BlockReader.init(self.min_doc_id) },
+        .{ .block_no = std.math.maxInt(usize), .block_reader = BlockReader.init(self.min_doc_id) },
+        .{ .block_no = std.math.maxInt(usize), .block_reader = BlockReader.init(self.min_doc_id) },
+        .{ .block_no = std.math.maxInt(usize), .block_reader = BlockReader.init(self.min_doc_id) },
     };
 
     // Let's say we have blocks like this:
@@ -131,13 +130,12 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
             const cache_key = block_no % 4;
             var block_reader: *BlockReader = undefined;
             
-            if (block_cache[cache_key].valid and block_cache[cache_key].block_no == block_no) {
+            if (block_cache[cache_key].block_no == block_no) {
                 // Cache hit - reuse existing block_reader
                 block_reader = &block_cache[cache_key].block_reader;
             } else {
                 // Cache miss - load block data into cache slot
                 block_cache[cache_key].block_no = block_no;
-                block_cache[cache_key].valid = true;
                 block_reader = &block_cache[cache_key].block_reader;
                 self.loadBlockData(block_no, block_reader, true);
             }
