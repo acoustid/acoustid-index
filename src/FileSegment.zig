@@ -147,12 +147,12 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
             }
 
             num_docs += matched_docids.len;
-            if (num_docs > MAX_DOCS_PER_HASH) {
-                break; // Early exit to avoid excessive processing for high-frequency hashes
-            }
             num_blocks += 1;
             if (num_blocks >= MAX_BLOCKS_PER_HASH) {
                 break; // Limit the number of scanned blocks per hash
+            }
+            if (num_docs > MAX_DOCS_PER_HASH) {
+                break; // Early exit to avoid excessive processing for high-frequency hashes
             }
         }
 
