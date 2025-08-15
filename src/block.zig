@@ -281,6 +281,44 @@ pub const BlockReader = struct {
         return self.docids[0..self.getNumItems()];
     }
 
+    /// Get all items as (hash, docid) pairs by expanding the hybrid format
+    /// Caller must provide a slice with at least getNumItems() capacity
+    /// Returns the number of items written to the output slice
+    pub fn getItems(self: *BlockReader, output: []Item) usize {
+        if (self.isEmpty()) {
+            return 0;
+        }
+
+        std.debug.assert(output.len >= self.getNumItems());
+
+        self.ensureHashesLoaded();
+        self.ensureCountsLoaded();
+        self.ensureDocidsLoaded();
+
+        var item_idx: usize = 0;
+
+        // Expand unique hashes with their docids
+        // The docids array is already properly decoded and ordered by ensureDocidsLoaded()
+        for (0..self.block_header.num_hashes) |hash_idx| {
+            const hash = self.hashes[hash_idx];
+            const count = if (hash_idx == 0) 
+                self.counts[0] 
+            else 
+                self.counts[hash_idx] - self.counts[hash_idx - 1];
+
+            // Create (hash, docid) pairs for this unique hash
+            for (0..count) |_| {
+                output[item_idx] = Item{
+                    .hash = hash,
+                    .id = self.docids[item_idx],  // Use item_idx directly since docids are in order
+                };
+                item_idx += 1;
+            }
+        }
+
+        return self.block_header.num_items;
+    }
+
     fn orderU32(lhs: u32, rhs: u32) std.math.Order {
         return std.math.order(lhs, rhs);
     }
@@ -695,7 +733,7 @@ test "encodeBlockHeader/decodeBlockHeader" {
     try testing.expectEqual(header.docids_offset, decoded_header.docids_offset);
 }
 
-test "BlockEncoder basic functionality" {
+test "BlockEncoder with mixed hashes and docids" {
     var encoder = BlockEncoder.init();
     const items: []const Item = &.{
         .{ .hash = 1, .id = 100 },
@@ -751,4 +789,86 @@ test "BlockEncoder basic functionality" {
 
     const docids5 = reader.searchHash(5);
     try testing.expectEqualSlices(u32, &[_]u32{500}, docids5);
+}
+
+test "BlockEncoder with duplicate hashes" {
+    var encoder = BlockEncoder.init();
+
+    // Test case: multiple items with the same hash to verify correct encoding
+    const items: []const Item = &.{
+        .{ .hash = 100, .id = 1 },  // First item should be encoded as (1 - 1) = 0
+        .{ .hash = 100, .id = 2 },  // Same hash, should be encoded as (2 - 1) = 1  
+        .{ .hash = 100, .id = 3 },  // Same hash, should be encoded as (3 - 2) = 1
+    };
+
+    const min_doc_id: u32 = 1;
+    var block: [256]u8 = undefined;
+    const consumed = try encoder.encodeBlock(items, min_doc_id, &block);
+    try testing.expectEqual(3, consumed);
+
+    // Verify that the encoding produced the correct header
+    const header = decodeBlockHeader(&block);
+    try testing.expectEqual(@as(u16, 1), header.num_hashes); // Only 1 unique hash
+    try testing.expectEqual(@as(u32, 100), header.first_hash);
+    try testing.expectEqual(@as(u16, 3), header.num_items);
+
+    // Test that decoding produces the original docids
+    var reader = BlockReader.init(min_doc_id);
+    reader.load(&block, false);
+
+    // This should return the original docids: [1, 2, 3]
+    // But due to the bug, it will return [2, 3, 4]
+    const docids = reader.searchHash(100);
+    try testing.expectEqualSlices(u32, &[_]u32{ 1, 2, 3 }, docids);
+
+    // Alternative test using getItems
+    var items_output: [3]Item = undefined;
+    const num_items = reader.getItems(&items_output);
+    try testing.expectEqual(@as(usize, 3), num_items);
+    
+    // All items should have hash 100 and docids 1, 2, 3
+    for (items_output, 0..) |item, i| {
+        try testing.expectEqual(@as(u32, 100), item.hash);
+        try testing.expectEqual(@as(u32, @intCast(i + 1)), item.id);
+    }
+}
+
+test "BlockEncoder reuse across multiple blocks" {
+    var encoder = BlockEncoder.init();
+
+    // First block: items with hash=100
+    const items1: []const Item = &.{
+        .{ .hash = 100, .id = 1 },
+        .{ .hash = 100, .id = 2 },
+    };
+
+    const min_doc_id: u32 = 1;
+    var block1: [256]u8 = undefined;
+    const consumed1 = try encoder.encodeBlock(items1, min_doc_id, &block1);
+    try testing.expectEqual(2, consumed1);
+
+    // Verify first block is correct
+    var reader1 = BlockReader.init(min_doc_id);
+    reader1.load(&block1, false);
+    const docids1 = reader1.searchHash(100);
+    try testing.expectEqualSlices(u32, &[_]u32{ 1, 2 }, docids1);
+
+    // Second block: more items with hash=100 (same hash as previous block)
+    // This tests that encoder properly handles state across multiple blocks
+    const items2: []const Item = &.{
+        .{ .hash = 100, .id = 3 },  // This should be encoded as (3 - 1) = 2, but...
+        .{ .hash = 100, .id = 4 },  // This should be encoded as (4 - 3) = 1
+    };
+
+    var block2: [256]u8 = undefined;
+    const consumed2 = try encoder.encodeBlock(items2, min_doc_id, &block2);
+    try testing.expectEqual(2, consumed2);
+
+    // Verify that encoder correctly handles multiple blocks
+    var reader2 = BlockReader.init(min_doc_id);
+    reader2.load(&block2, false);
+    const docids2 = reader2.searchHash(100);
+    
+    // Should correctly encode and decode the second block
+    try testing.expectEqualSlices(u32, &[_]u32{ 3, 4 }, docids2);
 }
