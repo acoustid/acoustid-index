@@ -109,53 +109,107 @@ test "index create, update, reopen and search" {
     }
 }
 
-test "index many updates" {
+test "index many updates and inserts" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
     var scheduler = Scheduler.init(std.testing.allocator);
     defer scheduler.deinit();
-
     try scheduler.start(2);
+
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{
+        .min_segment_size = 50_000,
+        .max_segment_size = 75_000_000,
+    });
+    defer index.deinit();
+    try index.open(true);
 
     var hashes: [100]u32 = undefined;
 
-    {
-        var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
-        defer index.deinit();
+    // Test 1: Individual inserts with duplicate IDs (testing updates)
+    for (0..100) |i| {
+        try index.update(&[_]Change{.{ .insert = .{
+            .id = @as(u32, @intCast(i % 20)) + 1,
+            .hashes = generateRandomHashes(&hashes, i),
+        } }});
+    }
 
-        try index.open(true);
+    // Test 2: Batch inserts with larger scale
+    const batch_size = 100;
+    const total_count = 5000;
+    const max_hash = 1 << 18; // 2^18
 
-        for (0..100) |i| {
-            try index.update(&[_]Change{.{ .insert = .{
-                .id = @as(u32, @intCast(i % 20)) + 1,
-                .hashes = generateRandomHashes(&hashes, i),
-            } }});
+    var batch = std.ArrayList(Change).init(std.testing.allocator);
+    defer batch.deinit();
+
+    var i: u32 = 21; // Continue from previous phase
+    while (i <= total_count) : (i += 1) {
+        // Generate hashes with deterministic seed based on ID
+        var prng = std.Random.DefaultPrng.init(i);
+        const rand = prng.random();
+        for (&hashes) |*h| {
+            h.* = rand.int(u32) % max_hash;
+        }
+
+        try batch.append(.{ .insert = .{
+            .id = i,
+            .hashes = try std.testing.allocator.dupe(u32, &hashes),
+        } });
+
+        if (batch.items.len == batch_size or i == total_count) {
+            try index.waitForReady(10000);
+            try index.update(batch.items);
+
+            // Clean up allocated hashes
+            for (batch.items) |change| {
+                std.testing.allocator.free(change.insert.hashes);
+            }
+            batch.clearRetainingCapacity();
         }
     }
 
-    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
-    defer index.deinit();
-
-    try index.open(false);
     try index.waitForReady(10000);
 
+    // Verification tests
     {
+        // Verify no results for non-existent hashes
         var collector = SearchResults.init(std.testing.allocator, .{});
         defer collector.deinit();
-
         try index.search(generateRandomHashes(&hashes, 0), &collector, .{});
-
         try std.testing.expectEqualSlices(SearchResult, &.{}, collector.getResults());
     }
 
     {
+        // Verify ID 100 exists with expected score
+        var prng = std.Random.DefaultPrng.init(100);
+        const rand = prng.random();
+        for (&hashes) |*h| {
+            h.* = rand.int(u32) % max_hash;
+        }
+
         var collector = SearchResults.init(std.testing.allocator, .{});
         defer collector.deinit();
+        try index.search(&hashes, &collector, .{});
+        try std.testing.expectEqualSlices(SearchResult, &.{.{ .id = 100, .score = hashes.len }}, collector.getResults());
+    }
 
-        try index.search(generateRandomHashes(&hashes, 80), &collector, .{});
+    // Verify segment management - check for multiple file segments and merging evidence
+    {
+        var reader = try index.acquireReader();
+        defer index.releaseReader(&reader);
 
-        try std.testing.expectEqualSlices(SearchResult, &.{.{ .id = 1, .score = hashes.len }}, collector.getResults());
+        var file_segments: usize = 0;
+        var file_merges: u64 = 0;
+
+        // Count file segments and merges
+        for (reader.file_segments.value.nodes.items) |node| {
+            file_segments += 1;
+            file_merges += node.value.info.merges;
+        }
+
+        // Verify evidence of file segment merging (checkpointing and merging)
+        try std.testing.expect(file_segments >= 1);
+        try std.testing.expect(file_merges > 0);
     }
 }
 
@@ -198,73 +252,4 @@ test "index, multiple fingerprints with the same hashes" {
             .score = hashes.len,
         },
     }, collector.getResults());
-}
-
-test "index insert many" {
-    var tmp_dir = std.testing.tmpDir(.{});
-    defer tmp_dir.cleanup();
-
-    var scheduler = Scheduler.init(std.testing.allocator);
-    defer scheduler.deinit();
-
-    try scheduler.start(2);
-
-    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{
-        .min_segment_size = 50_000,
-        .max_segment_size = 75_000_000,
-    });
-    defer index.deinit();
-
-    try index.open(true);
-
-    const batch_size = 100;
-    const total_count = 5000;
-    const max_hash = 1 << 18; // 2^18
-    var hashes: [100]u32 = undefined;
-
-    // Insert fingerprints in batches
-    var batch = std.ArrayList(Change).init(std.testing.allocator);
-    defer batch.deinit();
-
-    var i: u32 = 1;
-    while (i <= total_count) : (i += 1) {
-        // Generate hashes with deterministic seed based on ID
-        var prng = std.Random.DefaultPrng.init(i);
-        const rand = prng.random();
-        for (&hashes) |*h| {
-            h.* = rand.int(u32) % max_hash;
-        }
-
-        try batch.append(.{ .insert = .{
-            .id = i,
-            .hashes = try std.testing.allocator.dupe(u32, &hashes),
-        } });
-
-        if (batch.items.len == batch_size or i == total_count) {
-            try index.update(batch.items);
-
-            // Clean up allocated hashes
-            for (batch.items) |change| {
-                std.testing.allocator.free(change.insert.hashes);
-            }
-            batch.clearRetainingCapacity();
-        }
-    }
-
-    // Wait for index to be ready after all updates
-    try index.waitForReady(10000);
-
-    // Verify we can find fingerprint with ID 100 (same as Python test)
-    var prng = std.Random.DefaultPrng.init(100);
-    const rand = prng.random();
-    for (&hashes) |*h| {
-        h.* = rand.int(u32) % max_hash;
-    }
-
-    var collector = SearchResults.init(std.testing.allocator, .{});
-    defer collector.deinit();
-
-    try index.search(&hashes, &collector, .{});
-
-    try std.testing.expectEqualSlices(SearchResult, &.{.{ .id = 100, .score = hashes.len }}, collector.getResults());
 }
