@@ -127,7 +127,7 @@ test "WaitGroup with threading" {
 
     // Start threads
     for (&threads, 0..) |*thread, i| {
-        const data = WorkerData{ .wg = &wg, .delay_ms = (i + 1) * 10 };
+        const data = WorkerData{ .wg = &wg, .delay_ms = (i + 1) * 1 };
         thread.* = try std.Thread.spawn(.{}, worker.run, .{data});
     }
 

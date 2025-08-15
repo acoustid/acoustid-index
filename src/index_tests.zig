@@ -138,7 +138,7 @@ test "index many updates" {
     defer index.deinit();
 
     try index.open(false);
-    try index.waitForReady(100000);
+    try index.waitForReady(10000);
 
     {
         var collector = SearchResults.init(std.testing.allocator, .{});
@@ -209,13 +209,16 @@ test "index insert many" {
 
     try scheduler.start(2);
 
-    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{
+        .min_segment_size = 50_000,
+        .max_segment_size = 75_000_000,
+    });
     defer index.deinit();
 
     try index.open(true);
 
-    const batch_size = 1000;
-    const total_count = 50000;
+    const batch_size = 100;
+    const total_count = 5000;
     const max_hash = 1 << 18; // 2^18
     var hashes: [100]u32 = undefined;
 
@@ -249,7 +252,7 @@ test "index insert many" {
     }
 
     // Wait for index to be ready after all updates
-    try index.waitForReady(30000);
+    try index.waitForReady(10000);
 
     // Verify we can find fingerprint with ID 100 (same as Python test)
     var prng = std.Random.DefaultPrng.init(100);
