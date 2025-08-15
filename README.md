@@ -17,7 +17,13 @@ Building from source code:
 
 Running tests:
 
-    zig build test --summary all
+    zig build unit-tests --summary all
+    zig build e2e-tests --summary all
+
+Test runner environment variables:
+- `TEST_VERBOSE=1` - Verbose output
+- `TEST_FAIL_FIRST=1` - Stop on first failure  
+- `TEST_FILTER=substring` - Filter tests by name
 
 Running server:
 

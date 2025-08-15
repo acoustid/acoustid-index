@@ -57,6 +57,11 @@ Run integration tests:
 
     zig build e2e-tests --summary all
 
+Test runner supports environment variables:
+- `TEST_VERBOSE=1` - Verbose output
+- `TEST_FAIL_FIRST=1` - Stop on first failure  
+- `TEST_FILTER=substring` - Filter tests by name
+
 You can also run integration tests directly:
 
     python3 -m venv venv
