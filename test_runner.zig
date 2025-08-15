@@ -1,5 +1,6 @@
 // Enhanced test runner from https://github.com/karlseguin/http.zig
 // Provides colorized output, timing information, memory leak detection, and environment variable configuration
+// Modified to suppress log output for passing tests, only show logs for failed tests
 //
 // in your build.zig, you can specify a custom test runner:
 // const tests = b.addTest(.{
