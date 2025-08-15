@@ -106,15 +106,6 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
         .block_reader = BlockReader.init(self.min_doc_id),
     }} ** MAX_BLOCKS_PER_HASH;
 
-    // Let's say we have blocks like this (indexing max_hash):
-    //
-    // |4.......|6.......|9.......|
-    //
-    // We want to find hash=2, lowerBound returns block=0 (4), so we start at that block.
-    // We want to find hash=6, lowerBound returns block=1 (6), so we start at that block.
-    // We want to find hash=7, lowerBound returns block=2 (9), so we start at that block.
-    // We want to find hash=10, lowerBound returns block=3 (EOF), so we start at the last block.
-
     for (sorted_hashes, 1..) |hash, i| {
         // Find first block where max_hash >= hash
         var block_no = prev_block_range_start + std.sort.lowerBound(
