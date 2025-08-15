@@ -27,6 +27,7 @@ allocator: std.mem.Allocator,
 dir: std.fs.Dir,
 info: SegmentInfo = .{},
 status: SegmentStatus = .{},
+format_version: u32 = 2, // 1 for SGM1, 2 for SGM2
 attributes: std.StringHashMapUnmanaged(u64) = .{},
 docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
 min_doc_id: u32 = 0,
@@ -79,7 +80,7 @@ pub fn loadBlockData(self: Self, block_no: usize, block_reader: *BlockReader, la
     // Add extra SIMD padding for safe decoding - ensure we don't exceed blocks bounds
     const padded_end = @min(end + streamvbyte.SIMD_DECODE_PADDING, self.blocks.len);
     const block_data = self.blocks[start..padded_end];
-    block_reader.load(block_data, lazy);
+    block_reader.loadVersioned(block_data, lazy, self.format_version);
 }
 
 fn compareHashes(a: u32, b: u32) std.math.Order {
@@ -106,19 +107,30 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
         .block_reader = BlockReader.init(self.min_doc_id),
     }} ** MAX_BLOCKS_PER_HASH;
 
+    // With max_hash indexing, lowerBound returns the first block that could contain the hash
     // Let's say we have blocks like this:
     //
-    // |4.......|6.......|9.......|
+    // |....4|....6|....9|
     //
-    // We want to find hash=2, lowerBound returns block=0 (4), so we start at that block.
-    // We want to find hash=6, lowerBound returns block=1 (6), but block=0 could still contain hash=6, so we go one back.
-    // We want to find hash=7, lowerBound returns block=2 (9), but block=1 could still contain hash=6, so we go one back.
-    // We want to find hash=10, lowerBound returns block=3 (EOF), but block=2 could still contain hash=6, so we go one back.
+    // We want to find hash=2, lowerBound returns block=0 (max=4), so we start at that block.
+    // We want to find hash=6, lowerBound returns block=1 (max=6), so we start at that block.
+    // We want to find hash=7, lowerBound returns block=2 (max=9), so we start at that block.
+    // We want to find hash=10, lowerBound returns block=3 (EOF), so we start at block 2.
 
     for (sorted_hashes, 1..) |hash, i| {
         var block_no = std.sort.lowerBound(u32, self.index.items[prev_block_range_start..], hash, compareHashes) + prev_block_range_start;
-        if (block_no > 0) {
-            block_no -= 1;
+        
+        if (self.format_version == 1) {
+            // V1 format uses first_hash indexing - need to go back one block
+            if (block_no > 0) {
+                block_no -= 1;
+            }
+        } else {
+            // V2 format uses last_hash indexing - no need to go back one block
+            // However, if lowerBound returns beyond the last block, start from the last block
+            if (block_no >= self.index.items.len and self.index.items.len > 0) {
+                block_no = self.index.items.len - 1;
+            }
         }
         prev_block_range_start = block_no;
 
@@ -128,7 +140,12 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
         // Limit the number of scanned blocks per hash to MAX_BLOCKS_PER_HASH
         var blocks_scanned: usize = 0;
         
-        while (block_no < self.index.items.len and self.index.items[block_no] <= hash and blocks_scanned < MAX_BLOCKS_PER_HASH) : (block_no += 1) {
+        while (block_no < self.index.items.len and blocks_scanned < MAX_BLOCKS_PER_HASH) : (block_no += 1) {
+            // For v1 (min_hash): continue while min_hash <= target
+            // For v2 (max_hash): scan up to MAX_BLOCKS_PER_HASH blocks (simpler logic for now)
+            if (self.format_version == 1 and self.index.items[block_no] > hash) {
+                break;
+            }
             // Use block_no % MAX_BLOCKS_PER_HASH as cache key
             const cache_key = block_no % MAX_BLOCKS_PER_HASH;
             var block_reader: *BlockReader = undefined;
