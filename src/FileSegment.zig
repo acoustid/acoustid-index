@@ -86,11 +86,25 @@ fn compareHashes(a: u32, b: u32) std.math.Order {
     return std.math.order(a, b);
 }
 
+// Maximum blocks to scan per hash - matches cache size for optimal reuse
+const MAX_BLOCKS_PER_HASH = 4;
+
+// Maximum documents per hash before early exit to avoid excessive processing
+const MAX_DOCS_PER_HASH = 1000;
+
+const BlockCacheEntry = struct {
+    block_no: usize,
+    block_reader: BlockReader,
+};
+
 pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
-    var prev_block_no: usize = std.math.maxInt(usize);
     var prev_block_range_start: usize = 0;
 
-    var block_reader = BlockReader.init(self.min_doc_id);
+    // Initialize block cache with CACHE_SIZE BlockReaders
+    var block_cache = [_]BlockCacheEntry{BlockCacheEntry{
+        .block_no = std.math.maxInt(usize),
+        .block_reader = BlockReader.init(self.min_doc_id),
+    }} ** MAX_BLOCKS_PER_HASH;
 
     // Let's say we have blocks like this:
     //
@@ -110,10 +124,23 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
 
         var num_docs: usize = 0;
         var num_blocks: u64 = 0;
-        while (block_no < self.index.items.len and self.index.items[block_no] <= hash) : (block_no += 1) {
-            if (block_no != prev_block_no) {
-                prev_block_no = block_no;
-                self.loadBlockData(block_no, &block_reader, true);
+        
+        // Limit the number of scanned blocks per hash to MAX_BLOCKS_PER_HASH
+        var blocks_scanned: usize = 0;
+        
+        while (block_no < self.index.items.len and self.index.items[block_no] <= hash and blocks_scanned < MAX_BLOCKS_PER_HASH) : (block_no += 1) {
+            // Use block_no % MAX_BLOCKS_PER_HASH as cache key
+            const cache_key = block_no % MAX_BLOCKS_PER_HASH;
+            var block_reader: *BlockReader = undefined;
+            
+            if (block_cache[cache_key].block_no == block_no) {
+                // Cache hit - reuse existing block_reader
+                block_reader = &block_cache[cache_key].block_reader;
+            } else {
+                // Cache miss - load block data into cache slot
+                block_cache[cache_key].block_no = block_no;
+                block_reader = &block_cache[cache_key].block_reader;
+                self.loadBlockData(block_no, block_reader, true);
             }
 
             // Search for hash matches and get docids
@@ -123,10 +150,11 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
             }
 
             num_docs += matched_docids.len;
-            if (num_docs > 1000) {
-                break; // XXX explain why
+            if (num_docs > MAX_DOCS_PER_HASH) {
+                break; // Early exit to avoid excessive processing for high-frequency hashes
             }
             num_blocks += 1;
+            blocks_scanned += 1;
         }
 
         metrics.scannedDocsPerHash(num_docs);
