@@ -140,6 +140,11 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
                 self.loadBlockData(block_no, block_reader, true);
             }
 
+            // Quick check if this block could contain the hash
+            if (!block_reader.couldContainHash(hash)) {
+                continue;
+            }
+
             // Search for hash matches and get docids
             const matched_docids = block_reader.searchHash(hash);
             for (matched_docids) |docid| {

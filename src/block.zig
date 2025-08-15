@@ -223,6 +223,12 @@ pub const BlockReader = struct {
         return self.block_header.num_items;
     }
 
+    /// Check if this block could contain the given hash
+    /// Returns true if hash is within the block's min_hash and max_hash range
+    pub fn couldContainHash(self: *const BlockReader, hash: u32) bool {
+        return hash >= self.block_header.min_hash and hash <= self.block_header.max_hash;
+    }
+
     /// Find all occurrences of a hash in this block
     /// Returns the range [start, end) of matching indices
     pub fn findHash(self: *BlockReader, hash: u32) HashRange {
@@ -895,4 +901,34 @@ test "BlockEncoder reuse across multiple blocks" {
 
     // Should correctly encode and decode the second block
     try testing.expectEqualSlices(u32, &[_]u32{ 3, 4 }, docids2);
+}
+
+test "BlockReader.couldContainHash" {
+    // Create a test block with known min/max hash range
+    var encoder = BlockEncoder.init();
+    const items = [_]Item{
+        .{ .hash = 100, .id = 1 },
+        .{ .hash = 200, .id = 2 },
+        .{ .hash = 300, .id = 3 },
+    };
+
+    const min_doc_id: u32 = 1;
+    var block_data: [256]u8 = undefined;
+    _ = try encoder.encodeBlock(&items, min_doc_id, &block_data);
+
+    var reader = BlockReader.init(min_doc_id);
+    reader.load(&block_data, false);
+
+    // Test hash range checking
+    try testing.expect(reader.couldContainHash(100)); // min_hash
+    try testing.expect(reader.couldContainHash(200)); // middle
+    try testing.expect(reader.couldContainHash(300)); // max_hash
+    
+    // Test edge cases
+    try testing.expect(!reader.couldContainHash(99));  // just below min_hash
+    try testing.expect(!reader.couldContainHash(301)); // just above max_hash
+    
+    // Test definitely out of range
+    try testing.expect(!reader.couldContainHash(50));  // way below
+    try testing.expect(!reader.couldContainHash(500)); // way above
 }
