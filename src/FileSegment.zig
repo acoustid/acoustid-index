@@ -86,8 +86,8 @@ fn compareHashes(a: u32, b: u32) std.math.Order {
     return std.math.order(a, b);
 }
 
-// Cache size for block readers - must match max_blocks_per_hash for optimal reuse
-const CACHE_SIZE = 4;
+// Maximum blocks to scan per hash - matches cache size for optimal reuse
+const MAX_BLOCKS_PER_HASH = 4;
 
 const BlockCacheEntry = struct {
     block_no: usize,
@@ -101,7 +101,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
     var block_cache = [_]BlockCacheEntry{BlockCacheEntry{
         .block_no = std.math.maxInt(usize),
         .block_reader = BlockReader.init(self.min_doc_id),
-    }} ** CACHE_SIZE;
+    }} ** MAX_BLOCKS_PER_HASH;
 
     // Let's say we have blocks like this:
     //
@@ -122,13 +122,13 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
         var num_docs: usize = 0;
         var num_blocks: u64 = 0;
         
-        // Limit the number of scanned blocks per hash to CACHE_SIZE
+        // Limit the number of scanned blocks per hash to MAX_BLOCKS_PER_HASH
         var blocks_scanned: usize = 0;
-        const max_blocks_per_hash = CACHE_SIZE;
+        const max_blocks_per_hash = MAX_BLOCKS_PER_HASH;
         
         while (block_no < self.index.items.len and self.index.items[block_no] <= hash and blocks_scanned < max_blocks_per_hash) : (block_no += 1) {
-            // Use block_no % CACHE_SIZE as cache key
-            const cache_key = block_no % CACHE_SIZE;
+            // Use block_no % MAX_BLOCKS_PER_HASH as cache key
+            const cache_key = block_no % MAX_BLOCKS_PER_HASH;
             var block_reader: *BlockReader = undefined;
             
             if (block_cache[cache_key].block_no == block_no) {
