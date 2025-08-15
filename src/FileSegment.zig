@@ -89,6 +89,9 @@ fn compareHashes(a: u32, b: u32) std.math.Order {
 // Maximum blocks to scan per hash - matches cache size for optimal reuse
 const MAX_BLOCKS_PER_HASH = 4;
 
+// Maximum documents per hash before early exit to avoid excessive processing
+const MAX_DOCS_PER_HASH = 1000;
+
 const BlockCacheEntry = struct {
     block_no: usize,
     block_reader: BlockReader,
@@ -147,8 +150,8 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
             }
 
             num_docs += matched_docids.len;
-            if (num_docs > 1000) {
-                break; // XXX explain why
+            if (num_docs > MAX_DOCS_PER_HASH) {
+                break; // Early exit to avoid excessive processing for high-frequency hashes
             }
             num_blocks += 1;
             blocks_scanned += 1;
