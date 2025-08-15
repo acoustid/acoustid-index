@@ -21,10 +21,11 @@ const Item = @import("segment.zig").Item;
 pub const MIN_BLOCK_SIZE = 64;
 pub const MAX_BLOCK_SIZE = 4096;
 pub const MAX_ITEMS_PER_BLOCK = MAX_BLOCK_SIZE / 2;
-pub const BLOCK_HEADER_SIZE = 12; // u32 + u16 + u16 + u16 + u16
+pub const BLOCK_HEADER_SIZE = 16; // u32 + u32 + u16 + u16 + u16 + u16
 
 pub const BlockHeader = struct {
     min_hash: u32,
+    max_hash: u32,
     num_hashes: u16,
     num_items: u16,
     counts_offset: u16,
@@ -36,10 +37,11 @@ pub fn decodeBlockHeader(data: []const u8) BlockHeader {
     std.debug.assert(data.len >= BLOCK_HEADER_SIZE);
     return BlockHeader{
         .min_hash = std.mem.readInt(u32, data[0..4], .little),
-        .num_hashes = std.mem.readInt(u16, data[4..6], .little),
-        .num_items = std.mem.readInt(u16, data[6..8], .little),
-        .counts_offset = std.mem.readInt(u16, data[8..10], .little),
-        .docids_offset = std.mem.readInt(u16, data[10..12], .little),
+        .max_hash = std.mem.readInt(u32, data[4..8], .little),
+        .num_hashes = std.mem.readInt(u16, data[8..10], .little),
+        .num_items = std.mem.readInt(u16, data[10..12], .little),
+        .counts_offset = std.mem.readInt(u16, data[12..14], .little),
+        .docids_offset = std.mem.readInt(u16, data[14..16], .little),
     };
 }
 
@@ -47,10 +49,11 @@ pub fn decodeBlockHeader(data: []const u8) BlockHeader {
 pub fn encodeBlockHeader(header: BlockHeader, out_data: []u8) void {
     std.debug.assert(out_data.len >= BLOCK_HEADER_SIZE);
     std.mem.writeInt(u32, out_data[0..4], header.min_hash, .little);
-    std.mem.writeInt(u16, out_data[4..6], header.num_hashes, .little);
-    std.mem.writeInt(u16, out_data[6..8], header.num_items, .little);
-    std.mem.writeInt(u16, out_data[8..10], header.counts_offset, .little);
-    std.mem.writeInt(u16, out_data[10..12], header.docids_offset, .little);
+    std.mem.writeInt(u32, out_data[4..8], header.max_hash, .little);
+    std.mem.writeInt(u16, out_data[8..10], header.num_hashes, .little);
+    std.mem.writeInt(u16, out_data[10..12], header.num_items, .little);
+    std.mem.writeInt(u16, out_data[12..14], header.counts_offset, .little);
+    std.mem.writeInt(u16, out_data[14..16], header.docids_offset, .little);
 }
 
 /// BlockReader efficiently searches for hashes within a single compressed block
@@ -65,6 +68,7 @@ pub const BlockReader = struct {
     // Cached decompressed data
     block_header: BlockHeader = .{
         .min_hash = 0,
+        .max_hash = 0,
         .num_hashes = 0,
         .num_items = 0,
         .counts_offset = 0,
@@ -442,6 +446,7 @@ pub const BlockEncoder = struct {
 
     out_header: BlockHeader = .{
         .min_hash = 0,
+        .max_hash = 0,
         .num_hashes = 0,
         .num_items = 0,
         .counts_offset = 0,
@@ -700,6 +705,9 @@ pub const BlockEncoder = struct {
 
         // Write the block
         self.out_header.min_hash = first_hash;
+        // Calculate max_hash from the last successfully processed item
+        const max_hash = if (self.out_header.num_items > 0) items[self.out_header.num_items - 1].hash else first_hash;
+        self.out_header.max_hash = max_hash;
         self.out_header.counts_offset = @intCast(self.out_hashes.len + self.out_hashes_control.len);
         self.out_header.docids_offset = @intCast(self.out_hashes.len + self.out_hashes_control.len + self.out_counts.len + self.out_counts_control.len);
 
@@ -729,6 +737,7 @@ pub const BlockEncoder = struct {
 test "encodeBlockHeader/decodeBlockHeader" {
     const header = BlockHeader{
         .min_hash = 12345678,
+        .max_hash = 87654321,
         .num_hashes = 10,
         .num_items = 25,
         .counts_offset = 20,
@@ -739,6 +748,7 @@ test "encodeBlockHeader/decodeBlockHeader" {
 
     const decoded_header = decodeBlockHeader(buffer[0..]);
     try testing.expectEqual(header.min_hash, decoded_header.min_hash);
+    try testing.expectEqual(header.max_hash, decoded_header.max_hash);
     try testing.expectEqual(header.num_hashes, decoded_header.num_hashes);
     try testing.expectEqual(header.num_items, decoded_header.num_items);
     try testing.expectEqual(header.counts_offset, decoded_header.counts_offset);
@@ -763,6 +773,7 @@ test "BlockEncoder with mixed hashes and docids" {
     const header = decodeBlockHeader(&block);
     try testing.expectEqual(4, header.num_hashes); // Unique hashes: [1,3,4,5] = 4 unique
     try testing.expectEqual(1, header.min_hash);
+    try testing.expectEqual(5, header.max_hash);
     try testing.expectEqual(5, header.num_items);
 
     // Test with BlockReader
@@ -822,6 +833,7 @@ test "BlockEncoder with duplicate hashes" {
     const header = decodeBlockHeader(&block);
     try testing.expectEqual(@as(u16, 1), header.num_hashes); // Only 1 unique hash
     try testing.expectEqual(@as(u32, 100), header.min_hash);
+    try testing.expectEqual(@as(u32, 100), header.max_hash);
     try testing.expectEqual(@as(u16, 3), header.num_items);
 
     // Test that decoding produces the original docids
