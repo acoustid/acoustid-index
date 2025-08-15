@@ -15,6 +15,7 @@ const metrics = @import("metrics.zig");
 const filefmt = @import("filefmt.zig");
 const streamvbyte = @import("streamvbyte.zig");
 const BlockReader = @import("block.zig").BlockReader;
+const MAX_ITEMS_PER_BLOCK = @import("block.zig").MAX_ITEMS_PER_BLOCK;
 
 const Self = @This();
 
@@ -177,23 +178,29 @@ pub fn build(self: *Self, source: anytype) !void {
     try filefmt.readSegmentFile(self.dir, source.segment.info, self);
 }
 
-test "build" {
+test "build and reader with duplicate hashes" {
     const MemorySegment = @import("MemorySegment.zig");
+    const Change = @import("change.zig").Change;
 
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
-
-    var data_dir = try tmp_dir.dir.makeOpenPath("data", .{});
-    defer data_dir.close();
 
     var source = MemorySegment.init(std.testing.allocator, .{});
     defer source.deinit(.delete);
 
     source.info = .{ .version = 1 };
     source.status.frozen = true;
-    try source.docs.put(source.allocator, 1, true);
-    try source.items.append(source.allocator, .{ .id = 1, .hash = 1 });
-    try source.items.append(source.allocator, .{ .id = 1, .hash = 2 });
+    
+    // Create data where the same hash appears multiple times (multiple documents with same hash)
+    // This creates a scenario where num_hashes < num_items in the hybrid format
+    // Use proper Change API to add fingerprints
+    const changes = [_]Change{
+        .{ .insert = .{ .id = 1, .hashes = &[_]u32{100} } },
+        .{ .insert = .{ .id = 2, .hashes = &[_]u32{100} } },
+        .{ .insert = .{ .id = 3, .hashes = &[_]u32{100} } },
+    };
+    
+    try source.build(&changes);
 
     var source_reader = source.reader();
     defer source_reader.close();
@@ -203,9 +210,32 @@ test "build" {
 
     try segment.build(&source_reader);
 
+    // Verify segment metadata (from old build test)
     try std.testing.expectEqualDeep(SegmentInfo{ .version = 1, .merges = 0 }, segment.info);
-    try std.testing.expectEqual(1, segment.docs.count());
-    try std.testing.expectEqual(1, segment.index.items.len);
+    try std.testing.expectEqual(3, segment.docs.count()); // 3 documents inserted
+    try std.testing.expectEqual(1, segment.index.items.len); // 1 block for this small dataset
+
+    // Collect all items from the FileSegment reader
+    var file_reader = segment.reader();
+    defer file_reader.close();
+    
+    var actual_items = std.ArrayList(Item).init(std.testing.allocator);
+    defer actual_items.deinit();
+    
+    while (try file_reader.read()) |item| {
+        try actual_items.append(item);
+        file_reader.advance();
+    }
+    
+    // Expected items (same as what we inserted)
+    const expected_items = [_]Item{
+        .{ .hash = 100, .id = 1 },
+        .{ .hash = 100, .id = 2 },
+        .{ .hash = 100, .id = 3 },
+    };
+    
+    // Compare the slices directly
+    try std.testing.expectEqualSlices(Item, &expected_items, actual_items.items);
 }
 
 pub fn getSize(self: Self) usize {
@@ -224,26 +254,26 @@ pub const Reader = struct {
     index: usize = 0,
     block_no: usize = 0,
     block_reader: BlockReader,
+    current_items: [MAX_ITEMS_PER_BLOCK]Item = undefined,
+    current_items_len: usize = 0,
 
     pub fn close(_: *Reader) void {}
 
     pub fn read(self: *Reader) !?Item {
-        while (self.index >= self.block_reader.getNumItems()) {
+        while (self.index >= self.current_items_len) {
             if (self.block_no >= self.segment.index.items.len) {
                 return null;
             }
             self.index = 0;
             self.segment.loadBlockData(self.block_no, &self.block_reader, false);
+            self.current_items_len = self.block_reader.getItems(&self.current_items);
             self.block_no += 1;
         }
-        return Item{
-            .hash = self.block_reader.hashes[self.index],
-            .id = self.block_reader.docids[self.index],
-        };
+        return self.current_items[self.index];
     }
 
     pub fn advance(self: *Reader) void {
-        if (self.index < self.block_reader.getNumItems()) {
+        if (self.index < self.current_items_len) {
             self.index += 1;
         }
     }
