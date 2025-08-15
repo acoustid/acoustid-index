@@ -111,7 +111,7 @@ pub const BlockReader = struct {
 
     /// Check if a block is currently loaded
     pub fn isLoaded(self: *const BlockReader) bool {
-        return self.block_data != null and self.header_loaded;
+        return self.block_data != null;
     }
 
     /// Check if the block is empty (no items)
