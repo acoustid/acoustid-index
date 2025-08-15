@@ -124,9 +124,8 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
         
         // Limit the number of scanned blocks per hash to MAX_BLOCKS_PER_HASH
         var blocks_scanned: usize = 0;
-        const max_blocks_per_hash = MAX_BLOCKS_PER_HASH;
         
-        while (block_no < self.index.items.len and self.index.items[block_no] <= hash and blocks_scanned < max_blocks_per_hash) : (block_no += 1) {
+        while (block_no < self.index.items.len and self.index.items[block_no] <= hash and blocks_scanned < MAX_BLOCKS_PER_HASH) : (block_no += 1) {
             // Use block_no % MAX_BLOCKS_PER_HASH as cache key
             const cache_key = block_no % MAX_BLOCKS_PER_HASH;
             var block_reader: *BlockReader = undefined;
