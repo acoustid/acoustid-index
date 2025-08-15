@@ -125,10 +125,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
         var num_docs: usize = 0;
         var num_blocks: u64 = 0;
         
-        // Limit the number of scanned blocks per hash to MAX_BLOCKS_PER_HASH
-        var blocks_scanned: usize = 0;
-        
-        while (block_no < self.index.items.len and self.index.items[block_no] <= hash and blocks_scanned < MAX_BLOCKS_PER_HASH) : (block_no += 1) {
+        while (block_no < self.index.items.len and self.index.items[block_no] <= hash) : (block_no += 1) {
             // Use block_no % MAX_BLOCKS_PER_HASH as cache key
             const cache_key = block_no % MAX_BLOCKS_PER_HASH;
             var block_reader: *BlockReader = undefined;
@@ -150,11 +147,13 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
             }
 
             num_docs += matched_docids.len;
+            num_blocks += 1;
+            if (num_blocks >= MAX_BLOCKS_PER_HASH) {
+                break; // Limit the number of scanned blocks per hash
+            }
             if (num_docs > MAX_DOCS_PER_HASH) {
                 break; // Early exit to avoid excessive processing for high-frequency hashes
             }
-            num_blocks += 1;
-            blocks_scanned += 1;
         }
 
         metrics.scannedDocsPerHash(num_docs);
