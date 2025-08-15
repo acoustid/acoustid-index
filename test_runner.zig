@@ -14,6 +14,60 @@ const builtin = @import("builtin");
 
 const Allocator = std.mem.Allocator;
 
+// Log capture context
+const LogCapture = struct {
+    captured_log_buffer: ?*std.ArrayList(u8) = null,
+
+    pub fn logFn(
+        self: *const @This(),
+        comptime level: std.log.Level,
+        comptime scope: @Type(.enum_literal),
+        comptime format: []const u8,
+        args: anytype,
+    ) void {
+        _ = level; // Suppress unused parameter warning
+        
+        const scope_prefix = "(" ++ switch (scope) {
+            std.log.default_log_scope => @tagName(scope),
+            else => @tagName(scope),
+        } ++ "): ";
+        
+        if (self.captured_log_buffer) |buf| {
+            // Capture to buffer during test execution
+            buf.writer().print(scope_prefix ++ format ++ "\n", args) catch return;
+        } else {
+            // Normal logging to stderr when not capturing
+            const stderr = std.io.getStdErr().writer();
+            stderr.print(scope_prefix ++ format ++ "\n", args) catch return;
+        }
+    }
+    
+    pub fn startCapture(self: *@This(), buffer: *std.ArrayList(u8)) void {
+        self.captured_log_buffer = buffer;
+    }
+    
+    pub fn stopCapture(self: *@This()) void {
+        self.captured_log_buffer = null;
+    }
+};
+
+var log_capture = LogCapture{};
+
+// Custom log function that delegates to the LogCapture instance
+pub fn testLogFn(
+    comptime level: std.log.Level,
+    comptime scope: @Type(.enum_literal),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    log_capture.logFn(level, scope, format, args);
+}
+
+// Override std.log with our custom function
+pub const std_options: std.Options = .{
+    .logFn = testLogFn,
+};
+
 const BORDER = "=" ** 80;
 
 // use in custom panic handler
@@ -38,6 +92,11 @@ pub fn main() !void {
 
     const printer = Printer.init();
     printer.fmt("\r\x1b[0K", .{}); // beginning of line and clear to end of line
+
+    // Initialize log buffer for capturing test output
+    var log_buffer = std.ArrayList(u8).init(allocator);
+    defer log_buffer.deinit();
+
 
     for (builtin.test_functions) |t| {
         if (isSetup(t)) {
@@ -65,10 +124,17 @@ pub fn main() !void {
 
         const friendly_name = t.name;
 
+        // Clear log buffer and start capturing logs for this test
+        log_buffer.clearRetainingCapacity();
+        log_capture.startCapture(&log_buffer);
+        
         current_test = friendly_name;
         std.testing.allocator_instance = .{};
         const result = t.func();
         current_test = null;
+        
+        // Stop capturing logs
+        log_capture.stopCapture();
 
         const ns_taken = slowest.endTiming(friendly_name);
 
@@ -79,6 +145,7 @@ pub fn main() !void {
 
         if (result) |_| {
             pass += 1;
+            // For successful tests, we don't print the captured logs
         } else |err| switch (err) {
             error.SkipZigTest => {
                 skip += 1;
@@ -87,7 +154,15 @@ pub fn main() !void {
             else => {
                 status = .fail;
                 fail += 1;
-                printer.status(.fail, "\n{s}\n\"{s}\" - {s}\n{s}\n", .{ BORDER, friendly_name, @errorName(err), BORDER });
+                
+                printer.status(.fail, "\n{s}\n\"{s}\" - {s}\n", .{ BORDER, friendly_name, @errorName(err) });
+                
+                // Print captured logs for failed tests
+                if (log_buffer.items.len > 0) {
+                    printer.fmt("Test output:\n{s}", .{log_buffer.items});
+                }
+                
+                printer.fmt("{s}\n", .{BORDER});
                 if (@errorReturnTrace()) |trace| {
                     std.debug.dumpStackTrace(trace.*);
                 }
