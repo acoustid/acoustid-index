@@ -24,7 +24,7 @@ pub const MAX_BLOCK_SIZE = 4096;
 pub const MAX_ITEMS_PER_BLOCK = MAX_BLOCK_SIZE / 2;
 pub const BLOCK_HEADER_SIZE = 16; // u32 + u32 + u16 + u16 + u16 + u16
 
-pub const BlockHeader = struct {
+pub const BlockHeader = extern struct {
     min_hash: u32,
     max_hash: u32,
     num_hashes: u16,
@@ -36,25 +36,13 @@ pub const BlockHeader = struct {
 /// Decode a BlockHeader from bytes
 pub fn decodeBlockHeader(data: []const u8) BlockHeader {
     std.debug.assert(data.len >= BLOCK_HEADER_SIZE);
-    return BlockHeader{
-        .min_hash = std.mem.readInt(u32, data[0..4], .little),
-        .max_hash = std.mem.readInt(u32, data[4..8], .little),
-        .num_hashes = std.mem.readInt(u16, data[8..10], .little),
-        .num_items = std.mem.readInt(u16, data[10..12], .little),
-        .counts_offset = std.mem.readInt(u16, data[12..14], .little),
-        .docids_offset = std.mem.readInt(u16, data[14..16], .little),
-    };
+    return std.mem.bytesToValue(BlockHeader, data[0..BLOCK_HEADER_SIZE]);
 }
 
 /// Encode a BlockHeader into bytes
 pub fn encodeBlockHeader(header: BlockHeader, out_data: []u8) void {
     std.debug.assert(out_data.len >= BLOCK_HEADER_SIZE);
-    std.mem.writeInt(u32, out_data[0..4], header.min_hash, .little);
-    std.mem.writeInt(u32, out_data[4..8], header.max_hash, .little);
-    std.mem.writeInt(u16, out_data[8..10], header.num_hashes, .little);
-    std.mem.writeInt(u16, out_data[10..12], header.num_items, .little);
-    std.mem.writeInt(u16, out_data[12..14], header.counts_offset, .little);
-    std.mem.writeInt(u16, out_data[14..16], header.docids_offset, .little);
+    @memcpy(out_data[0..BLOCK_HEADER_SIZE], std.mem.asBytes(&header));
 }
 
 /// BlockReader efficiently searches for hashes within a single compressed block
@@ -67,14 +55,6 @@ pub const BlockReader = struct {
     block_data: ?[]const u8 = null,
 
     // Cached decompressed data
-    block_header: BlockHeader = .{
-        .min_hash = 0,
-        .max_hash = 0,
-        .num_hashes = 0,
-        .num_items = 0,
-        .counts_offset = 0,
-        .docids_offset = 0,
-    },
     hashes: [MAX_ITEMS_PER_BLOCK]u32 = undefined,
     counts: [MAX_ITEMS_PER_BLOCK]u32 = undefined,
     docids: [MAX_ITEMS_PER_BLOCK]u32 = undefined,
@@ -98,8 +78,15 @@ pub const BlockReader = struct {
         };
     }
 
+    /// Get a pointer to the block header from the block data
+    fn getHeaderPtr(self: *const BlockReader) *const BlockHeader {
+        assert(self.block_data != null);
+        assert(self.block_data.?.len >= BLOCK_HEADER_SIZE);
+        return @ptrCast(@alignCast(self.block_data.?.ptr));
+    }
+
     /// Load a new block for searching
-    /// This resets all cached state and loads the block header
+    /// This resets all cached state
     pub fn load(self: *BlockReader, block_data: []const u8, lazy: bool) void {
         assert(block_data.len >= BLOCK_HEADER_SIZE);
 
@@ -108,9 +95,6 @@ pub const BlockReader = struct {
         self.hashes_loaded = false;
         self.counts_loaded = false;
         self.docids_loaded = false;
-
-        // Load header immediately
-        self.block_header = decodeBlockHeader(block_data);
 
         // If full is true, decode all hashes, counts and docids immediately
         if (!lazy) {
@@ -127,7 +111,7 @@ pub const BlockReader = struct {
 
     /// Check if the block is empty (no items)
     pub fn isEmpty(self: *const BlockReader) bool {
-        return self.block_header.num_hashes == 0;
+        return self.getHeaderPtr().num_hashes == 0;
     }
 
     /// Reset the searcher state (clears cached data but keeps block_data)
@@ -147,16 +131,17 @@ pub const BlockReader = struct {
             return;
         }
 
+        const header = self.getHeaderPtr();
         const offset = BLOCK_HEADER_SIZE;
         streamvbyte.decodeValues(
-            self.block_header.num_hashes,
+            header.num_hashes,
             0,
-            self.block_header.num_hashes,
+            header.num_hashes,
             self.block_data.?[offset..],
             &self.hashes,
             .variant1234,
         );
-        streamvbyte.svbDeltaDecodeInPlace(self.hashes[0..self.block_header.num_hashes], self.block_header.min_hash);
+        streamvbyte.svbDeltaDecodeInPlace(self.hashes[0..header.num_hashes], header.min_hash);
         self.hashes_loaded = true;
     }
 
@@ -169,16 +154,17 @@ pub const BlockReader = struct {
             return;
         }
 
-        const offset = BLOCK_HEADER_SIZE + self.block_header.counts_offset;
+        const header = self.getHeaderPtr();
+        const offset = BLOCK_HEADER_SIZE + header.counts_offset;
         streamvbyte.decodeValues(
-            self.block_header.num_hashes,
+            header.num_hashes,
             0,
-            self.block_header.num_hashes,
+            header.num_hashes,
             self.block_data.?[offset..],
             &self.counts,
             .variant1234,
         );
-        streamvbyte.svbDeltaDecodeInPlace(self.counts[0..self.block_header.num_hashes], 0);
+        streamvbyte.svbDeltaDecodeInPlace(self.counts[0..header.num_hashes], 0);
         self.counts_loaded = true;
     }
 
@@ -194,11 +180,12 @@ pub const BlockReader = struct {
         self.ensureHashesLoaded();
         self.ensureCountsLoaded();
 
-        const offset = BLOCK_HEADER_SIZE + self.block_header.docids_offset;
+        const header = self.getHeaderPtr();
+        const offset = BLOCK_HEADER_SIZE + header.docids_offset;
         streamvbyte.decodeValues(
-            self.block_header.num_items,
+            header.num_items,
             0,
-            self.block_header.num_items,
+            header.num_items,
             self.block_data.?[offset..],
             &self.docids,
             .variant1234,
@@ -206,7 +193,7 @@ pub const BlockReader = struct {
 
         // Apply docid delta decoding similar to current approach
         var docid_idx: usize = 0;
-        for (0..self.block_header.num_hashes) |hash_idx| {
+        for (0..header.num_hashes) |hash_idx| {
             const count = if (hash_idx == 0) self.counts[0] else self.counts[hash_idx] - self.counts[hash_idx - 1];
             streamvbyte.svbDeltaDecodeInPlace(self.docids[docid_idx .. docid_idx + count], self.min_doc_id);
             docid_idx += count;
@@ -216,23 +203,24 @@ pub const BlockReader = struct {
 
     /// Get the minimum hash in this block (for block-level filtering)
     pub fn getMinHash(self: *BlockReader) u32 {
-        return self.block_header.min_hash;
+        return self.getHeaderPtr().min_hash;
     }
 
     /// Get the maximum hash in this block (for block-level filtering)
     pub fn getMaxHash(self: *BlockReader) u32 {
-        return self.block_header.max_hash;
+        return self.getHeaderPtr().max_hash;
     }
 
     /// Get the number of items in this block
     pub fn getNumItems(self: *BlockReader) u16 {
-        return self.block_header.num_items;
+        return self.getHeaderPtr().num_items;
     }
 
     /// Check if this block could contain the given hash
     /// Returns true if hash is within the block's min_hash and max_hash range
     pub fn couldContainHash(self: *const BlockReader, hash: u32) bool {
-        return hash >= self.block_header.min_hash and hash <= self.block_header.max_hash;
+        const header = self.getHeaderPtr();
+        return hash >= header.min_hash and hash <= header.max_hash;
     }
 
     /// Find all occurrences of a hash in this block
@@ -245,7 +233,8 @@ pub const BlockReader = struct {
         self.ensureHashesLoaded();
 
         // Binary search in unique hashes
-        const hashes_slice = self.hashes[0..self.block_header.num_hashes];
+        const header = self.getHeaderPtr();
+        const hashes_slice = self.hashes[0..header.num_hashes];
         const hash_idx = std.sort.binarySearch(u32, hashes_slice, hash, orderU32);
 
         if (hash_idx == null) {
@@ -268,10 +257,11 @@ pub const BlockReader = struct {
             return &[_]u32{};
         }
 
+        const header = self.getHeaderPtr();
         // Read StreamVByte-encoded docids
-        const offset = BLOCK_HEADER_SIZE + self.block_header.docids_offset;
+        const offset = BLOCK_HEADER_SIZE + header.docids_offset;
         _ = streamvbyte.decodeValues(
-            self.block_header.num_items,
+            header.num_items,
             range.start,
             range.end,
             self.block_data.?[offset..],
@@ -295,7 +285,7 @@ pub const BlockReader = struct {
 
     pub fn getHashes(self: *BlockReader) []const u32 {
         self.ensureHashesLoaded();
-        return self.hashes[0..self.block_header.num_hashes];
+        return self.hashes[0..self.getHeaderPtr().num_hashes];
     }
 
     pub fn getDocids(self: *BlockReader) []const u32 {
@@ -317,11 +307,12 @@ pub const BlockReader = struct {
         self.ensureCountsLoaded();
         self.ensureDocidsLoaded();
 
+        const header = self.getHeaderPtr();
         var item_idx: usize = 0;
 
         // Expand unique hashes with their docids
         // The docids array is already properly decoded and ordered by ensureDocidsLoaded()
-        for (0..self.block_header.num_hashes) |hash_idx| {
+        for (0..header.num_hashes) |hash_idx| {
             const hash = self.hashes[hash_idx];
             const count = if (hash_idx == 0)
                 self.counts[0]
@@ -338,7 +329,7 @@ pub const BlockReader = struct {
             }
         }
 
-        return self.block_header.num_items;
+        return header.num_items;
     }
 
     fn orderU32(lhs: u32, rhs: u32) std.math.Order {
@@ -727,11 +718,7 @@ pub const BlockEncoder = struct {
         var stream = std.io.fixedBufferStream(out);
         var writer = stream.writer();
 
-        // Write header
-        var header_bytes: [BLOCK_HEADER_SIZE]u8 = undefined;
-        encodeBlockHeader(self.out_header, &header_bytes);
-        try writer.writeAll(&header_bytes);
-
+        try writer.writeAll(std.mem.asBytes(&self.out_header));
         try writer.writeAll(self.out_hashes_control.slice());
         try writer.writeAll(self.out_hashes.slice());
         try writer.writeAll(self.out_counts_control.slice());
@@ -929,12 +916,12 @@ test "BlockReader.couldContainHash" {
     try testing.expect(reader.couldContainHash(100)); // min_hash
     try testing.expect(reader.couldContainHash(200)); // middle
     try testing.expect(reader.couldContainHash(300)); // max_hash
-    
+
     // Test edge cases
-    try testing.expect(!reader.couldContainHash(99));  // just below min_hash
+    try testing.expect(!reader.couldContainHash(99)); // just below min_hash
     try testing.expect(!reader.couldContainHash(301)); // just above max_hash
-    
+
     // Test definitely out of range
-    try testing.expect(!reader.couldContainHash(50));  // way below
+    try testing.expect(!reader.couldContainHash(50)); // way below
     try testing.expect(!reader.couldContainHash(500)); // way above
 }
