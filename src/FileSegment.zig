@@ -86,6 +86,9 @@ fn compareHashes(a: u32, b: u32) std.math.Order {
     return std.math.order(a, b);
 }
 
+// Cache size for block readers - must match max_blocks_per_hash for optimal reuse
+const CACHE_SIZE = 4;
+
 const BlockCacheEntry = struct {
     block_no: usize,
     block_reader: BlockReader,
@@ -94,13 +97,11 @@ const BlockCacheEntry = struct {
 pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, deadline: Deadline) !void {
     var prev_block_range_start: usize = 0;
 
-    // Initialize block cache with 4 BlockReaders
-    var block_cache = [_]BlockCacheEntry{
-        .{ .block_no = std.math.maxInt(usize), .block_reader = BlockReader.init(self.min_doc_id) },
-        .{ .block_no = std.math.maxInt(usize), .block_reader = BlockReader.init(self.min_doc_id) },
-        .{ .block_no = std.math.maxInt(usize), .block_reader = BlockReader.init(self.min_doc_id) },
-        .{ .block_no = std.math.maxInt(usize), .block_reader = BlockReader.init(self.min_doc_id) },
-    };
+    // Initialize block cache with CACHE_SIZE BlockReaders
+    var block_cache = [_]BlockCacheEntry{BlockCacheEntry{
+        .block_no = std.math.maxInt(usize),
+        .block_reader = BlockReader.init(self.min_doc_id),
+    }} ** CACHE_SIZE;
 
     // Let's say we have blocks like this:
     //
@@ -121,13 +122,13 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
         var num_docs: usize = 0;
         var num_blocks: u64 = 0;
         
-        // Limit the number of scanned blocks per hash to 4
+        // Limit the number of scanned blocks per hash to CACHE_SIZE
         var blocks_scanned: usize = 0;
-        const max_blocks_per_hash = 4;
+        const max_blocks_per_hash = CACHE_SIZE;
         
         while (block_no < self.index.items.len and self.index.items[block_no] <= hash and blocks_scanned < max_blocks_per_hash) : (block_no += 1) {
-            // Use block_no % 4 as cache key
-            const cache_key = block_no % 4;
+            // Use block_no % CACHE_SIZE as cache key
+            const cache_key = block_no % CACHE_SIZE;
             var block_reader: *BlockReader = undefined;
             
             if (block_cache[cache_key].block_no == block_no) {
