@@ -130,8 +130,9 @@ pub const BlockReader = struct {
             self.block_data.?[offset..],
             &self.hashes,
             .variant0124,
+            .delta,
+            header.min_hash,
         );
-        streamvbyte.svbDeltaDecodeInPlace(self.hashes[0..header.num_items], header.min_hash);
         self.hashes_loaded = true;
     }
     /// Load and cache docids if not already loaded
