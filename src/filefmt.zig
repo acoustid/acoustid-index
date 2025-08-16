@@ -4,8 +4,9 @@
 // 3. Documents - msgpack encoded document ID to boolean mappings
 // 4. Padding - zero bytes to align to block size boundary
 // 5. Blocks - fixed-size blocks containing the inverted index data
-// 6. Footer - msgpack encoded validation data (counts, checksum)
-// 7. Footer Size - 4-byte little-endian u32 with footer size in bytes
+// 6. Block Index - uncompressed u32 array of max_hash for each block
+// 7. Footer - msgpack encoded validation data (counts, checksum)
+// 8. Footer Size - 4-byte little-endian u32 with footer size in bytes
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -48,7 +49,12 @@ pub fn buildSegmentFileName(buf: []u8, info: SegmentInfo) []u8 {
 
 // Use block header from block.zig (already imported above)
 
-pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime block_size: u32) !SegmentFileFooter {
+pub const WriteBlocksResult = struct {
+    footer: SegmentFileFooter,
+    max_hashes: []u32,
+};
+
+pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime block_size: u32, allocator: std.mem.Allocator) !WriteBlocksResult {
     var encoder = BlockEncoder.init();
     var items_buffer: [block.MAX_ITEMS_PER_BLOCK]Item = undefined;
     var items_in_buffer: usize = 0;
@@ -56,6 +62,7 @@ pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime b
     var num_blocks: u32 = 0;
     var crc = std.hash.crc.Crc64Xz.init();
     var block_data: [block_size]u8 = undefined;
+    var max_hashes = std.ArrayList(u32).init(allocator);
 
     while (true) {
         // Fill buffer with new items from reader
@@ -73,6 +80,10 @@ pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime b
             break;
         }
 
+        // Extract max_hash from the block header and store it
+        const block_header = decodeBlockHeader(&block_data);
+        try max_hashes.append(block_header.max_hash);
+
         num_items += @intCast(consumed);
         num_blocks += 1;
         crc.update(&block_data);
@@ -85,11 +96,14 @@ pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime b
         items_in_buffer = remaining;
     }
 
-    return SegmentFileFooter{
-        .magic = segment_file_footer_magic_v1,
-        .num_items = num_items,
-        .num_blocks = num_blocks,
-        .checksum = crc.final(),
+    return WriteBlocksResult{
+        .footer = SegmentFileFooter{
+            .magic = segment_file_footer_magic_v1,
+            .num_items = num_items,
+            .num_blocks = num_blocks,
+            .checksum = crc.final(),
+        },
+        .max_hashes = try max_hashes.toOwnedSlice(),
     };
 }
 
@@ -195,11 +209,21 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
     const padding_size = block_size - counting_writer.bytes_written % block_size;
     try writer.writeByteNTimes(0, padding_size);
 
-    const footer = try writeBlocks(reader, writer, segment.min_doc_id, block_size);
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+    
+    const blocks_result = try writeBlocks(reader, writer, segment.min_doc_id, block_size, arena_allocator);
+    defer arena_allocator.free(blocks_result.max_hashes);
+
+    // Write block index (uncompressed u32 array of max_hash for each block)
+    for (blocks_result.max_hashes) |max_hash| {
+        try writer.writeInt(u32, max_hash, .little);
+    }
 
     // Write footer and capture its size
     const footer_start_pos = counting_writer.bytes_written;
-    try packer.write(footer);
+    try packer.write(blocks_result.footer);
     const footer_size = counting_writer.bytes_written - footer_start_pos;
 
     // Write footer size as 4-byte little-endian integer at the end
@@ -213,9 +237,9 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
 
     log.info("wrote segment file {s} (blocks = {}, items = {}, checksum = {})", .{
         file_name,
-        footer.num_blocks,
-        footer.num_items,
-        footer.checksum,
+        blocks_result.footer.num_blocks,
+        blocks_result.footer.num_items,
+        blocks_result.footer.checksum,
     });
 }
 
@@ -298,8 +322,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
 
     const blocks_data_start = fixed_buffer_stream.pos;
 
-    const max_possible_block_count = (raw_data.len - fixed_buffer_stream.pos) / block_size;
-    try segment.index.ensureTotalCapacity(segment.allocator, max_possible_block_count);
+    // No need to allocate capacity since we'll use a direct slice
 
     var num_items: u32 = 0;
     var num_blocks: u32 = 0;
@@ -313,7 +336,6 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
         if (block_header.num_items == 0) {
             break;
         }
-        segment.index.appendAssumeCapacity(block_header.max_hash);
         num_items += block_header.num_items;
         num_blocks += 1;
         crc.update(block_data);
@@ -324,6 +346,22 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     segment.num_blocks = num_blocks;
 
     try fixed_buffer_stream.seekBy(@intCast(segment.blocks.len));
+
+    // Read block index (uncompressed u32 array of max_hash for each block)
+    // Use the mmap-ed memory directly instead of allocating
+    const block_index_start = fixed_buffer_stream.pos;
+    const block_index_size = num_blocks * @sizeOf(u32);
+    const block_index_end = block_index_start + block_index_size;
+    
+    if (block_index_end > raw_data.len) {
+        return error.InvalidSegment;
+    }
+    
+    // Cast the mmap-ed memory to a u32 slice (assuming little-endian)
+    const block_index_bytes = raw_data[block_index_start..block_index_end];
+    segment.block_index = @as([*]const u32, @ptrCast(@alignCast(block_index_bytes.ptr)))[0..num_blocks];
+    
+    try fixed_buffer_stream.seekBy(@intCast(block_index_size));
 
     const footer = try unpacker.read(SegmentFileFooter);
     if (footer.magic != segment_file_footer_magic_v1) {
@@ -374,8 +412,8 @@ test "writeFile/readFile" {
 
         try testing.expectEqualDeep(info, segment.info);
         try testing.expectEqual(1, segment.docs.count());
-        try testing.expectEqual(1, segment.index.items.len);
-        try testing.expectEqual(2, segment.index.items[0]); // max_hash of the block
+        try testing.expectEqual(1, segment.block_index.len);
+        try testing.expectEqual(2, segment.block_index[0]); // max_hash of the block
 
         var block_reader = BlockReader.init(segment.min_doc_id);
         segment.loadBlockData(0, &block_reader, false);
