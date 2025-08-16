@@ -129,7 +129,7 @@ pub const BlockReader = struct {
             header.num_items,
             self.block_data.?[offset..],
             &self.hashes,
-            .variant1234,
+            .variant0124,
         );
         streamvbyte.svbDeltaDecodeInPlace(self.hashes[0..header.num_items], header.min_hash);
         self.hashes_loaded = true;
@@ -454,7 +454,7 @@ pub const BlockEncoder = struct {
         }
 
         // Calculate sizes for this chunk
-        const encoded_hashes_size = streamvbyte.svbEncodeQuad1234(
+        const encoded_hashes_size = streamvbyte.svbEncodeQuad0124(
             chunk_hashes,
             self.out_hashes.unusedCapacitySlice(),
             &self.out_hashes_control.buffer[self.out_hashes_control.len],
