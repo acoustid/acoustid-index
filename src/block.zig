@@ -10,26 +10,21 @@ const Item = @import("segment.zig").Item;
 // Block format:
 //  - u32   min_hash
 //  - u32   max_hash
-//  - u16   num unique hashes
 //  - u16   num items
-//  - u16   counts offset
-//  - u16   docid list offset
-//  - []u8  encoded unique hash deltas
-//  - []u8  encoded hash counts
+//  - u16   docids offset
+//  - []u8  encoded hash deltas (all hashes including duplicates)
 //  - []u8  encoded docid deltas
 
 // Block-related constants
 pub const MIN_BLOCK_SIZE = 64;
 pub const MAX_BLOCK_SIZE = 4096;
 pub const MAX_ITEMS_PER_BLOCK = MAX_BLOCK_SIZE / 2;
-pub const BLOCK_HEADER_SIZE = 16; // u32 + u32 + u16 + u16 + u16 + u16
+pub const BLOCK_HEADER_SIZE = 12; // u32 + u32 + u16 + u16
 
 pub const BlockHeader = extern struct {
     min_hash: u32,
     max_hash: u32,
-    num_hashes: u16,
     num_items: u16,
-    counts_offset: u16,
     docids_offset: u16,
 };
 
@@ -56,12 +51,10 @@ pub const BlockReader = struct {
 
     // Cached decompressed data
     hashes: [MAX_ITEMS_PER_BLOCK]u32 = undefined,
-    counts: [MAX_ITEMS_PER_BLOCK]u32 = undefined,
     docids: [MAX_ITEMS_PER_BLOCK]u32 = undefined,
 
     // State tracking
     hashes_loaded: bool = false,
-    counts_loaded: bool = false,
     docids_loaded: bool = false,
 
     const Self = @This();
@@ -93,13 +86,11 @@ pub const BlockReader = struct {
         // Reset all state
         self.block_data = block_data;
         self.hashes_loaded = false;
-        self.counts_loaded = false;
         self.docids_loaded = false;
 
-        // If full is true, decode all hashes, counts and docids immediately
+        // If full is true, decode all hashes and docids immediately
         if (!lazy) {
             self.ensureHashesLoaded();
-            self.ensureCountsLoaded();
             self.ensureDocidsLoaded();
         }
     }
@@ -111,18 +102,17 @@ pub const BlockReader = struct {
 
     /// Check if the block is empty (no items)
     pub fn isEmpty(self: *const BlockReader) bool {
-        return self.getHeaderPtr().num_hashes == 0;
+        return self.getHeaderPtr().num_items == 0;
     }
 
     /// Reset the searcher state (clears cached data but keeps block_data)
     pub fn reset(self: *BlockReader) void {
         self.hashes_loaded = false;
-        self.counts_loaded = false;
         self.docids_loaded = false;
-        // Keep header_loaded and block_data as they're still valid
+        // Keep block_data as it's still valid
     }
 
-    /// Load and cache unique hashes if not already loaded
+    /// Load and cache all hashes (including duplicates) if not already loaded
     fn ensureHashesLoaded(self: *BlockReader) void {
         if (self.hashes_loaded) return;
 
@@ -134,38 +124,15 @@ pub const BlockReader = struct {
         const header = self.getHeaderPtr();
         const offset = BLOCK_HEADER_SIZE;
         streamvbyte.decodeValues(
-            header.num_hashes,
+            header.num_items,
             0,
-            header.num_hashes,
+            header.num_items,
             self.block_data.?[offset..],
             &self.hashes,
             .variant1234,
         );
-        streamvbyte.svbDeltaDecodeInPlace(self.hashes[0..header.num_hashes], header.min_hash);
+        streamvbyte.svbDeltaDecodeInPlace(self.hashes[0..header.num_items], header.min_hash);
         self.hashes_loaded = true;
-    }
-
-    /// Load and cache counts as offsets if not already loaded
-    fn ensureCountsLoaded(self: *BlockReader) void {
-        if (self.counts_loaded) return;
-
-        if (self.isEmpty()) {
-            self.counts_loaded = true;
-            return;
-        }
-
-        const header = self.getHeaderPtr();
-        const offset = BLOCK_HEADER_SIZE + header.counts_offset;
-        streamvbyte.decodeValues(
-            header.num_hashes,
-            0,
-            header.num_hashes,
-            self.block_data.?[offset..],
-            &self.counts,
-            .variant1234,
-        );
-        streamvbyte.svbDeltaDecodeInPlace(self.counts[0..header.num_hashes], 0);
-        self.counts_loaded = true;
     }
 
     /// Load and cache docids if not already loaded
@@ -178,7 +145,6 @@ pub const BlockReader = struct {
         }
 
         self.ensureHashesLoaded();
-        self.ensureCountsLoaded();
 
         const header = self.getHeaderPtr();
         const offset = BLOCK_HEADER_SIZE + header.docids_offset;
@@ -191,13 +157,25 @@ pub const BlockReader = struct {
             .variant1234,
         );
 
-        // Apply docid delta decoding similar to current approach
-        var docid_idx: usize = 0;
-        for (0..header.num_hashes) |hash_idx| {
-            const count = if (hash_idx == 0) self.counts[0] else self.counts[hash_idx] - self.counts[hash_idx - 1];
-            streamvbyte.svbDeltaDecodeInPlace(self.docids[docid_idx .. docid_idx + count], self.min_doc_id);
-            docid_idx += count;
+        // Apply docid delta decoding with hash boundary resets
+        // Each time the hash changes, reset the base to min_doc_id
+        var last_docid = self.min_doc_id;
+        var last_hash: u32 = if (header.num_items > 0) self.hashes[0] else 0;
+        
+        for (0..header.num_items) |i| {
+            const current_hash = self.hashes[i];
+            
+            // If hash changed, reset base to min_doc_id
+            if (current_hash != last_hash) {
+                last_docid = self.min_doc_id;
+                last_hash = current_hash;
+            }
+            
+            // Apply delta decoding
+            self.docids[i] += last_docid;
+            last_docid = self.docids[i];
         }
+        
         self.docids_loaded = true;
     }
 
@@ -232,22 +210,13 @@ pub const BlockReader = struct {
 
         self.ensureHashesLoaded();
 
-        // Binary search in unique hashes
         const header = self.getHeaderPtr();
-        const hashes_slice = self.hashes[0..header.num_hashes];
-        const hash_idx = std.sort.binarySearch(u32, hashes_slice, hash, orderU32);
-
-        if (hash_idx == null) {
-            // Hash not found - return empty range at end of items
-            return HashRange{ .start = 0, .end = 0 };
-        }
-
-        self.ensureCountsLoaded();
-
-        // O(1) range calculation from offsets
-        const start = if (hash_idx.? == 0) 0 else self.counts[hash_idx.? - 1];
-        const end = self.counts[hash_idx.?];
-        return HashRange{ .start = start, .end = end };
+        const hashes_slice = self.hashes[0..header.num_items];
+        
+        // Find all occurrences of hash using equalRange
+        const range = std.sort.equalRange(u32, hashes_slice, hash, orderU32);
+        
+        return HashRange{ .start = range[0], .end = range[1] };
     }
 
     /// Get docids for a specific range (typically from findHash result)
@@ -258,7 +227,7 @@ pub const BlockReader = struct {
         }
 
         const header = self.getHeaderPtr();
-        // Read StreamVByte-encoded docids
+        // Read StreamVByte-encoded docids for just this range
         const offset = BLOCK_HEADER_SIZE + header.docids_offset;
         _ = streamvbyte.decodeValues(
             header.num_items,
@@ -271,7 +240,8 @@ pub const BlockReader = struct {
 
         const docids = self.docids[range.start..range.end];
 
-        // Apply delta decoding for docids and add min_doc_id back to absolute values
+        // Apply delta decoding - since range is at hash boundaries, 
+        // first docid is relative to min_doc_id, rest are relative to previous
         streamvbyte.svbDeltaDecodeInPlace(docids, self.min_doc_id);
 
         return docids;
@@ -285,7 +255,7 @@ pub const BlockReader = struct {
 
     pub fn getHashes(self: *BlockReader) []const u32 {
         self.ensureHashesLoaded();
-        return self.hashes[0..self.getHeaderPtr().num_hashes];
+        return self.hashes[0..self.getHeaderPtr().num_items];
     }
 
     pub fn getDocids(self: *BlockReader) []const u32 {
@@ -293,7 +263,7 @@ pub const BlockReader = struct {
         return self.docids[0..self.getNumItems()];
     }
 
-    /// Get all items as (hash, docid) pairs by expanding the hybrid format
+    /// Get all items as (hash, docid) pairs
     /// Caller must provide a slice with at least getNumItems() capacity
     /// Returns the number of items written to the output slice
     pub fn getItems(self: *BlockReader, output: []Item) usize {
@@ -304,29 +274,16 @@ pub const BlockReader = struct {
         std.debug.assert(output.len >= self.getNumItems());
 
         self.ensureHashesLoaded();
-        self.ensureCountsLoaded();
         self.ensureDocidsLoaded();
 
         const header = self.getHeaderPtr();
-        var item_idx: usize = 0;
 
-        // Expand unique hashes with their docids
-        // The docids array is already properly decoded and ordered by ensureDocidsLoaded()
-        for (0..header.num_hashes) |hash_idx| {
-            const hash = self.hashes[hash_idx];
-            const count = if (hash_idx == 0)
-                self.counts[0]
-            else
-                self.counts[hash_idx] - self.counts[hash_idx - 1];
-
-            // Create (hash, docid) pairs for this unique hash
-            for (0..count) |_| {
-                output[item_idx] = Item{
-                    .hash = hash,
-                    .id = self.docids[item_idx], // Use item_idx directly since docids are in order
-                };
-                item_idx += 1;
-            }
+        // Simple 1:1 mapping now
+        for (0..header.num_items) |i| {
+            output[i] = Item{
+                .hash = self.hashes[i],
+                .id = self.docids[i],
+            };
         }
 
         return header.num_items;
@@ -373,7 +330,7 @@ test "BlockReader basic functionality" {
     try testing.expectEqual(BlockReader.HashRange{ .start = 2, .end = 3 }, range200);
 
     const range404 = reader.findHash(404);
-    try testing.expectEqual(BlockReader.HashRange{ .start = 0, .end = 0 }, range404);
+    try testing.expectEqual(BlockReader.HashRange{ .start = 4, .end = 4 }, range404);
 
     // Test getDocidsForRange
     const docids100 = reader.getDocidsForRange(range100);
@@ -445,40 +402,18 @@ test "BlockReader range-based docid decoding" {
 
 /// BlockEncoder handles encoding of (hash, docid) items into compressed blocks
 pub const BlockEncoder = struct {
-    last_hash: u32 = 0,
-    last_docid: u32 = 0,
-
     out_header: BlockHeader = .{
         .min_hash = 0,
         .max_hash = 0,
-        .num_hashes = 0,
         .num_items = 0,
-        .counts_offset = 0,
         .docids_offset = 0,
     },
-
-    // Unique hash buffering strategy:
-    // Why 8 elements instead of encoding immediately at 4?
-    //   1. Must check if entire chunk fits BEFORE committing (no partial chunks)
-    //   2. When buffer has 4 hashes, next chunk might increment counts of existing hashes
-    //   3. If next chunk doesn't fit, we'd need to rollback those count changes
-    //   4. Easier to buffer up to 8, calculate total size, then encode if chunk fits
-    //   5. When >4: encode first 4 hashes to output, keep remaining 4 for next batch
-    // Worst case: 4 existing hashes + 4 new hashes from current chunk = 8 total
-    num_buffered_hashes: usize = 0,
-    buffered_hashes: [8]u32 = undefined, // Delta-encoded hash values
-    buffered_counts: [8]u32 = undefined, // Count of items per unique hash
 
     out_hashes: std.BoundedArray(u8, MAX_BLOCK_SIZE) = .{},
     out_hashes_control: std.BoundedArray(u8, MAX_BLOCK_SIZE) = .{},
 
-    out_counts: std.BoundedArray(u8, MAX_BLOCK_SIZE) = .{},
-    out_counts_control: std.BoundedArray(u8, MAX_BLOCK_SIZE) = .{},
-
     out_docids: std.BoundedArray(u8, MAX_BLOCK_SIZE) = .{},
     out_docids_control: std.BoundedArray(u8, MAX_BLOCK_SIZE) = .{},
-
-    const Buffer = std.BoundedArray(u32, MAX_ITEMS_PER_BLOCK);
 
     const Self = @This();
 
@@ -486,170 +421,69 @@ pub const BlockEncoder = struct {
         return .{};
     }
 
-    fn flushTempBuffers(self: *Self) void {
-        if (self.num_buffered_hashes == 0) {
-            return; // Nothing to flush
-        }
-
-        // For the first set of 4, actually encode them
-        const buffered_hashes_size = streamvbyte.svbEncodeQuad1234(
-            self.buffered_hashes[0..4].*,
-            self.out_hashes.unusedCapacitySlice(),
-            &self.out_hashes_control.buffer[self.out_hashes_control.len],
-        );
-        self.out_hashes.len += buffered_hashes_size;
-        self.out_hashes_control.len += 1;
-
-        const buffered_counts_size = streamvbyte.svbEncodeQuad1234(
-            self.buffered_counts[0..4].*,
-            self.out_counts.unusedCapacitySlice(),
-            &self.out_counts_control.buffer[self.out_counts_control.len],
-        );
-        self.out_counts.len += buffered_counts_size;
-        self.out_counts_control.len += 1;
-
-        self.out_header.num_hashes += @intCast(self.num_buffered_hashes);
-        self.num_buffered_hashes = 0;
-    }
-
-    pub fn encodeChunk(self: *Self, items: []const Item, min_doc_id: u32, block_size: usize, comptime full_chunk: bool) !void {
+    pub fn encodeChunk(self: *Self, items: []const Item, min_doc_id: u32, block_size: usize, prev_hash: u32, prev_docid: u32) !struct { last_hash: u32, last_docid: u32 } {
         std.debug.assert(items.len > 0);
         std.debug.assert(items.len <= 4);
 
-        if (full_chunk) {
-            std.debug.assert(items.len == 4);
-        }
-
-        var num_buffered_hashes = self.num_buffered_hashes;
-        var buffered_hashes: [8]u32 = self.buffered_hashes;
-        var buffered_counts: [8]u32 = self.buffered_counts;
-
-        var num_items = self.out_header.num_items;
-
+        // Prepare hash and docid deltas for this chunk
+        var chunk_hashes: [4]u32 = .{ 0, 0, 0, 0 };
         var chunk_docids: [4]u32 = .{ 0, 0, 0, 0 };
+
+        var last_hash = prev_hash;
+        var last_docid = prev_docid;
 
         for (0..items.len) |i| {
             const current_hash = items[i].hash;
             const current_docid = items[i].id;
 
-            const is_new_hash = num_items == 0 or current_hash != self.last_hash;
-
-            // Enforce sorted/grouped input assumptions to prevent unsigned underflow
-            if (num_items > 0) {
-                // After first item, hashes must be non-decreasing (sorted)
-                std.debug.assert(current_hash >= self.last_hash);
-            }
-
-            if (is_new_hash) {
-                // New unique hash found - store as delta
-                const delta = current_hash - self.last_hash;
-                buffered_hashes[num_buffered_hashes] = delta;
-                buffered_counts[num_buffered_hashes] = 1;
-                num_buffered_hashes += 1;
-            } else {
-                // Same hash as last - increment count for current unique hash
-                buffered_counts[num_buffered_hashes - 1] += 1;
-            }
-
-            // Enforce docid ordering assumptions to prevent unsigned underflow
-            if (!is_new_hash) {
-                // Same hash: docids must be non-decreasing within the hash group
-                std.debug.assert(current_docid >= self.last_docid);
-                // Same hash, encode docid delta
-                chunk_docids[i] = current_docid - self.last_docid;
-            } else {
-                // Different hash: docid must be >= min_doc_id (our baseline)
-                std.debug.assert(current_docid >= min_doc_id);
-                // Different hash, encode absolute docid minus min_doc_id
+            // Encode hash delta
+            chunk_hashes[i] = current_hash - last_hash;
+            
+            // Encode docid delta - reset to min_doc_id on hash boundaries
+            if (current_hash != last_hash) {
+                // Hash changed, encode relative to min_doc_id
                 chunk_docids[i] = current_docid - min_doc_id;
+                last_docid = current_docid;
+            } else {
+                // Same hash, encode relative to previous docid
+                chunk_docids[i] = current_docid - last_docid;
+                last_docid = current_docid;
             }
 
-            self.last_hash = current_hash;
-            self.last_docid = current_docid;
-            num_items += 1;
+            last_hash = current_hash;
         }
 
-        const encoded_docid_size = streamvbyte.svbEncodeQuad1234(
+        // Calculate sizes for this chunk
+        const encoded_hashes_size = streamvbyte.svbEncodeQuad1234(
+            chunk_hashes,
+            self.out_hashes.unusedCapacitySlice(),
+            &self.out_hashes_control.buffer[self.out_hashes_control.len],
+        );
+
+        const encoded_docids_size = streamvbyte.svbEncodeQuad1234(
             chunk_docids,
             self.out_docids.unusedCapacitySlice(),
             &self.out_docids_control.buffer[self.out_docids_control.len],
         );
 
-        const new_out_docids_len = self.out_docids.len + encoded_docid_size;
-        const new_out_docids_control_len = self.out_docids_control.len + 1;
-
-        var new_out_hashes_len = self.out_hashes.len;
-        var new_out_hashes_control_len = self.out_hashes_control.len;
-
-        var new_out_counts_len = self.out_counts.len;
-        var new_out_counts_control_len = self.out_counts_control.len;
-
-        var buffered_hashes_size: usize = undefined;
-        var buffered_counts_size: usize = undefined;
-
-        // Handle buffered hash encoding based on buffer state:
-        if (num_buffered_hashes <= 4) {
-            // Buffer fits in one quad - just calculate size without encoding yet
-            // (we'll encode later if this chunk fits in the block)
-            buffered_hashes_size = streamvbyte.svbEncodeQuadSize1234(buffered_hashes[0..4].*) + 1;
-            buffered_counts_size = streamvbyte.svbEncodeQuadSize1234(buffered_counts[0..4].*) + 1;
-        } else {
-            // Buffer overflow (>4) - must encode first quad now to free up space
-            // Encode first 4 hashes/counts to output buffers
-            const encoded_hashes_size = streamvbyte.svbEncodeQuad1234(
-                buffered_hashes[0..4].*,
-                self.out_hashes.unusedCapacitySlice(),
-                &self.out_hashes_control.buffer[self.out_hashes_control.len],
-            );
-            new_out_hashes_len += encoded_hashes_size;
-            new_out_hashes_control_len += 1;
-
-            const encoded_counts_size = streamvbyte.svbEncodeQuad1234(
-                buffered_counts[0..4].*,
-                self.out_counts.unusedCapacitySlice(),
-                &self.out_counts_control.buffer[self.out_counts_control.len],
-            );
-            new_out_counts_len += encoded_counts_size;
-            new_out_counts_control_len += 1;
-
-            // Calculate size for remaining 4 hashes (elements 4-7)
-            buffered_hashes_size = streamvbyte.svbEncodeQuadSize1234(buffered_hashes[4..8].*) + 1;
-            buffered_counts_size = streamvbyte.svbEncodeQuadSize1234(buffered_counts[4..8].*) + 1;
-        }
-
         const new_block_size = BLOCK_HEADER_SIZE +
-            new_out_hashes_len + new_out_hashes_control_len + buffered_hashes_size +
-            new_out_counts_len + new_out_counts_control_len + buffered_counts_size +
-            new_out_docids_len + new_out_docids_control_len;
+            self.out_hashes.len + encoded_hashes_size + self.out_hashes_control.len + 1 +
+            self.out_docids.len + encoded_docids_size + self.out_docids_control.len + 1;
 
         if (new_block_size > block_size) {
             return error.BlockFull;
         }
 
-        self.out_header.num_items = num_items;
+        // Commit the chunk
+        self.out_hashes.len += encoded_hashes_size;
+        self.out_hashes_control.len += 1;
+        
+        self.out_docids.len += encoded_docids_size;
+        self.out_docids_control.len += 1;
 
-        self.out_hashes.len = new_out_hashes_len;
-        self.out_hashes_control.len = new_out_hashes_control_len;
+        self.out_header.num_items += @intCast(items.len);
 
-        self.out_counts.len = new_out_counts_len;
-        self.out_counts_control.len = new_out_counts_control_len;
-
-        self.out_docids.len = new_out_docids_len;
-        self.out_docids_control.len = new_out_docids_control_len;
-
-        // Update buffer state after successful chunk processing:
-        if (num_buffered_hashes <= 4) {
-            // All hashes still fit in buffer - just update buffer contents
-            self.num_buffered_hashes = num_buffered_hashes;
-            @memcpy(self.buffered_hashes[0..4], buffered_hashes[0..4]);
-            @memcpy(self.buffered_counts[0..4], buffered_counts[0..4]);
-        } else {
-            // Buffer overflowed - first 4 were encoded, shift remaining 4 to front
-            self.out_header.num_hashes += 4; // Account for the 4 hashes we just encoded
-            self.num_buffered_hashes = num_buffered_hashes - 4; // Remaining buffered count
-            @memcpy(self.buffered_hashes[0..4], buffered_hashes[4..8]); // Shift elements 4-7 to 0-3
-            @memcpy(self.buffered_counts[0..4], buffered_counts[4..8]);
-        }
+        return .{ .last_hash = last_hash, .last_docid = last_docid };
     }
 
     /// Encode items into a block and return the number of items consumed.
@@ -668,52 +502,44 @@ pub const BlockEncoder = struct {
 
         // Reset encoder state for this block
         self.out_header.num_items = 0;
-        self.out_header.num_hashes = 0;
-
-        self.last_hash = first_hash;
-        self.last_docid = min_doc_id;
-
-        self.num_buffered_hashes = 0;
-        @memset(&self.buffered_hashes, 0);
-        @memset(&self.buffered_counts, 0);
+        self.out_header.min_hash = first_hash;
+        self.out_header.max_hash = first_hash;
 
         self.out_hashes.clear();
         self.out_hashes_control.clear();
-        self.out_counts.clear();
-        self.out_counts_control.clear();
         self.out_docids.clear();
         self.out_docids_control.clear();
+
+        var last_hash = first_hash;
+        var last_docid = min_doc_id;
 
         // Try to encode items in chunks of 4
         var items_ptr = items;
         while (items_ptr.len >= 4) {
-            self.encodeChunk(items_ptr[0..4], min_doc_id, block_size, true) catch |err| switch (err) {
+            const result = self.encodeChunk(items_ptr[0..4], min_doc_id, block_size, last_hash, last_docid) catch |err| switch (err) {
                 error.BlockFull => {
                     // Block is full, stop encoding
                     items_ptr = items_ptr[0..0];
                     break;
                 },
             };
+            last_hash = result.last_hash;
+            last_docid = result.last_docid;
             items_ptr = items_ptr[4..];
         }
 
         // Try to encode remaining items in partial chunk (max 3 items)
         if (items_ptr.len > 0) {
-            self.encodeChunk(items_ptr, min_doc_id, block_size, false) catch |err| switch (err) {
-                error.BlockFull => {}, // Remaining items will be encoded in next block
+            _ = self.encodeChunk(items_ptr, min_doc_id, block_size, last_hash, last_docid) catch |err| switch (err) {
+                error.BlockFull => {
+                    // Remaining items will be encoded in next block
+                },
             };
         }
 
-        // Flush any remaining unique hashes in temp buffers
-        self.flushTempBuffers();
-
-        // Write the block
-        self.out_header.min_hash = first_hash;
         // Calculate max_hash from the last successfully processed item
-        const max_hash = if (self.out_header.num_items > 0) items[self.out_header.num_items - 1].hash else first_hash;
-        self.out_header.max_hash = max_hash;
-        self.out_header.counts_offset = @intCast(self.out_hashes.len + self.out_hashes_control.len);
-        self.out_header.docids_offset = @intCast(self.out_hashes.len + self.out_hashes_control.len + self.out_counts.len + self.out_counts_control.len);
+        self.out_header.max_hash = if (self.out_header.num_items > 0) items[self.out_header.num_items - 1].hash else first_hash;
+        self.out_header.docids_offset = @intCast(self.out_hashes.len + self.out_hashes_control.len);
 
         var stream = std.io.fixedBufferStream(out);
         var writer = stream.writer();
@@ -721,8 +547,6 @@ pub const BlockEncoder = struct {
         try writer.writeAll(std.mem.asBytes(&self.out_header));
         try writer.writeAll(self.out_hashes_control.slice());
         try writer.writeAll(self.out_hashes.slice());
-        try writer.writeAll(self.out_counts_control.slice());
-        try writer.writeAll(self.out_counts.slice());
         try writer.writeAll(self.out_docids_control.slice());
         try writer.writeAll(self.out_docids.slice());
 
@@ -738,9 +562,7 @@ test "encodeBlockHeader/decodeBlockHeader" {
     const header = BlockHeader{
         .min_hash = 12345678,
         .max_hash = 87654321,
-        .num_hashes = 10,
         .num_items = 25,
-        .counts_offset = 20,
         .docids_offset = 30,
     };
     var buffer: [BLOCK_HEADER_SIZE]u8 = undefined;
@@ -749,9 +571,7 @@ test "encodeBlockHeader/decodeBlockHeader" {
     const decoded_header = decodeBlockHeader(buffer[0..]);
     try testing.expectEqual(header.min_hash, decoded_header.min_hash);
     try testing.expectEqual(header.max_hash, decoded_header.max_hash);
-    try testing.expectEqual(header.num_hashes, decoded_header.num_hashes);
     try testing.expectEqual(header.num_items, decoded_header.num_items);
-    try testing.expectEqual(header.counts_offset, decoded_header.counts_offset);
     try testing.expectEqual(header.docids_offset, decoded_header.docids_offset);
 }
 
@@ -771,7 +591,6 @@ test "BlockEncoder with mixed hashes and docids" {
     try testing.expectEqual(5, consumed);
 
     const header = decodeBlockHeader(&block);
-    try testing.expectEqual(4, header.num_hashes); // Unique hashes: [1,3,4,5] = 4 unique
     try testing.expectEqual(1, header.min_hash);
     try testing.expectEqual(5, header.max_hash);
     try testing.expectEqual(5, header.num_items);
@@ -832,7 +651,6 @@ test "BlockEncoder with duplicate hashes" {
 
     // Verify that the encoding produced the correct header
     const header = decodeBlockHeader(&block);
-    try testing.expectEqual(@as(u16, 1), header.num_hashes); // Only 1 unique hash
     try testing.expectEqual(@as(u32, 100), header.min_hash);
     try testing.expectEqual(@as(u32, 100), header.max_hash);
     try testing.expectEqual(@as(u16, 3), header.num_items);
