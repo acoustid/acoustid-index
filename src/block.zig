@@ -88,7 +88,7 @@ pub const BlockReader = struct {
         self.hashes_loaded = false;
         self.docids_loaded = false;
 
-        // If full is true, decode all hashes and docids immediately
+        // If lazy is false, decode all hashes and docids immediately
         if (!lazy) {
             self.ensureHashesLoaded();
             self.ensureDocidsLoaded();
