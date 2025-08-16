@@ -421,7 +421,7 @@ pub const BlockEncoder = struct {
         return .{};
     }
 
-    pub fn encodeChunk(self: *Self, items: []const Item, min_doc_id: u32, block_size: usize, prev_hash: u32, prev_docid: u32) !struct { last_hash: u32, last_docid: u32 } {
+    pub fn encodeChunk(self: *Self, items: []const Item, min_doc_id: u32, block_size: usize, last_hash: *u32, last_docid: *u32) !void {
         std.debug.assert(items.len > 0);
         std.debug.assert(items.len <= 4);
 
@@ -429,28 +429,24 @@ pub const BlockEncoder = struct {
         var chunk_hashes: [4]u32 = .{ 0, 0, 0, 0 };
         var chunk_docids: [4]u32 = .{ 0, 0, 0, 0 };
 
-        var last_hash = prev_hash;
-        var last_docid = prev_docid;
-
         for (0..items.len) |i| {
             const current_hash = items[i].hash;
             const current_docid = items[i].id;
 
             // Encode hash delta
-            chunk_hashes[i] = current_hash - last_hash;
+            chunk_hashes[i] = current_hash - last_hash.*;
             
             // Encode docid delta - reset to min_doc_id on hash boundaries
-            if (current_hash != last_hash) {
+            if (current_hash != last_hash.*) {
                 // Hash changed, encode relative to min_doc_id
                 chunk_docids[i] = current_docid - min_doc_id;
-                last_docid = current_docid;
             } else {
                 // Same hash, encode relative to previous docid
-                chunk_docids[i] = current_docid - last_docid;
-                last_docid = current_docid;
+                chunk_docids[i] = current_docid - last_docid.*;
             }
 
-            last_hash = current_hash;
+            last_hash.* = current_hash;
+            last_docid.* = current_docid;
         }
 
         // Calculate sizes for this chunk
@@ -482,8 +478,6 @@ pub const BlockEncoder = struct {
         self.out_docids_control.len += 1;
 
         self.out_header.num_items += @intCast(items.len);
-
-        return .{ .last_hash = last_hash, .last_docid = last_docid };
     }
 
     /// Encode items into a block and return the number of items consumed.
@@ -516,21 +510,19 @@ pub const BlockEncoder = struct {
         // Try to encode items in chunks of 4
         var items_ptr = items;
         while (items_ptr.len >= 4) {
-            const result = self.encodeChunk(items_ptr[0..4], min_doc_id, block_size, last_hash, last_docid) catch |err| switch (err) {
+            self.encodeChunk(items_ptr[0..4], min_doc_id, block_size, &last_hash, &last_docid) catch |err| switch (err) {
                 error.BlockFull => {
                     // Block is full, stop encoding
                     items_ptr = items_ptr[0..0];
                     break;
                 },
             };
-            last_hash = result.last_hash;
-            last_docid = result.last_docid;
             items_ptr = items_ptr[4..];
         }
 
         // Try to encode remaining items in partial chunk (max 3 items)
         if (items_ptr.len > 0) {
-            _ = self.encodeChunk(items_ptr, min_doc_id, block_size, last_hash, last_docid) catch |err| switch (err) {
+            self.encodeChunk(items_ptr, min_doc_id, block_size, &last_hash, &last_docid) catch |err| switch (err) {
                 error.BlockFull => {
                     // Remaining items will be encoded in next block
                 },
