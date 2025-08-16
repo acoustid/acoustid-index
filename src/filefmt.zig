@@ -30,7 +30,7 @@ const BlockEncoder = block.BlockEncoder;
 const BlockHeader = block.BlockHeader;
 const decodeBlockHeader = block.decodeBlockHeader;
 
-pub const default_block_size = 1024;
+pub const default_block_size = 512;
 pub const min_block_size = block.MIN_BLOCK_SIZE;
 pub const max_block_size = block.MAX_BLOCK_SIZE;
 
