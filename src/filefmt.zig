@@ -310,7 +310,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
         const block_data = raw_data[ptr .. ptr + block_size];
         ptr += block_size;
         const block_header = decodeBlockHeader(block_data);
-        if (block_header.num_hashes == 0) {
+        if (block_header.num_items == 0) {
             break;
         }
         segment.index.appendAssumeCapacity(block_header.max_hash);
