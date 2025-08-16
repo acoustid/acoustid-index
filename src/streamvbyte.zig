@@ -64,6 +64,7 @@ fn shuffle(x: Vu8x16, m: Vu8x16) Vu8x16 {
 pub const Variant = enum {
     variant0124,
     variant1234,
+    variant0124_minus1, // 0/1/2/4 variant with value-1 for counts (0 bytes for count=1)
 };
 
 // Delta decoding mode enum
@@ -84,6 +85,8 @@ const shuffle_table_1234: [256]Vu8x16 = blk: {
     break :blk initShuffleTable1234();
 };
 
+
+
 // Length tables for each control byte
 const length_table_0124: [256]u8 = blk: {
     @setEvalBranchQuota(10000);
@@ -94,6 +97,8 @@ const length_table_1234: [256]u8 = blk: {
     @setEvalBranchQuota(10000);
     break :blk initLengthTable1234();
 };
+
+
 
 // Initialize shuffle table for 0124 variant at comptime
 fn initShuffleTable0124() [256]Vu8x16 {
@@ -223,17 +228,25 @@ inline fn svbDecodeQuadBase(comptime variant: Variant, control: u8, in_data: []c
     const shuffle_table = switch (variant) {
         .variant0124 => shuffle_table_0124,
         .variant1234 => shuffle_table_1234,
+        .variant0124_minus1 => shuffle_table_0124, // Reuse 0124 tables
     };
     const length_table = switch (variant) {
         .variant0124 => length_table_0124,
         .variant1234 => length_table_1234,
+        .variant0124_minus1 => length_table_0124, // Reuse 0124 tables
     };
 
     // Apply shuffle to rearrange bytes
     const result = shuffle(data, shuffle_table[control]);
 
     // Convert result to 4 u32 values
-    const result_u32: @Vector(4, u32) = @bitCast(result);
+    var result_u32: @Vector(4, u32) = @bitCast(result);
+
+    // For variant0124_minus1, add 1 to each decoded value
+    if (variant == .variant0124_minus1) {
+        const one_vec: @Vector(4, u32) = @splat(1);
+        result_u32 = result_u32 + one_vec;
+    }
 
     return .{ .values = result_u32, .consumed = length_table[control] };
 }
@@ -345,6 +358,7 @@ pub fn decodeValues(
     const length_table = switch (variant) {
         .variant0124 => length_table_0124,
         .variant1234 => length_table_1234,
+        .variant0124_minus1 => length_table_0124, // Reuse 0124 tables
     };
 
     const start_quad = start_item / 4;
@@ -450,6 +464,8 @@ pub fn svbEncodeValue1234(in: u32, out_data: []u8, out_control: *u8, comptime in
     }
 }
 
+
+
 // Encode four 32-bit integers into a StreamVByte encoded byte array. (0124 variant)
 pub fn svbEncodeQuad0124(in: [4]u32, out_data: []u8, out_control: *u8) usize {
     var out_data_ptr = out_data;
@@ -471,6 +487,8 @@ pub fn svbEncodeQuad1234(in: [4]u32, out_data: []u8, out_control: *u8) usize {
     }
     return out_data.len - out_data_ptr.len;
 }
+
+
 
 // Calculate the size needed to encode four 32-bit integers with StreamVByte (0124 variant)
 pub fn svbEncodeQuadSize0124(in: [4]u32) usize {
@@ -507,6 +525,8 @@ pub fn svbEncodeQuadSize1234(in: [4]u32) usize {
     }
     return size;
 }
+
+
 
 test "shuffle" {
     const data: Vu8x16 = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
@@ -810,6 +830,24 @@ test "svbEncodeQuadSize1234 all small values" {
     const size = svbEncodeQuadSize1234(input);
     try std.testing.expectEqual(@as(usize, 4), size); // 1 + 1 + 1 + 1
 }
+
+test "svbDecodeQuad0124_minus1 SIMD" {
+    // Test simple case: counts [1, 2, 1, 4] encoded as [0, 1, 0, 3]
+    // 0 (0 bytes), 1 (1 byte), 0 (0 bytes), 3 (1 byte)
+    // Control bits: 00 01 00 01 = codes [0, 1, 0, 1]
+    const control: u8 = 0b01_00_01_00;
+    const input = [_]u8{ 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    var output: [4]u32 = undefined;
+
+    const consumed = svbDecodeQuad(.variant0124_minus1, control, &input, &output);
+    try std.testing.expectEqual(2, consumed);
+    try std.testing.expectEqual(@as(u32, 1), output[0]); // 0 + 1
+    try std.testing.expectEqual(@as(u32, 2), output[1]); // 1 + 1
+    try std.testing.expectEqual(@as(u32, 1), output[2]); // 0 + 1
+    try std.testing.expectEqual(@as(u32, 4), output[3]); // 3 + 1
+}
+
+
 
 test "svbEncodeQuadSize1234 all max values" {
     const input = [4]u32{ 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF };
