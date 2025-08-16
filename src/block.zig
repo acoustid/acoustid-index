@@ -19,11 +19,10 @@ const Item = @import("segment.zig").Item;
 pub const MIN_BLOCK_SIZE = 64;
 pub const MAX_BLOCK_SIZE = 4096;
 pub const MAX_ITEMS_PER_BLOCK = MAX_BLOCK_SIZE / 2;
-pub const BLOCK_HEADER_SIZE = 12; // u32 + u32 + u16 + u16
+pub const BLOCK_HEADER_SIZE = 8; // u32 + u16 + u16
 
 pub const BlockHeader = extern struct {
     min_hash: u32,
-    max_hash: u32,
     num_items: u16,
     docids_offset: u16,
 };
@@ -186,22 +185,12 @@ pub const BlockReader = struct {
         return self.getHeaderPtr().min_hash;
     }
 
-    /// Get the maximum hash in this block (for block-level filtering)
-    pub fn getMaxHash(self: *BlockReader) u32 {
-        return self.getHeaderPtr().max_hash;
-    }
 
     /// Get the number of items in this block
     pub fn getNumItems(self: *BlockReader) u16 {
         return self.getHeaderPtr().num_items;
     }
 
-    /// Check if this block could contain the given hash
-    /// Returns true if hash is within the block's min_hash and max_hash range
-    pub fn couldContainHash(self: *const BlockReader, hash: u32) bool {
-        const header = self.getHeaderPtr();
-        return hash >= header.min_hash and hash <= header.max_hash;
-    }
 
     /// Find all occurrences of a hash in this block
     /// Returns the range [start, end) of matching indices
@@ -313,8 +302,8 @@ test "BlockReader basic functionality" {
 
     const min_doc_id: u32 = 1;
     var block_data: [256]u8 = undefined;
-    const num_items = try encoder.encodeBlock(&items, min_doc_id, &block_data);
-    try testing.expectEqual(4, num_items);
+    const result = try encoder.encodeBlock(&items, min_doc_id, &block_data);
+    try testing.expectEqual(4, result.items_consumed);
 
     // Test BlockReader
     var reader = BlockReader.init(min_doc_id);
@@ -323,7 +312,6 @@ test "BlockReader basic functionality" {
     // Test basic properties
     try testing.expectEqual(@as(u16, 4), reader.getNumItems());
     try testing.expectEqual(@as(u32, 100), reader.getMinHash());
-    try testing.expectEqual(@as(u32, 300), reader.getMaxHash());
     try testing.expectEqual(false, reader.isEmpty());
 
     // Test findHash
@@ -364,8 +352,8 @@ test "BlockReader range-based docid decoding" {
 
     const min_doc_id: u32 = 1000;
     var block_data: [512]u8 = undefined;
-    const num_items = try encoder.encodeBlock(&items, min_doc_id, &block_data);
-    try testing.expectEqual(8, num_items);
+    const result = try encoder.encodeBlock(&items, min_doc_id, &block_data);
+    try testing.expectEqual(8, result.items_consumed);
 
     // Test BlockReader with range optimization
     var reader = BlockReader.init(min_doc_id);
@@ -482,16 +470,21 @@ pub const BlockEncoder = struct {
         self.num_items += @intCast(items.len);
     }
 
-    /// Encode items into a block and return the number of items consumed.
+    pub const EncodeResult = struct {
+        items_consumed: usize,
+        max_hash: u32,
+    };
+
+    /// Encode items into a block and return the number of items consumed and max_hash.
     /// Takes more items than needed to fill one block, always returns a full block.
-    /// Returns the number of items consumed from the input.
+    /// Returns the number of items consumed from the input and the max_hash of the block.
     /// min_doc_id is subtracted from absolute docid values to reduce storage size.
-    pub fn encodeBlock(self: *Self, items: []const Item, min_doc_id: u32, out: []u8) !usize {
+    pub fn encodeBlock(self: *Self, items: []const Item, min_doc_id: u32, out: []u8) !EncodeResult {
         const block_size = out.len;
 
         if (items.len == 0) {
             @memset(out, 0);
-            return 0;
+            return EncodeResult{ .items_consumed = 0, .max_hash = 0 };
         }
 
         const first_hash = items[0].hash;
@@ -536,7 +529,6 @@ pub const BlockEncoder = struct {
 
         const header = BlockHeader{
             .min_hash = min_hash,
-            .max_hash = max_hash,
             .num_items = self.num_items,
             .docids_offset = docids_offset,
         };
@@ -554,14 +546,13 @@ pub const BlockEncoder = struct {
         const bytes_written = try stream.getPos();
         @memset(out[bytes_written..], 0);
 
-        return self.num_items;
+        return EncodeResult{ .items_consumed = self.num_items, .max_hash = max_hash };
     }
 };
 
 test "encodeBlockHeader/decodeBlockHeader" {
     const header = BlockHeader{
         .min_hash = 12345678,
-        .max_hash = 87654321,
         .num_items = 25,
         .docids_offset = 30,
     };
@@ -570,7 +561,6 @@ test "encodeBlockHeader/decodeBlockHeader" {
 
     const decoded_header = decodeBlockHeader(buffer[0..]);
     try testing.expectEqual(header.min_hash, decoded_header.min_hash);
-    try testing.expectEqual(header.max_hash, decoded_header.max_hash);
     try testing.expectEqual(header.num_items, decoded_header.num_items);
     try testing.expectEqual(header.docids_offset, decoded_header.docids_offset);
 }
@@ -587,12 +577,12 @@ test "BlockEncoder with mixed hashes and docids" {
 
     const min_doc_id: u32 = 50;
     var block: [256]u8 = undefined;
-    const consumed = try encoder.encodeBlock(items, min_doc_id, &block);
-    try testing.expectEqual(5, consumed);
+    const result = try encoder.encodeBlock(items, min_doc_id, &block);
+    try testing.expectEqual(5, result.items_consumed);
+    try testing.expectEqual(5, result.max_hash);
 
     const header = decodeBlockHeader(&block);
     try testing.expectEqual(1, header.min_hash);
-    try testing.expectEqual(5, header.max_hash);
     try testing.expectEqual(5, header.num_items);
 
     // Test with BlockReader
@@ -601,7 +591,6 @@ test "BlockEncoder with mixed hashes and docids" {
 
     try testing.expectEqual(@as(u16, 5), reader.getNumItems());
     try testing.expectEqual(@as(u32, 1), reader.getMinHash());
-    try testing.expectEqual(@as(u32, 5), reader.getMaxHash());
 
     // Test hash ranges
     const range1 = reader.findHash(1);
@@ -646,13 +635,13 @@ test "BlockEncoder with duplicate hashes" {
 
     const min_doc_id: u32 = 1;
     var block: [256]u8 = undefined;
-    const consumed = try encoder.encodeBlock(items, min_doc_id, &block);
-    try testing.expectEqual(3, consumed);
+    const result = try encoder.encodeBlock(items, min_doc_id, &block);
+    try testing.expectEqual(3, result.items_consumed);
+    try testing.expectEqual(100, result.max_hash);
 
     // Verify that the encoding produced the correct header
     const header = decodeBlockHeader(&block);
     try testing.expectEqual(@as(u32, 100), header.min_hash);
-    try testing.expectEqual(@as(u32, 100), header.max_hash);
     try testing.expectEqual(@as(u16, 3), header.num_items);
 
     // Test that decoding produces the original docids
@@ -685,8 +674,8 @@ test "BlockEncoder reuse across multiple blocks" {
 
     const min_doc_id: u32 = 1;
     var block1: [256]u8 = undefined;
-    const consumed1 = try encoder.encodeBlock(items1, min_doc_id, &block1);
-    try testing.expectEqual(2, consumed1);
+    const result1 = try encoder.encodeBlock(items1, min_doc_id, &block1);
+    try testing.expectEqual(2, result1.items_consumed);
 
     // Verify first block is correct
     var reader1 = BlockReader.init(min_doc_id);
@@ -702,8 +691,8 @@ test "BlockEncoder reuse across multiple blocks" {
     };
 
     var block2: [256]u8 = undefined;
-    const consumed2 = try encoder.encodeBlock(items2, min_doc_id, &block2);
-    try testing.expectEqual(2, consumed2);
+    const result2 = try encoder.encodeBlock(items2, min_doc_id, &block2);
+    try testing.expectEqual(2, result2.items_consumed);
 
     // Verify that encoder correctly handles multiple blocks
     var reader2 = BlockReader.init(min_doc_id);
@@ -714,32 +703,3 @@ test "BlockEncoder reuse across multiple blocks" {
     try testing.expectEqualSlices(u32, &[_]u32{ 3, 4 }, docids2);
 }
 
-test "BlockReader.couldContainHash" {
-    // Create a test block with known min/max hash range
-    var encoder = BlockEncoder.init();
-    const items = [_]Item{
-        .{ .hash = 100, .id = 1 },
-        .{ .hash = 200, .id = 2 },
-        .{ .hash = 300, .id = 3 },
-    };
-
-    const min_doc_id: u32 = 1;
-    var block_data: [256]u8 = undefined;
-    _ = try encoder.encodeBlock(&items, min_doc_id, &block_data);
-
-    var reader = BlockReader.init(min_doc_id);
-    reader.load(&block_data, false);
-
-    // Test hash range checking
-    try testing.expect(reader.couldContainHash(100)); // min_hash
-    try testing.expect(reader.couldContainHash(200)); // middle
-    try testing.expect(reader.couldContainHash(300)); // max_hash
-
-    // Test edge cases
-    try testing.expect(!reader.couldContainHash(99)); // just below min_hash
-    try testing.expect(!reader.couldContainHash(301)); // just above max_hash
-
-    // Test definitely out of range
-    try testing.expect(!reader.couldContainHash(50)); // way below
-    try testing.expect(!reader.couldContainHash(500)); // way above
-}
