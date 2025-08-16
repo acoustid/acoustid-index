@@ -91,6 +91,29 @@ pub fn build(b: *std.Build) void {
     var e2e_tests_step = b.step("e2e-tests", "Run e2e tests");
     e2e_tests_step.dependOn(&run_integration_tests.step);
 
+    // Legacy segment dumper tool
+    const legacy_segment_dumper_exe = b.addExecutable(.{
+        .name = "legacy_segment_dumper",
+        .root_source_file = b.path("src/legacy_segment_dumper_tool.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    legacy_segment_dumper_exe.linkLibC();
+    legacy_segment_dumper_exe.root_module.addImport("zul", zul.module("zul"));
+    b.installArtifact(legacy_segment_dumper_exe);
+
+    // Segment builder tool
+    const segment_builder_exe = b.addExecutable(.{
+        .name = "segment_builder",
+        .root_source_file = b.path("src/segment_builder_tool.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    segment_builder_exe.linkLibC();
+    segment_builder_exe.root_module.addImport("zul", zul.module("zul"));
+    segment_builder_exe.root_module.addImport("msgpack", msgpack.module("msgpack"));
+    b.installArtifact(segment_builder_exe);
+
     const test_step = b.step("test", "Run all tests");
     test_step.dependOn(unit_tests_step);
     test_step.dependOn(e2e_tests_step);
