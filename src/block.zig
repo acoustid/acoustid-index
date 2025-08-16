@@ -402,13 +402,8 @@ test "BlockReader range-based docid decoding" {
 
 /// BlockEncoder handles encoding of (hash, docid) items into compressed blocks
 pub const BlockEncoder = struct {
-    out_header: BlockHeader = .{
-        .min_hash = 0,
-        .max_hash = 0,
-        .num_items = 0,
-        .docids_offset = 0,
-    },
-
+    num_items: u16 = 0,
+    
     last_hash: u32 = 0,
     last_docid: u32 = 0,
 
@@ -480,7 +475,7 @@ pub const BlockEncoder = struct {
         self.out_docids.len += encoded_docids_size;
         self.out_docids_control.len += 1;
 
-        self.out_header.num_items += @intCast(items.len);
+        self.num_items += @intCast(items.len);
     }
 
     /// Encode items into a block and return the number of items consumed.
@@ -498,9 +493,7 @@ pub const BlockEncoder = struct {
         const first_hash = items[0].hash;
 
         // Reset encoder state for this block
-        self.out_header.num_items = 0;
-        self.out_header.min_hash = first_hash;
-        self.out_header.max_hash = first_hash;
+        self.num_items = 0;
 
         self.out_hashes.clear();
         self.out_hashes_control.clear();
@@ -532,14 +525,22 @@ pub const BlockEncoder = struct {
             };
         }
 
-        // Calculate max_hash from the last successfully processed item
-        self.out_header.max_hash = if (self.out_header.num_items > 0) items[self.out_header.num_items - 1].hash else first_hash;
-        self.out_header.docids_offset = @intCast(self.out_hashes.len + self.out_hashes_control.len);
+        // Calculate min_hash and max_hash from the items
+        const min_hash = items[0].hash;
+        const max_hash = if (self.num_items > 0) items[self.num_items - 1].hash else items[0].hash;
+        const docids_offset: u16 = @intCast(self.out_hashes.len + self.out_hashes_control.len);
+
+        const header = BlockHeader{
+            .min_hash = min_hash,
+            .max_hash = max_hash,
+            .num_items = self.num_items,
+            .docids_offset = docids_offset,
+        };
 
         var stream = std.io.fixedBufferStream(out);
         var writer = stream.writer();
 
-        try writer.writeAll(std.mem.asBytes(&self.out_header));
+        try writer.writeAll(std.mem.asBytes(&header));
         try writer.writeAll(self.out_hashes_control.slice());
         try writer.writeAll(self.out_hashes.slice());
         try writer.writeAll(self.out_docids_control.slice());
@@ -549,7 +550,7 @@ pub const BlockEncoder = struct {
         const bytes_written = try stream.getPos();
         @memset(out[bytes_written..], 0);
 
-        return self.out_header.num_items;
+        return self.num_items;
     }
 };
 
