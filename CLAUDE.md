@@ -36,7 +36,7 @@ How data is stored:
 * If we reach a certain number of segments, we select multiple segments and merge them into a large one, optimizing for a nice distribution of active segment sizes (`src/segment_merger.zig`, `src/segment_merge_policy.zig`)
 * When an in-memory segments gets too large, it gets converted into a file that has more complex structure with fixed-size compressed blocks of (hash, id) pairs (`src/FileSegment.zig`, `src/filefmt.zig`)
 * Blocks use StreamVByte compression for (hash, id) pairs with SIMD accelerated decoding (`src/streamvbyte.zig`, `src/streamvbyte_*.c`)
-* File segments have list of the first hash for each blocks in heap-allocated memory, but the actually block data are memory mapped
+* File segments have a block index with max_hash for each block stored directly in the memory-mapped file, and the block data are also memory mapped
 * When searching in a file segment, we first use binary search over an index of blocks, then decompress matching blocks and search within each block
 
 Other:
