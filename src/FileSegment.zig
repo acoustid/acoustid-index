@@ -31,7 +31,7 @@ attributes: std.StringHashMapUnmanaged(u64) = .{},
 docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
 min_doc_id: u32 = 0,
 max_doc_id: u32 = 0,
-index: std.ArrayListUnmanaged(u32) = .{},
+block_index: []const u32 = &[_]u32{},
 block_size: usize = 0,
 blocks: []const u8,
 merged: u32 = 0,
@@ -57,7 +57,6 @@ pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
     }
     self.attributes.deinit(self.allocator);
     self.docs.deinit(self.allocator);
-    self.index.deinit(self.allocator);
 
     if (self.mmaped_data) |data| {
         std.posix.munmap(data);
@@ -110,7 +109,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
         // Find first block where max_hash >= hash
         var block_no = prev_block_range_start + std.sort.lowerBound(
             u32,
-            self.index.items[prev_block_range_start..],
+            self.block_index[prev_block_range_start..],
             hash,
             compareHashes,
         );
@@ -120,7 +119,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
         var num_blocks: u64 = 0;
 
         // Scan forward while blocks could contain the hash
-        while (block_no < self.index.items.len) : (block_no += 1) {
+        while (block_no < self.block_index.len) : (block_no += 1) {
             const cache_key = block_no % MAX_BLOCKS_PER_HASH;
             var block_reader: *BlockReader = undefined;
 
@@ -241,7 +240,7 @@ test "build and reader with duplicate hashes" {
     // Verify segment metadata (from old build test)
     try std.testing.expectEqualDeep(SegmentInfo{ .version = 1, .merges = 0 }, segment.info);
     try std.testing.expectEqual(3, segment.docs.count()); // 3 documents inserted
-    try std.testing.expectEqual(1, segment.index.items.len); // 1 block for this small dataset
+    try std.testing.expectEqual(1, segment.block_index.len); // 1 block for this small dataset
 
     // Collect all items from the FileSegment reader
     var file_reader = segment.reader();
@@ -289,7 +288,7 @@ pub const Reader = struct {
 
     pub fn read(self: *Reader) !?Item {
         while (self.index >= self.current_items_len) {
-            if (self.block_no >= self.segment.index.items.len) {
+            if (self.block_no >= self.segment.block_index.len) {
                 return null;
             }
             self.index = 0;
