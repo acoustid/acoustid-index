@@ -140,8 +140,9 @@ pub const BlockReader = struct {
             self.block_data.?[offset..],
             &self.hashes,
             .variant1234,
+            .delta,
+            header.min_hash, // base value for delta decoding
         );
-        streamvbyte.svbDeltaDecodeInPlace(self.hashes[0..header.num_hashes], header.min_hash);
         self.hashes_loaded = true;
     }
 
@@ -163,8 +164,9 @@ pub const BlockReader = struct {
             self.block_data.?[offset..],
             &self.counts,
             .variant1234,
+            .delta,
+            0, // base value for delta decoding
         );
-        streamvbyte.svbDeltaDecodeInPlace(self.counts[0..header.num_hashes], 0);
         self.counts_loaded = true;
     }
 
@@ -189,6 +191,8 @@ pub const BlockReader = struct {
             self.block_data.?[offset..],
             &self.docids,
             .variant1234,
+            .no_delta,
+            {},
         );
 
         // Apply docid delta decoding similar to current approach
@@ -260,13 +264,15 @@ pub const BlockReader = struct {
         const header = self.getHeaderPtr();
         // Read StreamVByte-encoded docids
         const offset = BLOCK_HEADER_SIZE + header.docids_offset;
-        _ = streamvbyte.decodeValues(
+        streamvbyte.decodeValues(
             header.num_items,
             range.start,
             range.end,
             self.block_data.?[offset..],
             &self.docids,
             .variant1234,
+            .no_delta,
+            {},
         );
 
         const docids = self.docids[range.start..range.end];
