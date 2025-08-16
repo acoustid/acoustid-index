@@ -74,23 +74,24 @@ pub fn writeBlocks(reader: anytype, writer: anytype, min_doc_id: u32, comptime b
         }
 
         // Encode a block from the buffer
-        const encode_result = try encoder.encodeBlock(items_buffer[0..items_in_buffer], min_doc_id, &block_data);
+        const items_consumed = try encoder.encodeBlock(items_buffer[0..items_in_buffer], min_doc_id, &block_data);
         try writer.writeAll(&block_data);
-        if (encode_result.items_consumed == 0) {
+        if (items_consumed == 0) {
             break;
         }
 
-        // Store max_hash from encode result
-        try max_hashes.append(encode_result.max_hash);
+        // Calculate max_hash from the consumed items
+        const max_hash = items_buffer[items_consumed - 1].hash;
+        try max_hashes.append(max_hash);
 
-        num_items += @intCast(encode_result.items_consumed);
+        num_items += @intCast(items_consumed);
         num_blocks += 1;
         crc.update(&block_data);
 
         // Move unused items to front of buffer
-        const remaining = items_in_buffer - encode_result.items_consumed;
+        const remaining = items_in_buffer - items_consumed;
         if (remaining > 0) {
-            std.mem.copyForwards(Item, items_buffer[0..remaining], items_buffer[encode_result.items_consumed..items_in_buffer]);
+            std.mem.copyForwards(Item, items_buffer[0..remaining], items_buffer[items_consumed..items_in_buffer]);
         }
         items_in_buffer = remaining;
     }
