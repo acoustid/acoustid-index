@@ -163,7 +163,7 @@ pub const BlockReader = struct {
             header.num_hashes,
             self.block_data.?[offset..],
             &self.counts,
-            .variant1234,
+            .variant0124_minus1,
             .delta,
             0, // base value for delta decoding
         );
@@ -506,7 +506,7 @@ pub const BlockEncoder = struct {
         self.out_hashes.len += buffered_hashes_size;
         self.out_hashes_control.len += 1;
 
-        const buffered_counts_size = streamvbyte.svbEncodeQuad1234(
+        const buffered_counts_size = streamvbyte.svbEncodeQuad0124(
             self.buffered_counts[0..4].*,
             self.out_counts.unusedCapacitySlice(),
             &self.out_counts_control.buffer[self.out_counts_control.len],
@@ -550,11 +550,11 @@ pub const BlockEncoder = struct {
                 // New unique hash found - store as delta
                 const delta = current_hash - self.last_hash;
                 buffered_hashes[num_buffered_hashes] = delta;
-                buffered_counts[num_buffered_hashes] = 1;
+                buffered_counts[num_buffered_hashes] = 0; // Store count-1 (1-1=0)
                 num_buffered_hashes += 1;
             } else {
                 // Same hash as last - increment count for current unique hash
-                buffered_counts[num_buffered_hashes - 1] += 1;
+                buffered_counts[num_buffered_hashes - 1] += 1; // Still increment by 1
             }
 
             // Enforce docid ordering assumptions to prevent unsigned underflow
@@ -598,7 +598,7 @@ pub const BlockEncoder = struct {
             // Buffer fits in one quad - just calculate size without encoding yet
             // (we'll encode later if this chunk fits in the block)
             buffered_hashes_size = streamvbyte.svbEncodeQuadSize1234(buffered_hashes[0..4].*) + 1;
-            buffered_counts_size = streamvbyte.svbEncodeQuadSize1234(buffered_counts[0..4].*) + 1;
+            buffered_counts_size = streamvbyte.svbEncodeQuadSize0124(buffered_counts[0..4].*) + 1;
         } else {
             // Buffer overflow (>4) - must encode first quad now to free up space
             // Encode first 4 hashes/counts to output buffers
@@ -610,7 +610,7 @@ pub const BlockEncoder = struct {
             new_out_hashes_len += encoded_hashes_size;
             new_out_hashes_control_len += 1;
 
-            const encoded_counts_size = streamvbyte.svbEncodeQuad1234(
+            const encoded_counts_size = streamvbyte.svbEncodeQuad0124(
                 buffered_counts[0..4].*,
                 self.out_counts.unusedCapacitySlice(),
                 &self.out_counts_control.buffer[self.out_counts_control.len],
@@ -620,7 +620,7 @@ pub const BlockEncoder = struct {
 
             // Calculate size for remaining 4 hashes (elements 4-7)
             buffered_hashes_size = streamvbyte.svbEncodeQuadSize1234(buffered_hashes[4..8].*) + 1;
-            buffered_counts_size = streamvbyte.svbEncodeQuadSize1234(buffered_counts[4..8].*) + 1;
+            buffered_counts_size = streamvbyte.svbEncodeQuadSize0124(buffered_counts[4..8].*) + 1;
         }
 
         const new_block_size = BLOCK_HEADER_SIZE +
