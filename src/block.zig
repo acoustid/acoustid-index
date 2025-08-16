@@ -409,6 +409,9 @@ pub const BlockEncoder = struct {
         .docids_offset = 0,
     },
 
+    last_hash: u32 = 0,
+    last_docid: u32 = 0,
+
     out_hashes: std.BoundedArray(u8, MAX_BLOCK_SIZE) = .{},
     out_hashes_control: std.BoundedArray(u8, MAX_BLOCK_SIZE) = .{},
 
@@ -421,7 +424,7 @@ pub const BlockEncoder = struct {
         return .{};
     }
 
-    pub fn encodeChunk(self: *Self, items: []const Item, min_doc_id: u32, block_size: usize, last_hash: *u32, last_docid: *u32) !void {
+    pub fn encodeChunk(self: *Self, items: []const Item, min_doc_id: u32, block_size: usize) !void {
         std.debug.assert(items.len > 0);
         std.debug.assert(items.len <= 4);
 
@@ -434,19 +437,19 @@ pub const BlockEncoder = struct {
             const current_docid = items[i].id;
 
             // Encode hash delta
-            chunk_hashes[i] = current_hash - last_hash.*;
+            chunk_hashes[i] = current_hash - self.last_hash;
             
             // Encode docid delta - reset to min_doc_id on hash boundaries
-            if (current_hash != last_hash.*) {
+            if (current_hash != self.last_hash) {
                 // Hash changed, encode relative to min_doc_id
                 chunk_docids[i] = current_docid - min_doc_id;
             } else {
                 // Same hash, encode relative to previous docid
-                chunk_docids[i] = current_docid - last_docid.*;
+                chunk_docids[i] = current_docid - self.last_docid;
             }
 
-            last_hash.* = current_hash;
-            last_docid.* = current_docid;
+            self.last_hash = current_hash;
+            self.last_docid = current_docid;
         }
 
         // Calculate sizes for this chunk
@@ -504,13 +507,13 @@ pub const BlockEncoder = struct {
         self.out_docids.clear();
         self.out_docids_control.clear();
 
-        var last_hash = first_hash;
-        var last_docid = min_doc_id;
+        self.last_hash = first_hash;
+        self.last_docid = min_doc_id;
 
         // Try to encode items in chunks of 4
         var items_ptr = items;
         while (items_ptr.len >= 4) {
-            self.encodeChunk(items_ptr[0..4], min_doc_id, block_size, &last_hash, &last_docid) catch |err| switch (err) {
+            self.encodeChunk(items_ptr[0..4], min_doc_id, block_size) catch |err| switch (err) {
                 error.BlockFull => {
                     // Block is full, stop encoding
                     items_ptr = items_ptr[0..0];
@@ -522,7 +525,7 @@ pub const BlockEncoder = struct {
 
         // Try to encode remaining items in partial chunk (max 3 items)
         if (items_ptr.len > 0) {
-            self.encodeChunk(items_ptr, min_doc_id, block_size, &last_hash, &last_docid) catch |err| switch (err) {
+            self.encodeChunk(items_ptr, min_doc_id, block_size) catch |err| switch (err) {
                 error.BlockFull => {
                     // Remaining items will be encoded in next block
                 },
