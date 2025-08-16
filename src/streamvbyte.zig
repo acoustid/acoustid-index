@@ -204,54 +204,35 @@ fn initLengthTable1234() [256]u8 {
     return table;
 }
 
-// Decode a quad (4 integers) using StreamVByte 0124 variant with SIMD acceleration
-// 0124 means: 0 bytes for zero, 1 byte for <256, 2 bytes for <65536, 4 bytes otherwise
+// Decode a quad (4 integers) using StreamVByte with SIMD acceleration
 // Requires: in_data must be padded so that at least 16 bytes starting at in_data are readable
 // Returns number of bytes consumed from in_data
-inline fn svbDecodeQuad0124(control: u8, in_data: []const u8, out: []u32) usize {
+inline fn svbDecodeQuad(comptime variant: Variant, control: u8, in_data: []const u8, out: []u32) usize {
     std.debug.assert(out.len >= 4);
     std.debug.assert(in_data.len >= SIMD_DECODE_PADDING); // SIMD implementation requires padding
 
     // Load 16 bytes of input data
     const data: Vu8x16 = in_data[0..16].*;
 
-    // Load shuffle mask for this control byte
-    const mask = shuffle_table_0124[control];
+    // Load shuffle mask and length table based on variant
+    const shuffle_table = switch (variant) {
+        .variant0124 => shuffle_table_0124,
+        .variant1234 => shuffle_table_1234,
+    };
+    const length_table = switch (variant) {
+        .variant0124 => length_table_0124,
+        .variant1234 => length_table_1234,
+    };
 
     // Apply shuffle to rearrange bytes
-    const result = shuffle(data, mask);
+    const result = shuffle(data, shuffle_table[control]);
 
     // Store result as 4 u32 values
     const result_u32: @Vector(4, u32) = @bitCast(result);
     out[0..4].* = result_u32;
 
     // Return number of bytes consumed
-    return length_table_0124[control];
-}
-
-// Decode a quad (4 integers) using StreamVByte 1234 variant with SIMD acceleration
-// 1234 means: 1 byte for <256, 2 bytes for <65536, 3 bytes for <16M, 4 bytes otherwise
-// Requires: in_data must be padded so that at least 16 bytes starting at in_data are readable
-// Returns number of bytes consumed from in_data
-inline fn svbDecodeQuad1234(control: u8, in_data: []const u8, out: []u32) usize {
-    std.debug.assert(out.len >= 4);
-    std.debug.assert(in_data.len >= SIMD_DECODE_PADDING); // SIMD implementation requires padding
-
-    // Load 16 bytes of input data
-    const data: Vu8x16 = in_data[0..16].*;
-
-    // Load shuffle mask for this control byte
-    const mask = shuffle_table_1234[control];
-
-    // Apply shuffle to rearrange bytes
-    const result = shuffle(data, mask);
-
-    // Store result as 4 u32 values
-    const result_u32: @Vector(4, u32) = @bitCast(result);
-    out[0..4].* = result_u32;
-
-    // Return number of bytes consumed
-    return length_table_1234[control];
+    return length_table[control];
 }
 
 // Apply delta decoding in-place with SIMD acceleration
@@ -311,11 +292,6 @@ fn svbDeltaDecodeInPlaceSSE41(data: []u32, first_value: u32) void {
 }
 
 pub fn decodeValues(total_items: usize, start_item: usize, end_item: usize, in: []const u8, out: []u32, comptime variant: Variant) void {
-    const decodeFn = switch (variant) {
-        .variant0124 => svbDecodeQuad0124,
-        .variant1234 => svbDecodeQuad1234,
-    };
-
     const length_table = switch (variant) {
         .variant0124 => length_table_0124,
         .variant1234 => length_table_1234,
@@ -343,7 +319,7 @@ pub fn decodeValues(total_items: usize, start_item: usize, end_item: usize, in: 
         const controls = std.mem.readInt(u64, in_control_ptr[0..8], .little);
         inline for (0..8) |i| {
             const control: u8 = @intCast((controls >> (8 * i)) & 0xFF);
-            const consumed = decodeFn(control, in_data_ptr, out_ptr[i * 4 ..]);
+            const consumed = svbDecodeQuad(variant, control, in_data_ptr, out_ptr[i * 4 ..]);
             in_data_ptr = in_data_ptr[consumed..];
         }
         in_control_ptr = in_control_ptr[8..];
@@ -352,7 +328,7 @@ pub fn decodeValues(total_items: usize, start_item: usize, end_item: usize, in: 
     }
 
     while (remaining > 0) {
-        const consumed = decodeFn(in_control_ptr[0], in_data_ptr, out_ptr);
+        const consumed = svbDecodeQuad(variant, in_control_ptr[0], in_data_ptr, out_ptr);
         in_control_ptr = in_control_ptr[1..];
         in_data_ptr = in_data_ptr[consumed..];
         out_ptr = out_ptr[4..];
@@ -480,7 +456,7 @@ test "svbDecodeQuad0124 SIMD" {
     const input = [_]u8{ 1, 2, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
     var output: [4]u32 = undefined;
 
-    const consumed = svbDecodeQuad0124(control, &input, &output);
+    const consumed = svbDecodeQuad(.variant0124, control, &input, &output);
     try std.testing.expectEqual(3, consumed);
     try std.testing.expectEqual(@as(u32, 1), output[0]);
     try std.testing.expectEqual(@as(u32, 2), output[1]);
@@ -496,7 +472,7 @@ test "svbDecodeQuad1234 SIMD" {
     const input = [_]u8{ 1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
     var output: [4]u32 = undefined;
 
-    const consumed = svbDecodeQuad1234(control, &input, &output);
+    const consumed = svbDecodeQuad(.variant1234, control, &input, &output);
     try std.testing.expectEqual(4, consumed);
     try std.testing.expectEqual(@as(u32, 1), output[0]);
     try std.testing.expectEqual(@as(u32, 2), output[1]);
