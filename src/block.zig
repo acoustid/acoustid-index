@@ -9,7 +9,6 @@ const Item = @import("segment.zig").Item;
 //
 // Block format:
 //  - u32   min_hash
-//  - u32   max_hash
 //  - u16   num items
 //  - u16   docids offset
 //  - []u8  encoded hash deltas (all hashes including duplicates)
