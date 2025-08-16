@@ -120,18 +120,15 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults, d
 
         // Scan forward while blocks could contain the hash
         while (block_no < self.block_index.len) : (block_no += 1) {
-            const cache_key = block_no % MAX_BLOCKS_PER_HASH;
-            var block_reader: *BlockReader = undefined;
+            const cache_entry = &block_cache[block_no % MAX_BLOCKS_PER_HASH];
 
-            if (block_cache[cache_key].block_no == block_no) {
-                // Cache hit - reuse existing block_reader
-                block_reader = &block_cache[cache_key].block_reader;
-            } else {
+            if (cache_entry.block_no != block_no) {
                 // Cache miss - load block data into cache slot
-                block_cache[cache_key].block_no = block_no;
-                block_reader = &block_cache[cache_key].block_reader;
-                self.loadBlockData(block_no, block_reader, true);
+                cache_entry.block_no = block_no;
+                self.loadBlockData(block_no, &cache_entry.block_reader, true);
             }
+
+            const block_reader = &cache_entry.block_reader;
 
             if (block_reader.getMinHash() > hash) {
                 // If min_hash > hash, all subsequent blocks will also have min_hash > hash
