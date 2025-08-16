@@ -63,8 +63,8 @@ fn shuffle(x: Vu8x16, m: Vu8x16) Vu8x16 {
 // Variant enum for StreamVByte decoding
 pub const Variant = enum {
     variant0124,
-    variant1234,
     variant0124_minus1, // 0/1/2/4 variant with value-1 for counts (0 bytes for count=1)
+    variant1234,
 };
 
 // Delta decoding mode enum
@@ -85,8 +85,6 @@ const shuffle_table_1234: [256]Vu8x16 = blk: {
     break :blk initShuffleTable1234();
 };
 
-
-
 // Length tables for each control byte
 const length_table_0124: [256]u8 = blk: {
     @setEvalBranchQuota(10000);
@@ -97,8 +95,6 @@ const length_table_1234: [256]u8 = blk: {
     @setEvalBranchQuota(10000);
     break :blk initLengthTable1234();
 };
-
-
 
 // Initialize shuffle table for 0124 variant at comptime
 fn initShuffleTable0124() [256]Vu8x16 {
@@ -218,7 +214,7 @@ fn initLengthTable1234() [256]u8 {
 // Base function for decoding a quad (4 integers) using StreamVByte with SIMD acceleration
 // Requires: in_data must be padded so that at least 16 bytes starting at in_data are readable
 // Returns the decoded vector and number of bytes consumed from in_data
-inline fn svbDecodeQuadBase(comptime variant: Variant, control: u8, in_data: []const u8) struct { values: @Vector(4, u32), consumed: usize } {
+inline fn svbDecodeQuadBase(comptime variant: Variant, control: u8, in_data: []const u8) struct { values: Vu32x4, consumed: usize } {
     std.debug.assert(in_data.len >= SIMD_DECODE_PADDING); // SIMD implementation requires padding
 
     // Load 16 bytes of input data
@@ -227,24 +223,24 @@ inline fn svbDecodeQuadBase(comptime variant: Variant, control: u8, in_data: []c
     // Load shuffle mask and length table based on variant
     const shuffle_table = switch (variant) {
         .variant0124 => shuffle_table_0124,
+        .variant0124_minus1 => shuffle_table_0124,
         .variant1234 => shuffle_table_1234,
-        .variant0124_minus1 => shuffle_table_0124, // Reuse 0124 tables
     };
     const length_table = switch (variant) {
         .variant0124 => length_table_0124,
+        .variant0124_minus1 => length_table_0124,
         .variant1234 => length_table_1234,
-        .variant0124_minus1 => length_table_0124, // Reuse 0124 tables
     };
 
     // Apply shuffle to rearrange bytes
     const result = shuffle(data, shuffle_table[control]);
 
     // Convert result to 4 u32 values
-    var result_u32: @Vector(4, u32) = @bitCast(result);
+    var result_u32: Vu32x4 = @bitCast(result);
 
     // For variant0124_minus1, add 1 to each decoded value
     if (variant == .variant0124_minus1) {
-        const one_vec: @Vector(4, u32) = @splat(1);
+        const one_vec: Vu32x4 = @splat(1);
         result_u32 = result_u32 + one_vec;
     }
 
@@ -256,7 +252,7 @@ inline fn svbDecodeQuadBase(comptime variant: Variant, control: u8, in_data: []c
 // Returns number of bytes consumed from in_data
 inline fn svbDecodeQuad(comptime variant: Variant, control: u8, in_data: []const u8, out: []u32) usize {
     std.debug.assert(out.len >= 4);
-    
+
     const result = svbDecodeQuadBase(variant, control, in_data);
     out[0..4].* = result.values;
     return result.consumed;
@@ -268,7 +264,7 @@ inline fn svbDecodeQuad(comptime variant: Variant, control: u8, in_data: []const
 // Performs delta decoding in-place using the same SIMD registers for maximum efficiency
 inline fn svbDecodeQuadWithDelta(comptime variant: Variant, control: u8, in_data: []const u8, out: []u32, carry: u32) usize {
     std.debug.assert(out.len >= 4);
-    
+
     const result = svbDecodeQuadBase(variant, control, in_data);
     var values = result.values;
 
@@ -280,7 +276,7 @@ inline fn svbDecodeQuadWithDelta(comptime variant: Variant, control: u8, in_data
     values += std.simd.shiftElementsRight(values, 2, 0);
 
     // Add carry to all elements
-    const carry_vec: @Vector(4, u32) = @splat(carry);
+    const carry_vec: Vu32x4 = @splat(carry);
     values = values + carry_vec;
 
     out[0..4].* = values;
@@ -301,8 +297,6 @@ pub fn svbDeltaDecodeInPlace(data: []u32, first_value: u32) void {
         }
     }
 }
-
-
 
 // SIMD-accelerated delta decode using SSE4.1 intrinsics
 fn svbDeltaDecodeInPlaceSSE41(data: []u32, first_value: u32) void {
@@ -346,14 +340,14 @@ fn svbDeltaDecodeInPlaceSSE41(data: []u32, first_value: u32) void {
 }
 
 pub fn decodeValues(
-    total_items: usize, 
-    start_item: usize, 
-    end_item: usize, 
-    in: []const u8, 
-    out: []u32, 
+    total_items: usize,
+    start_item: usize,
+    end_item: usize,
+    in: []const u8,
+    out: []u32,
     comptime variant: Variant,
     comptime delta_mode: DeltaMode,
-    first_value: if (delta_mode == .delta) u32 else void
+    first_value: if (delta_mode == .delta) u32 else void,
 ) void {
     const length_table = switch (variant) {
         .variant0124 => length_table_0124,
@@ -381,14 +375,14 @@ pub fn decodeValues(
 
     if (delta_mode == .delta) {
         var carry = first_value;
-        
+
         // Process quads with fused delta decoding
         while (remaining > 0) {
             const consumed = svbDecodeQuadWithDelta(variant, in_control_ptr[0], in_data_ptr, out_ptr, carry);
-            
+
             // Update carry to the last decoded value for the next quad
             carry = out_ptr[3];
-            
+
             in_control_ptr = in_control_ptr[1..];
             in_data_ptr = in_data_ptr[consumed..];
             out_ptr = out_ptr[4..];
@@ -464,8 +458,6 @@ pub fn svbEncodeValue1234(in: u32, out_data: []u8, out_control: *u8, comptime in
     }
 }
 
-
-
 // Encode four 32-bit integers into a StreamVByte encoded byte array. (0124 variant)
 pub fn svbEncodeQuad0124(in: [4]u32, out_data: []u8, out_control: *u8) usize {
     var out_data_ptr = out_data;
@@ -487,8 +479,6 @@ pub fn svbEncodeQuad1234(in: [4]u32, out_data: []u8, out_control: *u8) usize {
     }
     return out_data.len - out_data_ptr.len;
 }
-
-
 
 // Calculate the size needed to encode four 32-bit integers with StreamVByte (0124 variant)
 pub fn svbEncodeQuadSize0124(in: [4]u32) usize {
@@ -525,8 +515,6 @@ pub fn svbEncodeQuadSize1234(in: [4]u32) usize {
     }
     return size;
 }
-
-
 
 test "shuffle" {
     const data: Vu8x16 = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
@@ -698,7 +686,7 @@ test "decodeValues with unrolled loop (32+ items)" {
         &output,
         Variant.variant0124,
         .no_delta,
-        {}
+        {},
     );
 
     // Verify output values
@@ -847,8 +835,6 @@ test "svbDecodeQuad0124_minus1 SIMD" {
     try std.testing.expectEqual(@as(u32, 4), output[3]); // 3 + 1
 }
 
-
-
 test "svbEncodeQuadSize1234 all max values" {
     const input = [4]u32{ 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF };
     const size = svbEncodeQuadSize1234(input);
@@ -906,7 +892,7 @@ test "decodeValues with fused delta decoding" {
         &output,
         Variant.variant1234,
         .delta,
-        100 // first_value
+        100, // first_value
     );
 
     // Verify output values with delta decoding applied
