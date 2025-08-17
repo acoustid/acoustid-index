@@ -9,7 +9,7 @@ const Deadline = @import("utils/Deadline.zig");
 
 const Index = @import("Index.zig");
 
-fn generateRandomHashes(buf: []u32, seed: u64) []u32 {
+pub fn generateRandomHashes(buf: []u32, seed: u64) []u32 {
     var prng = std.Random.DefaultPrng.init(seed);
     const rand = prng.random();
     for (buf) |*h| {

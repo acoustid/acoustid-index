@@ -7,10 +7,12 @@ const msgpack = @import("msgpack");
 
 const MultiIndex = @import("MultiIndex.zig");
 const Index = @import("Index.zig");
+const IndexReader = @import("IndexReader.zig");
 const common = @import("common.zig");
 const SearchResults = common.SearchResults;
 const Change = @import("change.zig").Change;
 const Deadline = @import("utils/Deadline.zig");
+const snapshot = @import("snapshot.zig");
 
 const metrics = @import("metrics.zig");
 
@@ -102,6 +104,7 @@ pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const 
     router.put("/:index", handlePutIndex, .{});
     router.delete("/:index", handleDeleteIndex, .{});
     router.get("/:index/_segments", handleGetSegments, .{});
+    router.get("/:index/_snapshot", handleSnapshot, .{});
 
     log.info("listening on {s}:{d}", .{ address, port });
     try server.listen();
@@ -593,6 +596,18 @@ fn handleHealth(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
     _ = req;
 
     try res.writer().writeAll("OK\n");
+}
+
+fn handleSnapshot(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    const index = try getIndex(ctx, req, res, true) orelse return;
+    defer releaseIndex(ctx, index);
+
+    // Set response headers for tar download
+    res.header("content-type", "application/x-tar");
+    res.header("content-disposition", "attachment; filename=\"index_snapshot.tar\"");
+
+    // Build snapshot using the dedicated module
+    try snapshot.buildSnapshot(res.writer().any(), index, req.arena);
 }
 
 fn handleMetrics(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
