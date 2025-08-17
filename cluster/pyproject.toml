@@ -20,3 +20,6 @@ dev = [
 
 [tool.uv]
 package = true
+
+[tool.ruff]
+line-length = 120

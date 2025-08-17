@@ -42,9 +42,7 @@ async def main_async(args):
 
         # Set up index manager and JetStream
         logger.info("Setting up index manager")
-        manager = await IndexManager.create(
-            nc, args.nats_prefix, args.fpindex_url, args.instance
-        )
+        manager = await IndexManager.create(nc, args.nats_prefix, args.fpindex_url, args.instance)
 
         # Register manager cleanup
         stack.push_async_callback(manager.cleanup)

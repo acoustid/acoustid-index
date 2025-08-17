@@ -60,9 +60,7 @@ class IndexDeletedEvent(msgspec.Struct, tag="index_deleted"):
 
 
 Operation = Union[CreateIndexOperation, DeleteIndexOperation]
-DiscoveryEvent = Union[
-    IndexCreatingEvent, IndexCreatedEvent, IndexDeletingEvent, IndexDeletedEvent
-]
+DiscoveryEvent = Union[IndexCreatingEvent, IndexCreatedEvent, IndexDeletingEvent, IndexDeletedEvent]
 
 
 def get_index_state(event: DiscoveryEvent | None) -> IndexState:
