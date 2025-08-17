@@ -458,7 +458,7 @@ fn completeLoading(self: *Self, last_commit_id: u64) !void {
     try self.oplog.open(last_commit_id + 1, updateInternal, self);
 
     log.info("index loaded", .{});
-    self.is_ready.store(true, .monotonic);
+    self.is_ready.store(true, .release);
 }
 
 fn loadTask(self: *Self, manifest: []SegmentInfo) void {
@@ -513,7 +513,7 @@ pub fn waitForReady(self: *Self, timeout_ms: u32) !void {
 }
 
 pub fn checkReady(self: *Self) !void {
-    if (!self.is_ready.load(.monotonic)) {
+    if (!self.is_ready.load(.acquire)) {
         return error.IndexNotReady;
     }
 }
