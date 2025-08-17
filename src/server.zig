@@ -11,6 +11,7 @@ const common = @import("common.zig");
 const SearchResults = common.SearchResults;
 const Change = @import("change.zig").Change;
 const Deadline = @import("utils/Deadline.zig");
+const TarWriter = @import("utils/tar_stream.zig").TarWriter;
 
 const metrics = @import("metrics.zig");
 
@@ -102,6 +103,7 @@ pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const 
     router.put("/:index", handlePutIndex, .{});
     router.delete("/:index", handleDeleteIndex, .{});
     router.get("/:index/_segments", handleGetSegments, .{});
+    router.get("/:index/_snapshot", handleSnapshot, .{});
 
     log.info("listening on {s}:{d}", .{ address, port });
     try server.listen();
@@ -593,6 +595,98 @@ fn handleHealth(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
     _ = req;
 
     try res.writer().writeAll("OK\n");
+}
+
+fn handleSnapshot(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+    const index = try getIndex(ctx, req, res, true) orelse return;
+    defer releaseIndex(ctx, index);
+
+    // Acquire consistent reader snapshot
+    var reader = try index.acquireReader();
+    defer index.releaseReader(&reader);
+
+    // Set response headers for tar.gz download
+    res.header("content-type", "application/gzip");
+    res.header("content-disposition", "attachment; filename=\"index_snapshot.tar.gz\"");
+    
+    // Create gzip stream
+    var gzip_stream = try std.compress.gzip.compressor(res.writer(), .{});
+
+    // Create tar writer on top of gzip stream
+    var tar_writer = TarWriter.init(gzip_stream.writer().any());
+
+    // Add manifest file
+    try addManifestToSnapshot(&tar_writer, &reader, req.arena);
+
+    // Add file segments
+    try addFileSegmentsToSnapshot(&tar_writer, &reader, index);
+
+    // Add WAL files
+    try addWALFilesToSnapshot(&tar_writer, index);
+
+    // Finalize tar and gzip streams
+    try tar_writer.finish();
+    try gzip_stream.finish();
+}
+
+fn addManifestToSnapshot(tar_writer: *TarWriter, reader: *const @import("IndexReader.zig"), arena: std.mem.Allocator) !void {
+    // Collect segment infos from file segments
+    var segment_infos = std.ArrayList(@import("segment.zig").SegmentInfo).init(arena);
+    defer segment_infos.deinit();
+
+    for (reader.file_segments.value.nodes.items) |node| {
+        try segment_infos.append(node.value.info);
+    }
+
+    // Serialize manifest to msgpack
+    var manifest_data = std.ArrayList(u8).init(arena);
+    defer manifest_data.deinit();
+    
+    const msgpack_writer = manifest_data.writer();
+    try @import("msgpack").encode(segment_infos.items, msgpack_writer);
+
+    // Add to tar
+    try tar_writer.addFileFromMemory("manifest", manifest_data.items);
+}
+
+fn addFileSegmentsToSnapshot(tar_writer: *TarWriter, reader: *const @import("IndexReader.zig"), index: *Index) !void {
+    const filefmt = @import("filefmt.zig");
+    
+    for (reader.file_segments.value.nodes.items) |node| {
+        var filename_buf: [filefmt.max_file_name_size]u8 = undefined;
+        const filename = filefmt.buildSegmentFileName(&filename_buf, node.value.info);
+        
+        // Open segment file for reading
+        var segment_file = try index.dir.openFile(filename, .{});
+        defer segment_file.close();
+        
+        // Add to tar with segments/ prefix
+        var tar_path_buf: [filefmt.max_file_name_size + 9]u8 = undefined;
+        const tar_path = try std.fmt.bufPrint(&tar_path_buf, "segments/{s}", .{filename});
+        
+        try tar_writer.addFile(tar_path, segment_file);
+    }
+}
+
+fn addWALFilesToSnapshot(tar_writer: *TarWriter, index: *Index) !void {
+    // Get WAL directory
+    var wal_dir = try index.dir.openDir("oplog", .{ .iterate = true });
+    defer wal_dir.close();
+
+    // Iterate through WAL files
+    var wal_iterator = wal_dir.iterate();
+    while (try wal_iterator.next()) |entry| {
+        if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".xlog")) {
+            var wal_file = try wal_dir.openFile(entry.name, .{});
+            defer wal_file.close();
+            
+            // Add to tar with oplog/ prefix
+            var tar_path_buf: [128]u8 = undefined;
+            const tar_path = try std.fmt.bufPrint(&tar_path_buf, "oplog/{s}", .{entry.name});
+            
+            try tar_writer.addFile(tar_path, wal_file);
+        }
+    }
 }
 
 fn handleMetrics(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
