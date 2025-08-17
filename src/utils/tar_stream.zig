@@ -115,7 +115,7 @@ pub const TarWriter = struct {
         while (bytes_written < stat.size) {
             const bytes_to_read = @min(chunk_size, stat.size - bytes_written);
             const bytes_read = try file.readAll(buffer[0..bytes_to_read]);
-            if (bytes_read == 0) break;
+            if (bytes_read == 0) return error.UnexpectedEof;
             
             try self.writer.writeAll(buffer[0..bytes_read]);
             bytes_written += bytes_read;

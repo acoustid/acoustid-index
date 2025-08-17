@@ -1,6 +1,5 @@
 import pytest
 import tarfile
-import gzip
 import io
 import msgpack
 import tempfile
@@ -19,15 +18,14 @@ def test_snapshot_endpoint_empty_index(client, index_name, create_index):
     assert req.status_code == 200, req.content
     
     # Check response headers
-    assert req.headers.get('content-type') == 'application/gzip'
+    assert req.headers.get('content-type') == 'application/x-tar'
     assert 'attachment' in req.headers.get('content-disposition', '')
-    assert 'index_snapshot.tar.gz' in req.headers.get('content-disposition', '')
+    assert 'index_snapshot.tar' in req.headers.get('content-disposition', '')
     
-    # Verify we get a valid tar.gz stream by extracting to temp directory
+    # Verify we get a valid tar stream by extracting to temp directory
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Extract tar.gz
-        with gzip.open(io.BytesIO(req.content), 'rb') as gz:
-            with tarfile.open(fileobj=gz, mode='r:') as tar:
+        # Extract tar
+        with tarfile.open(fileobj=io.BytesIO(req.content), mode='r:') as tar:
                 # Add filter for Python 3.14 compatibility
                 try:
                     tar.extractall(temp_dir, filter='data')
@@ -66,11 +64,10 @@ def test_snapshot_endpoint_with_data(client, index_name, create_index):
     req = client.get(f"/{index_name}/_snapshot")
     assert req.status_code == 200, req.content
     
-    # Verify tar.gz structure by extracting to temp directory
+    # Verify tar structure by extracting to temp directory
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Extract tar.gz
-        with gzip.open(io.BytesIO(req.content), 'rb') as gz:
-            with tarfile.open(fileobj=gz, mode='r:') as tar:
+        # Extract tar
+        with tarfile.open(fileobj=io.BytesIO(req.content), mode='r:') as tar:
                 # Add filter for Python 3.14 compatibility
                 try:
                     tar.extractall(temp_dir, filter='data')
@@ -135,8 +132,9 @@ def test_snapshot_point_in_time_consistency(client, index_name, create_index):
     req2 = client.get(f"/{index_name}/_snapshot")
     assert req2.status_code == 200, req2.content
     
-    # Snapshots should be different sizes (more data in second)
-    assert len(req2.content) > len(req1.content), "Second snapshot should be larger"
+    # Snapshots should be different (more data in second)
+    # Note: with plain tar, sizes might be similar due to padding, but content should differ
+    assert req1.content != req2.content, "Second snapshot should have different content"
 
 
 def test_snapshot_streaming_behavior(client, index_name, create_index):
@@ -159,14 +157,14 @@ def test_snapshot_streaming_behavior(client, index_name, create_index):
     # Verify we got valid compressed data
     assert len(req.content) > 0
     
-    # Verify it's valid gzip
+    # Verify it's valid tar
     try:
-        with gzip.open(io.BytesIO(req.content), 'rb') as gz:
-            # Read first few bytes to verify it's valid
-            data = gz.read(1024)
-            assert len(data) > 0
+        with tarfile.open(fileobj=io.BytesIO(req.content), mode='r:') as tar:
+            # Read names to verify it's valid tar
+            names = tar.getnames()
+            assert len(names) > 0
     except Exception as e:
-        pytest.fail(f"Invalid gzip data: {e}")
+        pytest.fail(f"Invalid tar data: {e}")
 
 
 def test_snapshot_tar_structure_validation(client, index_name, create_index):
@@ -188,9 +186,8 @@ def test_snapshot_tar_structure_validation(client, index_name, create_index):
     assert req.status_code == 200, req.content
     
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Extract tar.gz
-        with gzip.open(io.BytesIO(req.content), 'rb') as gz:
-            with tarfile.open(fileobj=gz, mode='r|') as tar:
+        # Extract tar
+        with tarfile.open(fileobj=io.BytesIO(req.content), mode='r:') as tar:
                 # Add filter for Python 3.14 compatibility
                 try:
                     tar.extractall(temp_dir, filter='data')

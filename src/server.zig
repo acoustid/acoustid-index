@@ -7,6 +7,7 @@ const msgpack = @import("msgpack");
 
 const MultiIndex = @import("MultiIndex.zig");
 const Index = @import("Index.zig");
+const IndexReader = @import("IndexReader.zig");
 const common = @import("common.zig");
 const SearchResults = common.SearchResults;
 const Change = @import("change.zig").Change;
@@ -605,15 +606,12 @@ fn handleSnapshot(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
     var reader = try index.acquireReader();
     defer index.releaseReader(&reader);
 
-    // Set response headers for tar.gz download
-    res.header("content-type", "application/gzip");
-    res.header("content-disposition", "attachment; filename=\"index_snapshot.tar.gz\"");
+    // Set response headers for tar download
+    res.header("content-type", "application/x-tar");
+    res.header("content-disposition", "attachment; filename=\"index_snapshot.tar\"");
     
-    // Create gzip stream
-    var gzip_stream = try std.compress.gzip.compressor(res.writer(), .{});
-
-    // Create tar writer on top of gzip stream
-    var tar_writer = TarWriter.init(gzip_stream.writer().any());
+    // Create tar writer directly on response stream
+    var tar_writer = TarWriter.init(res.writer().any());
 
     // Add manifest file
     try addManifestToSnapshot(&tar_writer, &reader, req.arena);
@@ -624,12 +622,11 @@ fn handleSnapshot(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
     // Add WAL files
     try addWALFilesToSnapshot(&tar_writer, index);
 
-    // Finalize tar and gzip streams
+    // Finalize tar stream
     try tar_writer.finish();
-    try gzip_stream.finish();
 }
 
-fn addManifestToSnapshot(tar_writer: *TarWriter, reader: *const @import("IndexReader.zig"), arena: std.mem.Allocator) !void {
+fn addManifestToSnapshot(tar_writer: *TarWriter, reader: *const IndexReader, arena: std.mem.Allocator) !void {
     // Collect segment infos from file segments
     var segment_infos = std.ArrayList(@import("segment.zig").SegmentInfo).init(arena);
     defer segment_infos.deinit();
@@ -649,7 +646,7 @@ fn addManifestToSnapshot(tar_writer: *TarWriter, reader: *const @import("IndexRe
     try tar_writer.addFileFromMemory("manifest", manifest_data.items);
 }
 
-fn addFileSegmentsToSnapshot(tar_writer: *TarWriter, reader: *const @import("IndexReader.zig"), index: *Index) !void {
+fn addFileSegmentsToSnapshot(tar_writer: *TarWriter, reader: *const IndexReader, index: *Index) !void {
     const filefmt = @import("filefmt.zig");
     
     for (reader.file_segments.value.nodes.items) |node| {
