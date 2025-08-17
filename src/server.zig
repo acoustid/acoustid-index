@@ -602,16 +602,12 @@ fn handleSnapshot(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
     const index = try getIndex(ctx, req, res, true) orelse return;
     defer releaseIndex(ctx, index);
 
-    // Acquire consistent reader snapshot
-    var reader = try index.acquireReader();
-    defer index.releaseReader(&reader);
-
     // Set response headers for tar download
     res.header("content-type", "application/x-tar");
     res.header("content-disposition", "attachment; filename=\"index_snapshot.tar\"");
-    
+
     // Build snapshot using the dedicated module
-    try snapshot.buildSnapshot(res.writer().any(), &reader, index, req.arena);
+    try snapshot.buildSnapshot(res.writer().any(), index, req.arena);
 }
 
 fn handleMetrics(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
