@@ -2,7 +2,11 @@ name: Build
 
 on:
   push:
+    paths-ignore:
+      - 'cluster/**'
   pull_request:
+    paths-ignore:
+      - 'cluster/**'
 
 env:
   REGISTRY: ghcr.io
