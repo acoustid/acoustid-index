@@ -23,7 +23,8 @@ pub fn buildSnapshot(
     try addFileSegmentsToSnapshot(&tar_writer_instance, reader, index);
 
     // Add WAL files
-    try addWALFilesToSnapshot(&tar_writer_instance, index);
+    // FIXME don't add until we make sure it can be made consistent
+    // try addWALFilesToSnapshot(&tar_writer_instance, index);
 }
 
 fn addManifestToSnapshot(writer: anytype, reader: *const IndexReader, arena: std.mem.Allocator) !void {
@@ -38,7 +39,7 @@ fn addManifestToSnapshot(writer: anytype, reader: *const IndexReader, arena: std
     // Serialize manifest to msgpack using proper format with header
     var manifest_data = std.ArrayList(u8).init(arena);
     defer manifest_data.deinit();
-    
+
     const msgpack_writer = manifest_data.writer();
     try filefmt.encodeManifestData(segment_infos.items, msgpack_writer);
 
@@ -50,11 +51,11 @@ fn addFileSegmentsToSnapshot(writer: anytype, reader: *const IndexReader, index:
     for (reader.file_segments.value.nodes.items) |node| {
         var filename_buf: [filefmt.max_file_name_size]u8 = undefined;
         const filename = filefmt.buildSegmentFileName(&filename_buf, node.value.info);
-        
+
         // Open segment file for reading
         var segment_file = try index.dir.openFile(filename, .{});
         defer segment_file.close();
-        
+
         // Add segment file directly to tar root (no prefix)
         try writer.writeFile(filename, segment_file);
     }
@@ -71,11 +72,11 @@ fn addWALFilesToSnapshot(writer: anytype, index: *Index) !void {
         if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".xlog")) {
             var wal_file = try wal_dir.openFile(entry.name, .{});
             defer wal_file.close();
-            
+
             // Add to tar with oplog/ prefix
             var tar_path_buf: [128]u8 = undefined;
             const tar_path = try std.fmt.bufPrint(&tar_path_buf, "oplog/{s}", .{entry.name});
-            
+
             try writer.writeFile(tar_path, wal_file);
         }
     }
