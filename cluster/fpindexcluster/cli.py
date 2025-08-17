@@ -2,23 +2,52 @@
 
 import argparse
 import asyncio
+import logging
+import signal
 import sys
 
 import nats
 
-
-async def connect_to_nats(url: str) -> nats.NATS:
-    nc = await nats.connect(url)
-    print(f"Connected to NATS server at {url}")
-    return nc
+from .server import start_server
+from contextlib import AsyncExitStack
 
 
 async def main_async(args):
-    nc = await connect_to_nats(args.nats_url)
-    
-    print("fpindex-cluster: Connected to NATS, but not implemented yet")
-    
-    await nc.close()
+    # Set up logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+    logger = logging.getLogger(__name__)
+
+    # Create shutdown event
+    shutdown_event = asyncio.Event()
+
+    def signal_handler():
+        logger.info("Received shutdown signal")
+        shutdown_event.set()
+
+    # Register signal handlers using asyncio
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, signal_handler)
+
+    async with AsyncExitStack() as stack:
+        # Connect to NATS
+        logger.info(f"Connecting to NATS server at {args.nats_url}")
+        nc = await nats.connect(args.nats_url)
+        stack.push_async_callback(nc.close)
+
+        # Start HTTP server
+        logger.info(f"Starting HTTP server on {args.listen_host}:{args.listen_port}")
+        server = await start_server(nc, args.listen_host, args.listen_port)
+        stack.push_async_callback(server.cleanup)
+
+        # Keep the server running until shutdown signal
+        logger.info("Server is running. Send SIGTERM or SIGINT to stop.")
+        await shutdown_event.wait()
+
+    logger.info("Server stopped")
     return 0
 
 
@@ -26,43 +55,51 @@ def main():
     parser = argparse.ArgumentParser(
         prog="fpindex-cluster",
         description="Fingerprint index cluster management tool",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    
-    parser.add_argument(
-        "--version",
-        action="version",
-        version="%(prog)s 0.1.0"
-    )
-    
+
+    parser.add_argument("--version", action="version", version="%(prog)s 0.1.0")
+
     parser.add_argument(
         "--nats-url",
         metavar="URL",
         default="nats://localhost:4222",
-        help="NATS server URL"
+        help="NATS server URL",
     )
-    
+
     parser.add_argument(
         "--nats-prefix",
         metavar="PREFIX",
         default="fpindex",
-        help="NATS subject prefix"
+        help="NATS subject prefix",
     )
-    
+
     parser.add_argument(
         "--fpindex-url",
         metavar="URL",
         default="http://localhost:8080",
-        help="Base URL for fpindex instance"
+        help="Base URL for fpindex instance",
     )
-    
+
+    parser.add_argument(
+        "--listen-host",
+        metavar="HOST",
+        default="0.0.0.0",
+        help="HTTP server host",
+    )
+
+    parser.add_argument(
+        "--listen-port",
+        metavar="PORT",
+        type=int,
+        default=8081,
+        help="HTTP server port",
+    )
+
     args = parser.parse_args()
-    
+
     try:
         return asyncio.run(main_async(args))
-    except KeyboardInterrupt:
-        print("\nInterrupted by user")
-        return 1
     except Exception as e:
         print(f"Error: {e}")
         return 1
