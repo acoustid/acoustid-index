@@ -22,7 +22,7 @@ async def health_check(request):
 def create_app(nats_connection: nats.NATS) -> web.Application:
     """Create and configure the aiohttp application."""
     app = web.Application()
-    
+
     # Store NATS connection in app context
     app["nats_connection"] = nats_connection
 
@@ -33,7 +33,9 @@ def create_app(nats_connection: nats.NATS) -> web.Application:
     return app
 
 
-async def start_server(nats_connection: nats.NATS, host: str = "0.0.0.0", port: int = 8081) -> web.AppRunner:
+async def start_server(
+    nats_connection: nats.NATS, host: str = "0.0.0.0", port: int = 8081
+) -> web.AppRunner:
     """Start the HTTP server and return the runner."""
     app = create_app(nats_connection)
     runner = web.AppRunner(app)
