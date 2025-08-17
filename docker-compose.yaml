@@ -1,0 +1,37 @@
+services:
+  # NATS server
+  nats:
+    image: nats:2.10-alpine
+    ports:
+      - "4222:4222"   # NATS client connections
+      - "8222:8222"   # NATS monitoring
+      - "6222:6222"   # NATS clustering
+    command: ["--jetstream", "--store_dir=/data", "--http_port=8222"]
+    volumes:
+      - nats_data:/data
+    networks:
+      - fpindex-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # NATS management UI (optional, for development convenience)
+  nats-box:
+    image: natsio/nats-box:latest
+    networks:
+      - fpindex-net
+    depends_on:
+      - nats
+    entrypoint: /bin/sh
+    stdin_open: true
+    tty: true
+
+volumes:
+  nats_data:
+    driver: local
+
+networks:
+  fpindex-net:
+    driver: bridge
