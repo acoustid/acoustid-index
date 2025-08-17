@@ -343,9 +343,6 @@ fn load(self: *Self, manifest: []SegmentInfo) !void {
     defer self.allocator.free(manifest);
     defer self.loading.set();
 
-    self.loading.reset();
-    self.is_ready.store(false, .monotonic);
-
     log.info("found {} segments in manifest", .{manifest.len});
 
     if (manifest.len >= self.options.parallel_segment_loading_threshold) {
