@@ -63,8 +63,10 @@ dir: std.fs.Dir,
 oplog: Oplog,
 
 open_lock: std.Thread.Mutex = .{},
-is_ready: std.Thread.ResetEvent = .{},
+loading: std.Thread.ResetEvent = .{},
+loading_error: ?anyerror = null,
 load_task: ?Scheduler.Task = null,
+is_ready: std.atomic.Value(bool),
 
 segments_lock: std.Thread.RwLock = .{},
 memory_segments: SegmentListManager(MemorySegment),
@@ -124,6 +126,7 @@ pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, parent_dir: std
         .segments_lock = .{},
         .memory_segments = memory_segments,
         .file_segments = file_segments,
+        .is_ready = std.atomic.Value(bool).init(false),
     };
 }
 
@@ -292,7 +295,7 @@ fn maybeMergeMemorySegments(self: *Self) !bool {
 }
 
 pub fn open(self: *Self, create: bool) !void {
-    if (self.is_ready.isSet()) {
+    if (self.loading.isSet()) {
         return;
     }
 
@@ -338,18 +341,27 @@ fn loadSegmentTask(ctx: SegmentLoadContext) void {
 
 fn load(self: *Self, manifest: []SegmentInfo) !void {
     defer self.allocator.free(manifest);
+    defer self.loading.set();
+
+    self.loading.reset();
+    self.is_ready.store(false, .monotonic);
 
     log.info("found {} segments in manifest", .{manifest.len});
 
     if (manifest.len >= self.options.parallel_segment_loading_threshold) {
-        return self.loadParallel(manifest);
+        self.loadParallel(manifest) catch |err| {
+            self.loading_error = err;
+            return err;
+        };
     } else {
-        return self.loadSequential(manifest);
+        self.loadSequential(manifest) catch |err| {
+            self.loading_error = err;
+            return err;
+        };
     }
 }
 
 fn loadSequential(self: *Self, manifest: []SegmentInfo) !void {
-
     try self.file_segments.segments.value.nodes.ensureTotalCapacity(self.allocator, manifest.len);
     var last_commit_id: u64 = 0;
 
@@ -449,7 +461,7 @@ fn completeLoading(self: *Self, last_commit_id: u64) !void {
     try self.oplog.open(last_commit_id + 1, updateInternal, self);
 
     log.info("index loaded", .{});
-    self.is_ready.set();
+    self.is_ready.store(true, .monotonic);
 }
 
 fn loadTask(self: *Self, manifest: []SegmentInfo) void {
@@ -491,11 +503,20 @@ fn maybeScheduleCheckpoint(self: *Self) void {
 }
 
 pub fn waitForReady(self: *Self, timeout_ms: u32) !void {
-    try self.is_ready.timedWait(@as(u64, timeout_ms) * std.time.ns_per_ms);
+    try self.loading.timedWait(@as(u64, timeout_ms) * std.time.ns_per_ms);
+
+    self.open_lock.lock();
+    defer self.open_lock.unlock();
+
+    if (self.loading_error) |err| {
+        return err;
+    }
+
+    try self.checkReady();
 }
 
 pub fn checkReady(self: *Self) !void {
-    if (!self.is_ready.isSet()) {
+    if (!self.is_ready.load(.monotonic)) {
         return error.IndexNotReady;
     }
 }
