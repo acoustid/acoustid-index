@@ -60,7 +60,7 @@ jobs:
           # assignee_trigger: "claude-bot"
           
           # Optional: Allow Claude to run specific commands
-          allowed_tools: "Bash(zig build:*),Bash(zig test:*),Bash(zig run:*)"
+          allowed_tools: "Bash(zig build:*),Bash(zig test:*),Bash(zig run:*),WebSearch,WebFetch"
           
           # Optional: Add custom instructions for Claude to customize its behavior for your project
           # custom_instructions: |
