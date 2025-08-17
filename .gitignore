@@ -3,3 +3,4 @@
 /.zig-cache
 __pycache__
 .idea
+*.egg-info

@@ -5,6 +5,7 @@ import asyncio
 import logging
 import signal
 import sys
+import socket
 
 import nats
 
@@ -16,7 +17,7 @@ from contextlib import AsyncExitStack
 async def main_async(args):
     # Set up logging
     logging.basicConfig(
-        level=logging.INFO,
+        level=getattr(logging, args.log_level),
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
     logger = logging.getLogger(__name__)
@@ -41,18 +42,16 @@ async def main_async(args):
 
         # Set up index manager and JetStream
         logger.info("Setting up index manager")
-        manager = await IndexManager.create(nc, args.nats_prefix, args.fpindex_url)
-        
+        manager = await IndexManager.create(
+            nc, args.nats_prefix, args.fpindex_url, args.instance
+        )
+
         # Register manager cleanup
         stack.push_async_callback(manager.cleanup)
-        
-        # Start replay operations in background
-        replay_task = asyncio.create_task(manager.replay_operations())
-        stack.callback(replay_task.cancel)
 
         # Start HTTP server
         logger.info(f"Starting HTTP server on {args.listen_host}:{args.listen_port}")
-        server = await start_server(nc, args.listen_host, args.listen_port)
+        server = await start_server(nc, manager, args.listen_host, args.listen_port)
         stack.push_async_callback(server.cleanup)
 
         # Keep the server running until shutdown signal
@@ -69,6 +68,8 @@ def main():
         description="Fingerprint index cluster management tool",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+
+    hostname = socket.gethostname()
 
     parser.add_argument("--version", action="version", version="%(prog)s 0.1.0")
 
@@ -89,7 +90,7 @@ def main():
     parser.add_argument(
         "--fpindex-url",
         metavar="URL",
-        default="http://localhost:8080",
+        default="http://localhost:6081",
         help="Base URL for fpindex instance",
     )
 
@@ -106,6 +107,21 @@ def main():
         type=int,
         default=8081,
         help="HTTP server port",
+    )
+
+    parser.add_argument(
+        "--log-level",
+        metavar="LEVEL",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Logging level",
+    )
+
+    parser.add_argument(
+        "--instance",
+        metavar="NAME",
+        default=hostname,
+        help="Instance name for this cluster node",
     )
 
     args = parser.parse_args()
