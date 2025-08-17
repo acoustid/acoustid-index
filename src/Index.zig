@@ -63,7 +63,7 @@ dir: std.fs.Dir,
 oplog: Oplog,
 
 open_lock: std.Thread.Mutex = .{},
-loading: std.Thread.ResetEvent = .{},
+loading_finished: std.Thread.ResetEvent = .{},
 loading_error: ?anyerror = null,
 load_task: ?Scheduler.Task = null,
 is_ready: std.atomic.Value(bool),
@@ -295,7 +295,7 @@ fn maybeMergeMemorySegments(self: *Self) !bool {
 }
 
 pub fn open(self: *Self, create: bool) !void {
-    if (self.loading.isSet()) {
+    if (self.loading_finished.isSet()) {
         return;
     }
 
@@ -341,7 +341,7 @@ fn loadSegmentTask(ctx: SegmentLoadContext) void {
 
 fn load(self: *Self, manifest: []SegmentInfo) !void {
     defer self.allocator.free(manifest);
-    defer self.loading.set();
+    defer self.loading_finished.set();
 
     log.info("found {} segments in manifest", .{manifest.len});
 
@@ -500,7 +500,7 @@ fn maybeScheduleCheckpoint(self: *Self) void {
 }
 
 pub fn waitForReady(self: *Self, timeout_ms: u32) !void {
-    try self.loading.timedWait(@as(u64, timeout_ms) * std.time.ns_per_ms);
+    try self.loading_finished.timedWait(@as(u64, timeout_ms) * std.time.ns_per_ms);
 
     self.open_lock.lock();
     defer self.open_lock.unlock();
