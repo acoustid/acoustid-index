@@ -9,6 +9,7 @@ import sys
 import nats
 
 from .server import start_server
+from .manager import IndexManager
 from contextlib import AsyncExitStack
 
 
@@ -37,6 +38,17 @@ async def main_async(args):
         logger.info(f"Connecting to NATS server at {args.nats_url}")
         nc = await nats.connect(args.nats_url)
         stack.push_async_callback(nc.close)
+
+        # Set up index manager and JetStream
+        logger.info("Setting up index manager")
+        manager = await IndexManager.create(nc, args.nats_prefix, args.fpindex_url)
+        
+        # Register manager cleanup
+        stack.push_async_callback(manager.cleanup)
+        
+        # Start replay operations in background
+        replay_task = asyncio.create_task(manager.replay_operations())
+        stack.callback(replay_task.cancel)
 
         # Start HTTP server
         logger.info(f"Starting HTTP server on {args.listen_host}:{args.listen_port}")
