@@ -627,6 +627,8 @@ fn handleSnapshot(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
 }
 
 fn addManifestToSnapshot(tar_writer: *TarWriter, reader: *const IndexReader, arena: std.mem.Allocator) !void {
+    const filefmt = @import("filefmt.zig");
+    
     // Collect segment infos from file segments
     var segment_infos = std.ArrayList(@import("segment.zig").SegmentInfo).init(arena);
     defer segment_infos.deinit();
@@ -635,12 +637,12 @@ fn addManifestToSnapshot(tar_writer: *TarWriter, reader: *const IndexReader, are
         try segment_infos.append(node.value.info);
     }
 
-    // Serialize manifest to msgpack
+    // Serialize manifest to msgpack using proper format with header
     var manifest_data = std.ArrayList(u8).init(arena);
     defer manifest_data.deinit();
     
     const msgpack_writer = manifest_data.writer();
-    try @import("msgpack").encode(segment_infos.items, msgpack_writer);
+    try filefmt.encodeManifestData(segment_infos.items, msgpack_writer);
 
     // Add to tar
     try tar_writer.addFileFromMemory("manifest", manifest_data.items);

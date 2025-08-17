@@ -433,6 +433,11 @@ const ManifestFileHeader = struct {
     }
 };
 
+pub fn encodeManifestData(segments: []const SegmentInfo, writer: anytype) !void {
+    try msgpack.encode(ManifestFileHeader{}, writer);
+    try msgpack.encode(segments, writer);
+}
+
 pub fn writeManifestFile(dir: std.fs.Dir, segments: []const SegmentInfo) !void {
     log.info("writing manifest file {s}", .{manifest_file_name});
 
@@ -442,8 +447,7 @@ pub fn writeManifestFile(dir: std.fs.Dir, segments: []const SegmentInfo) !void {
     var buffered_writer = std.io.bufferedWriter(file.file.writer());
     const writer = buffered_writer.writer();
 
-    try msgpack.encode(ManifestFileHeader{}, writer);
-    try msgpack.encode(segments, writer);
+    try encodeManifestData(segments, writer);
 
     try buffered_writer.flush();
 

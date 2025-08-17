@@ -40,7 +40,16 @@ def test_snapshot_endpoint_empty_index(client, index_name, create_index):
         # Verify manifest content
         with open(os.path.join(temp_dir, 'manifest'), 'rb') as f:
             manifest_data = f.read()
-            segments = msgpack.loads(manifest_data)
+            
+            # Parse manifest using unpacker - has header + segments
+            unpacker = msgpack.Unpacker(io.BytesIO(manifest_data), raw=False, strict_map_key=False)
+            
+            # Skip header (first object)
+            header = next(unpacker)
+            assert isinstance(header, dict)
+            
+            # Get segments (second object)
+            segments = next(unpacker)
             assert isinstance(segments, list)
             assert len(segments) == 0  # Empty index
 
@@ -96,7 +105,16 @@ def test_snapshot_endpoint_with_data(client, index_name, create_index):
         # Verify manifest content
         with open(os.path.join(temp_dir, 'manifest'), 'rb') as f:
             manifest_data = f.read()
-            segments = msgpack.loads(manifest_data)
+            
+            # Parse manifest using unpacker - has header + segments
+            unpacker = msgpack.Unpacker(io.BytesIO(manifest_data), raw=False, strict_map_key=False)
+            
+            # Skip header (first object)
+            header = next(unpacker)
+            assert isinstance(header, dict)
+            
+            # Get segments (second object)
+            segments = next(unpacker)
             assert isinstance(segments, list)
 
 
@@ -212,7 +230,16 @@ def test_snapshot_tar_structure_validation(client, index_name, create_index):
         # Verify manifest content
         with open(os.path.join(temp_dir, 'manifest'), 'rb') as f:
             manifest_data = f.read()
-            segments = msgpack.loads(manifest_data)
+            
+            # Parse manifest using unpacker - has header + segments
+            unpacker = msgpack.Unpacker(io.BytesIO(manifest_data), raw=False, strict_map_key=False)
+            
+            # Skip header (first object)
+            header = next(unpacker)
+            assert isinstance(header, dict)
+            
+            # Get segments (second object)
+            segments = next(unpacker)
             assert isinstance(segments, list)
         
         # Verify oplog files are readable
