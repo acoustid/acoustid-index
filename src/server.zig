@@ -12,7 +12,7 @@ const common = @import("common.zig");
 const SearchResults = common.SearchResults;
 const Change = @import("change.zig").Change;
 const Deadline = @import("utils/Deadline.zig");
-const TarWriter = @import("utils/tar_stream.zig").TarWriter;
+const snapshot = @import("snapshot.zig");
 
 const metrics = @import("metrics.zig");
 
@@ -610,82 +610,8 @@ fn handleSnapshot(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
     res.header("content-type", "application/x-tar");
     res.header("content-disposition", "attachment; filename=\"index_snapshot.tar\"");
     
-    // Create tar writer directly on response stream
-    var tar_writer = TarWriter.init(res.writer().any());
-
-    // Add manifest file
-    try addManifestToSnapshot(&tar_writer, &reader, req.arena);
-
-    // Add file segments
-    try addFileSegmentsToSnapshot(&tar_writer, &reader, index);
-
-    // Add WAL files
-    try addWALFilesToSnapshot(&tar_writer, index);
-
-    // Finalize tar stream
-    try tar_writer.finish();
-}
-
-fn addManifestToSnapshot(tar_writer: *TarWriter, reader: *const IndexReader, arena: std.mem.Allocator) !void {
-    const filefmt = @import("filefmt.zig");
-    
-    // Collect segment infos from file segments
-    var segment_infos = std.ArrayList(@import("segment.zig").SegmentInfo).init(arena);
-    defer segment_infos.deinit();
-
-    for (reader.file_segments.value.nodes.items) |node| {
-        try segment_infos.append(node.value.info);
-    }
-
-    // Serialize manifest to msgpack using proper format with header
-    var manifest_data = std.ArrayList(u8).init(arena);
-    defer manifest_data.deinit();
-    
-    const msgpack_writer = manifest_data.writer();
-    try filefmt.encodeManifestData(segment_infos.items, msgpack_writer);
-
-    // Add to tar
-    try tar_writer.addFileFromMemory("manifest", manifest_data.items);
-}
-
-fn addFileSegmentsToSnapshot(tar_writer: *TarWriter, reader: *const IndexReader, index: *Index) !void {
-    const filefmt = @import("filefmt.zig");
-    
-    for (reader.file_segments.value.nodes.items) |node| {
-        var filename_buf: [filefmt.max_file_name_size]u8 = undefined;
-        const filename = filefmt.buildSegmentFileName(&filename_buf, node.value.info);
-        
-        // Open segment file for reading
-        var segment_file = try index.dir.openFile(filename, .{});
-        defer segment_file.close();
-        
-        // Add to tar with segments/ prefix
-        var tar_path_buf: [filefmt.max_file_name_size + 9]u8 = undefined;
-        const tar_path = try std.fmt.bufPrint(&tar_path_buf, "segments/{s}", .{filename});
-        
-        try tar_writer.addFile(tar_path, segment_file);
-    }
-}
-
-fn addWALFilesToSnapshot(tar_writer: *TarWriter, index: *Index) !void {
-    // Get WAL directory
-    var wal_dir = try index.dir.openDir("oplog", .{ .iterate = true });
-    defer wal_dir.close();
-
-    // Iterate through WAL files
-    var wal_iterator = wal_dir.iterate();
-    while (try wal_iterator.next()) |entry| {
-        if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".xlog")) {
-            var wal_file = try wal_dir.openFile(entry.name, .{});
-            defer wal_file.close();
-            
-            // Add to tar with oplog/ prefix
-            var tar_path_buf: [128]u8 = undefined;
-            const tar_path = try std.fmt.bufPrint(&tar_path_buf, "oplog/{s}", .{entry.name});
-            
-            try tar_writer.addFile(tar_path, wal_file);
-        }
-    }
+    // Build snapshot using the dedicated module
+    try snapshot.buildSnapshot(res.writer().any(), &reader, index, req.arena);
 }
 
 fn handleMetrics(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
