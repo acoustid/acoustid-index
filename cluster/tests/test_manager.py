@@ -46,6 +46,7 @@ async def test_instantiate_index_updater(nats_connection: nats.NATS, fpindex_url
             subject="test.subject",
             fpindex_url=fpindex_url,
             instance_name="test-instance",
+            manager=None,
         )
 
         assert updater is not None

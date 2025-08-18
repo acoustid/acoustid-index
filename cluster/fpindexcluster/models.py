@@ -52,12 +52,14 @@ Operation = Union[CreateIndexOperation, DeleteIndexOperation]
 
 class BootstrapQuery(msgspec.Struct):
     """Query broadcast to find the best instance for bootstrap."""
+
     index_name: str
     requester_instance: str
 
 
 class BootstrapReply(msgspec.Struct):
     """Reply with local index status for bootstrap selection."""
+
     index_name: str
     responder_instance: str
     last_sequence: int  # Highest sequence processed

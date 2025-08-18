@@ -11,6 +11,7 @@ import nats.errors
 import nats.aio.msg
 from nats.js import JetStreamContext
 from nats.js.api import StreamConfig, RetentionPolicy, Header
+from nats.aio.client import Subscription
 import msgspec
 import msgspec.msgpack
 import aiohttp
@@ -48,7 +49,7 @@ class IndexUpdater:
         subject: str,
         fpindex_url: str,
         instance_name: str,
-        manager: "IndexManager",
+        manager: "IndexManager" | None = None,
     ):
         self.index_name = index_name
         self.js = js
@@ -88,7 +89,7 @@ class IndexUpdater:
 
             # Check if bootstrap is needed before processing messages
             await self._check_bootstrap_needed()
-            
+
             # Start background task to continuously pull messages
             self.pull_task = asyncio.create_task(self._pull_messages_continuously())
 
@@ -210,7 +211,7 @@ class IndexUpdater:
         except Exception:
             logger.exception("Error deleting index %s", self.index_name)
             raise
-        
+
         # Signal shutdown after successful delete operation
         logger.info(f"Index '{self.index_name}' deleted, shutting down IndexUpdater")
         self.shutdown_event.set()
@@ -220,24 +221,28 @@ class IndexUpdater:
         try:
             # Fetch the first message to examine it
             messages = await self.subscription.fetch(batch=1, timeout=10)
-            
+
             if not messages:
                 logger.info(f"Index '{self.index_name}': no messages available, waiting for operations")
                 return
-                
+
             msg = messages[0]
             sequence = msg.metadata.sequence.stream
-            
+
             if sequence == 1:
                 # First message - should be CreateIndexOperation
                 try:
                     operation = msgspec.msgpack.decode(msg.data, type=Operation)
                     if isinstance(operation, CreateIndexOperation):
-                        logger.info(f"Index '{self.index_name}': received CreateIndexOperation at sequence 1, processing")
+                        logger.info(
+                            f"Index '{self.index_name}': received CreateIndexOperation at sequence 1, processing"
+                        )
                         await self._apply_create_index()
                         await msg.ack()
                     else:
-                        logger.error(f"Index '{self.index_name}': sequence 1 is not CreateIndexOperation: {type(operation)}")
+                        logger.error(
+                            f"Index '{self.index_name}': sequence 1 is not CreateIndexOperation: {type(operation)}"
+                        )
                         await msg.nak()
                         raise RuntimeError(f"Sequence 1 should be CreateIndexOperation, got: {type(operation)}")
                 except Exception:
@@ -247,14 +252,18 @@ class IndexUpdater:
                 # Not sequence 1 - need bootstrap
                 logger.error(f"Index '{self.index_name}': first message is sequence {sequence}, bootstrap required")
                 await msg.nak()
-                
+
                 # Find bootstrap source using scatter-gather
                 bootstrap_source = await self._find_bootstrap_source()
                 if bootstrap_source:
-                    raise RuntimeError(f"Bootstrap required - first message sequence: {sequence}. Bootstrap source: {bootstrap_source}")
+                    raise RuntimeError(
+                        f"Bootstrap required - first message sequence: {sequence}. Bootstrap source: {bootstrap_source}"
+                    )
                 else:
-                    raise RuntimeError(f"Bootstrap required - first message sequence: {sequence}. No bootstrap source found")
-                
+                    raise RuntimeError(
+                        f"Bootstrap required - first message sequence: {sequence}. No bootstrap source found"
+                    )
+
         except Exception as e:
             logger.error(f"Failed to check bootstrap status for '{self.index_name}': {e}")
             raise
@@ -262,7 +271,7 @@ class IndexUpdater:
     async def _apply_create_index(self) -> None:
         """Apply a CreateIndex operation to fpindex - idempotent operation."""
         logger.info(f"Applying CreateIndex operation for '{self.index_name}'")
-        
+
         url = f"{self.fpindex_url}/{self.index_name}"
         try:
             async with self.http_session.put(url) as response:
@@ -320,9 +329,9 @@ class IndexManager:
         # Per-index updaters
         self.index_updaters: dict[str, IndexUpdater] = {}
         self.index_updaters_lock = asyncio.Lock()
-        
+
         # Bootstrap query subscription
-        self.bootstrap_subscription: nats.aio.client.Subscription | None = None
+        self.bootstrap_subscription: Subscription | None = None
 
     @classmethod
     async def create(
@@ -348,7 +357,7 @@ class IndexManager:
 
         # Start discovery stream subscription to maintain state cache
         await manager._start_discovery_subscription()
-        
+
         # Start bootstrap query subscription
         await manager._start_bootstrap_subscription()
 
@@ -361,7 +370,7 @@ class IndexManager:
         # Stop discovery subscription
         if self.discovery_subscription:
             await self.discovery_subscription.unsubscribe()
-            
+
         # Stop bootstrap subscription
         if self.bootstrap_subscription:
             await self.bootstrap_subscription.unsubscribe()
@@ -445,7 +454,9 @@ class IndexManager:
                 logger.debug(f"Discovery stream '{self.discovery_stream_name}' already exists with matching config")
         except nats.js.errors.BadRequestError as exc:
             if exc.err_code == 10058:  # Stream name already in use with different config
-                logger.warning(f"Discovery stream '{self.discovery_stream_name}' exists with different config: {exc.description}")
+                logger.warning(
+                    f"Discovery stream '{self.discovery_stream_name}' exists with different config: {exc.description}"
+                )
                 # For now, just log and continue - could add config validation later
             else:
                 raise
@@ -538,18 +549,19 @@ class IndexManager:
             try:
                 await updater.start()
                 self.index_updaters[index_name] = updater
-                
+
                 # Add callback to remove updater when task completes
                 if updater.pull_task:
+
                     def cleanup_callback(task):
                         # Only cleanup if this is still the current updater and task
                         current_updater = self.index_updaters.get(index_name)
                         if current_updater and current_updater.pull_task == task:
                             del self.index_updaters[index_name]
                             logger.info(f"Cleaned up IndexUpdater for '{index_name}' after task completion")
-                    
+
                     updater.pull_task.add_done_callback(cleanup_callback)
-                
+
                 logger.info(f"Started IndexUpdater for index '{index_name}' operations")
             except Exception:
                 # Make sure to clean up if start fails
@@ -642,9 +654,7 @@ class IndexManager:
         """Start subscription to bootstrap queries."""
         try:
             subject = f"{self.stream_prefix}.bootstrap.query.*"
-            self.bootstrap_subscription = await self.nc.subscribe(
-                subject, cb=self._handle_bootstrap_query
-            )
+            self.bootstrap_subscription = await self.nc.subscribe(subject, cb=self._handle_bootstrap_query)
             logger.info(f"Started bootstrap query subscription to {subject}")
         except Exception as e:
             logger.error(f"Error starting bootstrap subscription: {e}")
@@ -653,26 +663,26 @@ class IndexManager:
     async def _handle_bootstrap_query(self, msg: nats.aio.msg.Msg) -> None:
         """Handle bootstrap query and reply with local index status."""
         try:
-            # Extract index name from subject: {prefix}.bootstrap.query.{index_name}  
+            # Extract index name from subject: {prefix}.bootstrap.query.{index_name}
             subject_parts = msg.subject.split(".")
             if len(subject_parts) < 4 or subject_parts[-2] != "query":
                 logger.warning(f"Invalid bootstrap query subject: {msg.subject}")
                 return
-                
+
             index_name = subject_parts[-1]
-            
+
             # Decode the query
             query = msgspec.msgpack.decode(msg.data, type=BootstrapQuery)
-            
+
             # Don't reply to our own queries
             if query.requester_instance == self.instance_name:
                 return
-                
+
             logger.debug(f"Received bootstrap query for index '{index_name}' from {query.requester_instance}")
-            
+
             # Check if we have this index and get its status
             reply = await self._get_bootstrap_reply(index_name)
-            
+
             # Only send reply if we have the index
             if reply and msg.reply:
                 reply_data = msgspec.msgpack.encode(reply)
@@ -680,7 +690,7 @@ class IndexManager:
                 logger.debug(f"Sent bootstrap reply for index '{index_name}' to {msg.reply}")
             elif not reply:
                 logger.debug(f"Not responding to bootstrap query for index '{index_name}' - don't have it")
-                
+
         except Exception as e:
             logger.error(f"Error handling bootstrap query: {e}")
 
@@ -688,13 +698,13 @@ class IndexManager:
         """Generate bootstrap reply with local index status, or None if we don't have the index."""
         # TODO: Add logic to check actual fpindex status via HTTP API
         # For now, check based on whether we have an active updater
-        
+
         async with self.index_updaters_lock:
             has_updater = index_name in self.index_updaters
-            
+
         if not has_updater:
             return None
-            
+
         return BootstrapReply(
             index_name=index_name,
             responder_instance=self.instance_name,
@@ -706,10 +716,10 @@ class IndexManager:
         query_id = str(uuid.uuid4())
         reply_subject = f"{self.stream_prefix}.bootstrap.reply.{query_id}"
         query_subject = f"{self.stream_prefix}.bootstrap.query.{index_name}"
-        
+
         # Subscribe to replies
         replies: list[BootstrapReply] = []
-        
+
         async def collect_reply(msg: nats.aio.msg.Msg):
             try:
                 reply = msgspec.msgpack.decode(msg.data, type=BootstrapReply)
@@ -717,42 +727,39 @@ class IndexManager:
                 logger.debug(f"Received bootstrap reply from {reply.responder_instance}")
             except Exception as e:
                 logger.error(f"Error processing bootstrap reply: {e}")
-        
+
         # Subscribe to replies
         reply_subscription = await self.nc.subscribe(reply_subject, cb=collect_reply)
 
         try:
             # Send broadcast query
-            query = BootstrapQuery(
-                index_name=index_name,
-                requester_instance=self.instance_name
-            )
+            query = BootstrapQuery(index_name=index_name, requester_instance=self.instance_name)
             query_data = msgspec.msgpack.encode(query)
-            
+
             await self.nc.publish(query_subject, query_data, reply=reply_subject)
             logger.info(f"Broadcast bootstrap query for index '{index_name}' to {query_subject}")
-            
+
             # Wait for replies
             await asyncio.sleep(timeout)
-            
+
             # Process replies and select best source
             best_instance = self._select_best_bootstrap_source(replies)
-            
+
             if best_instance:
                 logger.info(f"Selected {best_instance} as bootstrap source for index '{index_name}'")
             else:
                 logger.warning(f"No suitable bootstrap source found for index '{index_name}'")
-                
+
             return best_instance
-            
+
         finally:
             await reply_subscription.unsubscribe()
-            
+
     def _select_best_bootstrap_source(self, replies: list[BootstrapReply]) -> str | None:
         """Select the best instance for bootstrap based on replies."""
         if not replies:
             return None
-            
+
         # Sort by last_sequence (highest first) - only instances with the index respond
         replies_sorted = sorted(replies, key=lambda r: r.last_sequence, reverse=True)
         return replies_sorted[0].responder_instance
@@ -802,13 +809,17 @@ class IndexStateChange:
                 if age < PENDING_CHANGE_TTL:
                     logger.debug(
                         "[%s] Waiting for pending change %s (age: %s) to complete",
-                        self.index_name, status.status.pending_change.operation_id, age
+                        self.index_name,
+                        status.status.pending_change.operation_id,
+                        age,
                     )
                     continue
                 else:
                     logger.warning(
                         "[%s] Found stale pending change %s (age: %s)",
-                        self.index_name, status.status.pending_change.operation_id, age
+                        self.index_name,
+                        status.status.pending_change.operation_id,
+                        age,
                     )
                     # FIXME this should be resolved somehow
                     raise InconsistentIndexState()
@@ -848,11 +859,11 @@ class IndexStateChange:
         """Publish a discovery event to the global discovery stream with optimistic locking and retries."""
         pending_change = IndexStatusChange(operation_id=self.change_id, active=self.active) if pending else None
         status = IndexStatus(active=active, pending_change=pending_change)
-        
+
         retries = 0
         max_retries = 5
         base_delay = 0.1
-        
+
         while True:
             try:
                 self.current_sequence = await self.manager._publish_index_status(self.index_name, status, last_sequence)
@@ -866,14 +877,22 @@ class IndexStateChange:
                 if retries >= max_retries:
                     logger.error(
                         "Failed to publish index status after %d retries for %s change %s: %s",
-                        max_retries, self.index_name, self.change_id, e
+                        max_retries,
+                        self.index_name,
+                        self.change_id,
+                        e,
                     )
                     raise
-                
+
                 # Exponential backoff with jitter
                 delay = base_delay * (2 ** (retries - 1)) + random.uniform(0, 0.1)
                 logger.warning(
                     "Failed to publish index status for %s change %s (attempt %d/%d), retrying in %.2fs: %s",
-                    self.index_name, self.change_id, retries, max_retries, delay, e
+                    self.index_name,
+                    self.change_id,
+                    retries,
+                    max_retries,
+                    delay,
+                    e,
                 )
                 await asyncio.sleep(delay)
