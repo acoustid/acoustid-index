@@ -418,6 +418,7 @@ class IndexManager:
                 max_msgs=1000000,  # Keep up to 1M messages
                 max_age=(7 * 24 * 3600),  # Keep messages for 7 days
                 storage=nats.js.api.StorageType.FILE,
+                duplicate_window=300,  # 5 minutes duplicate detection window
             )
             await self.js.add_stream(config)
             logger.info(f"Stream '{stream_name}' created successfully")
@@ -595,8 +596,15 @@ class IndexManager:
         subject = self._get_subject(index_name)
         data = msgspec.msgpack.encode(op)
 
+        # Add deduplication header for Create/Delete operations
+        headers = {}
+        if isinstance(op, CreateIndexOperation):
+            headers[Header.MSG_ID] = f"create-{index_name}"
+        elif isinstance(op, DeleteIndexOperation):
+            headers[Header.MSG_ID] = f"delete-{index_name}"
+
         try:
-            ack = await self.js.publish(subject, data)
+            ack = await self.js.publish(subject, data, headers=headers)
             logger.debug(f"Published operation to {subject}, seq: {ack.seq}")
         except Exception as e:
             logger.error(f"Error publishing operation to {subject}: {e}")
