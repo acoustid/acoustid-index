@@ -42,6 +42,11 @@ jobs:
         run: |
           cd cluster
           uv run ruff format --check .
+      
+      - name: Run type checking
+        run: |
+          cd cluster
+          uv run ty check
 
   build:
     runs-on: ubuntu-24.04

@@ -4,9 +4,14 @@ import asyncio
 import functools
 import logging
 import nats
+import nats.js
+import nats.js.api
+import nats.js.errors
+import nats.aio.msg
 from nats.js import JetStreamContext
 from nats.js.api import StreamConfig, RetentionPolicy
 import msgspec
+import msgspec.msgpack
 import aiohttp
 import uuid
 

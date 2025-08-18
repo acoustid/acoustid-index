@@ -2,7 +2,7 @@
 
 import logging
 from aiohttp import web
-from aiohttp.web import Response, json_response
+from aiohttp.web import Response, json_response, Application, AppRunner, TCPSite
 import nats
 
 
@@ -144,9 +144,9 @@ async def get_index_status(request):
         return json_response({"error": str(e)}, status=500)
 
 
-def create_app(nats_connection: nats.NATS, index_manager) -> web.Application:
+def create_app(nats_connection: nats.NATS, index_manager) -> Application:
     """Create and configure the aiohttp application."""
-    app = web.Application()
+    app = Application()
 
     # Store dependencies in app context
     app["nats_connection"] = nats_connection
@@ -166,13 +166,13 @@ def create_app(nats_connection: nats.NATS, index_manager) -> web.Application:
 
 async def start_server(
     nats_connection: nats.NATS, index_manager, host: str = "0.0.0.0", port: int = 8081
-) -> web.AppRunner:
+) -> AppRunner:
     """Start the HTTP server and return the runner."""
     app = create_app(nats_connection, index_manager)
-    runner = web.AppRunner(app)
+    runner = AppRunner(app)
     await runner.setup()
 
-    site = web.TCPSite(runner, host, port)
+    site = TCPSite(runner, host, port)
     await site.start()
 
     logger.info(f"HTTP server started on http://{host}:{port}")
