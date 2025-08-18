@@ -9,11 +9,8 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build:
+  fpindex:
     runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      packages: write
     services:
       nats:
         image: nats:2.10-alpine
@@ -49,6 +46,15 @@ jobs:
           path: zig-out/bin/fpindex
           retention-days: 1
 
+  fpindex-docker:
+    runs-on: ubuntu-24.04
+    needs: fpindex
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Log in to the Container registry
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
@@ -71,9 +77,9 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  cluster-lint:
+  fpindex-cluster:
     runs-on: ubuntu-24.04
-    needs: build
+    needs: fpindex
     steps:
       - uses: actions/checkout@v4
 
@@ -121,9 +127,9 @@ jobs:
           cd cluster
           uv run pytest
 
-  cluster-build:
+  fpindex-cluster-docker:
     runs-on: ubuntu-24.04
-    needs: cluster-lint
+    needs: fpindex-cluster
     permissions:
       contents: read
       packages: write
