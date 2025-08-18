@@ -36,7 +36,7 @@ DEFAULT_INDEX_STATUS_UPDATE = IndexStatusUpdate(
 
 
 class CreateIndexOperation(msgspec.Struct, tag="create_index"):
-    """Operation to create a new index."""
+    """Operation to create a new index - used as stream filler to ensure sequence=1 exists."""
 
     pass
 

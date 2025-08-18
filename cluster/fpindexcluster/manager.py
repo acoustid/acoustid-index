@@ -82,6 +82,9 @@ class IndexUpdater:
                 config=consumer_config,
             )
 
+            # Check if bootstrap is needed before processing messages
+            await self._check_bootstrap_needed()
+            
             # Start background task to continuously pull messages
             self.pull_task = asyncio.create_task(self._pull_messages_continuously())
 
@@ -185,25 +188,6 @@ class IndexUpdater:
         else:
             logger.warning(f"Unknown operation type: {type(operation)}")
 
-    async def _apply_create_index(self) -> None:
-        """Apply a CreateIndex operation to fpindex."""
-        logger.info(f"Applying CreateIndex operation for '{self.index_name}'")
-
-        url = f"{self.fpindex_url}/{self.index_name}"
-        try:
-            async with self.http_session.put(url) as response:
-                if response.status == 200:
-                    logger.info(f"Successfully created index '{self.index_name}'")
-                elif response.status == 409:
-                    logger.info(f"Index '{self.index_name}' already exists")
-                else:
-                    response_text = await response.text()
-                    logger.error(f"Failed to create index '{self.index_name}': {response.status} {response_text}")
-                    raise RuntimeError(f"HTTP {response.status}: {response_text}")
-        except Exception:
-            logger.exception("Error creating index %s", self.index_name)
-            raise
-
     async def _apply_delete_index(self) -> None:
         """Apply a DeleteIndex operation to fpindex."""
         logger.info(f"Applying DeleteIndex operation for '{self.index_name}'")
@@ -226,6 +210,63 @@ class IndexUpdater:
         # Signal shutdown after successful delete operation
         logger.info(f"Index '{self.index_name}' deleted, shutting down IndexUpdater")
         self.shutdown_event.set()
+
+    async def _check_bootstrap_needed(self) -> None:
+        """Check if bootstrap is needed by examining first message."""
+        try:
+            # Fetch the first message to examine it
+            messages = await self.subscription.fetch(batch=1, timeout=10)
+            
+            if not messages:
+                logger.info(f"Index '{self.index_name}': no messages available, waiting for operations")
+                return
+                
+            msg = messages[0]
+            sequence = msg.metadata.sequence.stream
+            
+            if sequence == 1:
+                # First message - should be CreateIndexOperation
+                try:
+                    operation = msgspec.msgpack.decode(msg.data, type=Operation)
+                    if isinstance(operation, CreateIndexOperation):
+                        logger.info(f"Index '{self.index_name}': received CreateIndexOperation at sequence 1, processing")
+                        await self._apply_create_index()
+                        await msg.ack()
+                    else:
+                        logger.error(f"Index '{self.index_name}': sequence 1 is not CreateIndexOperation: {type(operation)}")
+                        await msg.nak()
+                        raise RuntimeError(f"Sequence 1 should be CreateIndexOperation, got: {type(operation)}")
+                except Exception as e:
+                    await msg.nak()
+                    raise
+            else:
+                # Not sequence 1 - need bootstrap
+                logger.error(f"Index '{self.index_name}': first message is sequence {sequence}, bootstrap required")
+                await msg.nak()
+                raise RuntimeError(f"Bootstrap required - first message sequence: {sequence}")
+                
+        except Exception as e:
+            logger.error(f"Failed to check bootstrap status for '{self.index_name}': {e}")
+            raise
+
+    async def _apply_create_index(self) -> None:
+        """Apply a CreateIndex operation to fpindex - idempotent operation."""
+        logger.info(f"Applying CreateIndex operation for '{self.index_name}'")
+        
+        url = f"{self.fpindex_url}/{self.index_name}"
+        try:
+            async with self.http_session.put(url) as response:
+                if response.status == 200:
+                    logger.info(f"Successfully created index '{self.index_name}'")
+                elif response.status == 409:
+                    logger.info(f"Index '{self.index_name}' already exists (idempotent)")
+                else:
+                    response_text = await response.text()
+                    logger.error(f"Failed to create index '{self.index_name}': {response.status} {response_text}")
+                    raise RuntimeError(f"HTTP {response.status}: {response_text}")
+        except Exception:
+            logger.exception("Error creating index %s", self.index_name)
+            raise
 
 
 logger = logging.getLogger(__name__)
@@ -491,8 +532,7 @@ class IndexManager:
 
     async def publish_create_index(self, index_name: str) -> None:
         """
-        Publish a CreateIndex operation with state validation and optimistic locking.
-        Returns (success, message, current_state).
+        Create index by ensuring stream exists and publishing CreateIndexOperation.
         """
 
         async with IndexStateChange(self, index_name, active=True) as txn:
@@ -504,7 +544,7 @@ class IndexManager:
             # Ensure stream exists for this index
             await self._ensure_stream_exists(index_name)
 
-            # Publish the operation to the index stream
+            # Publish the CreateIndexOperation as the first message (sequence=1)
             await self._publish_operation(index_name, CreateIndexOperation())
 
     async def publish_delete_index(self, index_name: str) -> None:
