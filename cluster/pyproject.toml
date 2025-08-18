@@ -16,6 +16,7 @@ fpindex-cluster = "fpindexcluster.cli:main"
 [dependency-groups]
 dev = [
     "ruff>=0.8.0",
+    "ty>=0.0.1a18",
 ]
 
 [tool.uv]

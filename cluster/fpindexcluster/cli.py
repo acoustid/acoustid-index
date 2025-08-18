@@ -22,10 +22,10 @@ def sanitize_url(url: str) -> str:
         if parsed.username or parsed.password:
             # Replace userinfo with masked version
             netloc = parsed.netloc
-            if '@' in netloc:
-                netloc = '****@' + netloc.split('@', 1)[1]
+            if "@" in netloc:
+                netloc = "****@" + netloc.split("@", 1)[1]
             masked_parsed = parsed._replace(netloc=netloc)
-            return urlunparse(masked_parsed)
+            return str(urlunparse(masked_parsed))
         return url
     except Exception:
         # If URL parsing fails, return a generic masked version
@@ -60,7 +60,12 @@ async def main_async(args):
 
         # Set up index manager and JetStream
         logger.info("Setting up index manager")
-        manager = await IndexManager.create(nc, args.nats_prefix, args.fpindex_url, args.instance)
+        manager = await IndexManager.create(
+            nats_connection=nc,
+            stream_prefix=args.nats_prefix,
+            fpindex_url=args.fpindex_url,
+            instance_name=args.instance,
+        )
 
         # Register manager cleanup
         stack.push_async_callback(manager.cleanup)

@@ -37,7 +37,7 @@ class IndexManager:
         http_session: aiohttp.ClientSession,
         stream_prefix: str,
         fpindex_url: str,
-        instance_name: str = None,
+        instance_name: str,
     ):
         self.nc = nats_connection
         self.js = js
@@ -62,10 +62,11 @@ class IndexManager:
     @classmethod
     async def create(
         cls,
+        *,
         nats_connection: nats.NATS,
-        stream_prefix: str = "fpindex",
-        fpindex_url: str = "http://localhost:8080",
-        instance_name: str = None,
+        stream_prefix: str,
+        fpindex_url: str,
+        instance_name: str,
     ) -> "IndexManager":
         """Create a fully initialized IndexManager."""
         logger.info("Setting up JetStream context")
