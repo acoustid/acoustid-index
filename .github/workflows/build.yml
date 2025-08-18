@@ -77,17 +77,26 @@ jobs:
   fpindex-cluster:
     runs-on: ubuntu-24.04
     needs: fpindex
-    services:
-      nats:
-        image: nats:2.10-alpine
-        ports:
-          - 4222:4222
-          - 8222:8222
-        options: --health-cmd "wget --quiet --tries=1 --spider http://localhost:8222/healthz" --health-interval 10s --health-timeout 5s --health-retries 5
-        env:
-          NATS_ARGS: "--jetstream --store_dir=/data --http_port=8222"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Start NATS service
+        run: docker-compose up -d nats
+
+      - name: Wait for NATS to be ready
+        run: |
+          for i in {1..30}; do
+            if wget --quiet --tries=1 --spider http://localhost:8222/healthz; then
+              echo "NATS is ready"
+              break
+            fi
+            echo "Waiting for NATS to be ready..."
+            sleep 2
+          done
+          if ! wget --quiet --tries=1 --spider http://localhost:8222/healthz; then
+            echo "NATS failed to start"
+            exit 1
+          fi
 
       - name: Download fpindex binary
         uses: actions/download-artifact@v4
@@ -132,6 +141,10 @@ jobs:
         run: |
           cd cluster
           uv run pytest
+      
+      - name: Stop NATS service
+        if: always()
+        run: docker-compose down
 
   fpindex-cluster-docker:
     runs-on: ubuntu-24.04
