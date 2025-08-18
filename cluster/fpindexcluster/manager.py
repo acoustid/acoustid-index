@@ -25,6 +25,8 @@ from .models import (
     IndexStatusChange,
     IndexStatusUpdate,
     DEFAULT_INDEX_STATUS_UPDATE,
+    BootstrapQuery,
+    BootstrapReply,
 )
 from .errors import (
     InconsistentIndexState,
@@ -46,6 +48,7 @@ class IndexUpdater:
         subject: str,
         fpindex_url: str,
         instance_name: str,
+        manager: "IndexManager",
     ):
         self.index_name = index_name
         self.js = js
@@ -54,6 +57,7 @@ class IndexUpdater:
         self.subject = subject
         self.fpindex_url = fpindex_url
         self.instance_name = instance_name
+        self.manager = manager
 
         self.subscription: nats.js.JetStreamContext.PullSubscription | None = None
         self.pull_task: asyncio.Task | None = None
@@ -243,7 +247,13 @@ class IndexUpdater:
                 # Not sequence 1 - need bootstrap
                 logger.error(f"Index '{self.index_name}': first message is sequence {sequence}, bootstrap required")
                 await msg.nak()
-                raise RuntimeError(f"Bootstrap required - first message sequence: {sequence}")
+                
+                # Find bootstrap source using scatter-gather
+                bootstrap_source = await self._find_bootstrap_source()
+                if bootstrap_source:
+                    raise RuntimeError(f"Bootstrap required - first message sequence: {sequence}. Bootstrap source: {bootstrap_source}")
+                else:
+                    raise RuntimeError(f"Bootstrap required - first message sequence: {sequence}. No bootstrap source found")
                 
         except Exception as e:
             logger.error(f"Failed to check bootstrap status for '{self.index_name}': {e}")
@@ -267,6 +277,10 @@ class IndexUpdater:
         except Exception:
             logger.exception("Error creating index %s", self.index_name)
             raise
+
+    async def _find_bootstrap_source(self) -> str | None:
+        """Find the best bootstrap source for this index."""
+        return await self.manager.find_bootstrap_source(self.index_name)
 
 
 logger = logging.getLogger(__name__)
@@ -306,6 +320,9 @@ class IndexManager:
         # Per-index updaters
         self.index_updaters: dict[str, IndexUpdater] = {}
         self.index_updaters_lock = asyncio.Lock()
+        
+        # Bootstrap query subscription
+        self.bootstrap_subscription: nats.aio.client.Subscription | None = None
 
     @classmethod
     async def create(
@@ -331,6 +348,9 @@ class IndexManager:
 
         # Start discovery stream subscription to maintain state cache
         await manager._start_discovery_subscription()
+        
+        # Start bootstrap query subscription
+        await manager._start_bootstrap_subscription()
 
         logger.info("IndexManager ready for per-index stream management")
 
@@ -341,6 +361,10 @@ class IndexManager:
         # Stop discovery subscription
         if self.discovery_subscription:
             await self.discovery_subscription.unsubscribe()
+            
+        # Stop bootstrap subscription
+        if self.bootstrap_subscription:
+            await self.bootstrap_subscription.unsubscribe()
 
         # Stop all index updaters in parallel
         async with self.index_updaters_lock:
@@ -499,6 +523,7 @@ class IndexManager:
                 subject=subject,
                 fpindex_url=self.fpindex_url,
                 instance_name=self.instance_name,
+                manager=self,
             )
 
             try:
@@ -596,6 +621,125 @@ class IndexManager:
         else:
             logger.debug(f"Published discovery event to {subject}, seq: {ack.seq}")
             return ack.seq
+
+    async def _start_bootstrap_subscription(self) -> None:
+        """Start subscription to bootstrap queries."""
+        try:
+            subject = f"{self.stream_prefix}.bootstrap.query.*"
+            self.bootstrap_subscription = await self.nc.subscribe(
+                subject, cb=self._handle_bootstrap_query
+            )
+            logger.info(f"Started bootstrap query subscription to {subject}")
+        except Exception as e:
+            logger.error(f"Error starting bootstrap subscription: {e}")
+            raise
+
+    async def _handle_bootstrap_query(self, msg: nats.aio.msg.Msg) -> None:
+        """Handle bootstrap query and reply with local index status."""
+        try:
+            # Extract index name from subject: {prefix}.bootstrap.query.{index_name}  
+            subject_parts = msg.subject.split(".")
+            if len(subject_parts) < 4 or subject_parts[-2] != "query":
+                logger.warning(f"Invalid bootstrap query subject: {msg.subject}")
+                return
+                
+            index_name = subject_parts[-1]
+            
+            # Decode the query
+            query = msgspec.msgpack.decode(msg.data, type=BootstrapQuery)
+            
+            # Don't reply to our own queries
+            if query.requester_instance == self.instance_name:
+                return
+                
+            logger.debug(f"Received bootstrap query for index '{index_name}' from {query.requester_instance}")
+            
+            # Check if we have this index and get its status
+            reply = await self._get_bootstrap_reply(index_name)
+            
+            # Only send reply if we have the index
+            if reply and msg.reply:
+                reply_data = msgspec.msgpack.encode(reply)
+                await self.nc.publish(msg.reply, reply_data)
+                logger.debug(f"Sent bootstrap reply for index '{index_name}' to {msg.reply}")
+            elif not reply:
+                logger.debug(f"Not responding to bootstrap query for index '{index_name}' - don't have it")
+                
+        except Exception as e:
+            logger.error(f"Error handling bootstrap query: {e}")
+
+    async def _get_bootstrap_reply(self, index_name: str) -> BootstrapReply | None:
+        """Generate bootstrap reply with local index status, or None if we don't have the index."""
+        # TODO: Add logic to check actual fpindex status via HTTP API
+        # For now, check based on whether we have an active updater
+        
+        async with self.index_updaters_lock:
+            has_updater = index_name in self.index_updaters
+            
+        if not has_updater:
+            return None
+            
+        return BootstrapReply(
+            index_name=index_name,
+            responder_instance=self.instance_name,
+            last_sequence=0,  # TODO: Get actual last processed sequence from index
+        )
+
+    async def find_bootstrap_source(self, index_name: str, timeout: float = 5.0) -> str | None:
+        """Broadcast query to find the best instance for bootstrap."""
+        query_id = str(uuid.uuid4())
+        reply_subject = f"{self.stream_prefix}.bootstrap.reply.{query_id}"
+        query_subject = f"{self.stream_prefix}.bootstrap.query.{index_name}"
+        
+        # Subscribe to replies
+        replies: list[BootstrapReply] = []
+        
+        async def collect_reply(msg: nats.aio.msg.Msg):
+            try:
+                reply = msgspec.msgpack.decode(msg.data, type=BootstrapReply)
+                replies.append(reply)
+                logger.debug(f"Received bootstrap reply from {reply.responder_instance}")
+            except Exception as e:
+                logger.error(f"Error processing bootstrap reply: {e}")
+        
+        # Subscribe to replies
+        reply_subscription = await self.nc.subscribe(reply_subject, cb=collect_reply)
+
+        try:
+            # Send broadcast query
+            query = BootstrapQuery(
+                index_name=index_name,
+                requester_instance=self.instance_name
+            )
+            query_data = msgspec.msgpack.encode(query)
+            
+            await self.nc.publish(query_subject, query_data, reply=reply_subject)
+            logger.info(f"Broadcast bootstrap query for index '{index_name}' to {query_subject}")
+            
+            # Wait for replies
+            await asyncio.sleep(timeout)
+            
+            # Process replies and select best source
+            best_instance = self._select_best_bootstrap_source(replies)
+            
+            if best_instance:
+                logger.info(f"Selected {best_instance} as bootstrap source for index '{index_name}'")
+            else:
+                logger.warning(f"No suitable bootstrap source found for index '{index_name}'")
+                
+            return best_instance
+            
+        finally:
+            await reply_subscription.unsubscribe()
+            
+    def _select_best_bootstrap_source(self, replies: list[BootstrapReply]) -> str | None:
+        """Select the best instance for bootstrap based on replies."""
+        if not replies:
+            return None
+            
+        # Sort by last_sequence (highest first) - only instances with the index respond
+        replies_sorted = sorted(replies, key=lambda r: r.last_sequence, reverse=True)
+        return replies_sorted[0].responder_instance
 
 
 PENDING_CHANGE_TTL = datetime.timedelta(minutes=5)
