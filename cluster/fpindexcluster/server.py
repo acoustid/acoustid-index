@@ -1,11 +1,27 @@
 #!/usr/bin/env python3
 
 import logging
+import re
 from aiohttp.web import Response, json_response, Application, AppRunner, TCPSite
 import nats
 
 
 logger = logging.getLogger(__name__)
+
+# Index name validation regex: alphanumeric start, then alphanumeric/underscore/hyphen
+INDEX_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$')
+
+
+def is_valid_index_name(name: str) -> bool:
+    """
+    Validate index name according to fpindex rules.
+    
+    Rules:
+    - First character must be alphanumeric (0-9, A-Z, a-z)
+    - Subsequent characters can be alphanumeric plus underscore (_) and hyphen (-)
+    - No other characters allowed
+    """
+    return bool(name and INDEX_NAME_PATTERN.match(name))
 
 
 async def health_check(request):
@@ -22,6 +38,17 @@ async def create_index(request):
     """Create a new index."""
     index_name = request.match_info["index"]
     manager = request.app["index_manager"]
+
+    # Validate index name
+    if not is_valid_index_name(index_name):
+        logger.warning(f"Invalid index name: '{index_name}'")
+        return json_response(
+            {
+                "error": "Invalid index name. Must start with alphanumeric character and contain only alphanumeric, underscore, and hyphen characters.",
+                "index": index_name,
+            },
+            status=400,
+        )
 
     try:
         success, message, current_state = await manager.publish_create_index(index_name)
@@ -74,6 +101,17 @@ async def delete_index(request):
     index_name = request.match_info["index"]
     manager = request.app["index_manager"]
 
+    # Validate index name
+    if not is_valid_index_name(index_name):
+        logger.warning(f"Invalid index name: '{index_name}'")
+        return json_response(
+            {
+                "error": "Invalid index name. Must start with alphanumeric character and contain only alphanumeric, underscore, and hyphen characters.",
+                "index": index_name,
+            },
+            status=400,
+        )
+
     try:
         success, message, current_state = await manager.publish_delete_index(index_name)
 
@@ -125,6 +163,17 @@ async def get_index_status(request):
     """Get the current status of an index."""
     index_name = request.match_info["index"]
     manager = request.app["index_manager"]
+
+    # Validate index name
+    if not is_valid_index_name(index_name):
+        logger.warning(f"Invalid index name: '{index_name}'")
+        return json_response(
+            {
+                "error": "Invalid index name. Must start with alphanumeric character and contain only alphanumeric, underscore, and hyphen characters.",
+                "index": index_name,
+            },
+            status=400,
+        )
 
     try:
         current_state = await manager.get_index_state(index_name)
