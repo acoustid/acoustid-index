@@ -11,15 +11,6 @@ env:
 jobs:
   fpindex:
     runs-on: ubuntu-24.04
-    services:
-      nats:
-        image: nats:2.10-alpine
-        ports:
-          - 4222:4222
-          - 8222:8222
-        options: --health-cmd "wget --quiet --tries=1 --spider http://localhost:8222/healthz" --health-interval 10s --health-timeout 5s --health-retries 5
-        env:
-          NATS_ARGS: "--jetstream --store_dir=/data --http_port=8222"
     steps:
       - uses: actions/checkout@v4
 
@@ -86,6 +77,15 @@ jobs:
   fpindex-cluster:
     runs-on: ubuntu-24.04
     needs: fpindex
+    services:
+      nats:
+        image: nats:2.10-alpine
+        ports:
+          - 4222:4222
+          - 8222:8222
+        options: --health-cmd "wget --quiet --tries=1 --spider http://localhost:8222/healthz" --health-interval 10s --health-timeout 5s --health-retries 5
+        env:
+          NATS_ARGS: "--jetstream --store_dir=/data --http_port=8222"
     steps:
       - uses: actions/checkout@v4
 
