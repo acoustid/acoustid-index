@@ -151,7 +151,7 @@ class IndexManager:
             config = StreamConfig(
                 name=self.discovery_stream_name,
                 subjects=[self.discovery_subject_pattern],
-                retention=RetentionPolicy.WORK_QUEUE,
+                retention=RetentionPolicy.LIMITS,
                 max_msgs_per_subject=1,  # Keep only latest event per subject (per index)
                 storage=nats.js.api.StorageType.FILE,
             )
