@@ -222,6 +222,10 @@ class IndexUpdater:
         except Exception:
             logger.exception("Error deleting index %s", self.index_name)
             raise
+        
+        # Signal shutdown after successful delete operation
+        logger.info(f"Index '{self.index_name}' deleted, shutting down IndexUpdater")
+        self.shutdown_event.set()
 
 
 logger = logging.getLogger(__name__)
@@ -459,6 +463,18 @@ class IndexManager:
             try:
                 await updater.start()
                 self.index_updaters[index_name] = updater
+                
+                # Add callback to remove updater when task completes
+                if updater.pull_task:
+                    def cleanup_callback(task):
+                        # Only cleanup if this is still the current updater and task
+                        current_updater = self.index_updaters.get(index_name)
+                        if current_updater and current_updater.pull_task == task:
+                            del self.index_updaters[index_name]
+                            logger.info(f"Cleaned up IndexUpdater for '{index_name}' after task completion")
+                    
+                    updater.pull_task.add_done_callback(cleanup_callback)
+                
                 logger.info(f"Started IndexUpdater for index '{index_name}' operations")
             except Exception:
                 # Make sure to clean up if start fails
