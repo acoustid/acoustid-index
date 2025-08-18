@@ -26,6 +26,11 @@ To run type checking:
 uv run ty check
 ```
 
+To run tests:
+```bash
+uv run pytest
+```
+
 To run all code quality checks at once:
 ```bash
 ./check.sh

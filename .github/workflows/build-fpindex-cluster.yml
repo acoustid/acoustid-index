@@ -47,6 +47,11 @@ jobs:
         run: |
           cd cluster
           uv run ty check
+      
+      - name: Run tests
+        run: |
+          cd cluster
+          uv run pytest
 
   build:
     runs-on: ubuntu-24.04
