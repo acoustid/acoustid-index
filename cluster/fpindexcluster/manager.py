@@ -240,7 +240,7 @@ class IndexUpdater:
                         logger.error(f"Index '{self.index_name}': sequence 1 is not CreateIndexOperation: {type(operation)}")
                         await msg.nak()
                         raise RuntimeError(f"Sequence 1 should be CreateIndexOperation, got: {type(operation)}")
-                except Exception as e:
+                except Exception:
                     await msg.nak()
                     raise
             else:
