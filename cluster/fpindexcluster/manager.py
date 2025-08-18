@@ -635,8 +635,10 @@ class IndexManager:
         data = msgspec.msgpack.encode(event)
 
         try:
-            headers = {}
-            headers[Header.EXPECTED_LAST_SUBJECT_SEQUENCE] = str(expected_sequence or 0)
+            headers = {
+                Header.EXPECTED_STREAM: self.discovery_stream_name,
+                Header.EXPECTED_LAST_SUBJECT_SEQUENCE: str(expected_sequence or 0),
+            }
 
             ack = await self.js.publish(subject, data, headers=headers)
 
