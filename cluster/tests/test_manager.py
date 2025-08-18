@@ -15,25 +15,25 @@ def test_import_index_updater() -> None:
     assert IndexUpdater is not None
 
 
-async def test_instantiate_index_manager(nats_connection: nats.NATS) -> None:
+async def test_instantiate_index_manager(nats_connection: nats.NATS, fpindex_url: str) -> None:
     """Test that IndexManager can be instantiated."""
     manager = await IndexManager.create(
         nats_connection=nats_connection,
         stream_prefix="test",
-        fpindex_url="http://localhost:6081",
+        fpindex_url=fpindex_url,
         instance_name="test-instance",
     )
 
     assert manager is not None
     assert manager.stream_prefix == "test"
-    assert manager.fpindex_url == "http://localhost:6081"
+    assert manager.fpindex_url == fpindex_url
     assert manager.instance_name == "test-instance"
 
     # Clean up
     await manager.cleanup()
 
 
-async def test_instantiate_index_updater(nats_connection: nats.NATS) -> None:
+async def test_instantiate_index_updater(nats_connection: nats.NATS, fpindex_url: str) -> None:
     """Test that IndexUpdater can be instantiated."""
     js = nats_connection.jetstream()
 
@@ -44,7 +44,7 @@ async def test_instantiate_index_updater(nats_connection: nats.NATS) -> None:
             http_session=session,
             stream_name="test_stream",
             subject="test.subject",
-            fpindex_url="http://localhost:6081",
+            fpindex_url=fpindex_url,
             instance_name="test-instance",
         )
 
@@ -52,5 +52,14 @@ async def test_instantiate_index_updater(nats_connection: nats.NATS) -> None:
         assert updater.index_name == "test-index"
         assert updater.stream_name == "test_stream"
         assert updater.subject == "test.subject"
-        assert updater.fpindex_url == "http://localhost:6081"
+        assert updater.fpindex_url == fpindex_url
         assert updater.instance_name == "test-instance"
+
+
+async def test_fpindex_server_health(fpindex_url: str) -> None:
+    """Test that the fpindex server fixture is working."""
+    async with aiohttp.ClientSession() as session:
+        async with session.get(f"{fpindex_url}/_health") as resp:
+            assert resp.status == 200
+            text = await resp.text()
+            assert text.strip() == "OK"
