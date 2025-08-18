@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import asyncio
+import functools
 import logging
 import nats
 from nats.js import JetStreamContext
@@ -243,7 +244,7 @@ class IndexManager:
                 subject,
                 config=consumer_config,
                 durable=f"fpindex-{index_name}-{self.instance_name}",
-                cb=lambda msg: self._index_operation_callback(msg, index_name),
+                cb=functools.partial(self._index_operation_callback, index_name=index_name),
             )
 
             async with self.index_subscriptions_lock:
