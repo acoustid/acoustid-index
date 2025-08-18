@@ -6,12 +6,30 @@ import logging
 import signal
 import sys
 import socket
+from urllib.parse import urlparse, urlunparse
 
 import nats
 
 from .server import start_server
 from .manager import IndexManager
 from contextlib import AsyncExitStack
+
+
+def sanitize_url(url: str) -> str:
+    """Sanitize URL by masking userinfo (credentials) for safe logging."""
+    try:
+        parsed = urlparse(url)
+        if parsed.username or parsed.password:
+            # Replace userinfo with masked version
+            netloc = parsed.netloc
+            if '@' in netloc:
+                netloc = '****@' + netloc.split('@', 1)[1]
+            masked_parsed = parsed._replace(netloc=netloc)
+            return urlunparse(masked_parsed)
+        return url
+    except Exception:
+        # If URL parsing fails, return a generic masked version
+        return "****"
 
 
 async def main_async(args):
@@ -36,7 +54,7 @@ async def main_async(args):
 
     async with AsyncExitStack() as stack:
         # Connect to NATS
-        logger.info(f"Connecting to NATS server at {args.nats_url}")
+        logger.info(f"Connecting to NATS server at {sanitize_url(args.nats_url)}")
         nc = await nats.connect(args.nats_url)
         stack.push_async_callback(nc.close)
 
