@@ -292,17 +292,26 @@ class IndexManager:
         if self.discovery_subscription:
             await self.discovery_subscription.unsubscribe()
 
-        # Stop all index updaters
+        # Stop all index updaters in parallel
         async with self.index_updaters_lock:
-            for index_name, updater in list(self.index_updaters.items()):
-                try:
-                    await updater.stop()
-                    logger.debug(f"Stopped updater for index '{index_name}' during cleanup")
-                except Exception as e:
-                    logger.error(f"Error stopping updater for index '{index_name}' during cleanup: {e}")
-            self.index_updaters.clear()
+            # Create stop tasks for all updaters
+            stop_tasks = []
+            for index_name, updater in self.index_updaters.items():
+                task = asyncio.create_task(self._stop_updater_with_logging(index_name, updater))
+                stop_tasks.append(task)
+            
+            # Wait for all stops to complete
+            await asyncio.gather(*stop_tasks, return_exceptions=True)
 
         await self.http_session.close()
+    
+    async def _stop_updater_with_logging(self, index_name: str, updater: IndexUpdater) -> None:
+        """Stop a single updater with error logging."""
+        try:
+            await updater.stop()
+            logger.debug(f"Stopped updater for index '{index_name}' during cleanup")
+        except Exception as e:
+            logger.error(f"Error stopping updater for index '{index_name}' during cleanup: {e}")
 
     def _get_stream_name(self, index_name: str) -> str:
         """Get stream name for a specific index."""
