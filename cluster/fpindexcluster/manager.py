@@ -333,7 +333,7 @@ class IndexManager:
                 subjects=[subject],
                 retention=RetentionPolicy.LIMITS,
                 max_msgs=1000000,  # Keep up to 1M messages
-                max_age=7 * 24 * 3600,  # Keep messages for 7 days
+                max_age=(7 * 24 * 3600) * 1_000_000_000,  # Keep messages for 7 days (nanoseconds)
                 storage=nats.js.api.StorageType.FILE,
             )
             await self.js.add_stream(config)
