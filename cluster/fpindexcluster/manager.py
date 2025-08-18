@@ -404,43 +404,51 @@ class IndexManager:
         stream_name = self._get_stream_name(index_name)
         subject = self._get_subject(index_name)
 
+        config = StreamConfig(
+            name=stream_name,
+            subjects=[subject],
+            retention=RetentionPolicy.LIMITS,
+            max_msgs=1000000,  # Keep up to 1M messages
+            max_age=(7 * 24 * 3600),  # Keep messages for 7 days
+            storage=nats.js.api.StorageType.FILE,
+            duplicate_window=300,  # 5 minutes duplicate detection window
+        )
+
         try:
-            # Try to get existing stream info
-            await self.js.stream_info(stream_name)
-            logger.debug(f"Stream '{stream_name}' already exists")
-        except nats.js.errors.NotFoundError:
-            # Stream doesn't exist, create it
-            logger.info(f"Creating stream '{stream_name}' for index '{index_name}'")
-            config = StreamConfig(
-                name=stream_name,
-                subjects=[subject],
-                retention=RetentionPolicy.LIMITS,
-                max_msgs=1000000,  # Keep up to 1M messages
-                max_age=(7 * 24 * 3600),  # Keep messages for 7 days
-                storage=nats.js.api.StorageType.FILE,
-                duplicate_window=300,  # 5 minutes duplicate detection window
-            )
-            await self.js.add_stream(config)
-            logger.info(f"Stream '{stream_name}' created successfully")
+            stream_info = await self.js.add_stream(config)
+            if stream_info.did_create:
+                logger.info(f"Stream '{stream_name}' created successfully")
+            else:
+                logger.debug(f"Stream '{stream_name}' already exists with matching config")
+        except nats.js.errors.BadRequestError as exc:
+            if exc.err_code == 10058:  # Stream name already in use with different config
+                logger.warning(f"Stream '{stream_name}' exists with different config: {exc.description}")
+                # For now, just log and continue - could add config validation later
+            else:
+                raise
 
     async def _ensure_discovery_stream_exists(self) -> None:
         """Create the global discovery stream if it doesn't exist."""
+        config = StreamConfig(
+            name=self.discovery_stream_name,
+            subjects=[self.discovery_subject_pattern],
+            retention=RetentionPolicy.LIMITS,
+            max_msgs_per_subject=1,  # Keep only latest event per subject (per index)
+            storage=nats.js.api.StorageType.FILE,
+        )
+
         try:
-            # Try to get existing stream info
-            await self.js.stream_info(self.discovery_stream_name)
-            logger.debug(f"Discovery stream '{self.discovery_stream_name}' already exists")
-        except nats.js.errors.NotFoundError:
-            # Stream doesn't exist, create it
-            logger.info(f"Creating discovery stream '{self.discovery_stream_name}'")
-            config = StreamConfig(
-                name=self.discovery_stream_name,
-                subjects=[self.discovery_subject_pattern],
-                retention=RetentionPolicy.LIMITS,
-                max_msgs_per_subject=1,  # Keep only latest event per subject (per index)
-                storage=nats.js.api.StorageType.FILE,
-            )
-            await self.js.add_stream(config)
-            logger.info(f"Discovery stream '{self.discovery_stream_name}' created successfully")
+            stream_info = await self.js.add_stream(config)
+            if stream_info.did_create:
+                logger.info(f"Discovery stream '{self.discovery_stream_name}' created successfully")
+            else:
+                logger.debug(f"Discovery stream '{self.discovery_stream_name}' already exists with matching config")
+        except nats.js.errors.BadRequestError as exc:
+            if exc.err_code == 10058:  # Stream name already in use with different config
+                logger.warning(f"Discovery stream '{self.discovery_stream_name}' exists with different config: {exc.description}")
+                # For now, just log and continue - could add config validation later
+            else:
+                raise
 
     async def _start_discovery_subscription(self) -> None:
         """Start persistent subscription to discovery stream to maintain index state cache."""
