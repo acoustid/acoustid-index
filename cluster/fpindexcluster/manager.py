@@ -14,6 +14,7 @@ import msgspec
 import msgspec.msgpack
 import aiohttp
 import uuid
+from typing import NamedTuple
 
 from .models import (
     CreateIndexOperation,
@@ -225,6 +226,14 @@ class IndexUpdater:
 logger = logging.getLogger(__name__)
 
 
+class IndexStateUpdate(NamedTuple):
+    state: IndexState
+    last_seq: int
+
+
+EMPTY_INDEX_STATE_UPDATE = IndexStateUpdate(state=IndexState.NOT_EXISTS, last_seq=0)
+
+
 class IndexManager:
     """Manages NATS JetStream setup and fpindex operations replay."""
 
@@ -247,7 +256,7 @@ class IndexManager:
         self.discovery_subject_pattern = f"{stream_prefix}.discovery.index.*"
 
         # Integrated index state and sequence management
-        self.index_states: dict[str, tuple[IndexState, int | None]] = {}
+        self.index_states: dict[str, IndexStateUpdate] = {}
         self.index_states_lock = asyncio.Lock()
 
         # Index discovery subscription
@@ -299,12 +308,12 @@ class IndexManager:
             for index_name, updater in self.index_updaters.items():
                 task = asyncio.create_task(self._stop_updater_with_logging(index_name, updater))
                 stop_tasks.append(task)
-            
+
             # Wait for all stops to complete
             await asyncio.gather(*stop_tasks, return_exceptions=True)
 
         await self.http_session.close()
-    
+
     async def _stop_updater_with_logging(self, index_name: str, updater: IndexUpdater) -> None:
         """Stop a single updater with error logging."""
         try:
@@ -411,24 +420,16 @@ class IndexManager:
 
             # Update integrated state cache
             async with self.index_states_lock:
-                old_state, old_seq = self.index_states.get(index_name, (IndexState.NOT_EXISTS, None))
-                self.index_states[index_name] = (new_state, new_seq)
+                old_state, old_seq = self.index_states.get(index_name, EMPTY_INDEX_STATE_UPDATE)
+                self.index_states[index_name] = IndexStateUpdate(new_state, new_seq)
 
             logger.debug(
                 f"Updated state for index '{index_name}': {old_state.value} -> {new_state.value} (sequence {new_seq})"
             )
 
-            # Manage per-index subscriptions based on state changes
-            await self._manage_index_subscription(index_name, new_state)
-
-    async def _manage_index_subscription(self, index_name: str, new_state: IndexState) -> None:
-        """Start or stop per-index subscriptions based on state changes."""
-        if new_state.exists():
-            # Start subscription when index becomes active
-            await self._start_index_subscription(index_name)
-        else:
-            # Stop subscription when index is deleted or no longer exists
-            await self._stop_index_subscription(index_name)
+            if new_state == IndexState.ACTIVE:
+                # Start subscription when index becomes active
+                await self._start_index_subscription(index_name)
 
     async def _start_index_subscription(self, index_name: str) -> None:
         """Start an IndexUpdater for an index's operation stream."""
@@ -438,51 +439,31 @@ class IndexManager:
                 logger.debug(f"Already have updater for index '{index_name}' operations")
                 return
 
-        try:
-            # Ensure stream exists
-            await self._ensure_stream_exists(index_name)
+        stream_name = self._get_stream_name(index_name)
+        subject = self._get_subject(index_name)
 
-            stream_name = self._get_stream_name(index_name)
-            subject = self._get_subject(index_name)
+        # Create and start IndexUpdater
+        updater = IndexUpdater(
+            index_name=index_name,
+            js=self.js,
+            http_session=self.http_session,
+            stream_name=stream_name,
+            subject=subject,
+            fpindex_url=self.fpindex_url,
+            instance_name=self.instance_name,
+        )
 
-            # Create and start IndexUpdater
-            updater = IndexUpdater(
-                index_name=index_name,
-                js=self.js,
-                http_session=self.http_session,
-                stream_name=stream_name,
-                subject=subject,
-                fpindex_url=self.fpindex_url,
-                instance_name=self.instance_name,
-            )
+        await updater.start()
 
-            await updater.start()
-
-            async with self.index_updaters_lock:
-                self.index_updaters[index_name] = updater
-
-            logger.info(f"Started IndexUpdater for index '{index_name}' operations")
-
-        except Exception:
-            logger.exception(f"Error starting IndexUpdater for index '{index_name}'")
-            raise
-
-    async def _stop_index_subscription(self, index_name: str) -> None:
-        """Stop the IndexUpdater for an index's operation stream."""
         async with self.index_updaters_lock:
-            updater = self.index_updaters.pop(index_name, None)
+            self.index_updaters[index_name] = updater
 
-        if updater:
-            try:
-                await updater.stop()
-                logger.info(f"Stopped IndexUpdater for index '{index_name}' operations")
-            except Exception as e:
-                logger.error(f"Error stopping IndexUpdater for index '{index_name}': {e}")
+        logger.info(f"Started IndexUpdater for index '{index_name}' operations")
 
     async def get_index_state(self, index_name: str) -> IndexState:
         """Get the current state of an index from the in-memory cache."""
         async with self.index_states_lock:
-            state, _ = self.index_states.get(index_name, (IndexState.NOT_EXISTS, None))
+            state, _ = self.index_states.get(index_name, EMPTY_INDEX_STATE_UPDATE)
             return state
 
     async def _retry_on_conflict(self, operation, max_retries=3, base_delay=0.1):
@@ -519,7 +500,7 @@ class IndexManager:
         async def _create_index_operation():
             # Get current sequence for optimistic locking
             async with self.index_states_lock:
-                current_state, current_sequence = self.index_states.get(index_name, (IndexState.NOT_EXISTS, None))
+                current_state, current_sequence = self.index_states.get(index_name, EMPTY_INDEX_STATE_UPDATE)
 
             # Validate state transition
             if current_state in [IndexState.CREATING, IndexState.ACTIVE]:
@@ -573,7 +554,7 @@ class IndexManager:
         async def _delete_index_operation():
             # Get current sequence for optimistic locking
             async with self.index_states_lock:
-                current_state, current_sequence = self.index_states.get(index_name, (IndexState.NOT_EXISTS, None))
+                current_state, current_sequence = self.index_states.get(index_name, EMPTY_INDEX_STATE_UPDATE)
 
             # Validate state transition
             if current_state in [IndexState.NOT_EXISTS, IndexState.DELETED]:
