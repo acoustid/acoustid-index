@@ -25,3 +25,8 @@ To run type checking:
 ```bash
 uv run ty check
 ```
+
+To run all code quality checks at once:
+```bash
+./check.sh
+```

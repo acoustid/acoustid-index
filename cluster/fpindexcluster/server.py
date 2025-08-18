@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import logging
-from aiohttp import web
 from aiohttp.web import Response, json_response, Application, AppRunner, TCPSite
 import nats
 
@@ -164,9 +163,7 @@ def create_app(nats_connection: nats.NATS, index_manager) -> Application:
     return app
 
 
-async def start_server(
-    nats_connection: nats.NATS, index_manager, host: str = "0.0.0.0", port: int = 8081
-) -> AppRunner:
+async def start_server(nats_connection: nats.NATS, index_manager, host: str = "0.0.0.0", port: int = 8081) -> AppRunner:
     """Start the HTTP server and return the runner."""
     app = create_app(nats_connection, index_manager)
     runner = AppRunner(app)
