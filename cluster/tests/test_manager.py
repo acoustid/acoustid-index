@@ -23,12 +23,12 @@ async def test_instantiate_index_manager(nats_connection: nats.NATS) -> None:
         fpindex_url="http://localhost:6081",
         instance_name="test-instance",
     )
-    
+
     assert manager is not None
     assert manager.stream_prefix == "test"
     assert manager.fpindex_url == "http://localhost:6081"
     assert manager.instance_name == "test-instance"
-    
+
     # Clean up
     await manager.cleanup()
 
@@ -36,7 +36,7 @@ async def test_instantiate_index_manager(nats_connection: nats.NATS) -> None:
 async def test_instantiate_index_updater(nats_connection: nats.NATS) -> None:
     """Test that IndexUpdater can be instantiated."""
     js = nats_connection.jetstream()
-    
+
     async with aiohttp.ClientSession() as session:
         updater = IndexUpdater(
             index_name="test-index",
@@ -47,7 +47,7 @@ async def test_instantiate_index_updater(nats_connection: nats.NATS) -> None:
             fpindex_url="http://localhost:6081",
             instance_name="test-instance",
         )
-        
+
         assert updater is not None
         assert updater.index_name == "test-index"
         assert updater.stream_name == "test_stream"

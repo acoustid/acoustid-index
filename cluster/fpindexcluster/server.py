@@ -9,13 +9,13 @@ import nats
 logger = logging.getLogger(__name__)
 
 # Index name validation regex: alphanumeric start, then alphanumeric/underscore/hyphen
-INDEX_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_-]*$')
+INDEX_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 
 
 def is_valid_index_name(name: str) -> bool:
     """
     Validate index name according to fpindex rules.
-    
+
     Rules:
     - First character must be alphanumeric (0-9, A-Z, a-z)
     - Subsequent characters can be alphanumeric plus underscore (_) and hyphen (-)

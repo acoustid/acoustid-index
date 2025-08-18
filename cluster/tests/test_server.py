@@ -18,11 +18,11 @@ def test_invalid_index_names() -> None:
     """Test invalid index names."""
     # Empty string
     assert not is_valid_index_name("")
-    
+
     # Start with underscore or hyphen
     assert not is_valid_index_name("_1b2")
     assert not is_valid_index_name("-1b2")
-    
+
     # Invalid characters
     assert not is_valid_index_name("a/a")
     assert not is_valid_index_name(".foo")

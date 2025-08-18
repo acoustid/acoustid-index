@@ -10,7 +10,7 @@ async def nats_connection():
     """Provide a NATS connection for testing."""
     # Use environment variable or default to localhost
     nats_url = os.getenv("TEST_NATS_URL", "nats://localhost:4222")
-    
+
     nc = None
     try:
         nc = await nats.connect(nats_url)
