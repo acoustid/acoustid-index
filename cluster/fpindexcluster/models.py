@@ -31,7 +31,7 @@ DEFAULT_INDEX_STATUS = IndexStatus(
 DEFAULT_INDEX_STATUS_UPDATE = IndexStatusUpdate(
     status=DEFAULT_INDEX_STATUS,
     sequence=0,
-    timestamp=datetime.datetime.fromtimestamp(0),
+    timestamp=datetime.datetime.fromtimestamp(0, tz=datetime.timezone.utc),
 )
 
 
