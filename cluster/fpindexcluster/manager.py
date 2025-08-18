@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import nats
+import datetime
 import nats.js
 import nats.js.api
 import nats.js.errors
@@ -14,19 +15,19 @@ import msgspec
 import msgspec.msgpack
 import aiohttp
 import uuid
-from typing import NamedTuple
+import random
 
 from .models import (
     CreateIndexOperation,
     DeleteIndexOperation,
     Operation,
-    IndexCreatingEvent,
-    IndexCreatedEvent,
-    IndexDeletingEvent,
-    IndexDeletedEvent,
-    DiscoveryEvent,
-    IndexState,
-    get_index_state,
+    IndexStatus,
+    IndexStatusChange,
+    IndexStatusUpdate,
+    DEFAULT_INDEX_STATUS_UPDATE,
+)
+from .errors import (
+    InconsistentIndexState,
 )
 
 
@@ -199,8 +200,8 @@ class IndexUpdater:
                     response_text = await response.text()
                     logger.error(f"Failed to create index '{self.index_name}': {response.status} {response_text}")
                     raise RuntimeError(f"HTTP {response.status}: {response_text}")
-        except Exception as e:
-            logger.error(f"Error creating index '{self.index_name}': {e}")
+        except Exception:
+            logger.exception("Error creating index %s", self.index_name)
             raise
 
     async def _apply_delete_index(self) -> None:
@@ -218,20 +219,16 @@ class IndexUpdater:
                     response_text = await response.text()
                     logger.error(f"Failed to delete index '{self.index_name}': {response.status} {response_text}")
                     raise RuntimeError(f"HTTP {response.status}: {response_text}")
-        except Exception as e:
-            logger.error(f"Error deleting index '{self.index_name}': {e}")
+        except Exception:
+            logger.exception("Error deleting index %s", self.index_name)
             raise
 
 
 logger = logging.getLogger(__name__)
 
 
-class IndexStateUpdate(NamedTuple):
-    state: IndexState
-    last_seq: int
-
-
-EMPTY_INDEX_STATE_UPDATE = IndexStateUpdate(state=IndexState.NOT_EXISTS, last_seq=0)
+class WrongLastSequence(Exception):
+    pass
 
 
 class IndexManager:
@@ -255,9 +252,8 @@ class IndexManager:
         self.discovery_stream_name = f"{stream_prefix}_discovery"
         self.discovery_subject_pattern = f"{stream_prefix}.discovery.index.*"
 
-        # Integrated index state and sequence management
-        self.index_states: dict[str, IndexStateUpdate] = {}
-        self.index_states_lock = asyncio.Lock()
+        self.indexes: dict[str, IndexStatusUpdate] = {}
+        self.indexes_lock = asyncio.Lock()
 
         # Index discovery subscription
         self.discovery_subscription: nats.js.JetStreamContext.PushSubscription | None = None
@@ -414,20 +410,27 @@ class IndexManager:
             index_name = subject_parts[3]
 
             # Decode the event
-            event = msgspec.msgpack.decode(msg.data, type=DiscoveryEvent)
-            new_state = get_index_state(event)
-            new_seq = msg.metadata.sequence.stream
+            status = msgspec.msgpack.decode(msg.data, type=IndexStatus)
 
-            # Update integrated state cache
-            async with self.index_states_lock:
-                old_state, old_seq = self.index_states.get(index_name, EMPTY_INDEX_STATE_UPDATE)
-                self.index_states[index_name] = IndexStateUpdate(new_state, new_seq)
-
-            logger.debug(
-                f"Updated state for index '{index_name}': {old_state.value} -> {new_state.value} (sequence {new_seq})"
+            # Build the complete status update
+            status_update = IndexStatusUpdate(
+                status=status,
+                sequence=msg.metadata.sequence.stream,
+                timestamp=msg.metadata.timestamp,
             )
 
-            if new_state == IndexState.ACTIVE:
+            # Update integrated state cache
+            async with self.indexes_lock:
+                self.indexes[index_name] = status_update
+
+            logger.debug(
+                "Updated status for index %s: active=%s sequence=%s",
+                index_name,
+                status.active,
+                status_update.sequence,
+            )
+
+            if status.active and status.pending_change is None:
                 # Start subscription when index becomes active
                 await self._start_index_subscription(index_name)
 
@@ -439,174 +442,77 @@ class IndexManager:
                 logger.debug(f"Already have updater for index '{index_name}' operations")
                 return
 
-        stream_name = self._get_stream_name(index_name)
-        subject = self._get_subject(index_name)
+            stream_name = self._get_stream_name(index_name)
+            subject = self._get_subject(index_name)
 
-        # Create and start IndexUpdater
-        updater = IndexUpdater(
-            index_name=index_name,
-            js=self.js,
-            http_session=self.http_session,
-            stream_name=stream_name,
-            subject=subject,
-            fpindex_url=self.fpindex_url,
-            instance_name=self.instance_name,
-        )
+            # Create and start IndexUpdater while holding the lock
+            updater = IndexUpdater(
+                index_name=index_name,
+                js=self.js,
+                http_session=self.http_session,
+                stream_name=stream_name,
+                subject=subject,
+                fpindex_url=self.fpindex_url,
+                instance_name=self.instance_name,
+            )
 
-        await updater.start()
-
-        async with self.index_updaters_lock:
-            self.index_updaters[index_name] = updater
-
-        logger.info(f"Started IndexUpdater for index '{index_name}' operations")
-
-    async def get_index_state(self, index_name: str) -> IndexState:
-        """Get the current state of an index from the in-memory cache."""
-        async with self.index_states_lock:
-            state, _ = self.index_states.get(index_name, EMPTY_INDEX_STATE_UPDATE)
-            return state
-
-    async def _retry_on_conflict(self, operation, max_retries=3, base_delay=0.1):
-        """Retry an operation on optimistic lock conflicts with exponential backoff."""
-        import random
-
-        for attempt in range(max_retries):
             try:
-                return await operation()
-            except nats.js.errors.APIError as err:
-                # Retry only when the server signals a "Bad last sequence" conflict.
-                if err.err_code != 10071:
-                    raise
+                await updater.start()
+                self.index_updaters[index_name] = updater
+                logger.info(f"Started IndexUpdater for index '{index_name}' operations")
+            except Exception:
+                # Make sure to clean up if start fails
+                try:
+                    await updater.stop()
+                except Exception:
+                    pass  # Ignore cleanup errors
+                raise
 
-                # Last attempt failed
-                if attempt == max_retries - 1:
-                    raise
+    async def get_index_status(self, index_name: str) -> IndexStatusUpdate:
+        """Get the current state of an index from the in-memory cache."""
+        async with self.indexes_lock:
+            return self.indexes.get(index_name, DEFAULT_INDEX_STATUS_UPDATE)
 
-                # Exponential backoff with jitter
-                delay = base_delay * (2**attempt) + random.uniform(0, 0.1)
-                logger.warning(
-                    f"Optimistic lock conflict, retrying in {delay:.2f}s (attempt {attempt + 1}/{max_retries})"
-                )
-                await asyncio.sleep(delay)
-
-    async def publish_create_index(self, index_name: str) -> tuple[bool, str, IndexState]:
+    async def publish_create_index(self, index_name: str) -> None:
         """
         Publish a CreateIndex operation with state validation and optimistic locking.
         Returns (success, message, current_state).
         """
-        # Generate operation ID for tracking
-        operation_id = str(uuid.uuid4())
 
-        async def _create_index_operation():
-            # Get current sequence for optimistic locking
-            async with self.index_states_lock:
-                current_state, current_sequence = self.index_states.get(index_name, EMPTY_INDEX_STATE_UPDATE)
-
-            # Validate state transition
-            if current_state in [IndexState.CREATING, IndexState.ACTIVE]:
-                return (
-                    False,
-                    f"Index '{index_name}' already exists or is being created",
-                    current_state,
-                )
-            elif current_state == IndexState.DELETING:
-                return (
-                    False,
-                    f"Index '{index_name}' is currently being deleted",
-                    current_state,
-                )
-
-            # Publish "creating" state first
-            updated_sequence = await self._publish_discovery_event(
-                index_name,
-                IndexCreatingEvent(operation_id=operation_id),
-                expected_sequence=current_sequence,
-            )
+        async with IndexStateChange(self, index_name, active=True) as txn:
+            # Check if we need to do anything at all
+            if txn.current_status.active:
+                logger.info("Index %s already exists", index_name)
+                return
 
             # Ensure stream exists for this index
             await self._ensure_stream_exists(index_name)
 
             # Publish the operation to the index stream
-            operation = CreateIndexOperation()
-            data = msgspec.msgpack.encode(operation)
-            await self._publish_operation(index_name, data)
+            await self._publish_operation(index_name, CreateIndexOperation())
 
-            # Publish "created" state
-            await self._publish_discovery_event(
-                index_name,
-                IndexCreatedEvent(operation_id=operation_id),
-                expected_sequence=updated_sequence,
-            )
-
-            logger.info(f"Published CreateIndex operation for index '{index_name}' with ID {operation_id}")
-            return True, "Index creation initiated", IndexState.ACTIVE
-
-        return await self._retry_on_conflict(_create_index_operation)
-
-    async def publish_delete_index(self, index_name: str) -> tuple[bool, str, IndexState]:
+    async def publish_delete_index(self, index_name: str) -> None:
         """
         Publish a DeleteIndex operation with state validation and optimistic locking.
         Returns (success, message, current_state).
         """
-        # Generate operation ID for tracking
-        operation_id = str(uuid.uuid4())
 
-        async def _delete_index_operation():
-            # Get current sequence for optimistic locking
-            async with self.index_states_lock:
-                current_state, current_sequence = self.index_states.get(index_name, EMPTY_INDEX_STATE_UPDATE)
+        async with IndexStateChange(self, index_name, active=False) as txn:
+            # Check if we need to do anything at all
+            if not txn.current_status.active:
+                logger.info("Index %s is already deleted", index_name)
+                return
 
-            # Validate state transition
-            if current_state in [IndexState.NOT_EXISTS, IndexState.DELETED]:
-                # Idempotent: deleting non-existent index is success
-                return (
-                    True,
-                    f"Index '{index_name}' does not exist (already deleted)",
-                    current_state,
-                )
-            elif current_state == IndexState.CREATING:
-                return (
-                    False,
-                    f"Index '{index_name}' is currently being created",
-                    current_state,
-                )
-            elif current_state == IndexState.DELETING:
-                return (
-                    False,
-                    f"Index '{index_name}' is already being deleted",
-                    current_state,
-                )
-
-            # Publish "deleting" state first
-            updated_sequence = await self._publish_discovery_event(
-                index_name,
-                IndexDeletingEvent(operation_id=operation_id),
-                expected_sequence=current_sequence,
-            )
-
-            # Ensure stream exists for this index (might need to publish to existing stream)
+            # Ensure stream exists for this index
             await self._ensure_stream_exists(index_name)
 
             # Publish the operation to the index stream
-            operation = DeleteIndexOperation()
-            data = msgspec.msgpack.encode(operation)
-            await self._publish_operation(index_name, data)
+            await self._publish_operation(index_name, DeleteIndexOperation())
 
-            # Publish "deleted" state
-            await self._publish_discovery_event(
-                index_name,
-                IndexDeletedEvent(operation_id=operation_id),
-                expected_sequence=updated_sequence,
-            )
-
-            logger.info(f"Published DeleteIndex operation for index '{index_name}' with ID {operation_id}")
-            return True, "Index deletion initiated", IndexState.DELETED
-
-        return await self._retry_on_conflict(_delete_index_operation)
-
-    async def _publish_operation(self, index_name: str, data: bytes) -> None:
+    async def _publish_operation(self, index_name: str, op: Operation) -> None:
         """Publish a new operation to the index-specific stream."""
         subject = self._get_subject(index_name)
+        data = msgspec.msgpack.encode(op)
 
         try:
             ack = await self.js.publish(subject, data)
@@ -615,19 +521,143 @@ class IndexManager:
             logger.error(f"Error publishing operation to {subject}: {e}")
             raise
 
-    async def _publish_discovery_event(
-        self, index_name: str, event: DiscoveryEvent, expected_sequence: int | None = None
-    ) -> int:
+    async def _publish_index_status(self, index_name: str, status: IndexStatus, last_sequence: int) -> int:
         """Publish a discovery event to the global discovery stream with optimistic locking."""
         subject = self._get_discovery_subject(index_name)
-        data = msgspec.msgpack.encode(event)
+        data = msgspec.msgpack.encode(status)
 
         headers = {
             Header.EXPECTED_STREAM: self.discovery_stream_name,
-            Header.EXPECTED_LAST_SUBJECT_SEQUENCE: str(expected_sequence or 0),
+            Header.EXPECTED_LAST_SUBJECT_SEQUENCE: str(last_sequence),
         }
 
-        ack = await self.js.publish(subject, data, headers=headers)
+        try:
+            ack = await self.js.publish(subject, data, headers=headers)
+        except nats.js.errors.BadRequestError as exc:
+            if exc.err_code == 10071:
+                raise WrongLastSequence() from exc
+            raise
+        else:
+            logger.debug(f"Published discovery event to {subject}, seq: {ack.seq}")
+            return ack.seq
 
-        logger.debug(f"Published discovery event to {subject}, seq: {ack.seq}")
-        return ack.seq
+
+PENDING_CHANGE_TTL = datetime.timedelta(minutes=5)
+
+
+class IndexStateChange:
+    def __init__(self, manager: IndexManager, index_name: str, active: bool):
+        self.manager = manager
+        self.index_name = index_name
+        self.active = active
+        self.change_id = uuid.uuid4()
+        self.current_status: IndexStatus
+        self.current_sequence: int | None = None
+
+    async def __aenter__(self) -> "IndexStateChange":
+        await self.begin()
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback) -> None:
+        if exc is not None:
+            await self.rollback()
+        else:
+            await self.commit()
+
+    async def begin(self) -> None:
+        retries = 0
+        max_retries = 10
+        base_delay = 0.01
+
+        while True:
+            if retries > 0:
+                delay = base_delay * (2**retries + random.uniform(0, 1.0))
+                await asyncio.sleep(delay)
+
+            retries += 1
+            if retries >= max_retries:
+                raise InconsistentIndexState()
+
+            status = await self.manager.get_index_status(self.index_name)
+            self.current_status = status.status
+
+            if status.status.pending_change is not None and status.status.pending_change.operation_id != self.change_id:
+                age = datetime.datetime.now(datetime.timezone.utc) - status.timestamp
+                if age < PENDING_CHANGE_TTL:
+                    logger.debug(
+                        "[%s] Waiting for pending change %s (age: %s) to complete",
+                        self.index_name, status.status.pending_change.operation_id, age
+                    )
+                    continue
+                else:
+                    logger.warning(
+                        "[%s] Found stale pending change %s (age: %s)",
+                        self.index_name, status.status.pending_change.operation_id, age
+                    )
+                    # FIXME this should be resolved somehow
+                    raise InconsistentIndexState()
+
+            if status.status.pending_change is None and status.status.active == self.active:
+                # there is no pending change, status matches, we have nothing to do
+                return
+
+            try:
+                await self._publish_index_status(
+                    active=self.current_status.active,
+                    pending=True,
+                    last_sequence=status.sequence,
+                )
+            except WrongLastSequence:
+                continue
+            else:
+                break
+
+    async def commit(self) -> None:
+        if self.current_sequence is not None:
+            await self._publish_index_status(
+                active=self.active,
+                pending=False,
+                last_sequence=self.current_sequence,
+            )
+
+    async def rollback(self) -> None:
+        if self.current_sequence is not None:
+            await self._publish_index_status(
+                active=self.current_status.active,
+                pending=False,
+                last_sequence=self.current_sequence,
+            )
+
+    async def _publish_index_status(self, active: bool, pending: bool, last_sequence: int) -> None:
+        """Publish a discovery event to the global discovery stream with optimistic locking and retries."""
+        pending_change = IndexStatusChange(operation_id=self.change_id, active=self.active) if pending else None
+        status = IndexStatus(active=active, pending_change=pending_change)
+        
+        retries = 0
+        max_retries = 5
+        base_delay = 0.1
+        
+        while True:
+            try:
+                self.current_sequence = await self.manager._publish_index_status(self.index_name, status, last_sequence)
+                self.current_status = status
+                return
+            except WrongLastSequence:
+                # Sequence changed - this is expected in concurrent scenarios, not a retry case
+                raise
+            except Exception as e:
+                retries += 1
+                if retries >= max_retries:
+                    logger.error(
+                        "Failed to publish index status after %d retries for %s change %s: %s",
+                        max_retries, self.index_name, self.change_id, e
+                    )
+                    raise
+                
+                # Exponential backoff with jitter
+                delay = base_delay * (2 ** (retries - 1)) + random.uniform(0, 0.1)
+                logger.warning(
+                    "Failed to publish index status for %s change %s (attempt %d/%d), retrying in %.2fs: %s",
+                    self.index_name, self.change_id, retries, max_retries, delay, e
+                )
+                await asyncio.sleep(delay)
