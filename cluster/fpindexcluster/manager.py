@@ -557,9 +557,6 @@ class IndexManager:
         Publish a DeleteIndex operation with state validation and optimistic locking.
         Returns (success, message, current_state).
         """
-        # Check current state
-        current_state = await self.get_index_state(index_name)
-
         # Generate operation ID for tracking
         operation_id = str(uuid.uuid4())
 
