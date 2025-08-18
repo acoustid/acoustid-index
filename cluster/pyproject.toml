@@ -1,0 +1,31 @@
+[project]
+name = "fpindex-cluster"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiohttp>=3.12.15",
+    "msgspec>=0.19.0",
+    "nats-py>=2.11.0",
+]
+
+[project.scripts]
+fpindex-cluster = "fpindexcluster.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "ruff>=0.8.0",
+    "ty>=0.0.1a18",
+]
+
+[tool.uv]
+package = true
+
+[tool.ruff]
+line-length = 120
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

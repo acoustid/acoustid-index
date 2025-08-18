@@ -9,11 +9,8 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build:
+  fpindex:
     runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v4
 
@@ -33,6 +30,28 @@ jobs:
       - name: Build release binary
         run: zig build --release=fast --summary all
 
+      - name: Upload fpindex binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fpindex-binary
+          path: zig-out/bin/fpindex
+          retention-days: 1
+
+  fpindex-docker:
+    runs-on: ubuntu-24.04
+    needs: fpindex
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download fpindex binary
+        uses: actions/download-artifact@v4
+        with:
+          name: fpindex-binary
+          path: zig-out/bin
+
       - name: Log in to the Container registry
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
@@ -51,6 +70,112 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  fpindex-cluster:
+    runs-on: ubuntu-24.04
+    needs: fpindex
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start NATS service
+        run: docker compose up -d nats
+
+      - name: Wait for NATS to be ready
+        run: |
+          for i in {1..30}; do
+            if wget --quiet --tries=1 --spider http://localhost:8222/healthz; then
+              echo "NATS is ready"
+              break
+            fi
+            echo "Waiting for NATS to be ready..."
+            sleep 2
+          done
+          if ! wget --quiet --tries=1 --spider http://localhost:8222/healthz; then
+            echo "NATS failed to start"
+            exit 1
+          fi
+
+      - name: Download fpindex binary
+        uses: actions/download-artifact@v4
+        with:
+          name: fpindex-binary
+          path: zig-out/bin
+
+      - name: Make fpindex binary executable
+        run: chmod +x zig-out/bin/fpindex
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+      
+      - name: Install dependencies
+        run: |
+          cd cluster
+          uv sync --group dev
+      
+      - name: Run ruff check
+        run: |
+          cd cluster
+          uv run ruff check .
+      
+      - name: Run ruff format check
+        run: |
+          cd cluster
+          uv run ruff format --check .
+      
+      - name: Run type checking
+        run: |
+          cd cluster
+          uv run ty check
+      
+      - name: Run tests
+        run: |
+          cd cluster
+          uv run pytest
+      
+      - name: Stop NATS service
+        if: always()
+        run: docker compose down
+
+  fpindex-cluster-docker:
+    runs-on: ubuntu-24.04
+    needs: fpindex-cluster
+    permissions:
+      contents: read
+      packages: write
+    env:
+      CLUSTER_REGISTRY: ghcr.io
+      CLUSTER_IMAGE_NAME: ${{ github.repository }}/fpindex-cluster
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.CLUSTER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.CLUSTER_REGISTRY }}/${{ env.CLUSTER_IMAGE_NAME }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./cluster
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
