@@ -32,10 +32,6 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 
-class WrongLastSequence(Exception):
-    pass
-
-
 class IndexUpdater:
     """Handles NATS pull subscription and message processing for a single index."""
 
@@ -487,7 +483,12 @@ class IndexManager:
         for attempt in range(max_retries):
             try:
                 return await operation()
-            except nats.js.errors.Error:
+            except nats.js.errors.APIError as err:
+                # Retry only when the server signals a "Bad last sequence" conflict.
+                if err.err_code != 10071:
+                    raise
+
+                # Last attempt failed
                 if attempt == max_retries - 1:
                     raise
 
@@ -631,19 +632,12 @@ class IndexManager:
         subject = self._get_discovery_subject(index_name)
         data = msgspec.msgpack.encode(event)
 
-        try:
-            headers = {
-                Header.EXPECTED_STREAM: self.discovery_stream_name,
-                Header.EXPECTED_LAST_SUBJECT_SEQUENCE: str(expected_sequence or 0),
-            }
+        headers = {
+            Header.EXPECTED_STREAM: self.discovery_stream_name,
+            Header.EXPECTED_LAST_SUBJECT_SEQUENCE: str(expected_sequence or 0),
+        }
 
-            ack = await self.js.publish(subject, data, headers=headers)
+        ack = await self.js.publish(subject, data, headers=headers)
 
-            logger.debug(f"Published discovery event to {subject}, seq: {ack.seq}")
-            return ack.seq
-        except nats.js.errors.APIError as err:
-            # Check for a BadRequest::KeyWrongLastSequenceError error code.
-            if err.err_code == 10071:
-                raise WrongLastSequence()
-            else:
-                raise
+        logger.debug(f"Published discovery event to {subject}, seq: {ack.seq}")
+        return ack.seq
