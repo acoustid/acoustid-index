@@ -3,11 +3,12 @@
 import logging
 import re
 import msgspec
+import msgspec.json
 from aiohttp.web import Response, json_response, Application, AppRunner, TCPSite, Request
 import nats
 
 from .errors import InconsistentIndexState
-from .models import Change, Insert, Delete, UpdateRequest
+from .models import UpdateRequest
 
 
 logger = logging.getLogger(__name__)
@@ -142,20 +143,22 @@ async def update_index(request: Request):
         # Parse request with msgspec
         request_body = await request.text()
         update_request = msgspec.json.decode(request_body, type=UpdateRequest)
-        
+
         # Validate that each change has either insert or delete (not both or neither)
         for change in update_request.changes:
             has_insert = change.insert is not None
             has_delete = change.delete is not None
             if has_insert == has_delete:  # both true or both false
-                return json_response({"error": "Each change must have exactly one of insert or delete operation"}, status=400)
-        
+                return json_response(
+                    {"error": "Each change must have exactly one of insert or delete operation"}, status=400
+                )
+
         # Publish update to NATS
         await manager.publish_update(index_name, update_request.changes, update_request.metadata)
-        
+
         # Return success (no version like fpindex since we don't do version locking)
         return json_response({}, status=200)
-        
+
     except (ValueError, msgspec.DecodeError, msgspec.ValidationError) as e:
         logger.warning(f"Invalid request format for '{index_name}': {e}")
         return json_response({"error": "Invalid request format"}, status=400)
@@ -182,7 +185,7 @@ def create_app(nats_connection: nats.NATS, index_manager) -> Application:
     app.router.add_put("/{index}", create_index)
     app.router.add_delete("/{index}", delete_index)
     app.router.add_get("/{index}", get_index_status)
-    
+
     # Add update route
     app.router.add_post("/{index}/_update", update_index)
 

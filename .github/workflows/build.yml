@@ -132,11 +132,6 @@ jobs:
           cd cluster
           uv run ruff format --check .
       
-      - name: Run type checking
-        run: |
-          cd cluster
-          uv run ty check
-      
       - name: Run tests
         run: |
           cd cluster

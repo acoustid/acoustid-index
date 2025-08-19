@@ -297,18 +297,20 @@ class IndexUpdater:
 
         # Build the request payload - use msgspec encoding to leverage omit_defaults
         request_data = msgspec.to_builtins(operation)
-        
+
         # Add metadata if present
         if operation.metadata is not None:
             request_data["metadata"] = operation.metadata
-        
+
         # Forward to fpindex
         url = f"{self.fpindex_url}/{self.index_name}/_update"
         try:
             async with self.http_session.post(url, json=request_data) as response:
                 if response.status == 200:
                     response_data = await response.json()
-                    logger.info(f"Successfully updated index '{self.index_name}', new version: {response_data.get('version', 'unknown')}")
+                    logger.info(
+                        f"Successfully updated index '{self.index_name}', new version: {response_data.get('version', 'unknown')}"
+                    )
                 elif response.status == 404:
                     logger.error(f"Index '{self.index_name}' not found in fpindex")
                     raise RuntimeError(f"Index not found: {self.index_name}")
@@ -647,17 +649,19 @@ class IndexManager:
             # Publish the operation to the index stream
             await self._publish_operation(index_name, DeleteIndexOperation())
 
-    async def publish_update(self, index_name: str, changes: list[Change], metadata: dict[str, str] = None) -> None:
+    async def publish_update(
+        self, index_name: str, changes: list[Change], metadata: dict[str, str] | None = None
+    ) -> None:
         """
         Publish an update operation to the index stream.
         """
         # Ensure stream exists for this index
         await self._ensure_stream_exists(index_name)
-        
+
         # Create and publish the update operation
         operation = UpdateOperation(changes=changes, metadata=metadata)
         await self._publish_operation(index_name, operation)
-        
+
         logger.info(f"Published update operation with {len(changes)} changes to index '{index_name}'")
 
     async def _publish_operation(self, index_name: str, op: Operation) -> None:
