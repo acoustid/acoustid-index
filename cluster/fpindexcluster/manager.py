@@ -13,6 +13,7 @@ from nats.js import JetStreamContext
 from nats.js.api import StreamConfig, RetentionPolicy, Header
 from nats.aio.client import Subscription
 import msgspec
+import msgspec.json
 import msgspec.msgpack
 import aiohttp
 import uuid
@@ -296,16 +297,13 @@ class IndexUpdater:
         logger.info(f"Applying UpdateOperation with {len(operation.changes)} changes for '{self.index_name}'")
 
         # Build the request payload - use msgspec encoding to leverage omit_defaults
-        request_data = msgspec.to_builtins(operation)
-
-        # Add metadata if present
-        if operation.metadata is not None:
-            request_data["metadata"] = operation.metadata
+        request_data = msgspec.json.encode(operation)
 
         # Forward to fpindex
         url = f"{self.fpindex_url}/{self.index_name}/_update"
         try:
-            async with self.http_session.post(url, json=request_data) as response:
+            headers = {"Content-Type": "application/json"}
+            async with self.http_session.post(url, data=request_data, headers=headers) as response:
                 if response.status == 200:
                     response_data = await response.json()
                     logger.info(

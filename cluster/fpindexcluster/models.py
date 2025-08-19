@@ -75,12 +75,6 @@ class UpdateOperation(msgspec.Struct, tag="update"):
     metadata: dict[str, str] | None = None
 
 
-class UpdateRequest(msgspec.Struct):
-    """HTTP update request structure matching fpindex format."""
-
-    changes: list[Change]
-    metadata: dict[str, str] | None = None
-
 
 Operation = Union[CreateIndexOperation, DeleteIndexOperation, UpdateOperation]
 
