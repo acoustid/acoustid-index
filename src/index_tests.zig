@@ -49,7 +49,7 @@ test "index create, update and search" {
     try index.update(&[_]Change{.{ .insert = .{
         .id = 1,
         .hashes = generateRandomHashes(&hashes, 1),
-    } }});
+    } }}, null);
 
     {
         var collector = SearchResults.init(std.testing.allocator, .{});
@@ -90,7 +90,7 @@ test "index create, update, reopen and search" {
         try index.update(&[_]Change{.{ .insert = .{
             .id = 1,
             .hashes = generateRandomHashes(&hashes, 1),
-        } }});
+        } }}, null);
     }
 
     {
@@ -131,7 +131,7 @@ test "index many updates and inserts" {
         try index.update(&[_]Change{.{ .insert = .{
             .id = @as(u32, @intCast(i % 20)) + 1,
             .hashes = generateRandomHashes(&hashes, i),
-        } }});
+        } }}, null);
     }
 
     // Test 2: Batch inserts with larger scale
@@ -158,7 +158,7 @@ test "index many updates and inserts" {
 
         if (batch.items.len == batch_size or i == total_count) {
             try index.waitForReady(10000);
-            try index.update(batch.items);
+            try index.update(batch.items, null);
 
             // Clean up allocated hashes
             for (batch.items) |change| {
@@ -230,12 +230,12 @@ test "index, multiple fingerprints with the same hashes" {
     try index.update(&[_]Change{.{ .insert = .{
         .id = 1,
         .hashes = generateRandomHashes(&hashes, 1),
-    } }});
+    } }}, null);
 
     try index.update(&[_]Change{.{ .insert = .{
         .id = 2,
         .hashes = generateRandomHashes(&hashes, 1),
-    } }});
+    } }}, null);
 
     var collector = SearchResults.init(std.testing.allocator, .{});
     defer collector.deinit();

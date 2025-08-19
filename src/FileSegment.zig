@@ -48,7 +48,7 @@ pub fn init(allocator: std.mem.Allocator, options: Options) Self {
         .allocator = allocator,
         .dir = options.dir,
         .blocks = undefined,
-        .metadata = Metadata.init(allocator),
+        .metadata = Metadata.initOwned(allocator),
     };
 }
 
@@ -222,7 +222,12 @@ test "build and reader with duplicate hashes" {
         .{ .insert = .{ .id = 3, .hashes = &[_]u32{100} } },
     };
 
-    try source.build(&changes);
+    var metadata = Metadata.initOwned(std.testing.allocator);
+    defer metadata.deinit();
+
+    try metadata.set("foo", "bar");
+
+    try source.build(&changes, metadata);
 
     var source_reader = source.reader();
     defer source_reader.close();

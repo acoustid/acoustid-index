@@ -97,6 +97,10 @@ pub fn getMaxDocId(self: *Self) u32 {
     return result;
 }
 
+pub fn getNumSegments(self: *Self) usize {
+    return self.memory_segments.value.count() + self.file_segments.value.count();
+}
+
 pub fn getVersion(self: *Self) u64 {
     if (self.memory_segments.value.getLast()) |node| {
         return node.value.info.version;
@@ -107,44 +111,14 @@ pub fn getVersion(self: *Self) u64 {
     return 0;
 }
 
-pub fn getNumSegments(self: *Self) usize {
-    return self.memory_segments.value.count() + self.file_segments.value.count();
-}
-
-pub fn getMetadata(self: *Self, allocator: std.mem.Allocator) !std.StringHashMapUnmanaged([]const u8) {
-    var metadata: std.StringHashMapUnmanaged([]const u8) = .{};
-    errdefer metadata.deinit(allocator);
-
-    inline for (segment_lists) |n| {
-        const segments = @field(self, n);
-        for (segments.value.nodes.items) |node| {
-            var iter = node.value.metadata.iterator();
-            while (iter.next()) |entry| {
-                const result = try metadata.getOrPut(allocator, entry.key);
-                if (!result.found_existing) {
-                    result.key_ptr.* = entry.key;
-                }
-                result.value_ptr.* = entry.value;
-            }
-        }
-    }
-
-    return metadata;
-}
-
-pub fn getMetadataWrapper(self: *Self, allocator: std.mem.Allocator) !Metadata {
+pub fn getMetadata(self: *Self, allocator: std.mem.Allocator) !Metadata {
     var metadata = Metadata.initBorrowed(allocator);
     errdefer metadata.deinit();
 
     inline for (segment_lists) |n| {
         const segments = @field(self, n);
         for (segments.value.nodes.items) |node| {
-            var iter = node.value.metadata.iterator();
-            while (iter.next()) |entry| {
-                if (metadata.get(entry.key) == null) {
-                    try metadata.set(entry.key, entry.value);
-                }
-            }
+            try metadata.update(node.value.metadata);
         }
     }
 
@@ -156,18 +130,6 @@ pub const Stats = struct {
     max_doc_id: u32,
     num_segments: usize,
     num_docs: u32,
-
-    pub fn msgpackWrite(self: Stats, packer: anytype) !void {
-        try packer.writeMapHeader(4);
-        try packer.write("min");
-        try packer.write(self.min_doc_id);
-        try packer.write("max");
-        try packer.write(self.max_doc_id);
-        try packer.write("s");
-        try packer.write(self.num_segments);
-        try packer.write("d");
-        try packer.write(self.num_docs);
-    }
 };
 
 pub fn getStats(self: *Self) Stats {

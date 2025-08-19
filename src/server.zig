@@ -358,6 +358,7 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 
 const UpdateRequestJSON = struct {
     changes: []Change,
+    metadata: ?Metadata = null,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
@@ -372,7 +373,7 @@ fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 
     metrics.update(body.changes.len);
 
-    try index.update(body.changes);
+    try index.update(body.changes, body.metadata);
 
     return writeResponse(EmptyResponse{}, req, res);
 }
@@ -435,7 +436,7 @@ fn handlePutFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response
 
     metrics.update(1);
 
-    try index.update(&[_]Change{change});
+    try index.update(&[_]Change{change}, null);
 
     return writeResponse(EmptyResponse{}, req, res);
 }
@@ -451,25 +452,18 @@ fn handleDeleteFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Respo
 
     metrics.update(1);
 
-    try index.update(&[_]Change{change});
+    try index.update(&[_]Change{change}, null);
 
     return writeResponse(EmptyResponse{}, req, res);
 }
-
 
 const GetIndexResponse = struct {
     version: u64,
     metadata: Metadata,
     stats: IndexReader.Stats,
 
-    pub fn msgpackWrite(self: GetIndexResponse, packer: anytype) !void {
-        try packer.writeMapHeader(3);
-        try packer.write("v");
-        try packer.write(self.version);
-        try packer.write("m");
-        try packer.write(self.metadata);
-        try packer.write("st");
-        try packer.write(self.stats);
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
     }
 };
 
@@ -482,7 +476,7 @@ fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
 
     const response = GetIndexResponse{
         .version = index_reader.getVersion(),
-        .metadata = try index_reader.getMetadataWrapper(req.arena),
+        .metadata = try index_reader.getMetadata(req.arena),
         .stats = index_reader.getStats(),
     };
     return writeResponse(response, req, res);
@@ -498,7 +492,7 @@ const CreateIndexRequest = struct {
 
 fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = req.param("index") orelse return;
-    
+
     try ctx.indexes.createIndex(index_name);
 
     return writeResponse(EmptyResponse{}, req, res);

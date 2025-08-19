@@ -61,7 +61,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
                 .allocator = allocator,
                 .collection = collection,
                 .sources = try std.ArrayListUnmanaged(Source).initCapacity(allocator, num_sources),
-                .segment = .{ .metadata = Metadata.init(allocator) },
+                .segment = .{ .metadata = Metadata.initOwned(allocator) },
             };
         }
 
@@ -98,15 +98,8 @@ pub fn SegmentMerger(comptime Segment: type) type {
                 total_docs += source.reader.segment.docs.count();
             }
 
-            try self.segment.metadata.ensureTotalCapacity(total_attributes);
             for (sources) |*source| {
-                const segment = source.reader.segment;
-                var iter = segment.metadata.iterator();
-                while (iter.next()) |entry| {
-                    if (self.segment.metadata.get(entry.key) == null) {
-                        try self.segment.metadata.set(entry.key, entry.value);
-                    }
-                }
+                try self.segment.metadata.update(source.reader.segment.metadata);
             }
 
             try self.segment.docs.ensureTotalCapacity(self.allocator, total_docs);

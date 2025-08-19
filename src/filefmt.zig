@@ -201,7 +201,7 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
     };
     try packer.write(header);
 
-    try segment.metadata.msgpackWrite(packer);
+    try packer.writeMap(segment.metadata.entries);
     try packer.writeMap(segment.docs);
 
     try buffered_writer.flush();
@@ -212,7 +212,7 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const arena_allocator = arena.allocator();
-    
+
     const blocks_result = try writeBlocks(reader, writer, segment.min_doc_id, block_size, arena_allocator);
     defer arena_allocator.free(blocks_result.max_hashes);
 
@@ -292,15 +292,15 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     segment.info = header.info;
     segment.block_size = header.block_size;
 
-    segment.metadata.clearRetainingCapacity();
-    if (header.has_metadata) {
-        try segment.metadata.loadFromMsgpack(reader, segment.allocator);
-    }
-
     segment.min_doc_id = 0;
     segment.max_doc_id = 0;
 
+    segment.metadata.clearRetainingCapacity();
     segment.docs.clearRetainingCapacity();
+
+    if (header.has_metadata) {
+        try msgpack.unpackMapInto(reader, segment.allocator, &segment.metadata.entries);
+    }
 
     if (header.has_docs) {
         try msgpack.unpackMapInto(reader, segment.allocator, &segment.docs);
@@ -352,15 +352,15 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     const block_index_start = fixed_buffer_stream.pos;
     const block_index_size = num_blocks * @sizeOf(u32);
     const block_index_end = block_index_start + block_index_size;
-    
+
     if (block_index_end > raw_data.len) {
         return error.InvalidSegment;
     }
-    
+
     // Cast the mmap-ed memory to a u32 slice (assuming little-endian)
     const block_index_bytes = raw_data[block_index_start..block_index_end];
     segment.block_index = @as([*]const u32, @ptrCast(@alignCast(block_index_bytes.ptr)))[0..num_blocks];
-    
+
     try fixed_buffer_stream.seekBy(@intCast(block_index_size));
 
     const footer = try unpacker.read(SegmentFileFooter);
@@ -396,7 +396,7 @@ test "writeFile/readFile" {
 
         try in_memory_segment.build(&.{
             .{ .insert = .{ .id = 1, .hashes = &[_]u32{ 1, 2 } } },
-        });
+        }, null);
 
         var reader = in_memory_segment.reader();
         defer reader.close();

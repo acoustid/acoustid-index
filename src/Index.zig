@@ -8,6 +8,7 @@ const Deadline = @import("utils/Deadline.zig");
 const Scheduler = @import("utils/Scheduler.zig");
 const WaitGroup = @import("utils/WaitGroup.zig");
 const Change = @import("change.zig").Change;
+const Metadata = @import("change.zig").Metadata;
 const SearchResult = @import("common.zig").SearchResult;
 const SearchResults = @import("common.zig").SearchResults;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
@@ -518,21 +519,21 @@ pub fn checkReady(self: *Self) !void {
     }
 }
 
-pub fn update(self: *Self, changes: []const Change) !void {
+pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata) !void {
     try self.checkReady();
-    try self.updateInternal(changes, null);
+    try self.updateInternal(changes, metadata, null);
 }
 
-fn updateInternal(self: *Self, changes: []const Change, commit_id: ?u64) !void {
+fn updateInternal(self: *Self, changes: []const Change, metadata: ?Metadata, commit_id: ?u64) !void {
     var target = try MemorySegmentList.createSegment(self.allocator, .{});
     defer MemorySegmentList.destroySegment(self.allocator, &target);
 
-    try target.value.build(changes);
+    try target.value.build(changes, metadata);
 
     var upd = try self.memory_segments.beginUpdate(self.allocator);
     defer self.memory_segments.cleanupAfterUpdate(self.allocator, &upd);
 
-    target.value.info.version = commit_id orelse try self.oplog.write(changes);
+    target.value.info.version = commit_id orelse try self.oplog.write(changes, metadata);
 
     defer self.updateDocsMetrics();
 

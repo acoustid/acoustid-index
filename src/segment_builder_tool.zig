@@ -21,7 +21,7 @@ pub const TextSegmentReader = struct {
         pub fn init(allocator: std.mem.Allocator, info: SegmentInfo) SegmentData {
             return .{
                 .info = info,
-                .metadata = Metadata.init(allocator),
+                .metadata = Metadata.initOwned(allocator),
                 .docs = std.AutoHashMap(u32, bool).init(allocator),
                 .min_doc_id = std.math.maxInt(u32),
             };
@@ -49,7 +49,7 @@ pub const TextSegmentReader = struct {
 
         while (true) {
             line_buffer.clearRetainingCapacity();
-            
+
             stdin_reader.reader().readUntilDelimiterArrayList(&line_buffer, '\n', std.math.maxInt(usize)) catch |err| switch (err) {
                 error.EndOfStream => {
                     if (line_buffer.items.len == 0) break;

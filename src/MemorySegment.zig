@@ -32,7 +32,7 @@ pub fn init(allocator: std.mem.Allocator, opts: Options) Self {
     _ = opts;
     return .{
         .allocator = allocator,
-        .metadata = Metadata.init(allocator),
+        .metadata = Metadata.initOwned(allocator),
     };
 }
 
@@ -60,8 +60,7 @@ pub fn getSize(self: Self) usize {
     return self.items.items.len;
 }
 
-pub fn build(self: *Self, changes: []const Change) !void {
-    var num_metadata: u32 = 0;
+pub fn build(self: *Self, changes: []const Change, metadata: ?Metadata) !void {
     var num_docs: u32 = 0;
     var num_items: usize = 0;
     for (changes) |change| {
@@ -73,13 +72,9 @@ pub fn build(self: *Self, changes: []const Change) !void {
             .delete => {
                 num_docs += 1;
             },
-            .set_metadata => {
-                num_metadata += 1;
-            },
         }
     }
 
-    try self.metadata.ensureTotalCapacity(num_metadata);
     try self.docs.ensureTotalCapacity(self.allocator, num_docs);
     try self.items.ensureTotalCapacity(self.allocator, num_items);
 
@@ -118,13 +113,14 @@ pub fn build(self: *Self, changes: []const Change) !void {
                     }
                 }
             },
-            .set_metadata => |op| {
-                try self.metadata.set(op.name, op.value);
-            },
         }
     }
 
     std.sort.pdq(Item, self.items.items, {}, Item.lessThan);
+
+    if (metadata) |m| {
+        try self.metadata.update(m);
+    }
 }
 
 pub fn cleanup(self: *Self) void {
