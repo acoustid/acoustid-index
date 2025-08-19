@@ -359,6 +359,7 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 const UpdateRequestJSON = struct {
     changes: []Change,
     metadata: ?Metadata = null,
+    expected_version: ?u64 = null,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
@@ -373,9 +374,14 @@ fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 
     metrics.update(body.changes.len);
 
-    try index.update(body.changes, body.metadata);
+    const new_version = index.update(body.changes, body.metadata, body.expected_version) catch |err| {
+        if (err == error.VersionMismatch) {
+            return writeErrorResponse(409, err, req, res);
+        }
+        return err;
+    };
 
-    return writeResponse(EmptyResponse{}, req, res);
+    return writeResponse(UpdateResponse{ .version = new_version }, req, res);
 }
 
 fn handleHeadFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
@@ -436,7 +442,7 @@ fn handlePutFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response
 
     metrics.update(1);
 
-    try index.update(&[_]Change{change}, null);
+    _ = try index.update(&[_]Change{change}, null, null);
 
     return writeResponse(EmptyResponse{}, req, res);
 }
@@ -452,7 +458,7 @@ fn handleDeleteFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Respo
 
     metrics.update(1);
 
-    try index.update(&[_]Change{change}, null);
+    _ = try index.update(&[_]Change{change}, null, null);
 
     return writeResponse(EmptyResponse{}, req, res);
 }
@@ -483,6 +489,14 @@ fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
 }
 
 const EmptyResponse = struct {};
+
+const UpdateResponse = struct {
+    version: u64,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
 
 const CreateIndexRequest = struct {
     pub fn msgpackFormat() msgpack.StructFormat {
