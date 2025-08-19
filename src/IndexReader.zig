@@ -110,23 +110,56 @@ pub fn getNumSegments(self: *Self) usize {
     return self.memory_segments.value.count() + self.file_segments.value.count();
 }
 
-pub fn getAttributes(self: *Self, allocator: std.mem.Allocator) !std.StringHashMapUnmanaged(u64) {
-    var attributes: std.StringHashMapUnmanaged(u64) = .{};
-    errdefer attributes.deinit(allocator);
+pub fn getMetadata(self: *Self, allocator: std.mem.Allocator) !std.StringHashMapUnmanaged(?[]const u8) {
+    var metadata: std.StringHashMapUnmanaged(?[]const u8) = .{};
+    errdefer {
+        var iter = metadata.iterator();
+        while (iter.next()) |entry| {
+            allocator.free(entry.key_ptr.*);
+            if (entry.value_ptr.*) |value| {
+                allocator.free(value);
+            }
+        }
+        metadata.deinit(allocator);
+    }
 
     inline for (segment_lists) |n| {
         const segments = @field(self, n);
         for (segments.value.nodes.items) |node| {
-            var iter = node.value.attributes.iterator();
+            var iter = node.value.metadata.iterator();
             while (iter.next()) |entry| {
-                try attributes.put(allocator, entry.key_ptr.*, entry.value_ptr.*);
+                const result = try metadata.getOrPut(allocator, entry.key_ptr.*);
+                if (!result.found_existing) {
+                    result.key_ptr.* = try allocator.dupe(u8, entry.key_ptr.*);
+                }
+                if (entry.value_ptr.*) |value| {
+                    if (result.value_ptr.*) |old_value| {
+                        allocator.free(old_value);
+                    }
+                    result.value_ptr.* = try allocator.dupe(u8, value);
+                } else {
+                    if (result.value_ptr.*) |old_value| {
+                        allocator.free(old_value);
+                    }
+                    result.value_ptr.* = null;
+                }
             }
         }
     }
 
-    // builtin attributes
-    try attributes.put(allocator, "min_document_id", self.getMinDocId());
-    try attributes.put(allocator, "max_document_id", self.getMaxDocId());
+    return metadata;
+}
 
-    return attributes;
+pub const Stats = struct {
+    min_document_id: ?u32,
+    max_document_id: ?u32,
+};
+
+pub fn getStats(self: *Self) Stats {
+    const min_doc_id = self.getMinDocId();
+    const max_doc_id = self.getMaxDocId();
+    return Stats{
+        .min_document_id = if (min_doc_id == 0) null else min_doc_id,
+        .max_document_id = if (max_doc_id == 0) null else max_doc_id,
+    };
 }

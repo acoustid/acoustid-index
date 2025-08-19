@@ -13,21 +13,21 @@ pub const TextSegmentReader = struct {
 
     const SegmentData = struct {
         info: SegmentInfo,
-        attributes: std.StringHashMap(u64),
+        metadata: std.StringHashMap(?[]const u8),
         docs: std.AutoHashMap(u32, bool),
         min_doc_id: u32,
 
         pub fn init(allocator: std.mem.Allocator, info: SegmentInfo) SegmentData {
             return .{
                 .info = info,
-                .attributes = std.StringHashMap(u64).init(allocator),
+                .metadata = std.StringHashMap(?[]const u8).init(allocator),
                 .docs = std.AutoHashMap(u32, bool).init(allocator),
                 .min_doc_id = std.math.maxInt(u32),
             };
         }
 
         pub fn deinit(self: *SegmentData) void {
-            self.attributes.deinit();
+            self.metadata.deinit();
             self.docs.deinit();
         }
     };

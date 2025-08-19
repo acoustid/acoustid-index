@@ -21,7 +21,7 @@ pub const Options = struct {};
 allocator: std.mem.Allocator,
 info: SegmentInfo = .{},
 status: SegmentStatus = .{},
-attributes: std.StringHashMapUnmanaged(u64) = .{},
+metadata: std.StringHashMapUnmanaged(?[]const u8) = .{},
 docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
 min_doc_id: u32 = 0,
 max_doc_id: u32 = 0,
@@ -37,11 +37,14 @@ pub fn init(allocator: std.mem.Allocator, opts: Options) Self {
 pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
     _ = delete_file;
 
-    var iter = self.attributes.iterator();
+    var iter = self.metadata.iterator();
     while (iter.next()) |e| {
         self.allocator.free(e.key_ptr.*);
+        if (e.value_ptr.*) |value| {
+            self.allocator.free(value);
+        }
     }
-    self.attributes.deinit(self.allocator);
+    self.metadata.deinit(self.allocator);
     self.docs.deinit(self.allocator);
     self.items.deinit(self.allocator);
 }
@@ -63,7 +66,7 @@ pub fn getSize(self: Self) usize {
 }
 
 pub fn build(self: *Self, changes: []const Change) !void {
-    var num_attributes: u32 = 0;
+    var num_metadata: u32 = 0;
     var num_docs: u32 = 0;
     var num_items: usize = 0;
     for (changes) |change| {
@@ -75,13 +78,13 @@ pub fn build(self: *Self, changes: []const Change) !void {
             .delete => {
                 num_docs += 1;
             },
-            .set_attribute => {
-                num_attributes += 1;
+            .set_metadata => {
+                num_metadata += 1;
             },
         }
     }
 
-    try self.attributes.ensureTotalCapacity(self.allocator, num_attributes);
+    try self.metadata.ensureTotalCapacity(self.allocator, num_metadata);
     try self.docs.ensureTotalCapacity(self.allocator, num_docs);
     try self.items.ensureTotalCapacity(self.allocator, num_items);
 
@@ -120,12 +123,16 @@ pub fn build(self: *Self, changes: []const Change) !void {
                     }
                 }
             },
-            .set_attribute => |op| {
-                const result = self.attributes.getOrPutAssumeCapacity(op.name);
+            .set_metadata => |op| {
+                const result = self.metadata.getOrPutAssumeCapacity(op.name);
                 if (!result.found_existing) {
-                    errdefer self.attributes.removeByPtr(result.key_ptr);
+                    errdefer self.metadata.removeByPtr(result.key_ptr);
                     result.key_ptr.* = try self.allocator.dupe(u8, op.name);
-                    result.value_ptr.* = op.value;
+                    if (op.value) |value| {
+                        result.value_ptr.* = try self.allocator.dupe(u8, value);
+                    } else {
+                        result.value_ptr.* = null;
+                    }
                 }
             },
         }
@@ -143,8 +150,8 @@ pub fn merge(self: *Self, merger: *SegmentMerger(Self)) !void {
 
     self.info = merger.segment.info;
 
-    self.attributes.deinit(self.allocator);
-    self.attributes = merger.segment.attributes.move();
+    self.metadata.deinit(self.allocator);
+    self.metadata = merger.segment.metadata.move();
 
     self.docs.deinit(self.allocator);
     self.docs = merger.segment.docs.move();

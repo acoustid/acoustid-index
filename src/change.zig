@@ -17,9 +17,9 @@ pub const Delete = struct {
     }
 };
 
-pub const SetAttribute = struct {
+pub const SetMetadata = struct {
     name: []const u8,
-    value: u64,
+    value: ?[]const u8,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
@@ -29,7 +29,7 @@ pub const SetAttribute = struct {
 pub const Change = union(enum) {
     insert: Insert,
     delete: Delete,
-    set_attribute: SetAttribute,
+    set_metadata: SetMetadata,
 
     pub fn msgpackFormat() msgpack.UnionFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };

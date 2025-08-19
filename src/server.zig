@@ -455,12 +455,12 @@ fn handleDeleteFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Respo
     return writeResponse(EmptyResponse{}, req, res);
 }
 
-const Attributes = struct {
-    attributes: std.StringHashMapUnmanaged(u64),
+const Metadata = struct {
+    metadata: std.StringHashMap([]const u8),
 
-    pub fn jsonStringify(self: Attributes, jws: anytype) !void {
+    pub fn jsonStringify(self: Metadata, jws: anytype) !void {
         try jws.beginObject();
-        var iter = self.attributes.iterator();
+        var iter = self.metadata.iterator();
         while (iter.next()) |entry| {
             try jws.objectField(entry.key_ptr.*);
             try jws.write(entry.value_ptr.*);
@@ -468,9 +468,9 @@ const Attributes = struct {
         try jws.endObject();
     }
 
-    pub fn msgpackWrite(self: Attributes, packer: anytype) !void {
-        try packer.writeMapHeader(self.attributes.count());
-        var iter = self.attributes.iterator();
+    pub fn msgpackWrite(self: Metadata, packer: anytype) !void {
+        try packer.writeMapHeader(self.metadata.count());
+        var iter = self.metadata.iterator();
         while (iter.next()) |entry| {
             try packer.write(entry.key_ptr.*);
             try packer.write(entry.value_ptr.*);
@@ -478,11 +478,34 @@ const Attributes = struct {
     }
 };
 
+const Stats = struct {
+    min_document_id: ?u32,
+    max_document_id: ?u32,
+
+    pub fn jsonStringify(self: Stats, jws: anytype) !void {
+        try jws.beginObject();
+        try jws.objectField("min_document_id");
+        try jws.write(self.min_document_id);
+        try jws.objectField("max_document_id");
+        try jws.write(self.max_document_id);
+        try jws.endObject();
+    }
+
+    pub fn msgpackWrite(self: Stats, packer: anytype) !void {
+        try packer.writeMapHeader(2);
+        try packer.write("min_document_id");
+        try packer.write(self.min_document_id);
+        try packer.write("max_document_id");
+        try packer.write(self.max_document_id);
+    }
+};
+
 const GetIndexResponse = struct {
     version: u64,
     segments: usize,
     docs: usize,
-    attributes: Attributes,
+    metadata: Metadata,
+    stats: Stats,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
@@ -500,8 +523,22 @@ fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
         .version = index_reader.getVersion(),
         .segments = index_reader.getNumSegments(),
         .docs = index_reader.getNumDocs(),
-        .attributes = .{
-            .attributes = try index_reader.getAttributes(req.arena),
+        .metadata = .{
+            .metadata = blk: {
+                var managed_metadata = std.StringHashMap([]const u8).init(req.arena);
+                const unmanaged_metadata = try index_reader.getMetadata(req.arena);
+                var iter = unmanaged_metadata.iterator();
+                while (iter.next()) |entry| {
+                    if (entry.value_ptr.*) |value| {
+                        try managed_metadata.put(entry.key_ptr.*, value);
+                    }
+                }
+                break :blk managed_metadata;
+            },
+        },
+        .stats = Stats{
+            .min_document_id = index_reader.getStats().min_document_id,
+            .max_document_id = index_reader.getStats().max_document_id,
         },
     };
     return writeResponse(response, req, res);
@@ -509,9 +546,15 @@ fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
 
 const EmptyResponse = struct {};
 
+const CreateIndexRequest = struct {
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
 fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = req.param("index") orelse return;
-
+    
     try ctx.indexes.createIndex(index_name);
 
     return writeResponse(EmptyResponse{}, req, res);

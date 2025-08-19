@@ -27,7 +27,7 @@ allocator: std.mem.Allocator,
 dir: std.fs.Dir,
 info: SegmentInfo = .{},
 status: SegmentStatus = .{},
-attributes: std.StringHashMapUnmanaged(u64) = .{},
+metadata: std.StringHashMapUnmanaged(?[]const u8) = .{},
 docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
 min_doc_id: u32 = 0,
 max_doc_id: u32 = 0,
@@ -51,11 +51,14 @@ pub fn init(allocator: std.mem.Allocator, options: Options) Self {
 }
 
 pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
-    var iter = self.attributes.iterator();
+    var iter = self.metadata.iterator();
     while (iter.next()) |e| {
         self.allocator.free(e.key_ptr.*);
+        if (e.value_ptr.*) |value| {
+            self.allocator.free(value);
+        }
     }
-    self.attributes.deinit(self.allocator);
+    self.metadata.deinit(self.allocator);
     self.docs.deinit(self.allocator);
 
     if (self.mmaped_data) |data| {

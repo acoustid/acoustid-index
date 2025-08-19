@@ -1,6 +1,6 @@
 // Segment file format layout:
 // 1. Header - msgpack encoded segment metadata and configuration
-// 2. Attributes - msgpack encoded string to u64 mappings
+// 2. Metadata - msgpack encoded string to optional string mappings
 // 3. Documents - msgpack encoded document ID to boolean mappings
 // 4. Padding - zero bytes to align to block size boundary
 // 5. Blocks - fixed-size blocks containing the inverted index data
@@ -113,7 +113,7 @@ const segment_file_footer_magic_v1: u32 = @byteSwap(segment_file_header_magic_v1
 pub const SegmentFileHeader = struct {
     magic: u32,
     info: SegmentInfo,
-    has_attributes: bool,
+    has_metadata: bool,
     has_docs: bool,
     block_size: u32,
 
@@ -131,7 +131,7 @@ pub const SegmentFileHeader = struct {
         return switch (field) {
             .magic => 0x00,
             .info => 0x01,
-            .has_attributes => 0x02,
+            .has_metadata => 0x02,
             .has_docs => 0x03,
             .block_size => 0x04,
         };
@@ -196,12 +196,12 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
         .magic = segment_file_header_magic_v1,
         .block_size = block_size,
         .info = segment.info,
-        .has_attributes = true,
+        .has_metadata = true,
         .has_docs = true,
     };
     try packer.write(header);
 
-    try packer.writeMap(segment.attributes);
+    try packer.writeMap(segment.metadata);
     try packer.writeMap(segment.docs);
 
     try buffered_writer.flush();
@@ -292,9 +292,9 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     segment.info = header.info;
     segment.block_size = header.block_size;
 
-    segment.attributes.clearRetainingCapacity();
-    if (header.has_attributes) {
-        try msgpack.unpackMapInto(reader, segment.allocator, &segment.attributes);
+    segment.metadata.clearRetainingCapacity();
+    if (header.has_metadata) {
+        try msgpack.unpackMapInto(reader, segment.allocator, &segment.metadata);
     }
 
     segment.min_doc_id = 0;
