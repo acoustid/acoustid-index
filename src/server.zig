@@ -478,37 +478,25 @@ const Metadata = struct {
     }
 };
 
-const Stats = struct {
-    min_document_id: ?u32,
-    max_document_id: ?u32,
-
-    pub fn jsonStringify(self: Stats, jws: anytype) !void {
-        try jws.beginObject();
-        try jws.objectField("min_document_id");
-        try jws.write(self.min_document_id);
-        try jws.objectField("max_document_id");
-        try jws.write(self.max_document_id);
-        try jws.endObject();
-    }
-
-    pub fn msgpackWrite(self: Stats, packer: anytype) !void {
-        try packer.writeMapHeader(2);
-        try packer.write("min_document_id");
-        try packer.write(self.min_document_id);
-        try packer.write("max_document_id");
-        try packer.write(self.max_document_id);
-    }
-};
-
 const GetIndexResponse = struct {
     version: u64,
     segments: usize,
     docs: usize,
     metadata: Metadata,
-    stats: Stats,
+    stats: IndexReader.Stats,
 
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    pub fn msgpackWrite(self: GetIndexResponse, packer: anytype) !void {
+        try packer.writeMapHeader(5);
+        try packer.write("v");
+        try packer.write(self.version);
+        try packer.write("s");
+        try packer.write(self.segments);
+        try packer.write("d");
+        try packer.write(self.docs);
+        try packer.write("m");
+        try packer.write(self.metadata);
+        try packer.write("st");
+        try packer.write(self.stats);
     }
 };
 
@@ -534,10 +522,7 @@ fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
                 break :blk managed_metadata;
             },
         },
-        .stats = Stats{
-            .min_document_id = index_reader.getStats().min_document_id,
-            .max_document_id = index_reader.getStats().max_document_id,
-        },
+        .stats = index_reader.getStats(),
     };
     return writeResponse(response, req, res);
 }

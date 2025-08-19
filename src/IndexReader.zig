@@ -112,14 +112,7 @@ pub fn getNumSegments(self: *Self) usize {
 
 pub fn getMetadata(self: *Self, allocator: std.mem.Allocator) !std.StringHashMapUnmanaged([]const u8) {
     var metadata: std.StringHashMapUnmanaged([]const u8) = .{};
-    errdefer {
-        var iter = metadata.iterator();
-        while (iter.next()) |entry| {
-            allocator.free(entry.key_ptr.*);
-            allocator.free(entry.value_ptr.*);
-        }
-        metadata.deinit(allocator);
-    }
+    errdefer metadata.deinit(allocator);
 
     inline for (segment_lists) |n| {
         const segments = @field(self, n);
@@ -128,12 +121,9 @@ pub fn getMetadata(self: *Self, allocator: std.mem.Allocator) !std.StringHashMap
             while (iter.next()) |entry| {
                 const result = try metadata.getOrPut(allocator, entry.key_ptr.*);
                 if (!result.found_existing) {
-                    result.key_ptr.* = try allocator.dupe(u8, entry.key_ptr.*);
+                    result.key_ptr.* = entry.key_ptr.*;
                 }
-                if (result.found_existing) {
-                    allocator.free(result.value_ptr.*);
-                }
-                result.value_ptr.* = try allocator.dupe(u8, entry.value_ptr.*);
+                result.value_ptr.* = entry.value_ptr.*;
             }
         }
     }
@@ -142,15 +132,15 @@ pub fn getMetadata(self: *Self, allocator: std.mem.Allocator) !std.StringHashMap
 }
 
 pub const Stats = struct {
-    min_document_id: ?u32,
-    max_document_id: ?u32,
+    min_doc_id: ?u32,
+    max_doc_id: ?u32,
 };
 
 pub fn getStats(self: *Self) Stats {
     const min_doc_id = self.getMinDocId();
     const max_doc_id = self.getMaxDocId();
     return Stats{
-        .min_document_id = if (min_doc_id == 0) null else min_doc_id,
-        .max_document_id = if (max_doc_id == 0) null else max_doc_id,
+        .min_doc_id = if (min_doc_id == 0) null else min_doc_id,
+        .max_doc_id = if (max_doc_id == 0) null else max_doc_id,
     };
 }

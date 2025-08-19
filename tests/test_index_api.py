@@ -42,7 +42,7 @@ def test_get_index(client, index_name, create_index, fmt):
             "segments": 1,
             "docs": 1,
             "metadata": {"foo": "1234"},
-            "stats": {"min_document_id": 1, "max_document_id": 1},
+            "stats": {"min_doc_id": 1, "max_doc_id": 1},
         }
     else:
         expected = {
@@ -50,7 +50,7 @@ def test_get_index(client, index_name, create_index, fmt):
             "s": 1,
             "d": 1,
             "m": {"foo": "1234"},
-            "st": {"min_document_id": 1, "max_document_id": 1},
+            "st": {"min_doc_id": 1, "max_doc_id": 1},
         }
     assert decode(fmt, req.content) == expected
 

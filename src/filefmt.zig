@@ -1,6 +1,6 @@
 // Segment file format layout:
 // 1. Header - msgpack encoded segment metadata and configuration
-// 2. Metadata - msgpack encoded string to optional string mappings
+// 2. Metadata - msgpack encoded string to string mappings
 // 3. Documents - msgpack encoded document ID to boolean mappings
 // 4. Padding - zero bytes to align to block size boundary
 // 5. Blocks - fixed-size blocks containing the inverted index data
