@@ -133,7 +133,7 @@ pub fn merge(self: *Self, merger: *SegmentMerger(Self)) !void {
     self.info = merger.segment.info;
 
     self.metadata.deinit();
-    self.metadata = merger.segment.metadata;
+    self.metadata = merger.segment.metadata.move();
 
     self.docs.deinit(self.allocator);
     self.docs = merger.segment.docs.move();

@@ -144,6 +144,14 @@ pub fn msgpackRead(unpacker: anytype) !Self {
     return self;
 }
 
+pub fn move(self: *Self) Self {
+    return .{
+        .allocator = self.allocator,
+        .owned = self.owned,
+        .entries = self.entries.move(),
+    };
+}
+
 /// Clear all entries, retaining capacity
 pub fn clearRetainingCapacity(self: *Self) void {
     if (self.owned) {
