@@ -55,6 +55,8 @@ fn setOwned(self: *Self, key: []const u8, value: []const u8) !void {
     if (!result.found_existing) {
         errdefer self.entries.removeByPtr(result.key_ptr);
         result.key_ptr.* = try self.allocator.dupe(u8, key);
+    } else {
+        self.allocator.free(result.value_ptr.*);
     }
 
     result.value_ptr.* = owned_value;
