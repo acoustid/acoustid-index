@@ -297,8 +297,8 @@ class IndexUpdater:
         """Apply an UpdateOperation to fpindex by forwarding the HTTP request."""
         logger.info(f"Applying UpdateOperation with {len(operation.changes)} changes for '{self.index_name}'")
 
-        # Build the request payload - use msgspec encoding to leverage omit_defaults
-        request_data = msgspec.json.encode(UpdateRequest(changes=operation.changes, metadata=operation.metadata))
+        request = UpdateRequest(changes=operation.changes, metadata=operation.metadata)
+        request_data = msgspec.json.encode(request)
 
         # Forward to fpindex
         url = f"{self.fpindex_url}/{self.index_name}/_update"

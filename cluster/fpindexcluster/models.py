@@ -74,7 +74,7 @@ class UpdateOperation(msgspec.Struct, tag="update"):
     metadata: dict[str, str] | None = None
 
 
-class UpdateRequest(msgspec.Struct):
+class UpdateRequest(msgspec.Struct, omit_defaults=True):
     """Request to update fingerprints in an index."""
 
     changes: list[Change]
