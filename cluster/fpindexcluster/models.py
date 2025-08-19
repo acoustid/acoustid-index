@@ -82,6 +82,10 @@ class UpdateRequest(msgspec.Struct, omit_defaults=True):
     expected_version: int | None = None  # ?u64
 
 
+class UpdateResponse(msgspec.Struct):
+    version: int
+
+
 Operation = Union[CreateIndexOperation, DeleteIndexOperation, UpdateOperation]
 
 

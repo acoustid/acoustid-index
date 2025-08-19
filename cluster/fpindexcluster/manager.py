@@ -10,6 +10,7 @@ import nats.js.api
 import nats.js.errors
 import nats.errors
 import nats.aio.msg
+from nats.aio.msg import Msg
 from nats.js import JetStreamContext
 from nats.js.api import StreamConfig, RetentionPolicy, Header
 from nats.aio.client import Subscription
@@ -19,12 +20,16 @@ import msgspec.msgpack
 import aiohttp
 import uuid
 import random
+import msgspec
+import msgspec.json
+from yarl import URL
 
 from .models import (
     CreateIndexOperation,
     DeleteIndexOperation,
     UpdateOperation,
     UpdateRequest,
+    UpdateResponse,
     Operation,
     IndexStatus,
     IndexStatusChange,
@@ -43,6 +48,70 @@ from .errors import (
 logger = logging.getLogger(__name__)
 
 
+class EmptyResponse(msgspec.Struct):
+    pass
+
+
+class GetIndexResponse(msgspec.Struct):
+    version: int
+    metadata: dict[str, str]
+    stats: dict[str, int]
+
+
+class CreateIndexResponse(msgspec.Struct):
+    version: int
+
+
+class ErrorResponse(msgspec.Struct):
+    error: str
+
+
+class IndexClientError(Exception):
+    def __init__(self, status: int, error: str) -> None:
+        self.status = status
+        self.error = error
+
+
+class IndexClient:
+    def __init__(self, session: aiohttp.ClientSession, base_url: URL) -> None:
+        self.session = session
+        self.base_url = base_url
+        self.headers = {"Content-Type": "application/json"}
+
+    async def _handle_response(self, response: aiohttp.ClientResponse, response_type):
+        response_data = await response.read()
+        print(response_data)
+        try:
+            if response.status == 200:
+                return msgspec.json.decode(response_data, type=response_type)
+            else:
+                error_response = msgspec.json.decode(response_data, type=ErrorResponse)
+                raise IndexClientError(status=response.status, error=error_response.error)
+        except msgspec.DecodeError:
+            raise IndexClientError(status=500, error='MalformedResponse')
+
+    async def get_index_info(self, name: str) -> GetIndexResponse:
+        url = self.base_url.joinpath(f"{name}")
+        async with self.session.get(url, headers=self.headers) as response:
+            return await self._handle_response(response, GetIndexResponse)
+
+    async def create_index(self, name: str) -> CreateIndexResponse:
+        url = self.base_url.joinpath(f"{name}")
+        async with self.session.put(url, headers=self.headers) as response:
+            return await self._handle_response(response, CreateIndexResponse)
+
+    async def delete_index(self, name: str) -> EmptyResponse:
+        url = self.base_url.joinpath(f"{name}")
+        async with self.session.delete(url, headers=self.headers) as response:
+            return await self._handle_response(response, EmptyResponse)
+
+    async def update(self, name: str, request: UpdateRequest) -> UpdateResponse:
+        url = self.base_url.joinpath(f"{name}/_update")
+        request_data = msgspec.json.encode(request)
+        async with self.session.post(url, data=request_data, headers=self.headers) as response:
+            return await self._handle_response(response, UpdateResponse)
+
+
 class IndexUpdater:
     """Handles NATS pull subscription and message processing for a single index."""
 
@@ -53,7 +122,7 @@ class IndexUpdater:
         http_session: aiohttp.ClientSession,
         stream_name: str,
         subject: str,
-        fpindex_url: str,
+        fpindex_url: URL,
         instance_name: str,
         manager: "IndexManager",
     ):
@@ -63,8 +132,12 @@ class IndexUpdater:
         self.stream_name = stream_name
         self.subject = subject
         self.fpindex_url = fpindex_url
+        self.fpindex = IndexClient(http_session, fpindex_url)
         self.instance_name = instance_name
         self.manager = manager
+
+        self.current_index_version = 0
+        self.current_sequence = 0
 
         self.subscription: nats.js.JetStreamContext.PullSubscription | None = None
         self.pull_task: asyncio.Task | None = None
@@ -193,39 +266,31 @@ class IndexUpdater:
         operation = msgspec.msgpack.decode(data, type=Operation)
 
         if isinstance(operation, CreateIndexOperation):
-            await self._apply_create_index()
+            await self._apply_create_index(msg)
         elif isinstance(operation, DeleteIndexOperation):
-            await self._apply_delete_index()
+            await self._apply_delete_index(msg)
         elif isinstance(operation, UpdateOperation):
-            await self._apply_update_operation(operation)
+            await self._apply_update(msg, operation)
         else:
             logger.warning(f"Unknown operation type: {type(operation)}")
 
-    async def _apply_delete_index(self) -> None:
-        """Apply a DeleteIndex operation to fpindex."""
-        logger.info(f"Applying DeleteIndex operation for '{self.index_name}'")
-
-        url = f"{self.fpindex_url}/{self.index_name}"
-        try:
-            async with self.http_session.delete(url) as response:
-                if response.status == 200:
-                    logger.info(f"Successfully deleted index '{self.index_name}'")
-                elif response.status == 404:
-                    logger.info(f"Index '{self.index_name}' does not exist")
-                else:
-                    response_text = await response.text()
-                    logger.error(f"Failed to delete index '{self.index_name}': {response.status} {response_text}")
-                    raise RuntimeError(f"HTTP {response.status}: {response_text}")
-        except Exception:
-            logger.exception("Error deleting index %s", self.index_name)
-            raise
-
-        # Signal shutdown after successful delete operation
-        logger.info(f"Index '{self.index_name}' deleted, shutting down IndexUpdater")
-        self.shutdown_event.set()
-
     async def _check_bootstrap_needed(self) -> None:
         """Check if bootstrap is needed by examining first message."""
+
+        self.current_index_version = 0
+        self.current_sequence = 0
+
+        try:
+            info = await self.fpindex.get_index_info(self.index_name)
+        except IndexClientError as exc:
+            if exc.status != 404:
+                raise
+        else:
+            self.current_index_version = info.version
+            self.current_sequence = int(info.metadata.get("stream_seq", 0))
+
+        logger.info("[%s] Starting with index version %s and sequence %s", self.index_name, self.current_index_version, self.current_sequence)
+
         try:
             # Fetch the first message to examine it
             messages = await self.subscription.fetch(batch=1, timeout=10)
@@ -245,7 +310,7 @@ class IndexUpdater:
                         logger.info(
                             f"Index '{self.index_name}': received CreateIndexOperation at sequence 1, processing"
                         )
-                        await self._apply_create_index()
+                        await self._apply_create_index(msg)
                         await msg.ack()
                     else:
                         logger.error(
@@ -276,55 +341,48 @@ class IndexUpdater:
             logger.error(f"Failed to check bootstrap status for '{self.index_name}': {e}")
             raise
 
-    async def _apply_create_index(self) -> None:
-        """Apply a CreateIndex operation to fpindex - idempotent operation."""
-        logger.info(f"Applying CreateIndex operation for '{self.index_name}'")
+    def _update_index_status(self, msg: Msg, index_version: int) -> None:
+        logger.debug("[%s] Updating index version to %s", self.index_name, index_version)
+        self.current_index_version = index_version
+        self.current_sequence = msg.metadata.sequence.stream
 
-        url = f"{self.fpindex_url}/{self.index_name}"
-        try:
-            async with self.http_session.put(url) as response:
-                if response.status == 200:
-                    logger.info(f"Successfully created index '{self.index_name}'")
-                elif response.status == 409:
-                    logger.info(f"Index '{self.index_name}' already exists (idempotent)")
-                else:
-                    response_text = await response.text()
-                    logger.error(f"Failed to create index '{self.index_name}': {response.status} {response_text}")
-                    raise RuntimeError(f"HTTP {response.status}: {response_text}")
-        except Exception:
-            logger.exception("Error creating index %s", self.index_name)
-            raise
+    async def _apply_create_index(self, msg: Msg) -> None:
+        """Apply a CreateIndexOperation to fpindex."""
 
-    async def _apply_update_operation(self, operation: UpdateOperation) -> None:
-        """Apply an UpdateOperation to fpindex by forwarding the HTTP request."""
-        logger.info(f"Applying UpdateOperation with {len(operation.changes)} changes for '{self.index_name}'")
+        logger.info("[%s] Creating index", self.index_name)
+        response = await self.fpindex.create_index(self.index_name)
+        self._update_index_status(msg, response.version)
 
-        request = UpdateRequest(changes=operation.changes, metadata=operation.metadata)
-        request_data = msgspec.json.encode(request)
+        # apply empty update to set stream_seq
+        await self._apply_update(msg, UpdateOperation(changes=[]))
 
-        # Forward to fpindex
-        url = f"{self.fpindex_url}/{self.index_name}/_update"
-        try:
-            headers = {"Content-Type": "application/json"}
-            async with self.http_session.post(url, data=request_data, headers=headers) as response:
-                if response.status == 200:
-                    response_data = await response.json()
-                    logger.info(
-                        f"Successfully updated index '{self.index_name}', new version: {response_data.get('version', 'unknown')}"
-                    )
-                elif response.status == 404:
-                    logger.error(f"Index '{self.index_name}' not found in fpindex")
-                    raise RuntimeError(f"Index not found: {self.index_name}")
-                elif response.status == 409:
-                    logger.error(f"Version conflict when updating index '{self.index_name}'")
-                    raise RuntimeError(f"Version conflict for index: {self.index_name}")
-                else:
-                    response_text = await response.text()
-                    logger.error(f"Failed to update index '{self.index_name}': {response.status} {response_text}")
-                    raise RuntimeError(f"HTTP {response.status}: {response_text}")
-        except Exception:
-            logger.exception("Error updating index %s", self.index_name)
-            raise
+    async def _apply_delete_index(self, msg: Msg) -> None:
+        """Apply a DeleteIndexOperation to fpindex."""
+
+        logger.info("[%s] Deleting index", self.index_name)
+        await self.fpindex.delete_index(self.index_name)
+
+        logger.info("[%s] Index deleted, stopping updater", self.index_name)
+        self.shutdown_event.set()
+
+    async def _apply_update(self, msg: Msg, op: UpdateOperation) -> None:
+        """Apply an UpdateOperation to fpindex."""
+
+        metadata = {}
+        if op.metadata is not None:
+            metadata.update(op.metadata)
+        sequence = msg.metadata.sequence.stream
+        metadata["stream_seq"] = str(sequence)
+
+        request = UpdateRequest(
+            changes=op.changes,
+            metadata=metadata,
+            expected_version=self.current_index_version,
+        )
+
+        logger.info("[%s] Applying update %s with %s changes", self.index_name, sequence, len(op.changes))
+        response = await self.fpindex.update(self.index_name, request)
+        self._update_index_status(msg, response.version)
 
     async def _find_bootstrap_source(self) -> str | None:
         """Find the best bootstrap source for this index."""
@@ -347,13 +405,13 @@ class IndexManager:
         js: JetStreamContext,
         http_session: aiohttp.ClientSession,
         stream_prefix: str,
-        fpindex_url: str,
+        fpindex_url: URL,
         instance_name: str,
     ):
         self.nc = nats_connection
         self.js = js
         self.stream_prefix = stream_prefix
-        self.fpindex_url = fpindex_url.rstrip("/")
+        self.fpindex_url = fpindex_url
         self.http_session = http_session
         self.instance_name = instance_name
         self.discovery_stream_name = f"{stream_prefix}_discovery"
@@ -668,7 +726,7 @@ class IndexManager:
 
     async def publish_update(
         self, index_name: str, changes: list[Change], metadata: dict[str, str] | None = None
-    ) -> None:
+    ) -> int:
         """
         Publish an update operation to the index stream.
         """
@@ -678,11 +736,12 @@ class IndexManager:
             raise IndexNotFound()
 
         operation = UpdateOperation(changes=changes, metadata=metadata)
-        await self._publish_operation(index_name, operation)
+        sequence = await self._publish_operation(index_name, operation)
 
         logger.info("Published update operation with %s changes to index %s", len(changes), index_name)
+        return sequence
 
-    async def _publish_operation(self, index_name: str, op: Operation) -> None:
+    async def _publish_operation(self, index_name: str, op: Operation) -> int:
         """Publish a new operation to the index-specific stream."""
         subject = self._get_subject(index_name)
         data = msgspec.msgpack.encode(op)
@@ -701,6 +760,8 @@ class IndexManager:
         except Exception as e:
             logger.error(f"Error publishing operation to {subject}: {e}")
             raise
+
+        return ack.seq
 
     async def _publish_index_status(self, index_name: str, status: IndexStatus, last_sequence: int) -> int:
         """Publish a discovery event to the global discovery stream with optimistic locking."""

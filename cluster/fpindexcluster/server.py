@@ -154,10 +154,13 @@ async def update_index(request: Request):
                 )
 
         # Publish update to NATS
-        await manager.publish_update(index_name, update_request.changes, update_request.metadata)
+        version = await manager.publish_update(
+            index_name,
+            update_request.changes,
+            update_request.metadata,
+        )
 
-        # Return success (no version like fpindex since we don't do version locking)
-        return json_response({}, status=200)
+        return json_response({"version": version}, status=200)
 
     except (ValueError, msgspec.DecodeError, msgspec.ValidationError) as e:
         logger.warning(f"Invalid request format for '{index_name}': {e}")
