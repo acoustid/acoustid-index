@@ -1,6 +1,6 @@
 // Segment file format layout:
 // 1. Header - msgpack encoded segment metadata and configuration
-// 2. Attributes - msgpack encoded string to u64 mappings
+// 2. Metadata - msgpack encoded string to string mappings
 // 3. Documents - msgpack encoded document ID to boolean mappings
 // 4. Padding - zero bytes to align to block size boundary
 // 5. Blocks - fixed-size blocks containing the inverted index data
@@ -113,7 +113,7 @@ const segment_file_footer_magic_v1: u32 = @byteSwap(segment_file_header_magic_v1
 pub const SegmentFileHeader = struct {
     magic: u32,
     info: SegmentInfo,
-    has_attributes: bool,
+    has_metadata: bool,
     has_docs: bool,
     block_size: u32,
 
@@ -131,7 +131,7 @@ pub const SegmentFileHeader = struct {
         return switch (field) {
             .magic => 0x00,
             .info => 0x01,
-            .has_attributes => 0x02,
+            .has_metadata => 0x02,
             .has_docs => 0x03,
             .block_size => 0x04,
         };
@@ -196,12 +196,12 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
         .magic = segment_file_header_magic_v1,
         .block_size = block_size,
         .info = segment.info,
-        .has_attributes = true,
+        .has_metadata = true,
         .has_docs = true,
     };
     try packer.write(header);
 
-    try packer.writeMap(segment.attributes);
+    try packer.writeMap(segment.metadata.entries);
     try packer.writeMap(segment.docs);
 
     try buffered_writer.flush();
@@ -212,7 +212,7 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const arena_allocator = arena.allocator();
-    
+
     const blocks_result = try writeBlocks(reader, writer, segment.min_doc_id, block_size, arena_allocator);
     defer arena_allocator.free(blocks_result.max_hashes);
 
@@ -292,15 +292,15 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     segment.info = header.info;
     segment.block_size = header.block_size;
 
-    segment.attributes.clearRetainingCapacity();
-    if (header.has_attributes) {
-        try msgpack.unpackMapInto(reader, segment.allocator, &segment.attributes);
-    }
-
     segment.min_doc_id = 0;
     segment.max_doc_id = 0;
 
+    segment.metadata.clearRetainingCapacity();
     segment.docs.clearRetainingCapacity();
+
+    if (header.has_metadata) {
+        try msgpack.unpackMapInto(reader, segment.allocator, &segment.metadata.entries);
+    }
 
     if (header.has_docs) {
         try msgpack.unpackMapInto(reader, segment.allocator, &segment.docs);
@@ -352,15 +352,15 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     const block_index_start = fixed_buffer_stream.pos;
     const block_index_size = num_blocks * @sizeOf(u32);
     const block_index_end = block_index_start + block_index_size;
-    
+
     if (block_index_end > raw_data.len) {
         return error.InvalidSegment;
     }
-    
+
     // Cast the mmap-ed memory to a u32 slice (assuming little-endian)
     const block_index_bytes = raw_data[block_index_start..block_index_end];
     segment.block_index = @as([*]const u32, @ptrCast(@alignCast(block_index_bytes.ptr)))[0..num_blocks];
-    
+
     try fixed_buffer_stream.seekBy(@intCast(block_index_size));
 
     const footer = try unpacker.read(SegmentFileFooter);
@@ -396,7 +396,7 @@ test "writeFile/readFile" {
 
         try in_memory_segment.build(&.{
             .{ .insert = .{ .id = 1, .hashes = &[_]u32{ 1, 2 } } },
-        });
+        }, null);
 
         var reader = in_memory_segment.reader();
         defer reader.close();

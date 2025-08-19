@@ -41,7 +41,7 @@ def test_parallel_loading_on_restart_with_multiple_segments(server, client, inde
     req = client.get(f'/{index_name}')
     assert req.status_code == 200, req.content
     index_info = json.loads(req.content)
-    initial_segments = index_info['segments']
+    initial_segments = index_info['stats']['num_segments']
     
     # Verify that multiple segments exist to ensure parallel loading will be triggered
     assert initial_segments > 1, f"Test requires multiple segments for meaningful parallel loading test, but found only {initial_segments}"
@@ -74,10 +74,10 @@ def test_parallel_loading_on_restart_with_multiple_segments(server, client, inde
     assert req.status_code == 200, req.content
     index_info_after = json.loads(req.content)
     
-    print(f"Index has {index_info_after['segments']} segments after restart")
+    print(f"Index has {index_info_after['stats']['num_segments']} segments after restart")
     
     # The number of segments might change due to background merging, but should still work
-    assert index_info_after['docs'] == total_inserts
+    assert index_info_after['stats']['num_docs'] == total_inserts
 
 
 def test_sequential_loading_with_few_segments(server, client, index_name, create_index):
@@ -97,7 +97,7 @@ def test_sequential_loading_with_few_segments(server, client, index_name, create
     assert req.status_code == 200, req.content
     index_info = json.loads(req.content)
     
-    print(f"Small index has {index_info['segments']} segments before restart")
+    print(f"Small index has {index_info['stats']['num_segments']} segments before restart")
     
     # Restart - should use sequential loading
     server.restart()

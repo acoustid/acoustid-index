@@ -35,7 +35,9 @@ def test_insert_multi(client, index_name, create_index):
         ],
     })
     assert req.status_code == 200, req.content
-    assert json.loads(req.content) == {}
+    response = json.loads(req.content)
+    assert 'version' in response
+    assert response['version'] > 0
 
     # verify we can find it
     req = client.post(f'/{index_name}/_search', json={
@@ -105,7 +107,7 @@ def test_update_full(client, index_name, create_index):
         ],
     })
     assert req.status_code == 200, req.content
-    assert json.loads(req.content) == {}
+    assert json.loads(req.content)['version'] > 0
 
     # update fingerprint
     req = client.post(f'/{index_name}/_update', json={
@@ -114,7 +116,7 @@ def test_update_full(client, index_name, create_index):
         ],
     })
     assert req.status_code == 200, req.content
-    assert json.loads(req.content) == {}
+    assert json.loads(req.content)['version'] > 0
 
     # verify we can't find the original version
     req = client.post(f'/{index_name}/_search', json={
@@ -150,7 +152,7 @@ def test_update_partial(client, index_name, create_index):
         ],
     })
     assert req.status_code == 200, req.content
-    assert json.loads(req.content) == {}
+    assert json.loads(req.content)['version'] > 0
 
     # update fingerprint
     req = client.post(f'/{index_name}/_update', json={
@@ -159,7 +161,7 @@ def test_update_partial(client, index_name, create_index):
         ],
     })
     assert req.status_code == 200, req.content
-    assert json.loads(req.content) == {}
+    assert json.loads(req.content)['version'] > 0
 
     # verify we can't find the original version
     req = client.post(f'/{index_name}/_search', json={
@@ -196,7 +198,7 @@ def test_delete_multi(client, index_name, create_index):
         ],
     })
     assert req.status_code == 200, req.content
-    assert json.loads(req.content) == {}
+    assert json.loads(req.content)['version'] > 0
 
     # delete fingerprints
     req = client.post(f'/{index_name}/_update', json={
@@ -206,7 +208,7 @@ def test_delete_multi(client, index_name, create_index):
         ],
     })
     assert req.status_code == 200, req.content
-    assert json.loads(req.content) == {}
+    assert json.loads(req.content)['version'] > 0
 
     # verify we can't find it
     req = client.post(f'/{index_name}/_search', json={
@@ -268,7 +270,7 @@ def test_persistence_after_soft_restart(server, client, index_name, create_index
         }
         with client.post(f'/{index_name}/_update', json=body) as req:
             assert req.status_code == 200, req.content
-            assert json.loads(req.content) == {}
+            assert json.loads(req.content)['version'] > 0
 
     server.restart()
     server.wait_for_ready(index_name, timeout=10.0)
@@ -300,9 +302,9 @@ def test_persistence_after_hard_restart(server, client, index_name, create_index
         }
         with client.post(f'/{index_name}/_update', json=body) as req:
             assert req.status_code == 200, req.content
-            assert json.loads(req.content) == {}
+            assert json.loads(req.content)['version'] > 0
     assert req.status_code == 200, req.content
-    assert json.loads(req.content) == {}
+    assert json.loads(req.content)['version'] > 0
 
     server.restart(kill=True)
     server.wait_for_ready(index_name, timeout=10.0)
@@ -322,3 +324,28 @@ def test_persistence_after_hard_restart(server, client, index_name, create_index
     assert json.loads(req.content) == {
         'version': 100,
     }
+
+
+
+def test_expected_version_validation(client, index_name, create_index):
+    # First update to get initial version
+    req = client.post(f"/{index_name}/_update", json={
+        "changes": [{"insert": {"id": 1, "hashes": [100, 200, 300]}}]
+    })
+    assert req.status_code == 200, req.content
+    version1 = json.loads(req.content)["version"]
+
+    # Update with correct expected_version should succeed
+    req = client.post(f"/{index_name}/_update", json={
+        "changes": [{"insert": {"id": 2, "hashes": [101, 201, 301]}}],
+        "expected_version": version1
+    })
+    assert req.status_code == 200, req.content
+
+    # Update with wrong expected_version should fail with 409
+    req = client.post(f"/{index_name}/_update", json={
+        "changes": [{"insert": {"id": 3, "hashes": [102, 202, 302]}}],
+        "expected_version": version1  # Wrong version
+    })
+    assert req.status_code == 409, req.content
+    assert json.loads(req.content)["error"] == "VersionMismatch"

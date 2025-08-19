@@ -10,6 +10,7 @@ const SharedPtr = @import("utils/shared_ptr.zig").SharedPtr;
 const DocInfo = @import("common.zig").DocInfo;
 
 const SegmentList = @import("segment_list.zig").SegmentList;
+const Metadata = @import("Metadata.zig");
 
 const FileSegment = @import("FileSegment.zig");
 const FileSegmentList = SegmentList(FileSegment);
@@ -96,6 +97,10 @@ pub fn getMaxDocId(self: *Self) u32 {
     return result;
 }
 
+pub fn getNumSegments(self: *Self) usize {
+    return self.memory_segments.value.count() + self.file_segments.value.count();
+}
+
 pub fn getVersion(self: *Self) u64 {
     if (self.memory_segments.value.getLast()) |node| {
         return node.value.info.version;
@@ -106,27 +111,32 @@ pub fn getVersion(self: *Self) u64 {
     return 0;
 }
 
-pub fn getNumSegments(self: *Self) usize {
-    return self.memory_segments.value.count() + self.file_segments.value.count();
-}
-
-pub fn getAttributes(self: *Self, allocator: std.mem.Allocator) !std.StringHashMapUnmanaged(u64) {
-    var attributes: std.StringHashMapUnmanaged(u64) = .{};
-    errdefer attributes.deinit(allocator);
+pub fn getMetadata(self: *Self, allocator: std.mem.Allocator) !Metadata {
+    var metadata = Metadata.initBorrowed(allocator);
+    errdefer metadata.deinit();
 
     inline for (segment_lists) |n| {
         const segments = @field(self, n);
         for (segments.value.nodes.items) |node| {
-            var iter = node.value.attributes.iterator();
-            while (iter.next()) |entry| {
-                try attributes.put(allocator, entry.key_ptr.*, entry.value_ptr.*);
-            }
+            try metadata.update(node.value.metadata);
         }
     }
 
-    // builtin attributes
-    try attributes.put(allocator, "min_document_id", self.getMinDocId());
-    try attributes.put(allocator, "max_document_id", self.getMaxDocId());
+    return metadata;
+}
 
-    return attributes;
+pub const Stats = struct {
+    min_doc_id: u32,
+    max_doc_id: u32,
+    num_segments: usize,
+    num_docs: u32,
+};
+
+pub fn getStats(self: *Self) Stats {
+    return Stats{
+        .min_doc_id = self.getMinDocId(),
+        .max_doc_id = self.getMaxDocId(),
+        .num_segments = self.getNumSegments(),
+        .num_docs = self.getNumDocs(),
+    };
 }

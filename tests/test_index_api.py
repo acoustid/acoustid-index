@@ -28,8 +28,10 @@ def test_get_index(client, index_name, create_index, fmt):
         json={
             "changes": [
                 {"insert": {"id": 1, "hashes": [101, 201, 301]}},
-                {"set_attribute": {"name": "foo", "value": 1234}},
             ],
+            "metadata": {
+                "foo": "1234",
+            }
         },
     )
     assert req.status_code == 200, req.content
@@ -39,16 +41,14 @@ def test_get_index(client, index_name, create_index, fmt):
     if fmt == "json":
         expected = {
             "version": 1,
-            "segments": 1,
-            "docs": 1,
-            "attributes": {"foo": 1234, "min_document_id": 1, "max_document_id": 1},
+            "metadata": {"foo": "1234"},
+            "stats": {"min_doc_id": 1, "max_doc_id": 1, "num_segments": 1, "num_docs": 1},
         }
     else:
         expected = {
             "v": 1,
-            "s": 1,
-            "d": 1,
-            "a": {"foo": 1234, "min_document_id": 1, "max_document_id": 1},
+            "m": {"foo": "1234"},
+            "s": {"min_doc_id": 1, "max_doc_id": 1, "num_segments": 1, "num_docs": 1},
         }
     assert decode(fmt, req.content) == expected
 

@@ -4,20 +4,17 @@ const Item = @import("segment.zig").Item;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
 const SegmentList = @import("segment_list.zig").SegmentList;
 const SharedPtr = @import("utils/shared_ptr.zig").SharedPtr;
+const Metadata = @import("Metadata.zig");
 
 pub const MergedSegmentInfo = struct {
     info: SegmentInfo = .{},
-    attributes: std.StringHashMapUnmanaged(u64) = .{},
+    metadata: Metadata,
     docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
     min_doc_id: u32 = 0,
     max_doc_id: u32 = 0,
 
     pub fn deinit(self: *MergedSegmentInfo, allocator: std.mem.Allocator) void {
-        var iter = self.attributes.iterator();
-        while (iter.next()) |e| {
-            allocator.free(e.key_ptr.*);
-        }
-        self.attributes.deinit(allocator);
+        self.metadata.deinit();
         self.docs.deinit(allocator);
     }
 };
@@ -54,7 +51,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
         allocator: std.mem.Allocator,
         collection: *SegmentList(Segment),
         sources: std.ArrayListUnmanaged(Source) = .{},
-        segment: MergedSegmentInfo = .{},
+        segment: MergedSegmentInfo = .{ .metadata = undefined },
         estimated_size: usize = 0,
 
         current_item: ?Item = null,
@@ -64,6 +61,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
                 .allocator = allocator,
                 .collection = collection,
                 .sources = try std.ArrayListUnmanaged(Source).initCapacity(allocator, num_sources),
+                .segment = .{ .metadata = Metadata.initOwned(allocator) },
             };
         }
 
@@ -96,24 +94,12 @@ pub fn SegmentMerger(comptime Segment: type) type {
                 } else {
                     self.segment.info = SegmentInfo.merge(self.segment.info, source.reader.segment.info);
                 }
-                total_attributes += source.reader.segment.attributes.count();
+                total_attributes += @intCast(source.reader.segment.metadata.count());
                 total_docs += source.reader.segment.docs.count();
             }
 
-            try self.segment.attributes.ensureTotalCapacity(self.allocator, total_attributes);
             for (sources) |*source| {
-                const segment = source.reader.segment;
-                var iter = segment.attributes.iterator();
-                while (iter.next()) |entry| {
-                    const name = entry.key_ptr.*;
-                    const value = entry.value_ptr.*;
-                    const result = self.segment.attributes.getOrPutAssumeCapacity(name);
-                    if (!result.found_existing) {
-                        errdefer self.segment.attributes.removeByPtr(result.key_ptr);
-                        result.key_ptr.* = try self.allocator.dupe(u8, name);
-                    }
-                    result.value_ptr.* = value;
-                }
+                try self.segment.metadata.update(source.reader.segment.metadata);
             }
 
             try self.segment.docs.ensureTotalCapacity(self.allocator, total_docs);
