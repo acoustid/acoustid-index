@@ -31,7 +31,7 @@ pub const Metadata = @import("Metadata.zig");
 pub const Transaction = struct {
     id: u64,
     changes: []const Change,
-    metadata: ?Metadata,
+    metadata: ?Metadata = null,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
