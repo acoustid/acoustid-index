@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import nats
+import math
 import datetime
 import nats.js
 import nats.js.api
@@ -34,6 +35,7 @@ from .models import (
     Change,
 )
 from .errors import (
+    IndexNotFound,
     InconsistentIndexState,
 )
 
@@ -608,10 +610,26 @@ class IndexManager:
                     pass  # Ignore cleanup errors
                 raise
 
-    async def get_index_status(self, index_name: str) -> IndexStatusUpdate:
+    async def get_index_status(self, index_name: str, wait: bool = False, timeout: float = 1.0) -> IndexStatusUpdate:
         """Get the current state of an index from the in-memory cache."""
-        async with self.indexes_lock:
-            return self.indexes.get(index_name, DEFAULT_INDEX_STATUS_UPDATE)
+
+        base_delay = 0.1
+        max_retries = int(math.log2(timeout / base_delay + 1))
+        retries = 0
+
+        while True:
+            async with self.indexes_lock:
+                status = self.indexes.get(index_name, DEFAULT_INDEX_STATUS_UPDATE)
+
+            if status.status.pending_change is None or not wait:
+                return status
+
+            retries += 1
+            if retries == max_retries:
+                raise InconsistentIndexState()
+
+            delay = base_delay * (2 ** (retries - 1)) * random.uniform(0.5, 1.5)
+            await asyncio.sleep(delay)
 
     async def publish_create_index(self, index_name: str) -> None:
         """
@@ -654,14 +672,15 @@ class IndexManager:
         """
         Publish an update operation to the index stream.
         """
-        # Ensure stream exists for this index
-        await self._ensure_stream_exists(index_name)
 
-        # Create and publish the update operation
+        status = await self.get_index_status(index_name, wait=True)
+        if not status.status.active:
+            raise IndexNotFound()
+
         operation = UpdateOperation(changes=changes, metadata=metadata)
         await self._publish_operation(index_name, operation)
 
-        logger.info(f"Published update operation with {len(changes)} changes to index '{index_name}'")
+        logger.info("Published update operation with %s changes to index %s", len(changes), index_name)
 
     async def _publish_operation(self, index_name: str, op: Operation) -> None:
         """Publish a new operation to the index-specific stream."""
@@ -854,7 +873,7 @@ class IndexStateChange:
             if retries >= max_retries:
                 raise InconsistentIndexState()
 
-            status = await self.manager.get_index_status(self.index_name)
+            status = await self.manager.get_index_status(self.index_name, wait=False)
             self.current_status = status.status
 
             if status.status.pending_change is not None and status.status.pending_change.operation_id != self.change_id:

@@ -7,7 +7,7 @@ import msgspec.json
 from aiohttp.web import Response, json_response, Application, AppRunner, TCPSite, Request
 import nats
 
-from .errors import InconsistentIndexState
+from .errors import InconsistentIndexState, IndexNotFound
 from .models import UpdateRequest
 
 
@@ -162,6 +162,8 @@ async def update_index(request: Request):
     except (ValueError, msgspec.DecodeError, msgspec.ValidationError) as e:
         logger.warning(f"Invalid request format for '{index_name}': {e}")
         return json_response({"error": "Invalid request format"}, status=400)
+    except IndexNotFound:
+        return json_response({"error": "IndexNotFound"}, status=404)
     except InconsistentIndexState as exc:
         logger.warning("Failed to update index %s", index_name, exc_info=True)
         return json_response({"error": str(exc)}, status=409)
