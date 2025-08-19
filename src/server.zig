@@ -504,12 +504,28 @@ const CreateIndexRequest = struct {
     }
 };
 
+const CreateIndexResponse = struct {
+    version: u64,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
 fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = req.param("index") orelse return;
 
-    try ctx.indexes.createIndex(index_name);
+    const index = try ctx.indexes.createIndex(index_name);
+    defer ctx.indexes.releaseIndex(index);
+    
+    var index_reader = try index.acquireReader();
+    defer index.releaseReader(&index_reader);
+    
+    const response = CreateIndexResponse{
+        .version = index_reader.getVersion(),
+    };
 
-    return writeResponse(EmptyResponse{}, req, res);
+    return writeResponse(response, req, res);
 }
 
 fn handleDeleteIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {

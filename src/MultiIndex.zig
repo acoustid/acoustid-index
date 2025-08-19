@@ -155,11 +155,13 @@ pub fn getIndex(self: *Self, name: []const u8) !*Index {
     return &index_ref.index;
 }
 
-pub fn createIndex(self: *Self, name: []const u8) !void {
+pub fn createIndex(self: *Self, name: []const u8) !*Index {
     log.info("creating index {s}", .{name});
 
     const index_ref = try self.acquireIndex(name, true);
-    defer self.releaseIndexRef(index_ref);
+    errdefer self.releaseIndexRef(index_ref);
+
+    return &index_ref.index;
 }
 
 pub fn deleteIndex(self: *Self, name: []const u8) !void {
