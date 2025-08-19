@@ -45,7 +45,7 @@ HEAD /:indexname
 
 #### Get index information
 
-Returns detailed information about an index including version, segment count, document count, and attributes.
+Returns detailed information about an index including version, metadata, and statistics.
 
 ```http
 GET /:indexname
@@ -55,11 +55,15 @@ GET /:indexname
 ```json
 {
   "version": 1,
-  "segments": 2,
-  "docs": 1000,
-  "attributes": {
-    "min_document_id": 1,
-    "max_document_id": 999
+  "metadata": {
+    "key1": "value1",
+    "key2": "value2"
+  },
+  "stats": {
+    "min_doc_id": 1,
+    "max_doc_id": 999,
+    "num_segments": 2,
+    "num_docs": 1000
   }
 }
 ```
@@ -110,6 +114,14 @@ GET /:indexname/_segments
 }
 ```
 
+#### Create index snapshot
+
+Creates a downloadable tar archive containing complete index data for backup.
+
+```http
+GET /:indexname/_snapshot
+```
+
 ### Fingerprint Operations
 
 #### Bulk update operations
@@ -127,9 +139,17 @@ POST /:indexname/_update
     {"insert": {"id": 12345, "hashes": [100, 200, 300, 400, 500]}},
     {"insert": {"id": 67890, "hashes": [150, 250, 350]}},
     {"delete": {"id": 11111}}
-  ]
+  ],
+  "metadata": {
+    "key1": "value1",
+    "key2": "value2"
+  }
 }
 ```
+
+**Parameters:**
+- `changes` (required): Array of insert/delete operations to perform
+- `metadata` (optional): Key-value pairs of string metadata to associate with the index
 
 **Response:** Empty JSON object `{}`
 
