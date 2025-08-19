@@ -104,7 +104,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
                 var iter = segment.metadata.iterator();
                 while (iter.next()) |entry| {
                     if (self.segment.metadata.get(entry.key) == null) {
-                        try self.segment.metadata.setOwned(entry.key, entry.value);
+                        try self.segment.metadata.set(entry.key, entry.value);
                     }
                 }
             }

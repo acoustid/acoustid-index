@@ -133,7 +133,7 @@ pub fn getMetadata(self: *Self, allocator: std.mem.Allocator) !std.StringHashMap
 }
 
 pub fn getMetadataWrapper(self: *Self, allocator: std.mem.Allocator) !Metadata {
-    var metadata = Metadata.init(allocator);
+    var metadata = Metadata.initBorrowed(allocator);
     errdefer metadata.deinit();
 
     inline for (segment_lists) |n| {
@@ -142,7 +142,7 @@ pub fn getMetadataWrapper(self: *Self, allocator: std.mem.Allocator) !Metadata {
             var iter = node.value.metadata.iterator();
             while (iter.next()) |entry| {
                 if (metadata.get(entry.key) == null) {
-                    try metadata.setBorrowed(entry.key, entry.value);
+                    try metadata.set(entry.key, entry.value);
                 }
             }
         }

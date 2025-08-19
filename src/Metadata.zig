@@ -2,98 +2,80 @@ const std = @import("std");
 
 const Self = @This();
 
-/// Ownership mode for keys and values
-pub const Ownership = enum {
-    owned,     // Keys/values are allocated and need to be freed
-    borrowed,  // Keys/values are borrowed references, don't free
-};
-
-/// Internal entry to track ownership per key-value pair
-const Entry = struct {
-    key: []const u8,
-    value: []const u8,
-    key_owned: bool,
-    value_owned: bool,
-};
-
 allocator: std.mem.Allocator,
-entries: std.StringHashMapUnmanaged(Entry),
+entries: std.StringHashMapUnmanaged([]const u8),
+owned: bool, // If true, all keys and values are owned and need freeing
 
-/// Initialize empty metadata with given allocator
+/// Initialize empty metadata with given allocator (owned by default)
 pub fn init(allocator: std.mem.Allocator) Self {
     return Self{
         .allocator = allocator,
         .entries = .{},
+        .owned = true,
+    };
+}
+
+/// Initialize empty owned metadata
+pub fn initOwned(allocator: std.mem.Allocator) Self {
+    return Self{
+        .allocator = allocator,
+        .entries = .{},
+        .owned = true,
+    };
+}
+
+/// Initialize empty borrowed metadata  
+pub fn initBorrowed(allocator: std.mem.Allocator) Self {
+    return Self{
+        .allocator = allocator,
+        .entries = .{},
+        .owned = false,
     };
 }
 
 /// Deinitialize and free all owned keys and values
 pub fn deinit(self: *Self) void {
-    var iter = self.entries.iterator();
-    while (iter.next()) |entry| {
-        if (entry.value_ptr.key_owned) {
-            self.allocator.free(entry.value_ptr.key);
-        }
-        if (entry.value_ptr.value_owned) {
-            self.allocator.free(entry.value_ptr.value);
+    if (self.owned) {
+        var iter = self.entries.iterator();
+        while (iter.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+            self.allocator.free(entry.value_ptr.*);
         }
     }
     self.entries.deinit(self.allocator);
 }
 
-/// Set a key-value pair with specified ownership
-pub fn set(self: *Self, key: []const u8, value: []const u8, key_ownership: Ownership, value_ownership: Ownership) !void {
+/// Set a key-value pair
+pub fn set(self: *Self, key: []const u8, value: []const u8) !void {
     const result = try self.entries.getOrPut(self.allocator, key);
     
     // If updating existing entry, free old values if they were owned
-    if (result.found_existing) {
-        if (result.value_ptr.key_owned) {
-            self.allocator.free(result.value_ptr.key);
-        }
-        if (result.value_ptr.value_owned) {
-            self.allocator.free(result.value_ptr.value);
-        }
+    if (result.found_existing and self.owned) {
+        self.allocator.free(result.key_ptr.*);
+        self.allocator.free(result.value_ptr.*);
     }
     
-    // Set up the new entry
-    const key_owned = key_ownership == .owned;
-    const value_owned = value_ownership == .owned;
-    
-    result.value_ptr.* = Entry{
-        .key = if (key_owned) try self.allocator.dupe(u8, key) else key,
-        .value = if (value_owned) try self.allocator.dupe(u8, value) else value,
-        .key_owned = key_owned,
-        .value_owned = value_owned,
-    };
-    
-    // Update the hashmap's key pointer to our stored key
-    result.key_ptr.* = result.value_ptr.key;
-}
-
-/// Set a key-value pair, taking ownership of both (convenience method)
-pub fn setOwned(self: *Self, key: []const u8, value: []const u8) !void {
-    try self.set(key, value, .owned, .owned);
-}
-
-/// Set a key-value pair without taking ownership (convenience method)
-pub fn setBorrowed(self: *Self, key: []const u8, value: []const u8) !void {
-    try self.set(key, value, .borrowed, .borrowed);
+    // Set up the new entry based on ownership mode
+    if (self.owned) {
+        result.key_ptr.* = try self.allocator.dupe(u8, key);
+        result.value_ptr.* = try self.allocator.dupe(u8, value);
+    } else {
+        result.key_ptr.* = key;
+        result.value_ptr.* = value;
+    }
 }
 
 /// Get value for a key, returns null if not found
 pub fn get(self: Self, key: []const u8) ?[]const u8 {
-    const entry = self.entries.get(key);
-    return if (entry) |e| e.value else null;
+    return self.entries.get(key);
 }
 
 /// Remove a key-value pair, freeing owned memory
 pub fn remove(self: *Self, key: []const u8) bool {
     const kv = self.entries.fetchRemove(key) orelse return false;
-    if (kv.value.key_owned) {
-        self.allocator.free(kv.value.key);
-    }
-    if (kv.value.value_owned) {
-        self.allocator.free(kv.value.value);
+    if (self.owned) {
+        self.allocator.free(kv.key);
+        self.allocator.free(kv.value);
     }
     return true;
 }
@@ -105,11 +87,11 @@ pub fn count(self: Self) usize {
 
 /// Iterator for key-value pairs
 pub const Iterator = struct {
-    inner: std.StringHashMapUnmanaged(Entry).Iterator,
+    inner: std.StringHashMapUnmanaged([]const u8).Iterator,
     
     pub fn next(self: *Iterator) ?struct { key: []const u8, value: []const u8 } {
         const entry = self.inner.next() orelse return null;
-        return .{ .key = entry.value_ptr.key, .value = entry.value_ptr.value };
+        return .{ .key = entry.key_ptr.*, .value = entry.value_ptr.* };
     }
 };
 
@@ -123,12 +105,12 @@ pub fn ensureTotalCapacity(self: *Self, capacity: u32) !void {
     try self.entries.ensureTotalCapacity(self.allocator, capacity);
 }
 
-/// Copy all entries from another metadata instance, taking ownership
+/// Copy all entries from another metadata instance
 pub fn copyFrom(self: *Self, other: Self) !void {
     try self.ensureTotalCapacity(@intCast(other.count()));
     var iter = other.iterator();
     while (iter.next()) |entry| {
-        try self.setOwned(entry.key, entry.value);
+        try self.set(entry.key, entry.value);
     }
 }
 
@@ -137,7 +119,7 @@ pub fn mergeFrom(self: *Self, other: Self) !void {
     var iter = other.iterator();
     while (iter.next()) |entry| {
         if (self.get(entry.key) == null) {
-            try self.setOwned(entry.key, entry.value);
+            try self.set(entry.key, entry.value);
         }
     }
 }
@@ -165,13 +147,13 @@ pub fn msgpackWrite(self: Self, packer: anytype) !void {
 
 /// Create metadata from unmanaged hashmap, taking ownership of all strings
 pub fn fromUnmanagedOwned(allocator: std.mem.Allocator, hashmap: std.StringHashMapUnmanaged([]const u8)) !Self {
-    var metadata = init(allocator);
+    var metadata = initOwned(allocator);
     errdefer metadata.deinit();
     
     try metadata.ensureTotalCapacity(@intCast(hashmap.count()));
     var iter = hashmap.iterator();
     while (iter.next()) |entry| {
-        try metadata.setOwned(entry.key_ptr.*, entry.value_ptr.*);
+        try metadata.set(entry.key_ptr.*, entry.value_ptr.*);
     }
     
     return metadata;
@@ -179,13 +161,13 @@ pub fn fromUnmanagedOwned(allocator: std.mem.Allocator, hashmap: std.StringHashM
 
 /// Create metadata from unmanaged hashmap, borrowing all strings
 pub fn fromUnmanagedBorrowed(allocator: std.mem.Allocator, hashmap: std.StringHashMapUnmanaged([]const u8)) !Self {
-    var metadata = init(allocator);
+    var metadata = initBorrowed(allocator);
     errdefer metadata.deinit();
     
     try metadata.ensureTotalCapacity(@intCast(hashmap.count()));
     var iter = hashmap.iterator();
     while (iter.next()) |entry| {
-        try metadata.setBorrowed(entry.key_ptr.*, entry.value_ptr.*);
+        try metadata.set(entry.key_ptr.*, entry.value_ptr.*);
     }
     
     return metadata;
@@ -197,9 +179,9 @@ pub fn toUnmanaged(self: Self, allocator: std.mem.Allocator) !std.StringHashMapU
     errdefer hashmap.deinit(allocator);
     
     try hashmap.ensureTotalCapacity(allocator, @intCast(self.count()));
-    var iter = self.iterator();
+    var iter = self.entries.iterator();
     while (iter.next()) |entry| {
-        hashmap.putAssumeCapacity(entry.key, entry.value);
+        hashmap.putAssumeCapacity(entry.key_ptr.*, entry.value_ptr.*);
     }
     
     return hashmap;
@@ -207,20 +189,18 @@ pub fn toUnmanaged(self: Self, allocator: std.mem.Allocator) !std.StringHashMapU
 
 /// Clear all entries, retaining capacity
 pub fn clearRetainingCapacity(self: *Self) void {
-    var iter = self.entries.iterator();
-    while (iter.next()) |entry| {
-        if (entry.value_ptr.key_owned) {
-            self.allocator.free(entry.value_ptr.key);
-        }
-        if (entry.value_ptr.value_owned) {
-            self.allocator.free(entry.value_ptr.value);
+    if (self.owned) {
+        var iter = self.entries.iterator();
+        while (iter.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+            self.allocator.free(entry.value_ptr.*);
         }
     }
     self.entries.clearRetainingCapacity();
 }
 
-/// Load from msgpack into this metadata instance, taking ownership of all strings
-pub fn loadFromMsgpackOwned(self: *Self, reader: anytype, allocator: std.mem.Allocator) !void {
+/// Load from msgpack into this metadata instance (ownership based on metadata instance)
+pub fn loadFromMsgpack(self: *Self, reader: anytype, allocator: std.mem.Allocator) !void {
     // First load into a temporary unmanaged map
     var temp_map: std.StringHashMapUnmanaged([]const u8) = .{};
     defer temp_map.deinit(allocator);
@@ -228,10 +208,10 @@ pub fn loadFromMsgpackOwned(self: *Self, reader: anytype, allocator: std.mem.All
     const msgpack = @import("msgpack");
     try msgpack.unpackMapInto(reader, allocator, &temp_map);
     
-    // Now transfer to our metadata with ownership
+    // Now transfer to our metadata
     try self.ensureTotalCapacity(@intCast(temp_map.count()));
     var iter = temp_map.iterator();
     while (iter.next()) |entry| {
-        try self.setOwned(entry.key_ptr.*, entry.value_ptr.*);
+        try self.set(entry.key_ptr.*, entry.value_ptr.*);
     }
 }

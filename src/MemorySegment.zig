@@ -119,7 +119,7 @@ pub fn build(self: *Self, changes: []const Change) !void {
                 }
             },
             .set_metadata => |op| {
-                try self.metadata.setOwned(op.name, op.value);
+                try self.metadata.set(op.name, op.value);
             },
         }
     }

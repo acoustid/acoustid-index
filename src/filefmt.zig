@@ -294,7 +294,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
 
     segment.metadata.clearRetainingCapacity();
     if (header.has_metadata) {
-        try segment.metadata.loadFromMsgpackOwned(reader, segment.allocator);
+        try segment.metadata.loadFromMsgpack(reader, segment.allocator);
     }
 
     segment.min_doc_id = 0;
