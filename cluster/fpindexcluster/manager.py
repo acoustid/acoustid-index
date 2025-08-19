@@ -49,7 +49,7 @@ class IndexUpdater:
         subject: str,
         fpindex_url: str,
         instance_name: str,
-        manager: "IndexManager" | None = None,
+        manager: "IndexManager",
     ):
         self.index_name = index_name
         self.js = js
