@@ -5,6 +5,8 @@ import re
 from aiohttp.web import Response, json_response, Application, AppRunner, TCPSite
 import nats
 
+from .errors import InconsistentIndexState
+
 
 logger = logging.getLogger(__name__)
 
@@ -51,49 +53,15 @@ async def create_index(request):
         )
 
     try:
-        success, message, current_state = await manager.publish_create_index(index_name)
+        await manager.publish_create_index(index_name)
+    except InconsistentIndexState as exc:
+        logger.warning("Failed to create index %s", index_name, exc_info=True)
+        return json_response({"error": str(exc)}, status=409)
+    except Exception as exc:
+        logger.error("Failed to create index %s", index_name, exc_info=True)
+        return json_response({"error": str(exc)}, status=500)
 
-        if success:
-            if current_state.value in [
-                "active",
-                "not_exists",
-            ]:  # Newly created or was deleted
-                logger.info(f"Triggered index creation for '{index_name}'")
-                return json_response(
-                    {
-                        "status": "accepted",
-                        "index": index_name,
-                        "message": message,
-                        "state": current_state.value,
-                    },
-                    status=202,
-                )
-            else:  # Already existed (idempotent)
-                logger.info(f"Index '{index_name}' already exists")
-                return json_response(
-                    {
-                        "status": "ok",
-                        "index": index_name,
-                        "message": message,
-                        "state": current_state.value,
-                    },
-                    status=200,
-                )
-        else:
-            # Invalid state transition
-            logger.warning(f"Cannot create index '{index_name}': {message}")
-            return json_response(
-                {
-                    "error": message,
-                    "index": index_name,
-                    "current_state": current_state.value,
-                },
-                status=409,
-            )
-
-    except Exception as e:
-        logger.error(f"Error creating index '{index_name}': {e}")
-        return json_response({"error": str(e)}, status=500)
+    return json_response({}, status=200)
 
 
 async def delete_index(request):
@@ -113,50 +81,15 @@ async def delete_index(request):
         )
 
     try:
-        success, message, current_state = await manager.publish_delete_index(index_name)
+        await manager.publish_delete_index(index_name)
+    except InconsistentIndexState as exc:
+        logger.warning("Failed to delete index %s", index_name, exc_info=True)
+        return json_response({"error": str(exc)}, status=409)
+    except Exception as exc:
+        logger.error("Failed to delete index %s", index_name, exc_info=True)
+        return json_response({"error": str(exc)}, status=500)
 
-        if success:
-            if current_state.value in [
-                "deleted",
-                "not_exists",
-            ]:  # Newly deleted or didn't exist
-                if current_state.value == "deleted":
-                    logger.info(f"Triggered index deletion for '{index_name}'")
-                    return json_response(
-                        {
-                            "status": "accepted",
-                            "index": index_name,
-                            "message": message,
-                            "state": current_state.value,
-                        },
-                        status=202,
-                    )
-                else:  # Didn't exist (idempotent)
-                    logger.info(f"Index '{index_name}' does not exist")
-                    return json_response(
-                        {
-                            "status": "ok",
-                            "index": index_name,
-                            "message": message,
-                            "state": current_state.value,
-                        },
-                        status=200,
-                    )
-        else:
-            # Invalid state transition
-            logger.warning(f"Cannot delete index '{index_name}': {message}")
-            return json_response(
-                {
-                    "error": message,
-                    "index": index_name,
-                    "current_state": current_state.value,
-                },
-                status=409,
-            )
-
-    except Exception as e:
-        logger.error(f"Error deleting index '{index_name}': {e}")
-        return json_response({"error": str(e)}, status=500)
+    return json_response({}, status=200)
 
 
 async def get_index_status(request):
@@ -176,20 +109,15 @@ async def get_index_status(request):
         )
 
     try:
-        current_state = await manager.get_index_state(index_name)
-
-        return json_response(
-            {
-                "index": index_name,
-                "state": current_state.value,
-                "exists": current_state.exists(),
-            },
-            status=200,
-        )
-
+        current_status = await manager.get_index_status(index_name)
     except Exception as e:
         logger.error(f"Error getting status for index '{index_name}': {e}")
         return json_response({"error": str(e)}, status=500)
+
+    if current_status.status.active:
+        return json_response({}, status=200)
+    else:
+        return json_response({}, status=404)
 
 
 def create_app(nats_connection: nats.NATS, index_manager) -> Application:
