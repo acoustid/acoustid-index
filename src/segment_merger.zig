@@ -7,7 +7,7 @@ const SharedPtr = @import("utils/shared_ptr.zig").SharedPtr;
 
 pub const MergedSegmentInfo = struct {
     info: SegmentInfo = .{},
-    metadata: std.StringHashMapUnmanaged(?[]const u8) = .{},
+    metadata: std.StringHashMapUnmanaged([]const u8) = .{},
     docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
     min_doc_id: u32 = 0,
     max_doc_id: u32 = 0,
@@ -16,9 +16,7 @@ pub const MergedSegmentInfo = struct {
         var iter = self.metadata.iterator();
         while (iter.next()) |e| {
             allocator.free(e.key_ptr.*);
-            if (e.value_ptr.*) |value| {
-                allocator.free(value);
-            }
+            allocator.free(e.value_ptr.*);
         }
         self.metadata.deinit(allocator);
         self.docs.deinit(allocator);
@@ -115,11 +113,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
                         errdefer self.segment.metadata.removeByPtr(result.key_ptr);
                         result.key_ptr.* = try self.allocator.dupe(u8, name);
                     }
-                    if (value) |v| {
-                        result.value_ptr.* = try self.allocator.dupe(u8, v);
-                    } else {
-                        result.value_ptr.* = null;
-                    }
+                    result.value_ptr.* = try self.allocator.dupe(u8, value);
                 }
             }
 

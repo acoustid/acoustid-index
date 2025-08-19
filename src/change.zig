@@ -19,7 +19,7 @@ pub const Delete = struct {
 
 pub const SetMetadata = struct {
     name: []const u8,
-    value: ?[]const u8,
+    value: []const u8,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };

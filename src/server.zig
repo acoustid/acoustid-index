@@ -529,9 +529,7 @@ fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
                 const unmanaged_metadata = try index_reader.getMetadata(req.arena);
                 var iter = unmanaged_metadata.iterator();
                 while (iter.next()) |entry| {
-                    if (entry.value_ptr.*) |value| {
-                        try managed_metadata.put(entry.key_ptr.*, value);
-                    }
+                    try managed_metadata.put(entry.key_ptr.*, entry.value_ptr.*);
                 }
                 break :blk managed_metadata;
             },

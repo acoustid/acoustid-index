@@ -13,14 +13,14 @@ pub const TextSegmentReader = struct {
 
     const SegmentData = struct {
         info: SegmentInfo,
-        metadata: std.StringHashMap(?[]const u8),
+        metadata: std.StringHashMap([]const u8),
         docs: std.AutoHashMap(u32, bool),
         min_doc_id: u32,
 
         pub fn init(allocator: std.mem.Allocator, info: SegmentInfo) SegmentData {
             return .{
                 .info = info,
-                .metadata = std.StringHashMap(?[]const u8).init(allocator),
+                .metadata = std.StringHashMap([]const u8).init(allocator),
                 .docs = std.AutoHashMap(u32, bool).init(allocator),
                 .min_doc_id = std.math.maxInt(u32),
             };

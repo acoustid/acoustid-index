@@ -110,15 +110,13 @@ pub fn getNumSegments(self: *Self) usize {
     return self.memory_segments.value.count() + self.file_segments.value.count();
 }
 
-pub fn getMetadata(self: *Self, allocator: std.mem.Allocator) !std.StringHashMapUnmanaged(?[]const u8) {
-    var metadata: std.StringHashMapUnmanaged(?[]const u8) = .{};
+pub fn getMetadata(self: *Self, allocator: std.mem.Allocator) !std.StringHashMapUnmanaged([]const u8) {
+    var metadata: std.StringHashMapUnmanaged([]const u8) = .{};
     errdefer {
         var iter = metadata.iterator();
         while (iter.next()) |entry| {
             allocator.free(entry.key_ptr.*);
-            if (entry.value_ptr.*) |value| {
-                allocator.free(value);
-            }
+            allocator.free(entry.value_ptr.*);
         }
         metadata.deinit(allocator);
     }
@@ -132,17 +130,10 @@ pub fn getMetadata(self: *Self, allocator: std.mem.Allocator) !std.StringHashMap
                 if (!result.found_existing) {
                     result.key_ptr.* = try allocator.dupe(u8, entry.key_ptr.*);
                 }
-                if (entry.value_ptr.*) |value| {
-                    if (result.value_ptr.*) |old_value| {
-                        allocator.free(old_value);
-                    }
-                    result.value_ptr.* = try allocator.dupe(u8, value);
-                } else {
-                    if (result.value_ptr.*) |old_value| {
-                        allocator.free(old_value);
-                    }
-                    result.value_ptr.* = null;
+                if (result.found_existing) {
+                    allocator.free(result.value_ptr.*);
                 }
+                result.value_ptr.* = try allocator.dupe(u8, entry.value_ptr.*);
             }
         }
     }
