@@ -519,12 +519,12 @@ pub fn checkReady(self: *Self) !void {
     }
 }
 
-pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata) !u64 {
+pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata, expected_version: ?u64) !u64 {
     try self.checkReady();
-    return try self.updateInternal(changes, metadata, null);
+    return try self.updateInternal(changes, metadata, null, expected_version);
 }
 
-fn updateInternal(self: *Self, changes: []const Change, metadata: ?Metadata, commit_id: ?u64) !u64 {
+fn updateInternal(self: *Self, changes: []const Change, metadata: ?Metadata, commit_id: ?u64, expected_version: ?u64) !u64 {
     var target = try MemorySegmentList.createSegment(self.allocator, .{});
     defer MemorySegmentList.destroySegment(self.allocator, &target);
 
@@ -533,7 +533,7 @@ fn updateInternal(self: *Self, changes: []const Change, metadata: ?Metadata, com
     var upd = try self.memory_segments.beginUpdate(self.allocator);
     defer self.memory_segments.cleanupAfterUpdate(self.allocator, &upd);
 
-    const version = commit_id orelse try self.oplog.write(changes, metadata);
+    const version = commit_id orelse try self.oplog.write(changes, metadata, expected_version);
     target.value.info.version = version;
 
     defer self.updateDocsMetrics();

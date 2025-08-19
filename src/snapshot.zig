@@ -90,7 +90,7 @@ test "index snapshot" {
             .id = 1,
             .hashes = generateRandomHashes(&hashes, 1),
         },
-    }}, null);
+    }}, null, null);
 
     // Wait for checkpoint
 
