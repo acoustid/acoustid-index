@@ -84,7 +84,7 @@ pub fn open(self: *Self, first_commit_id: u64, receiver: anytype, ctx: anytype) 
     defer oplog_it.deinit();
     while (try oplog_it.next()) |txn| {
         max_commit_id = @max(max_commit_id, txn.id);
-        try receiver(ctx, txn.changes, txn.metadata, txn.id);
+        _ = try receiver(ctx, txn.changes, txn.metadata, txn.id);
     }
     self.next_commit_id = max_commit_id + 1;
 }

@@ -35,7 +35,9 @@ def test_insert_multi(client, index_name, create_index):
         ],
     })
     assert req.status_code == 200, req.content
-    assert json.loads(req.content) == {}
+    response = json.loads(req.content)
+    assert 'version' in response
+    assert response['version'] > 0
 
     # verify we can find it
     req = client.post(f'/{index_name}/_search', json={
@@ -105,7 +107,7 @@ def test_update_full(client, index_name, create_index):
         ],
     })
     assert req.status_code == 200, req.content
-    assert json.loads(req.content) == {}
+    assert json.loads(req.content)['version'] > 0
 
     # update fingerprint
     req = client.post(f'/{index_name}/_update', json={
@@ -114,7 +116,7 @@ def test_update_full(client, index_name, create_index):
         ],
     })
     assert req.status_code == 200, req.content
-    assert json.loads(req.content) == {}
+    assert json.loads(req.content)['version'] > 0
 
     # verify we can't find the original version
     req = client.post(f'/{index_name}/_search', json={
@@ -150,7 +152,7 @@ def test_update_partial(client, index_name, create_index):
         ],
     })
     assert req.status_code == 200, req.content
-    assert json.loads(req.content) == {}
+    assert json.loads(req.content)['version'] > 0
 
     # update fingerprint
     req = client.post(f'/{index_name}/_update', json={
@@ -159,7 +161,7 @@ def test_update_partial(client, index_name, create_index):
         ],
     })
     assert req.status_code == 200, req.content
-    assert json.loads(req.content) == {}
+    assert json.loads(req.content)['version'] > 0
 
     # verify we can't find the original version
     req = client.post(f'/{index_name}/_search', json={
@@ -196,7 +198,7 @@ def test_delete_multi(client, index_name, create_index):
         ],
     })
     assert req.status_code == 200, req.content
-    assert json.loads(req.content) == {}
+    assert json.loads(req.content)['version'] > 0
 
     # delete fingerprints
     req = client.post(f'/{index_name}/_update', json={
@@ -206,7 +208,7 @@ def test_delete_multi(client, index_name, create_index):
         ],
     })
     assert req.status_code == 200, req.content
-    assert json.loads(req.content) == {}
+    assert json.loads(req.content)['version'] > 0
 
     # verify we can't find it
     req = client.post(f'/{index_name}/_search', json={
@@ -268,7 +270,7 @@ def test_persistence_after_soft_restart(server, client, index_name, create_index
         }
         with client.post(f'/{index_name}/_update', json=body) as req:
             assert req.status_code == 200, req.content
-            assert json.loads(req.content) == {}
+            assert json.loads(req.content)['version'] > 0
 
     server.restart()
     server.wait_for_ready(index_name, timeout=10.0)
@@ -300,9 +302,9 @@ def test_persistence_after_hard_restart(server, client, index_name, create_index
         }
         with client.post(f'/{index_name}/_update', json=body) as req:
             assert req.status_code == 200, req.content
-            assert json.loads(req.content) == {}
+            assert json.loads(req.content)['version'] > 0
     assert req.status_code == 200, req.content
-    assert json.loads(req.content) == {}
+    assert json.loads(req.content)['version'] > 0
 
     server.restart(kill=True)
     server.wait_for_ready(index_name, timeout=10.0)

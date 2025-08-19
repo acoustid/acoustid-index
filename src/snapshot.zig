@@ -85,7 +85,7 @@ test "index snapshot" {
     try index.waitForReady(1000);
 
     var hashes: [100]u32 = undefined;
-    try index.update(&[_]Change{.{
+    _ = try index.update(&[_]Change{.{
         .insert = .{
             .id = 1,
             .hashes = generateRandomHashes(&hashes, 1),

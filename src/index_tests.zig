@@ -46,7 +46,7 @@ test "index create, update and search" {
 
     var hashes: [100]u32 = undefined;
 
-    try index.update(&[_]Change{.{ .insert = .{
+    _ = try index.update(&[_]Change{.{ .insert = .{
         .id = 1,
         .hashes = generateRandomHashes(&hashes, 1),
     } }}, null);
@@ -87,7 +87,7 @@ test "index create, update, reopen and search" {
 
         try index.open(true);
 
-        try index.update(&[_]Change{.{ .insert = .{
+        _ = try index.update(&[_]Change{.{ .insert = .{
             .id = 1,
             .hashes = generateRandomHashes(&hashes, 1),
         } }}, null);
@@ -128,7 +128,7 @@ test "index many updates and inserts" {
 
     // Test 1: Individual inserts with duplicate IDs (testing updates)
     for (0..100) |i| {
-        try index.update(&[_]Change{.{ .insert = .{
+        _ = try index.update(&[_]Change{.{ .insert = .{
             .id = @as(u32, @intCast(i % 20)) + 1,
             .hashes = generateRandomHashes(&hashes, i),
         } }}, null);
@@ -158,7 +158,7 @@ test "index many updates and inserts" {
 
         if (batch.items.len == batch_size or i == total_count) {
             try index.waitForReady(10000);
-            try index.update(batch.items, null);
+            _ = try index.update(batch.items, null);
 
             // Clean up allocated hashes
             for (batch.items) |change| {
@@ -227,12 +227,12 @@ test "index, multiple fingerprints with the same hashes" {
 
     var hashes: [100]u32 = undefined;
 
-    try index.update(&[_]Change{.{ .insert = .{
+    _ = try index.update(&[_]Change{.{ .insert = .{
         .id = 1,
         .hashes = generateRandomHashes(&hashes, 1),
     } }}, null);
 
-    try index.update(&[_]Change{.{ .insert = .{
+    _ = try index.update(&[_]Change{.{ .insert = .{
         .id = 2,
         .hashes = generateRandomHashes(&hashes, 1),
     } }}, null);
