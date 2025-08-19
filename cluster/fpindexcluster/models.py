@@ -47,7 +47,32 @@ class DeleteIndexOperation(msgspec.Struct, tag="delete_index"):
     pass
 
 
-Operation = Union[CreateIndexOperation, DeleteIndexOperation]
+# Update operation structures that mirror fpindex Change types
+class Insert(msgspec.Struct):
+    """Insert operation - add fingerprint to index."""
+    id: int  # u32
+    hashes: list[int]  # []u32
+
+
+class Delete(msgspec.Struct):
+    """Delete operation - remove fingerprint from index."""
+    id: int  # u32
+
+
+class Change(msgspec.Struct):
+    """Change operation - union of insert or delete."""
+    insert: Insert | None = None
+    delete: Delete | None = None
+
+
+class UpdateOperation(msgspec.Struct, tag="update"):
+    """Operation to update fingerprints in an index."""
+    changes: list[Change]
+    metadata: dict | None = None
+    # Note: No expected_version here (cluster doesn't use version locking)
+
+
+Operation = Union[CreateIndexOperation, DeleteIndexOperation, UpdateOperation]
 
 
 class BootstrapQuery(msgspec.Struct):

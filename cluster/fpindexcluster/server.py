@@ -2,10 +2,11 @@
 
 import logging
 import re
-from aiohttp.web import Response, json_response, Application, AppRunner, TCPSite
+from aiohttp.web import Response, json_response, Application, AppRunner, TCPSite, Request
 import nats
 
 from .errors import InconsistentIndexState
+from .models import Change, Insert, Delete
 
 
 logger = logging.getLogger(__name__)
@@ -120,6 +121,75 @@ async def get_index_status(request):
         return json_response({}, status=404)
 
 
+async def update_index(request: Request):
+    """Handle fingerprint updates - POST /{index}/_update"""
+    index_name = request.match_info["index"]
+    manager = request.app["index_manager"]
+
+    # Validate index name
+    if not is_valid_index_name(index_name):
+        logger.warning(f"Invalid index name: '{index_name}'")
+        return json_response(
+            {
+                "error": "Invalid index name. Must start with alphanumeric character and contain only alphanumeric, underscore, and hyphen characters.",
+                "index": index_name,
+            },
+            status=400,
+        )
+
+    try:
+        # Parse request body as JSON (following fpindex UpdateRequestJSON structure)
+        request_data = await request.json()
+        
+        # Validate required fields
+        if "changes" not in request_data:
+            return json_response({"error": "Missing required field: changes"}, status=400)
+        
+        # Convert request to our Change objects
+        changes = []
+        for change_data in request_data["changes"]:
+            if "insert" in change_data and change_data["insert"] is not None:
+                insert_data = change_data["insert"]
+                if "id" not in insert_data or "hashes" not in insert_data:
+                    return json_response({"error": "Invalid insert operation: missing id or hashes"}, status=400)
+                changes.append(Change(
+                    insert=Insert(id=insert_data["id"], hashes=insert_data["hashes"]),
+                    delete=None
+                ))
+            elif "delete" in change_data and change_data["delete"] is not None:
+                delete_data = change_data["delete"]
+                if "id" not in delete_data:
+                    return json_response({"error": "Invalid delete operation: missing id"}, status=400)
+                changes.append(Change(
+                    insert=None,
+                    delete=Delete(id=delete_data["id"])
+                ))
+            else:
+                return json_response({"error": "Each change must have either insert or delete operation"}, status=400)
+        
+        if not changes:
+            return json_response({"error": "No changes provided"}, status=400)
+        
+        # Extract optional metadata
+        metadata = request_data.get("metadata")
+        
+        # Publish update to NATS
+        await manager.publish_update(index_name, changes, metadata)
+        
+        # Return success (no version like fpindex since we don't do version locking)
+        return json_response({}, status=200)
+        
+    except ValueError as e:
+        logger.warning(f"Invalid JSON in update request for '{index_name}': {e}")
+        return json_response({"error": "Invalid JSON format"}, status=400)
+    except InconsistentIndexState as exc:
+        logger.warning("Failed to update index %s", index_name, exc_info=True)
+        return json_response({"error": str(exc)}, status=409)
+    except Exception as exc:
+        logger.error("Failed to update index %s", index_name, exc_info=True)
+        return json_response({"error": str(exc)}, status=500)
+
+
 def create_app(nats_connection: nats.NATS, index_manager) -> Application:
     """Create and configure the aiohttp application."""
     app = Application()
@@ -135,8 +205,11 @@ def create_app(nats_connection: nats.NATS, index_manager) -> Application:
     app.router.add_put("/{index}", create_index)
     app.router.add_delete("/{index}", delete_index)
     app.router.add_get("/{index}", get_index_status)
+    
+    # Add update route
+    app.router.add_post("/{index}/_update", update_index)
 
-    logger.info("HTTP server configured with /_health and index management endpoints")
+    logger.info("HTTP server configured with /_health, index management, and update endpoints")
     return app
 
 
