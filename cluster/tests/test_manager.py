@@ -37,6 +37,14 @@ async def test_instantiate_index_updater(nats_connection: nats.NATS, fpindex_url
     """Test that IndexUpdater can be instantiated."""
     js = nats_connection.jetstream()
 
+    # Create a manager instance for the test
+    manager = await IndexManager.create(
+        nats_connection=nats_connection,
+        stream_prefix="test",
+        fpindex_url=fpindex_url,
+        instance_name="test-instance",
+    )
+
     async with aiohttp.ClientSession() as session:
         updater = IndexUpdater(
             index_name="test-index",
@@ -46,7 +54,7 @@ async def test_instantiate_index_updater(nats_connection: nats.NATS, fpindex_url
             subject="test.subject",
             fpindex_url=fpindex_url,
             instance_name="test-instance",
-            manager=None,
+            manager=manager,
         )
 
         assert updater is not None
@@ -55,6 +63,9 @@ async def test_instantiate_index_updater(nats_connection: nats.NATS, fpindex_url
         assert updater.subject == "test.subject"
         assert updater.fpindex_url == fpindex_url
         assert updater.instance_name == "test-instance"
+
+    # Clean up
+    await manager.cleanup()
 
 
 async def test_fpindex_server_health(fpindex_url: str) -> None:
