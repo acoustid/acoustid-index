@@ -84,11 +84,15 @@ def test_create_index(client, index_name, fmt):
 
     req = client.put(f"/{index_name}", headers=headers(fmt))
     assert req.status_code == 200, req.content
-    assert decode(fmt, req.content) == {}
+    if fmt == "json":
+        expected = {"version": 0}
+    else:
+        expected = {"v": 0}
+    assert decode(fmt, req.content) == expected
 
     req = client.put(f"/{index_name}", headers=headers(fmt))
     assert req.status_code == 200, req.content
-    assert decode(fmt, req.content) == {}
+    assert decode(fmt, req.content) == expected
 
     req = client.head(f"/{index_name}")
     assert req.status_code == 200, req.content
