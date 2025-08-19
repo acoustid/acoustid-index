@@ -59,7 +59,7 @@ class Delete(msgspec.Struct):
     id: int  # u32
 
 
-class Change(msgspec.Struct):
+class Change(msgspec.Struct, omit_defaults=True):
     """Change operation - union of insert or delete."""
     insert: Insert | None = None
     delete: Delete | None = None
@@ -68,8 +68,13 @@ class Change(msgspec.Struct):
 class UpdateOperation(msgspec.Struct, tag="update"):
     """Operation to update fingerprints in an index."""
     changes: list[Change]
-    metadata: dict | None = None
-    # Note: No expected_version here (cluster doesn't use version locking)
+    metadata: dict[str, str] | None = None
+
+
+class UpdateRequest(msgspec.Struct):
+    """HTTP update request structure matching fpindex format."""
+    changes: list[Change]
+    metadata: dict[str, str] | None = None
 
 
 Operation = Union[CreateIndexOperation, DeleteIndexOperation, UpdateOperation]

@@ -2,11 +2,12 @@
 
 import logging
 import re
+import msgspec
 from aiohttp.web import Response, json_response, Application, AppRunner, TCPSite, Request
 import nats
 
 from .errors import InconsistentIndexState
-from .models import Change, Insert, Delete
+from .models import Change, Insert, Delete, UpdateRequest
 
 
 logger = logging.getLogger(__name__)
@@ -138,50 +139,26 @@ async def update_index(request: Request):
         )
 
     try:
-        # Parse request body as JSON (following fpindex UpdateRequestJSON structure)
-        request_data = await request.json()
+        # Parse request with msgspec
+        request_body = await request.text()
+        update_request = msgspec.json.decode(request_body, type=UpdateRequest)
         
-        # Validate required fields
-        if "changes" not in request_data:
-            return json_response({"error": "Missing required field: changes"}, status=400)
-        
-        # Convert request to our Change objects
-        changes = []
-        for change_data in request_data["changes"]:
-            if "insert" in change_data and change_data["insert"] is not None:
-                insert_data = change_data["insert"]
-                if "id" not in insert_data or "hashes" not in insert_data:
-                    return json_response({"error": "Invalid insert operation: missing id or hashes"}, status=400)
-                changes.append(Change(
-                    insert=Insert(id=insert_data["id"], hashes=insert_data["hashes"]),
-                    delete=None
-                ))
-            elif "delete" in change_data and change_data["delete"] is not None:
-                delete_data = change_data["delete"]
-                if "id" not in delete_data:
-                    return json_response({"error": "Invalid delete operation: missing id"}, status=400)
-                changes.append(Change(
-                    insert=None,
-                    delete=Delete(id=delete_data["id"])
-                ))
-            else:
-                return json_response({"error": "Each change must have either insert or delete operation"}, status=400)
-        
-        if not changes:
-            return json_response({"error": "No changes provided"}, status=400)
-        
-        # Extract optional metadata
-        metadata = request_data.get("metadata")
+        # Validate that each change has either insert or delete (not both or neither)
+        for change in update_request.changes:
+            has_insert = change.insert is not None
+            has_delete = change.delete is not None
+            if has_insert == has_delete:  # both true or both false
+                return json_response({"error": "Each change must have exactly one of insert or delete operation"}, status=400)
         
         # Publish update to NATS
-        await manager.publish_update(index_name, changes, metadata)
+        await manager.publish_update(index_name, update_request.changes, update_request.metadata)
         
         # Return success (no version like fpindex since we don't do version locking)
         return json_response({}, status=200)
         
-    except ValueError as e:
-        logger.warning(f"Invalid JSON in update request for '{index_name}': {e}")
-        return json_response({"error": "Invalid JSON format"}, status=400)
+    except (ValueError, msgspec.DecodeError) as e:
+        logger.warning(f"Invalid request format for '{index_name}': {e}")
+        return json_response({"error": "Invalid request format"}, status=400)
     except InconsistentIndexState as exc:
         logger.warning("Failed to update index %s", index_name, exc_info=True)
         return json_response({"error": str(exc)}, status=409)

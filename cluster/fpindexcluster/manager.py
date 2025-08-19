@@ -295,36 +295,12 @@ class IndexUpdater:
         """Apply an UpdateOperation to fpindex by forwarding the HTTP request."""
         logger.info(f"Applying UpdateOperation with {len(operation.changes)} changes for '{self.index_name}'")
 
-        # Convert our internal Change format to fpindex format
-        fpindex_changes = []
-        for change in operation.changes:
-            if change.insert is not None:
-                fpindex_changes.append({
-                    "insert": {
-                        "id": change.insert.id,
-                        "hashes": change.insert.hashes
-                    }
-                })
-            elif change.delete is not None:
-                fpindex_changes.append({
-                    "delete": {
-                        "id": change.delete.id
-                    }
-                })
-        
-        # Build the request payload similar to fpindex UpdateRequestJSON
-        request_data = {
-            "changes": fpindex_changes,
-        }
+        # Build the request payload - use msgspec encoding to leverage omit_defaults
+        request_data = msgspec.to_builtins(operation)
         
         # Add metadata if present
         if operation.metadata is not None:
             request_data["metadata"] = operation.metadata
-        
-        # Add expected_version as per user requirement to guarantee exclusive access
-        # We use a dummy version since we want to ensure this fpindex instance
-        # is the only one changing the data, but we don't have version tracking in cluster
-        request_data["expected_version"] = None  # Let fpindex handle version checking
         
         # Forward to fpindex
         url = f"{self.fpindex_url}/{self.index_name}/_update"
@@ -671,17 +647,11 @@ class IndexManager:
             # Publish the operation to the index stream
             await self._publish_operation(index_name, DeleteIndexOperation())
 
-    async def publish_update(self, index_name: str, changes: list[Change], metadata: dict = None) -> None:
+    async def publish_update(self, index_name: str, changes: list[Change], metadata: dict[str, str] = None) -> None:
         """
         Publish an update operation to the index stream.
-        Validates that the index exists and is active before publishing.
         """
-        # Check if index exists and is active
-        status = await self.get_index_status(index_name)
-        if not status.status.active:
-            raise InconsistentIndexState(f"Index '{index_name}' is not active (cannot perform updates)")
-        
-        # Ensure stream exists for this index (should already exist if index is active)
+        # Ensure stream exists for this index
         await self._ensure_stream_exists(index_name)
         
         # Create and publish the update operation
@@ -696,7 +666,7 @@ class IndexManager:
         data = msgspec.msgpack.encode(op)
 
         # Add deduplication header for Create/Delete operations
-        # Update operations don't use deduplication (they should be idempotent by design)
+        # Update operations don't use deduplication
         headers = {}
         if isinstance(op, CreateIndexOperation):
             headers[Header.MSG_ID] = f"create-{index_name}"
