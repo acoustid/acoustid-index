@@ -8,7 +8,7 @@ from aiohttp.web import Response, json_response, Application, AppRunner, TCPSite
 import nats
 
 from .errors import InconsistentIndexState
-from .models import UpdateOperation
+from .models import UpdateRequest
 
 
 logger = logging.getLogger(__name__)
@@ -142,7 +142,7 @@ async def update_index(request: Request):
     try:
         # Parse request with msgspec
         request_body = await request.text()
-        update_request = msgspec.json.decode(request_body, type=UpdateOperation)
+        update_request = msgspec.json.decode(request_body, type=UpdateRequest)
 
         # Validate that each change has either insert or delete (not both or neither)
         for change in update_request.changes:

@@ -35,19 +35,6 @@ DEFAULT_INDEX_STATUS_UPDATE = IndexStatusUpdate(
 )
 
 
-class CreateIndexOperation(msgspec.Struct, tag="create_index"):
-    """Operation to create a new index - used as stream filler to ensure sequence=1 exists."""
-
-    pass
-
-
-class DeleteIndexOperation(msgspec.Struct, tag="delete_index"):
-    """Operation to delete an index."""
-
-    pass
-
-
-# Update operation structures that mirror fpindex Change types
 class Insert(msgspec.Struct):
     """Insert operation - add fingerprint to index."""
 
@@ -68,12 +55,31 @@ class Change(msgspec.Struct, omit_defaults=True):
     delete: Delete | None = None
 
 
+class CreateIndexOperation(msgspec.Struct, tag="create_index"):
+    """Operation to create a new index - used as stream filler to ensure sequence=1 exists."""
+
+    pass
+
+
+class DeleteIndexOperation(msgspec.Struct, tag="delete_index"):
+    """Operation to delete an index."""
+
+    pass
+
+
 class UpdateOperation(msgspec.Struct, tag="update"):
     """Operation to update fingerprints in an index."""
 
     changes: list[Change]
     metadata: dict[str, str] | None = None
 
+
+class UpdateRequest(msgspec.Struct):
+    """Request to update fingerprints in an index."""
+
+    changes: list[Change]
+    metadata: dict[str, str] | None = None
+    expected_version: int | None = None  # ?u64
 
 
 Operation = Union[CreateIndexOperation, DeleteIndexOperation, UpdateOperation]

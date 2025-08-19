@@ -23,6 +23,7 @@ from .models import (
     CreateIndexOperation,
     DeleteIndexOperation,
     UpdateOperation,
+    UpdateRequest,
     Operation,
     IndexStatus,
     IndexStatusChange,
@@ -297,7 +298,7 @@ class IndexUpdater:
         logger.info(f"Applying UpdateOperation with {len(operation.changes)} changes for '{self.index_name}'")
 
         # Build the request payload - use msgspec encoding to leverage omit_defaults
-        request_data = msgspec.json.encode(operation)
+        request_data = msgspec.json.encode(UpdateRequest(changes=operation.changes, metadata=operation.metadata))
 
         # Forward to fpindex
         url = f"{self.fpindex_url}/{self.index_name}/_update"
