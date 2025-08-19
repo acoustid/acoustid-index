@@ -132,15 +132,29 @@ pub fn getMetadata(self: *Self, allocator: std.mem.Allocator) !std.StringHashMap
 }
 
 pub const Stats = struct {
-    min_doc_id: ?u32,
-    max_doc_id: ?u32,
+    min_doc_id: u32,
+    max_doc_id: u32,
+    num_segments: usize,
+    num_docs: u32,
+
+    pub fn msgpackWrite(self: Stats, packer: anytype) !void {
+        try packer.writeMapHeader(4);
+        try packer.write("min");
+        try packer.write(self.min_doc_id);
+        try packer.write("max");
+        try packer.write(self.max_doc_id);
+        try packer.write("s");
+        try packer.write(self.num_segments);
+        try packer.write("d");
+        try packer.write(self.num_docs);
+    }
 };
 
 pub fn getStats(self: *Self) Stats {
-    const min_doc_id = self.getMinDocId();
-    const max_doc_id = self.getMaxDocId();
     return Stats{
-        .min_doc_id = if (min_doc_id == 0) null else min_doc_id,
-        .max_doc_id = if (max_doc_id == 0) null else max_doc_id,
+        .min_doc_id = self.getMinDocId(),
+        .max_doc_id = self.getMaxDocId(),
+        .num_segments = self.getNumSegments(),
+        .num_docs = self.getNumDocs(),
     };
 }

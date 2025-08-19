@@ -480,19 +480,13 @@ const Metadata = struct {
 
 const GetIndexResponse = struct {
     version: u64,
-    segments: usize,
-    docs: usize,
     metadata: Metadata,
     stats: IndexReader.Stats,
 
     pub fn msgpackWrite(self: GetIndexResponse, packer: anytype) !void {
-        try packer.writeMapHeader(5);
+        try packer.writeMapHeader(3);
         try packer.write("v");
         try packer.write(self.version);
-        try packer.write("s");
-        try packer.write(self.segments);
-        try packer.write("d");
-        try packer.write(self.docs);
         try packer.write("m");
         try packer.write(self.metadata);
         try packer.write("st");
@@ -509,8 +503,6 @@ fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
 
     const response = GetIndexResponse{
         .version = index_reader.getVersion(),
-        .segments = index_reader.getNumSegments(),
-        .docs = index_reader.getNumDocs(),
         .metadata = .{
             .metadata = blk: {
                 var managed_metadata = std.StringHashMap([]const u8).init(req.arena);

@@ -39,18 +39,14 @@ def test_get_index(client, index_name, create_index, fmt):
     if fmt == "json":
         expected = {
             "version": 1,
-            "segments": 1,
-            "docs": 1,
             "metadata": {"foo": "1234"},
-            "stats": {"min_doc_id": 1, "max_doc_id": 1},
+            "stats": {"min_doc_id": 1, "max_doc_id": 1, "num_segments": 1, "num_docs": 1},
         }
     else:
         expected = {
             "v": 1,
-            "s": 1,
-            "d": 1,
             "m": {"foo": "1234"},
-            "st": {"min_doc_id": 1, "max_doc_id": 1},
+            "st": {"min": 1, "max": 1, "s": 1, "d": 1},
         }
     assert decode(fmt, req.content) == expected
 
