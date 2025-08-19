@@ -13,6 +13,7 @@ const Change = @import("change.zig").Change;
 const Deadline = @import("utils/Deadline.zig");
 
 const SegmentMerger = @import("segment_merger.zig").SegmentMerger;
+const Metadata = @import("Metadata.zig");
 
 const Self = @This();
 
@@ -21,7 +22,7 @@ pub const Options = struct {};
 allocator: std.mem.Allocator,
 info: SegmentInfo = .{},
 status: SegmentStatus = .{},
-metadata: std.StringHashMapUnmanaged([]const u8) = .{},
+metadata: Metadata,
 docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
 min_doc_id: u32 = 0,
 max_doc_id: u32 = 0,
@@ -31,18 +32,14 @@ pub fn init(allocator: std.mem.Allocator, opts: Options) Self {
     _ = opts;
     return .{
         .allocator = allocator,
+        .metadata = Metadata.init(allocator),
     };
 }
 
 pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
     _ = delete_file;
 
-    var iter = self.metadata.iterator();
-    while (iter.next()) |e| {
-        self.allocator.free(e.key_ptr.*);
-        self.allocator.free(e.value_ptr.*);
-    }
-    self.metadata.deinit(self.allocator);
+    self.metadata.deinit();
     self.docs.deinit(self.allocator);
     self.items.deinit(self.allocator);
 }
@@ -82,7 +79,7 @@ pub fn build(self: *Self, changes: []const Change) !void {
         }
     }
 
-    try self.metadata.ensureTotalCapacity(self.allocator, num_metadata);
+    try self.metadata.ensureTotalCapacity(num_metadata);
     try self.docs.ensureTotalCapacity(self.allocator, num_docs);
     try self.items.ensureTotalCapacity(self.allocator, num_items);
 
@@ -122,12 +119,7 @@ pub fn build(self: *Self, changes: []const Change) !void {
                 }
             },
             .set_metadata => |op| {
-                const result = self.metadata.getOrPutAssumeCapacity(op.name);
-                if (!result.found_existing) {
-                    errdefer self.metadata.removeByPtr(result.key_ptr);
-                    result.key_ptr.* = try self.allocator.dupe(u8, op.name);
-                    result.value_ptr.* = try self.allocator.dupe(u8, op.value);
-                }
+                try self.metadata.setOwned(op.name, op.value);
             },
         }
     }
@@ -144,8 +136,8 @@ pub fn merge(self: *Self, merger: *SegmentMerger(Self)) !void {
 
     self.info = merger.segment.info;
 
-    self.metadata.deinit(self.allocator);
-    self.metadata = merger.segment.metadata.move();
+    self.metadata.deinit();
+    self.metadata = merger.segment.metadata;
 
     self.docs.deinit(self.allocator);
     self.docs = merger.segment.docs.move();

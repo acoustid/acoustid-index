@@ -10,6 +10,7 @@ const SharedPtr = @import("utils/shared_ptr.zig").SharedPtr;
 const DocInfo = @import("common.zig").DocInfo;
 
 const SegmentList = @import("segment_list.zig").SegmentList;
+const Metadata = @import("Metadata.zig");
 
 const FileSegment = @import("FileSegment.zig");
 const FileSegmentList = SegmentList(FileSegment);
@@ -119,11 +120,30 @@ pub fn getMetadata(self: *Self, allocator: std.mem.Allocator) !std.StringHashMap
         for (segments.value.nodes.items) |node| {
             var iter = node.value.metadata.iterator();
             while (iter.next()) |entry| {
-                const result = try metadata.getOrPut(allocator, entry.key_ptr.*);
+                const result = try metadata.getOrPut(allocator, entry.key);
                 if (!result.found_existing) {
-                    result.key_ptr.* = entry.key_ptr.*;
+                    result.key_ptr.* = entry.key;
                 }
-                result.value_ptr.* = entry.value_ptr.*;
+                result.value_ptr.* = entry.value;
+            }
+        }
+    }
+
+    return metadata;
+}
+
+pub fn getMetadataWrapper(self: *Self, allocator: std.mem.Allocator) !Metadata {
+    var metadata = Metadata.init(allocator);
+    errdefer metadata.deinit();
+
+    inline for (segment_lists) |n| {
+        const segments = @field(self, n);
+        for (segments.value.nodes.items) |node| {
+            var iter = node.value.metadata.iterator();
+            while (iter.next()) |entry| {
+                if (metadata.get(entry.key) == null) {
+                    try metadata.setBorrowed(entry.key, entry.value);
+                }
             }
         }
     }

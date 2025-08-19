@@ -4,6 +4,7 @@ const builtin = @import("builtin");
 const filefmt = @import("filefmt.zig");
 const SegmentInfo = @import("segment.zig").SegmentInfo;
 const Item = @import("segment.zig").Item;
+const Metadata = @import("Metadata.zig");
 
 pub const TextSegmentReader = struct {
     allocator: std.mem.Allocator,
@@ -13,14 +14,14 @@ pub const TextSegmentReader = struct {
 
     const SegmentData = struct {
         info: SegmentInfo,
-        metadata: std.StringHashMap([]const u8),
+        metadata: Metadata,
         docs: std.AutoHashMap(u32, bool),
         min_doc_id: u32,
 
         pub fn init(allocator: std.mem.Allocator, info: SegmentInfo) SegmentData {
             return .{
                 .info = info,
-                .metadata = std.StringHashMap([]const u8).init(allocator),
+                .metadata = Metadata.init(allocator),
                 .docs = std.AutoHashMap(u32, bool).init(allocator),
                 .min_doc_id = std.math.maxInt(u32),
             };

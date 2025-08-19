@@ -201,7 +201,7 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
     };
     try packer.write(header);
 
-    try packer.writeMap(segment.metadata);
+    try segment.metadata.msgpackWrite(packer);
     try packer.writeMap(segment.docs);
 
     try buffered_writer.flush();
@@ -294,7 +294,7 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
 
     segment.metadata.clearRetainingCapacity();
     if (header.has_metadata) {
-        try msgpack.unpackMapInto(reader, segment.allocator, &segment.metadata);
+        try segment.metadata.loadFromMsgpackOwned(reader, segment.allocator);
     }
 
     segment.min_doc_id = 0;

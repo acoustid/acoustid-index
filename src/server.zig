@@ -13,6 +13,7 @@ const SearchResults = common.SearchResults;
 const Change = @import("change.zig").Change;
 const Deadline = @import("utils/Deadline.zig");
 const snapshot = @import("snapshot.zig");
+const Metadata = @import("Metadata.zig");
 
 const metrics = @import("metrics.zig");
 
@@ -455,28 +456,6 @@ fn handleDeleteFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Respo
     return writeResponse(EmptyResponse{}, req, res);
 }
 
-const Metadata = struct {
-    metadata: std.StringHashMap([]const u8),
-
-    pub fn jsonStringify(self: Metadata, jws: anytype) !void {
-        try jws.beginObject();
-        var iter = self.metadata.iterator();
-        while (iter.next()) |entry| {
-            try jws.objectField(entry.key_ptr.*);
-            try jws.write(entry.value_ptr.*);
-        }
-        try jws.endObject();
-    }
-
-    pub fn msgpackWrite(self: Metadata, packer: anytype) !void {
-        try packer.writeMapHeader(self.metadata.count());
-        var iter = self.metadata.iterator();
-        while (iter.next()) |entry| {
-            try packer.write(entry.key_ptr.*);
-            try packer.write(entry.value_ptr.*);
-        }
-    }
-};
 
 const GetIndexResponse = struct {
     version: u64,
@@ -503,17 +482,7 @@ fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
 
     const response = GetIndexResponse{
         .version = index_reader.getVersion(),
-        .metadata = .{
-            .metadata = blk: {
-                var managed_metadata = std.StringHashMap([]const u8).init(req.arena);
-                const unmanaged_metadata = try index_reader.getMetadata(req.arena);
-                var iter = unmanaged_metadata.iterator();
-                while (iter.next()) |entry| {
-                    try managed_metadata.put(entry.key_ptr.*, entry.value_ptr.*);
-                }
-                break :blk managed_metadata;
-            },
-        },
+        .metadata = try index_reader.getMetadataWrapper(req.arena),
         .stats = index_reader.getStats(),
     };
     return writeResponse(response, req, res);

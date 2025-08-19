@@ -16,6 +16,7 @@ const filefmt = @import("filefmt.zig");
 const streamvbyte = @import("streamvbyte.zig");
 const BlockReader = @import("block.zig").BlockReader;
 const MAX_ITEMS_PER_BLOCK = @import("block.zig").MAX_ITEMS_PER_BLOCK;
+const Metadata = @import("Metadata.zig");
 
 const Self = @This();
 
@@ -27,7 +28,7 @@ allocator: std.mem.Allocator,
 dir: std.fs.Dir,
 info: SegmentInfo = .{},
 status: SegmentStatus = .{},
-metadata: std.StringHashMapUnmanaged([]const u8) = .{},
+metadata: Metadata,
 docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
 min_doc_id: u32 = 0,
 max_doc_id: u32 = 0,
@@ -47,16 +48,12 @@ pub fn init(allocator: std.mem.Allocator, options: Options) Self {
         .allocator = allocator,
         .dir = options.dir,
         .blocks = undefined,
+        .metadata = Metadata.init(allocator),
     };
 }
 
 pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
-    var iter = self.metadata.iterator();
-    while (iter.next()) |e| {
-        self.allocator.free(e.key_ptr.*);
-        self.allocator.free(e.value_ptr.*);
-    }
-    self.metadata.deinit(self.allocator);
+    self.metadata.deinit();
     self.docs.deinit(self.allocator);
 
     if (self.mmaped_data) |data| {
