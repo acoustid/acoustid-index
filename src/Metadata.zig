@@ -144,48 +144,6 @@ pub fn msgpackRead(unpacker: anytype) !Self {
     return self;
 }
 
-/// Create metadata from unmanaged hashmap, taking ownership of all strings
-pub fn fromUnmanagedOwned(allocator: std.mem.Allocator, hashmap: std.StringHashMapUnmanaged([]const u8)) !Self {
-    var metadata = initOwned(allocator);
-    errdefer metadata.deinit();
-
-    try metadata.ensureTotalCapacity(@intCast(hashmap.count()));
-    var iter = hashmap.iterator();
-    while (iter.next()) |entry| {
-        try metadata.set(entry.key_ptr.*, entry.value_ptr.*);
-    }
-
-    return metadata;
-}
-
-/// Create metadata from unmanaged hashmap, borrowing all strings
-pub fn fromUnmanagedBorrowed(allocator: std.mem.Allocator, hashmap: std.StringHashMapUnmanaged([]const u8)) !Self {
-    var metadata = initBorrowed(allocator);
-    errdefer metadata.deinit();
-
-    try metadata.ensureTotalCapacity(@intCast(hashmap.count()));
-    var iter = hashmap.iterator();
-    while (iter.next()) |entry| {
-        try metadata.set(entry.key_ptr.*, entry.value_ptr.*);
-    }
-
-    return metadata;
-}
-
-/// Convert to unmanaged hashmap (returns borrowed references to internal strings)
-pub fn toUnmanaged(self: Self, allocator: std.mem.Allocator) !std.StringHashMapUnmanaged([]const u8) {
-    var hashmap: std.StringHashMapUnmanaged([]const u8) = .{};
-    errdefer hashmap.deinit(allocator);
-
-    try hashmap.ensureTotalCapacity(allocator, @intCast(self.count()));
-    var iter = self.entries.iterator();
-    while (iter.next()) |entry| {
-        hashmap.putAssumeCapacity(entry.key_ptr.*, entry.value_ptr.*);
-    }
-
-    return hashmap;
-}
-
 /// Clear all entries, retaining capacity
 pub fn clearRetainingCapacity(self: *Self) void {
     if (self.owned) {
