@@ -113,9 +113,9 @@ pub fn jsonStringify(self: Self, jws: anytype) !void {
 /// JSON parsing
 pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) !Self {
     var parsed = try std.json.ArrayHashMap([]const u8).jsonParse(allocator, source, options);
-    errdefer parsed.deinit(allocator);
+    defer parsed.deinit(allocator);
 
-    var self = Self.initBorrowed(allocator);
+    var self = Self.initOwned(allocator);
     errdefer self.deinit();
 
     var iter = parsed.map.iterator();
