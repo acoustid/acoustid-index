@@ -17,28 +17,21 @@ pub const Delete = struct {
     }
 };
 
-pub const SetAttribute = struct {
-    name: []const u8,
-    value: u64,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
-
 pub const Change = union(enum) {
     insert: Insert,
     delete: Delete,
-    set_attribute: SetAttribute,
 
     pub fn msgpackFormat() msgpack.UnionFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
     }
 };
 
+pub const Metadata = @import("Metadata.zig");
+
 pub const Transaction = struct {
     id: u64,
     changes: []const Change,
+    metadata: ?Metadata = null,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };

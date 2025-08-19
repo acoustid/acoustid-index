@@ -5,6 +5,7 @@ const log = std.log.scoped(.oplog);
 const msgpack = @import("msgpack");
 
 const Change = @import("change.zig").Change;
+const Metadata = @import("change.zig").Metadata;
 const Transaction = @import("change.zig").Transaction;
 
 const Self = @This();
@@ -83,7 +84,7 @@ pub fn open(self: *Self, first_commit_id: u64, receiver: anytype, ctx: anytype) 
     defer oplog_it.deinit();
     while (try oplog_it.next()) |txn| {
         max_commit_id = @max(max_commit_id, txn.id);
-        try receiver(ctx, txn.changes, txn.id);
+        try receiver(ctx, txn.changes, txn.metadata, txn.id);
     }
     self.next_commit_id = max_commit_id + 1;
 }
@@ -206,7 +207,7 @@ pub fn truncate(self: *Self, commit_id: u64) !void {
     try self.truncateNoLock(commit_id);
 }
 
-pub fn write(self: *Self, changes: []const Change) !u64 {
+pub fn write(self: *Self, changes: []const Change, metadata: ?Metadata) !u64 {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
@@ -220,6 +221,7 @@ pub fn write(self: *Self, changes: []const Change) !u64 {
     try msgpack.encode(Transaction{
         .id = commit_id,
         .changes = changes,
+        .metadata = metadata,
     }, writer);
 
     try bufferred_writer.flush();
@@ -246,9 +248,10 @@ test "write entries" {
     defer oplog.deinit();
 
     const Updater = struct {
-        pub fn receive(self: *@This(), changes: []const Change, commit_id: u64) !void {
+        pub fn receive(self: *@This(), changes: []const Change, metadata: ?Metadata, commit_id: u64) !void {
             _ = self;
             _ = changes;
+            _ = metadata;
             _ = commit_id;
         }
     };
@@ -262,7 +265,7 @@ test "write entries" {
         .hashes = &[_]u32{ 1, 2, 3 },
     } }};
 
-    _ = try oplog.write(&changes);
+    _ = try oplog.write(&changes, null);
 
     var file = try tmp_dir.dir.openFile("oplog/0000000000000001.xlog", .{});
     defer file.close();

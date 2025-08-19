@@ -16,6 +16,7 @@ const filefmt = @import("filefmt.zig");
 const streamvbyte = @import("streamvbyte.zig");
 const BlockReader = @import("block.zig").BlockReader;
 const MAX_ITEMS_PER_BLOCK = @import("block.zig").MAX_ITEMS_PER_BLOCK;
+const Metadata = @import("Metadata.zig");
 
 const Self = @This();
 
@@ -27,7 +28,7 @@ allocator: std.mem.Allocator,
 dir: std.fs.Dir,
 info: SegmentInfo = .{},
 status: SegmentStatus = .{},
-attributes: std.StringHashMapUnmanaged(u64) = .{},
+metadata: Metadata,
 docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
 min_doc_id: u32 = 0,
 max_doc_id: u32 = 0,
@@ -47,15 +48,12 @@ pub fn init(allocator: std.mem.Allocator, options: Options) Self {
         .allocator = allocator,
         .dir = options.dir,
         .blocks = undefined,
+        .metadata = Metadata.initOwned(allocator),
     };
 }
 
 pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
-    var iter = self.attributes.iterator();
-    while (iter.next()) |e| {
-        self.allocator.free(e.key_ptr.*);
-    }
-    self.attributes.deinit(self.allocator);
+    self.metadata.deinit();
     self.docs.deinit(self.allocator);
 
     if (self.mmaped_data) |data| {
@@ -224,7 +222,12 @@ test "build and reader with duplicate hashes" {
         .{ .insert = .{ .id = 3, .hashes = &[_]u32{100} } },
     };
 
-    try source.build(&changes);
+    var metadata = Metadata.initOwned(std.testing.allocator);
+    defer metadata.deinit();
+
+    try metadata.set("foo", "bar");
+
+    try source.build(&changes, metadata);
 
     var source_reader = source.reader();
     defer source_reader.close();

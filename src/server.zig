@@ -13,6 +13,7 @@ const SearchResults = common.SearchResults;
 const Change = @import("change.zig").Change;
 const Deadline = @import("utils/Deadline.zig");
 const snapshot = @import("snapshot.zig");
+const Metadata = @import("Metadata.zig");
 
 const metrics = @import("metrics.zig");
 
@@ -357,6 +358,7 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 
 const UpdateRequestJSON = struct {
     changes: []Change,
+    metadata: ?Metadata = null,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
@@ -371,7 +373,7 @@ fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 
     metrics.update(body.changes.len);
 
-    try index.update(body.changes);
+    try index.update(body.changes, body.metadata);
 
     return writeResponse(EmptyResponse{}, req, res);
 }
@@ -434,7 +436,7 @@ fn handlePutFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response
 
     metrics.update(1);
 
-    try index.update(&[_]Change{change});
+    try index.update(&[_]Change{change}, null);
 
     return writeResponse(EmptyResponse{}, req, res);
 }
@@ -450,39 +452,15 @@ fn handleDeleteFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Respo
 
     metrics.update(1);
 
-    try index.update(&[_]Change{change});
+    try index.update(&[_]Change{change}, null);
 
     return writeResponse(EmptyResponse{}, req, res);
 }
 
-const Attributes = struct {
-    attributes: std.StringHashMapUnmanaged(u64),
-
-    pub fn jsonStringify(self: Attributes, jws: anytype) !void {
-        try jws.beginObject();
-        var iter = self.attributes.iterator();
-        while (iter.next()) |entry| {
-            try jws.objectField(entry.key_ptr.*);
-            try jws.write(entry.value_ptr.*);
-        }
-        try jws.endObject();
-    }
-
-    pub fn msgpackWrite(self: Attributes, packer: anytype) !void {
-        try packer.writeMapHeader(self.attributes.count());
-        var iter = self.attributes.iterator();
-        while (iter.next()) |entry| {
-            try packer.write(entry.key_ptr.*);
-            try packer.write(entry.value_ptr.*);
-        }
-    }
-};
-
 const GetIndexResponse = struct {
     version: u64,
-    segments: usize,
-    docs: usize,
-    attributes: Attributes,
+    metadata: Metadata,
+    stats: IndexReader.Stats,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
@@ -498,16 +476,19 @@ fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
 
     const response = GetIndexResponse{
         .version = index_reader.getVersion(),
-        .segments = index_reader.getNumSegments(),
-        .docs = index_reader.getNumDocs(),
-        .attributes = .{
-            .attributes = try index_reader.getAttributes(req.arena),
-        },
+        .metadata = try index_reader.getMetadata(req.arena),
+        .stats = index_reader.getStats(),
     };
     return writeResponse(response, req, res);
 }
 
 const EmptyResponse = struct {};
+
+const CreateIndexRequest = struct {
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
 
 fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = req.param("index") orelse return;
