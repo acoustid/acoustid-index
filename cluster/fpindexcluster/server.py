@@ -156,7 +156,7 @@ async def update_index(request: Request):
         # Return success (no version like fpindex since we don't do version locking)
         return json_response({}, status=200)
         
-    except (ValueError, msgspec.DecodeError) as e:
+    except (ValueError, msgspec.DecodeError, msgspec.ValidationError) as e:
         logger.warning(f"Invalid request format for '{index_name}': {e}")
         return json_response({"error": "Invalid request format"}, status=400)
     except InconsistentIndexState as exc:
