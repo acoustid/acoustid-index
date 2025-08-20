@@ -14,11 +14,16 @@ const Change = @import("change.zig").Change;
 const Deadline = @import("utils/Deadline.zig");
 const snapshot = @import("snapshot.zig");
 const Metadata = @import("Metadata.zig");
+const restoration = @import("restoration.zig");
 
 const metrics = @import("metrics.zig");
 
 const Context = struct {
     indexes: *MultiIndex,
+    
+    // Track restoration status for indexes
+    restoration_status: std.StringHashMap(restoration.RestoreStatus),
+    restoration_mutex: std.Thread.Mutex = .{},
 
     pub fn notFound(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
         return handleNotFound(ctx, req, res);
@@ -58,7 +63,11 @@ fn installSignalHandlers(server: *Server) void {
 }
 
 pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const u8, port: u16, threads: u16) !void {
-    var ctx = Context{ .indexes = indexes };
+    var ctx = Context{ 
+        .indexes = indexes,
+        .restoration_status = std.StringHashMap(restoration.RestoreStatus).init(allocator),
+    };
+    defer ctx.restoration_status.deinit();
 
     const config = httpz.Config{
         .address = address,
@@ -499,6 +508,8 @@ const UpdateResponse = struct {
 };
 
 const CreateIndexRequest = struct {
+    restore_from: ?restoration.RestoreSource = null,
+
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
     }
@@ -515,6 +526,20 @@ const CreateIndexResponse = struct {
 fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = req.param("index") orelse return;
 
+    // Parse request body if present
+    var request: CreateIndexRequest = .{};
+    if (req.body()) |body| {
+        if (body.len > 0) {
+            request = (try getRequestBody(CreateIndexRequest, req, res)) orelse return;
+        }
+    }
+
+    // Check if this is a restoration request
+    if (request.restore_from) |restore_source| {
+        return handleRestoreIndex(ctx, req, res, index_name, restore_source);
+    }
+
+    // Regular index creation (existing behavior)
     const index = try ctx.indexes.createIndex(index_name);
     defer ctx.indexes.releaseIndex(index);
     
@@ -526,6 +551,102 @@ fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
     };
 
     return writeResponse(response, req, res);
+}
+
+const RestoreIndexTask = struct {
+    ctx: *Context,
+    index_name: []const u8,
+    restore_source: restoration.RestoreSource,
+    allocator: std.mem.Allocator,
+};
+
+fn restoreIndexTask(task: RestoreIndexTask) void {
+    restoreIndexImpl(task) catch |err| {
+        log.err("restoration failed for index {s}: {}", .{ task.index_name, err });
+        
+        // Mark as failed
+        task.ctx.restoration_mutex.lock();
+        defer task.ctx.restoration_mutex.unlock();
+        task.ctx.restoration_status.put(task.index_name, .failed) catch {};
+    };
+    
+    // Cleanup
+    task.allocator.free(task.index_name);
+    switch (task.restore_source) {
+        .local_file => |path| task.allocator.free(path),
+        .http_url => |url| task.allocator.free(url),
+    }
+}
+
+fn restoreIndexImpl(task: RestoreIndexTask) !void {
+    log.info("starting restoration for index {s}", .{task.index_name});
+    
+    // Check if index already exists
+    if (task.ctx.indexes.indexExists(task.index_name)) {
+        log.err("index {s} already exists", .{task.index_name});
+        return error.IndexAlreadyExists;
+    }
+    
+    // Create temp directory for downloads
+    var tmp_dir = std.fs.cwd().makeOpenPath("/tmp", .{}) catch std.fs.cwd();
+    defer tmp_dir.close();
+    
+    // Perform restoration
+    var target_dir = try task.ctx.indexes.getIndexDir(task.index_name);
+    defer target_dir.close();
+    
+    try restoration.restoreFromTar(
+        task.allocator,
+        task.restore_source,
+        target_dir,
+        switch (task.restore_source) {
+            .local_file => std.fs.cwd(),
+            .http_url => tmp_dir,
+        },
+    );
+    
+    // Mark as completed
+    task.ctx.restoration_mutex.lock();
+    defer task.ctx.restoration_mutex.unlock();
+    task.ctx.restoration_status.put(task.index_name, .completed) catch {};
+    
+    log.info("restoration completed for index {s}", .{task.index_name});
+}
+
+fn handleRestoreIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response, index_name: []const u8, restore_source: restoration.RestoreSource) !void {
+    // Check if index already exists
+    if (ctx.indexes.indexExists(index_name)) {
+        res.status = 409;
+        return writeResponse(ErrorResponse{ .@"error" = "Index already exists" }, req, res);
+    }
+    
+    // Mark restoration as in progress
+    {
+        ctx.restoration_mutex.lock();
+        defer ctx.restoration_mutex.unlock();
+        try ctx.restoration_status.put(index_name, .in_progress);
+    }
+    
+    // Clone data for background task
+    const task_allocator = ctx.indexes.allocator;
+    const cloned_name = try task_allocator.dupe(u8, index_name);
+    const cloned_source = switch (restore_source) {
+        .local_file => |path| restoration.RestoreSource{ .local_file = try task_allocator.dupe(u8, path) },
+        .http_url => |url| restoration.RestoreSource{ .http_url = try task_allocator.dupe(u8, url) },
+    };
+    
+    // Schedule background restoration
+    const task = try ctx.indexes.scheduler.createTask(.medium, restoreIndexTask, .{RestoreIndexTask{
+        .ctx = ctx,
+        .index_name = cloned_name,
+        .restore_source = cloned_source,
+        .allocator = task_allocator,
+    }});
+    ctx.indexes.scheduler.scheduleTask(task);
+    
+    // Return 202 Accepted
+    res.status = 202;
+    return writeResponse(CreateIndexResponse{ .version = 0 }, req, res);
 }
 
 fn handleDeleteIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {

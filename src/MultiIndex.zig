@@ -182,3 +182,18 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
 
     try self.deleteIndexFiles(name);
 }
+
+pub fn indexExists(self: *Self, name: []const u8) bool {
+    self.lock.lock();
+    defer self.lock.unlock();
+    
+    return self.indexes.contains(name);
+}
+
+pub fn getIndexDir(self: *Self, name: []const u8) !std.fs.Dir {
+    if (!isValidName(name)) {
+        return error.InvalidIndexName;
+    }
+    
+    return try self.dir.makeOpenPath(name, .{});
+}
