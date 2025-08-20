@@ -4,7 +4,6 @@ const assert = std.debug.assert;
 
 const Index = @import("Index.zig");
 const Scheduler = @import("utils/Scheduler.zig");
-const Future = @import("utils/Future.zig");
 
 const Self = @This();
 
