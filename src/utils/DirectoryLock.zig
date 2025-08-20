@@ -5,10 +5,6 @@ const Self = @This();
 
 const LOCK_FILE_NAME = ".lock";
 
-// Process-local registry to prevent multiple locks on the same directory within the same process  
-var locked_dirs = std.AutoHashMap(std.posix.fd_t, void).init(std.heap.page_allocator);
-var locked_dirs_mutex = std.Thread.Mutex{};
-
 dir: std.fs.Dir,
 lock_file: ?std.fs.File = null,
 
@@ -25,16 +21,6 @@ pub fn deinit(self: *Self) void {
 pub fn acquire(self: *Self) !void {
     if (self.lock_file != null) {
         return error.AlreadyLocked;
-    }
-
-    // Check process-local registry first
-    {
-        locked_dirs_mutex.lock();
-        defer locked_dirs_mutex.unlock();
-        
-        if (locked_dirs.contains(self.dir.fd)) {
-            return error.ResourceBusy;
-        }
     }
 
     // Try to create lock file exclusively first
@@ -60,13 +46,6 @@ pub fn acquire(self: *Self) !void {
                 return lock_err;
             };
             
-            // Add to process-local registry
-            {
-                locked_dirs_mutex.lock();
-                defer locked_dirs_mutex.unlock();
-                locked_dirs.put(self.dir.fd, {}) catch {};
-            }
-            
             self.lock_file = existing_file;
             return;
         },
@@ -75,14 +54,6 @@ pub fn acquire(self: *Self) !void {
     errdefer lock_file.close();
 
     try self.lockFile(lock_file);
-    
-    // Add to process-local registry
-    {
-        locked_dirs_mutex.lock();
-        defer locked_dirs_mutex.unlock();
-        locked_dirs.put(self.dir.fd, {}) catch {};
-    }
-    
     self.lock_file = lock_file;
 }
 
@@ -91,13 +62,6 @@ pub fn release(self: *Self) void {
         self.unlockFile(file);
         file.close();
         self.lock_file = null;
-        
-        // Remove from process-local registry
-        {
-            locked_dirs_mutex.lock();
-            defer locked_dirs_mutex.unlock();
-            _ = locked_dirs.remove(self.dir.fd);
-        }
     }
 }
 
@@ -229,7 +193,7 @@ test "DirectoryLock basic operations" {
     try testing.expect(lock.isLocked());
 }
 
-test "DirectoryLock concurrent access prevention" {
+test "DirectoryLock cross-process behavior" {
     const testing = std.testing;
     
     var tmp_dir = std.testing.tmpDir(.{});
@@ -238,19 +202,17 @@ test "DirectoryLock concurrent access prevention" {
     var lock1 = Self.init(tmp_dir.dir);
     defer lock1.deinit();
     
-    var lock2 = Self.init(tmp_dir.dir);
-    defer lock2.deinit();
-    
     try lock1.acquire();
     try testing.expect(lock1.isLocked());
     
-    // Second lock should fail to acquire
-    try testing.expectError(error.ResourceBusy, lock2.acquire());
-    try testing.expect(!lock2.isLocked());
+    // Note: Within the same process, multiple DirectoryLock instances
+    // can acquire locks on the same directory. This only prevents
+    // cross-process access via file locking.
     
     lock1.release();
+    try testing.expect(!lock1.isLocked());
     
-    // Now second lock should succeed
-    try lock2.acquire();
-    try testing.expect(lock2.isLocked());
+    // Should be able to acquire again after release
+    try lock1.acquire();
+    try testing.expect(lock1.isLocked());
 }
