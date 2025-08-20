@@ -37,9 +37,18 @@ const TieredMergePolicy = @import("segment_merge_policy.zig").TieredMergePolicy;
 const filefmt = @import("filefmt.zig");
 
 const metrics = @import("metrics.zig");
+const restoration = @import("restoration.zig");
 const Self = @This();
 
+pub const Status = enum(u8) {
+    restoring = 0,
+    loading = 1,
+    ready = 2,
+    failed = 3,
+};
+
 pub const Options = struct {
+    restore_from: ?restoration.RestoreSource = null,
     min_segment_size: usize = 500_000,
     max_segment_size: usize = 750_000_000,
     max_concurrent_segment_loads: u32 = 4,
@@ -67,7 +76,7 @@ open_lock: std.Thread.Mutex = .{},
 loading_finished: std.Thread.ResetEvent = .{},
 loading_error: ?anyerror = null,
 load_task: ?Scheduler.Task = null,
-is_ready: std.atomic.Value(bool),
+status: std.atomic.Value(Status),
 
 segments_lock: std.Thread.RwLock = .{},
 memory_segments: SegmentListManager(MemorySegment),
@@ -127,7 +136,7 @@ pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, parent_dir: std
         .segments_lock = .{},
         .memory_segments = memory_segments,
         .file_segments = file_segments,
-        .is_ready = std.atomic.Value(bool).init(false),
+        .status = std.atomic.Value(Status).init(.loading),
     };
 }
 
@@ -296,6 +305,10 @@ fn maybeMergeMemorySegments(self: *Self) !bool {
 }
 
 pub fn open(self: *Self, create: bool) !void {
+    return self.openWithRestore(create, null);
+}
+
+pub fn openWithRestore(self: *Self, create: bool, restore_source: ?restoration.RestoreSource) !void {
     if (self.loading_finished.isSet()) {
         return;
     }
@@ -307,15 +320,47 @@ pub fn open(self: *Self, create: bool) !void {
         return error.AlreadyOpening;
     }
 
+    // Handle restoration first if specified
+    if (restore_source) |source| {
+        self.status.store(.restoring, .release);
+        
+        // Perform restoration synchronously in the open call
+        var tmp_dir: ?std.fs.Dir = null;
+        defer if (tmp_dir) |*dir| dir.close();
+        
+        const source_dir = switch (source) {
+            .local_file => std.fs.cwd(),
+            .http_url => blk: {
+                tmp_dir = std.fs.cwd().makeOpenPath("/tmp", .{}) catch std.fs.cwd();
+                break :blk tmp_dir.?;
+            },
+        };
+        
+        restoration.restoreFromTar(
+            self.allocator,
+            source,
+            self.dir,
+            source_dir,
+        ) catch |err| {
+            self.status.store(.failed, .release);
+            return err;
+        };
+        
+        self.status.store(.loading, .release);
+        log.info("restoration completed, proceeding to load index", .{});
+    }
+
     const manifest = filefmt.readManifestFile(self.dir, self.allocator) catch |err| {
         if (err == error.FileNotFound) {
             if (create) {
+                self.status.store(.loading, .release);
                 try self.updateManifestFile(self.file_segments.segments.value);
                 try self.load(&.{});
                 return;
             }
             return error.IndexNotFound;
         }
+        self.status.store(.failed, .release);
         return err;
     };
     errdefer self.allocator.free(manifest);
@@ -459,7 +504,7 @@ fn completeLoading(self: *Self, last_commit_id: u64) !void {
     try self.oplog.open(last_commit_id + 1, updateInternal, self);
 
     log.info("index loaded", .{});
-    self.is_ready.store(true, .release);
+    self.status.store(.ready, .release);
 }
 
 fn loadTask(self: *Self, manifest: []SegmentInfo) void {
@@ -468,6 +513,9 @@ fn loadTask(self: *Self, manifest: []SegmentInfo) void {
 
     self.load(manifest) catch |err| {
         log.err("load failed: {}", .{err});
+        self.status.store(.failed, .release);
+        self.loading_error = err;
+        self.loading_finished.set();
     };
 }
 
@@ -514,9 +562,17 @@ pub fn waitForReady(self: *Self, timeout_ms: u32) !void {
 }
 
 pub fn checkReady(self: *Self) !void {
-    if (!self.is_ready.load(.acquire)) {
+    if (self.status.load(.acquire) != .ready) {
         return error.IndexNotReady;
     }
+}
+
+pub fn getStatus(self: *Self) Status {
+    return self.status.load(.acquire);
+}
+
+pub fn isReady(self: *Self) bool {
+    return self.status.load(.acquire) == .ready;
 }
 
 pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata, expected_version: ?u64) !u64 {

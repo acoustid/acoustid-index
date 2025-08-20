@@ -4,6 +4,7 @@ const assert = std.debug.assert;
 
 const Index = @import("Index.zig");
 const Scheduler = @import("utils/Scheduler.zig");
+const restoration = @import("restoration.zig");
 
 const Self = @This();
 
@@ -119,6 +120,10 @@ pub fn releaseIndex(self: *Self, index: *Index) void {
 }
 
 fn acquireIndex(self: *Self, name: []const u8, create: bool) !*IndexRef {
+    return self.acquireIndexWithRestore(name, create, null);
+}
+
+fn acquireIndexWithRestore(self: *Self, name: []const u8, create: bool, restore_source: ?restoration.RestoreSource) !*IndexRef {
     if (!isValidName(name)) {
         return error.InvalidIndexName;
     }
@@ -142,7 +147,7 @@ fn acquireIndex(self: *Self, name: []const u8, create: bool) !*IndexRef {
     };
     errdefer result.value_ptr.index.deinit();
 
-    try result.value_ptr.index.open(create);
+    try result.value_ptr.index.openWithRestore(create, restore_source);
 
     result.value_ptr.incRef();
     return result.value_ptr;
@@ -159,6 +164,19 @@ pub fn createIndex(self: *Self, name: []const u8) !*Index {
     log.info("creating index {s}", .{name});
 
     const index_ref = try self.acquireIndex(name, true);
+    errdefer self.releaseIndexRef(index_ref);
+
+    return &index_ref.index;
+}
+
+pub fn createIndexWithRestore(self: *Self, name: []const u8, restore_source: restoration.RestoreSource) !*Index {
+    log.info("creating index {s} from restoration", .{name});
+
+    if (self.indexExists(name)) {
+        return error.IndexAlreadyExists;
+    }
+
+    const index_ref = try self.acquireIndexWithRestore(name, true, restore_source);
     errdefer self.releaseIndexRef(index_ref);
 
     return &index_ref.index;
