@@ -25,71 +25,142 @@ pub const RestoreError = error{
     ProcessFailed,
 };
 
-/// Downloads a file from HTTP URL to a temporary location using curl subprocess
-fn downloadFromHttp(allocator: std.mem.Allocator, url: []const u8, temp_dir: std.fs.Dir) ![]const u8 {
-    // Generate a unique filename for the downloaded file
-    const filename = try std.fmt.allocPrint(allocator, "download_{d}.tar", .{std.time.timestamp()});
-    defer allocator.free(filename);
+/// Downloads and extracts tar file directly from HTTP URL using piped curl | tar
+fn downloadAndExtract(allocator: std.mem.Allocator, url: []const u8, target_dir: std.fs.Dir) !void {
+    // Get absolute path for tar extraction
+    const target_path = try target_dir.realpathAlloc(allocator, ".");
+    defer allocator.free(target_path);
 
-    // Create the full path for the downloaded file
-    const temp_path = try temp_dir.realpathAlloc(allocator, ".");
-    defer allocator.free(temp_path);
-    const full_path = try std.fs.path.join(allocator, &.{ temp_path, filename });
-    defer allocator.free(full_path);
-
-    // Use curl subprocess to download the file
+    // Create curl command
     const curl_args = [_][]const u8{
         "curl",
         "-L",          // Follow redirects
         "-f",          // Fail on HTTP errors
         "-s",          // Silent mode
         "-S",          // Show errors even in silent mode
-        "-o", full_path,  // Output file
         url,
     };
 
-    log.info("downloading {s} to {s}", .{ url, full_path });
+    // Create tar command
+    const tar_args = [_][]const u8{
+        "tar",
+        "-xf",         // Extract from stdin
+        "-",           // Read from stdin
+        "-C",          // Change to directory
+        target_path,   // Target directory
+    };
 
-    var child = std.process.Child.init(&curl_args, allocator);
-    child.stdout_behavior = .Ignore;
-    child.stderr_behavior = .Pipe;
+    log.info("downloading and extracting {s} to {s}", .{ url, target_path });
 
-    child.spawn() catch |err| {
+    // Start curl process
+    var curl_child = std.process.Child.init(&curl_args, allocator);
+    curl_child.stdout_behavior = .Pipe;
+    curl_child.stderr_behavior = .Pipe;
+
+    curl_child.spawn() catch |err| {
         log.err("failed to spawn curl: {}", .{err});
         return error.ProcessSpawnFailed;
     };
 
-    // Read stderr before waiting
-    const stderr_content = if (child.stderr) |stderr|
+    // Start tar process
+    var tar_child = std.process.Child.init(&tar_args, allocator);
+    tar_child.stdin_behavior = .Pipe;
+    tar_child.stdout_behavior = .Ignore;
+    tar_child.stderr_behavior = .Pipe;
+
+    tar_child.spawn() catch |err| {
+        log.err("failed to spawn tar: {}", .{err});
+        // Clean up curl process
+        _ = curl_child.kill() catch {};
+        return error.ProcessSpawnFailed;
+    };
+
+    // Pipe curl stdout to tar stdin
+    var pipe_buffer: [8192]u8 = undefined;
+    var curl_stdout = curl_child.stdout.?;
+    var tar_stdin = tar_child.stdin.?;
+    
+    // Close tar stdin when we're done to signal EOF
+    defer tar_stdin.close();
+
+    // Read from curl and write to tar
+    while (true) {
+        const bytes_read = curl_stdout.read(&pipe_buffer) catch |err| {
+            log.err("failed to read from curl: {}", .{err});
+            break;
+        };
+        
+        if (bytes_read == 0) break; // EOF from curl
+        
+        tar_stdin.writeAll(pipe_buffer[0..bytes_read]) catch |err| {
+            log.err("failed to write to tar: {}", .{err});
+            break;
+        };
+    }
+
+    // Close tar stdin to signal EOF
+    tar_stdin.close();
+
+    // Read stderr from both processes
+    const curl_stderr_content = if (curl_child.stderr) |stderr|
         stderr.readToEndAlloc(allocator, 4096) catch "unknown error"
     else
         "no stderr";
-    defer if (child.stderr != null) allocator.free(stderr_content);
+    defer if (curl_child.stderr != null) allocator.free(curl_stderr_content);
 
-    const term = child.wait() catch |err| {
+    const tar_stderr_content = if (tar_child.stderr) |stderr|
+        stderr.readToEndAlloc(allocator, 4096) catch "unknown error"
+    else
+        "no stderr";
+    defer if (tar_child.stderr != null) allocator.free(tar_stderr_content);
+
+    // Wait for both processes to finish
+    const curl_term = curl_child.wait() catch |err| {
         log.err("failed to wait for curl: {}", .{err});
         return error.ProcessFailed;
     };
 
-    switch (term) {
+    const tar_term = tar_child.wait() catch |err| {
+        log.err("failed to wait for tar: {}", .{err});
+        return error.ProcessFailed;
+    };
+
+    // Check curl result
+    switch (curl_term) {
         .Exited => |code| {
             if (code != 0) {
-                log.err("curl failed with exit code {d}: {s}", .{ code, stderr_content });
-                
-                // Clean up any partial download
-                temp_dir.deleteFile(filename) catch {};
+                log.err("curl failed with exit code {d}: {s}", .{ code, curl_stderr_content });
                 return error.NetworkError;
             }
         },
         else => {
-            log.err("curl terminated abnormally: {}", .{term});
-            temp_dir.deleteFile(filename) catch {};
+            log.err("curl terminated abnormally: {}", .{curl_term});
             return error.ProcessFailed;
         },
     }
 
-    // Return the filename (not full path) since caller will use it with temp_dir
-    return try allocator.dupe(u8, filename);
+    // Check tar result
+    switch (tar_term) {
+        .Exited => |code| {
+            if (code != 0) {
+                log.err("tar failed with exit code {d}: {s}", .{ code, tar_stderr_content });
+                return error.ExtractionFailed;
+            }
+        },
+        else => {
+            log.err("tar terminated abnormally: {}", .{tar_term});
+            return error.ProcessFailed;
+        },
+    }
+
+    // Validate that we have a manifest file
+    const manifest_file = target_dir.openFile("manifest", .{}) catch {
+        log.err("extracted tar does not contain manifest", .{});
+        return error.InvalidTarFormat;
+    };
+    manifest_file.close();
+
+    log.info("piped download and extraction completed successfully", .{});
 }
 
 /// Extracts tar file to target directory using tar subprocess and validates its contents
@@ -173,30 +244,15 @@ pub fn restoreFromTar(
 ) !void {
     log.info("starting restoration from tar", .{});
 
-    var tar_path: []const u8 = undefined;
-    var should_cleanup = false;
-    defer if (should_cleanup) allocator.free(tar_path);
-
-    // Get tar file path (download if needed)
     switch (source) {
         .local_file => |path| {
-            tar_path = path;
+            log.info("extracting from local file: {s}", .{path});
+            try extractAndValidate(allocator, path, target_dir, source_dir);
         },
         .http_url => |url| {
-            log.info("downloading from URL: {s}", .{url});
-            tar_path = try downloadFromHttp(allocator, url, source_dir);
-            should_cleanup = true;
+            log.info("downloading and extracting from URL: {s}", .{url});
+            try downloadAndExtract(allocator, url, target_dir);
         },
-    }
-
-    // Extract and validate
-    try extractAndValidate(allocator, tar_path, target_dir, source_dir);
-
-    // Cleanup downloaded file if needed
-    if (should_cleanup) {
-        source_dir.deleteFile(tar_path) catch |err| {
-            log.warn("failed to cleanup temp file {s}: {}", .{ tar_path, err });
-        };
     }
 
     log.info("restoration completed successfully", .{});
