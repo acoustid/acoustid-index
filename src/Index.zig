@@ -7,6 +7,7 @@ const zul = @import("zul");
 const Deadline = @import("utils/Deadline.zig");
 const Scheduler = @import("utils/Scheduler.zig");
 const WaitGroup = @import("utils/WaitGroup.zig");
+const DirectoryLock = @import("utils/DirectoryLock.zig");
 const Change = @import("change.zig").Change;
 const Metadata = @import("change.zig").Metadata;
 const SearchResult = @import("common.zig").SearchResult;
@@ -60,6 +61,7 @@ scheduler: *Scheduler,
 name: []const u8,
 
 dir: std.fs.Dir,
+directory_lock: DirectoryLock,
 
 oplog: Oplog,
 
@@ -88,6 +90,10 @@ fn getMemorySegmentSize(segment: SharedPtr(MemorySegment)) usize {
 pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, parent_dir: std.fs.Dir, path: []const u8, options: Options) !Self {
     var dir = try parent_dir.makeOpenPath(path, .{ .iterate = true });
     errdefer dir.close();
+
+    var directory_lock = DirectoryLock.init(dir);
+    try directory_lock.acquire();
+    errdefer directory_lock.deinit();
 
     var oplog = try Oplog.init(allocator, dir);
     errdefer oplog.deinit();
@@ -122,6 +128,7 @@ pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, parent_dir: std
         .allocator = allocator,
         .scheduler = scheduler,
         .dir = dir,
+        .directory_lock = directory_lock,
         .name = path,
         .oplog = oplog,
         .segments_lock = .{},
@@ -154,6 +161,7 @@ pub fn deinit(self: *Self) void {
     self.file_segments.deinit(self.allocator, .keep);
 
     self.oplog.deinit();
+    self.directory_lock.deinit();
     self.dir.close();
 }
 
