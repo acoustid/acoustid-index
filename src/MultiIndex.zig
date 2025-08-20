@@ -116,9 +116,14 @@ pub fn open(self: *Self) !void {
 
     var iter = self.dir.iterate();
     while (try iter.next()) |entry| {
-        if (entry.kind == .directory) {
-            _ = try self.openIndex(entry.name, false);
+        if (entry.kind != .directory) {
+            continue;
         }
+        if (!isValidName(entry.name)) {
+            log.warn("skipping unexpected directory {s}", .{entry.name});
+            continue;
+        }
+        _ = try self.openIndex(entry.name, false);
     }
 
     self.lock_file = lock_file;
