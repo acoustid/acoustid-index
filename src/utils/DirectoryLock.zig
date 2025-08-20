@@ -5,6 +5,10 @@ const Self = @This();
 
 const LOCK_FILE_NAME = ".lock";
 
+// Process-local registry to prevent multiple locks on the same directory within the same process  
+var locked_dirs = std.AutoHashMap(std.posix.fd_t, void).init(std.heap.page_allocator);
+var locked_dirs_mutex = std.Thread.Mutex{};
+
 dir: std.fs.Dir,
 lock_file: ?std.fs.File = null,
 
@@ -23,14 +27,62 @@ pub fn acquire(self: *Self) !void {
         return error.AlreadyLocked;
     }
 
-    const lock_file = try self.dir.createFile(LOCK_FILE_NAME, .{
+    // Check process-local registry first
+    {
+        locked_dirs_mutex.lock();
+        defer locked_dirs_mutex.unlock();
+        
+        if (locked_dirs.contains(self.dir.fd)) {
+            return error.ResourceBusy;
+        }
+    }
+
+    // Try to create lock file exclusively first
+    const lock_file = self.dir.createFile(LOCK_FILE_NAME, .{
         .read = true,
         .truncate = false,
-        .exclusive = false,
-    });
+        .exclusive = true,
+    }) catch |err| switch (err) {
+        error.PathAlreadyExists => {
+            // Lock file exists, try to open and lock it
+            const existing_file = self.dir.openFile(LOCK_FILE_NAME, .{ .mode = .read_write }) catch |open_err| switch (open_err) {
+                error.FileNotFound => {
+                    // File was deleted between our checks, try again
+                    return self.acquire();
+                },
+                else => return open_err,
+            };
+            errdefer existing_file.close();
+            
+            // Try to lock the existing file
+            self.lockFile(existing_file) catch |lock_err| {
+                existing_file.close();
+                return lock_err;
+            };
+            
+            // Add to process-local registry
+            {
+                locked_dirs_mutex.lock();
+                defer locked_dirs_mutex.unlock();
+                locked_dirs.put(self.dir.fd, {}) catch {};
+            }
+            
+            self.lock_file = existing_file;
+            return;
+        },
+        else => return err,
+    };
     errdefer lock_file.close();
 
     try self.lockFile(lock_file);
+    
+    // Add to process-local registry
+    {
+        locked_dirs_mutex.lock();
+        defer locked_dirs_mutex.unlock();
+        locked_dirs.put(self.dir.fd, {}) catch {};
+    }
+    
     self.lock_file = lock_file;
 }
 
@@ -40,8 +92,12 @@ pub fn release(self: *Self) void {
         file.close();
         self.lock_file = null;
         
-        // Best effort cleanup of lock file
-        self.dir.deleteFile(LOCK_FILE_NAME) catch {};
+        // Remove from process-local registry
+        {
+            locked_dirs_mutex.lock();
+            defer locked_dirs_mutex.unlock();
+            _ = locked_dirs.remove(self.dir.fd);
+        }
     }
 }
 
@@ -63,16 +119,16 @@ fn unlockFile(self: *Self, file: std.fs.File) void {
     }
 }
 
+const flock_struct = extern struct {
+    l_type: c_short,
+    l_whence: c_short,
+    l_start: isize,
+    l_len: isize,
+    l_pid: i32,
+};
+
 fn lockFileUnix(self: *Self, file: std.fs.File) !void {
     _ = self;
-    
-    const flock_struct = extern struct {
-        l_type: c_short,
-        l_whence: c_short,
-        l_start: isize,
-        l_len: isize,
-        l_pid: i32,
-    };
     
     var flock_data = flock_struct{
         .l_type = std.c.F.WRLCK,
@@ -84,20 +140,18 @@ fn lockFileUnix(self: *Self, file: std.fs.File) !void {
 
     const result = std.c.fcntl(file.handle, std.c.F.SETLK, &flock_data);
     if (result == -1) {
-        return error.ResourceBusy;
+        const err = std.posix.errno(result);
+        return switch (err) {
+            .ACCES, .AGAIN => error.ResourceBusy,
+            .BADF => error.InvalidHandle,
+            .INVAL => error.InvalidArgument,
+            else => std.posix.unexpectedErrno(err),
+        };
     }
 }
 
 fn unlockFileUnix(self: *Self, file: std.fs.File) void {
     _ = self;
-    
-    const flock_struct = extern struct {
-        l_type: c_short,
-        l_whence: c_short,
-        l_start: isize,
-        l_len: isize,
-        l_pid: i32,
-    };
     
     var flock_data = flock_struct{
         .l_type = std.c.F.UNLCK,
