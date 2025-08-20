@@ -166,6 +166,9 @@ class IndexUpdater:
                 config=consumer_config,
             )
 
+
+            print(await self.subscription.consumer_info())
+
             # Check if bootstrap is needed before processing messages
             await self._check_bootstrap_needed()
 
