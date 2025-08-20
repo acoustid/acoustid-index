@@ -82,7 +82,6 @@ test "index snapshot" {
     defer index.deinit();
 
     try index.open(true);
-    try index.waitForReady(1000);
 
     var hashes: [100]u32 = undefined;
     _ = try index.update(&[_]Change{.{
@@ -134,7 +133,6 @@ test "index snapshot" {
     defer index2.deinit();
 
     try index2.open(true);
-    try index2.waitForReady(1000);
 
     var index_reader2 = try index2.acquireReader();
     defer index2.releaseReader(&index_reader2);

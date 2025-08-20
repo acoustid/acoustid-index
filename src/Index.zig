@@ -63,12 +63,6 @@ dir: std.fs.Dir,
 
 oplog: Oplog,
 
-open_lock: std.Thread.Mutex = .{},
-loading_finished: std.Thread.ResetEvent = .{},
-loading_error: ?anyerror = null,
-load_task: ?Scheduler.Task = null,
-is_ready: std.atomic.Value(bool),
-
 segments_lock: std.Thread.RwLock = .{},
 memory_segments: SegmentListManager(MemorySegment),
 file_segments: SegmentListManager(FileSegment),
@@ -127,16 +121,11 @@ pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, parent_dir: std
         .segments_lock = .{},
         .memory_segments = memory_segments,
         .file_segments = file_segments,
-        .is_ready = std.atomic.Value(bool).init(false),
     };
 }
 
 pub fn deinit(self: *Self) void {
     log.info("closing index {}", .{@intFromPtr(self)});
-
-    if (self.load_task) |task| {
-        self.scheduler.destroyTask(task);
-    }
 
     if (self.checkpoint_task) |task| {
         self.scheduler.destroyTask(task);
@@ -296,17 +285,6 @@ fn maybeMergeMemorySegments(self: *Self) !bool {
 }
 
 pub fn open(self: *Self, create: bool) !void {
-    if (self.loading_finished.isSet()) {
-        return;
-    }
-
-    self.open_lock.lock();
-    defer self.open_lock.unlock();
-
-    if (self.load_task != null) {
-        return error.AlreadyOpening;
-    }
-
     const manifest = filefmt.readManifestFile(self.dir, self.allocator) catch |err| {
         if (err == error.FileNotFound) {
             if (create) {
@@ -320,8 +298,7 @@ pub fn open(self: *Self, create: bool) !void {
     };
     errdefer self.allocator.free(manifest);
 
-    self.load_task = try self.scheduler.createTask(.medium, loadTask, .{ self, manifest });
-    self.scheduler.scheduleTask(self.load_task.?);
+    try self.load(manifest);
 }
 
 fn loadSegmentTask(ctx: SegmentLoadContext) void {
@@ -342,20 +319,13 @@ fn loadSegmentTask(ctx: SegmentLoadContext) void {
 
 fn load(self: *Self, manifest: []SegmentInfo) !void {
     defer self.allocator.free(manifest);
-    defer self.loading_finished.set();
 
     log.info("found {} segments in manifest", .{manifest.len});
 
     if (manifest.len >= self.options.parallel_segment_loading_threshold) {
-        self.loadParallel(manifest) catch |err| {
-            self.loading_error = err;
-            return err;
-        };
+        try self.loadParallel(manifest);
     } else {
-        self.loadSequential(manifest) catch |err| {
-            self.loading_error = err;
-            return err;
-        };
+        try self.loadSequential(manifest);
     }
 }
 
@@ -459,16 +429,6 @@ fn completeLoading(self: *Self, last_commit_id: u64) !void {
     try self.oplog.open(last_commit_id + 1, updateInternal, self);
 
     log.info("index loaded", .{});
-    self.is_ready.store(true, .release);
-}
-
-fn loadTask(self: *Self, manifest: []SegmentInfo) void {
-    self.open_lock.lock();
-    defer self.open_lock.unlock();
-
-    self.load(manifest) catch |err| {
-        log.err("load failed: {}", .{err});
-    };
 }
 
 fn maybeScheduleMemorySegmentMerge(self: *Self) void {
@@ -500,27 +460,7 @@ fn maybeScheduleCheckpoint(self: *Self) void {
     }
 }
 
-pub fn waitForReady(self: *Self, timeout_ms: u32) !void {
-    try self.loading_finished.timedWait(@as(u64, timeout_ms) * std.time.ns_per_ms);
-
-    self.open_lock.lock();
-    defer self.open_lock.unlock();
-
-    if (self.loading_error) |err| {
-        return err;
-    }
-
-    try self.checkReady();
-}
-
-pub fn checkReady(self: *Self) !void {
-    if (!self.is_ready.load(.acquire)) {
-        return error.IndexNotReady;
-    }
-}
-
 pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata, expected_version: ?u64) !u64 {
-    try self.checkReady();
     return try self.updateInternal(changes, metadata, null, expected_version);
 }
 
@@ -547,13 +487,11 @@ fn updateInternal(self: *Self, changes: []const Change, metadata: ?Metadata, com
 
     self.maybeScheduleMemorySegmentMerge();
     self.maybeScheduleCheckpoint();
-    
+
     return version;
 }
 
 pub fn acquireReader(self: *Self) !IndexReader {
-    try self.checkReady();
-
     self.segments_lock.lockShared();
     defer self.segments_lock.unlockShared();
 
