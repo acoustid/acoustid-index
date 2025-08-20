@@ -21,29 +21,138 @@ pub const RestoreError = error{
     IndexAlreadyExists,
     ExtractionFailed,
     OutOfMemory,
+    ProcessSpawnFailed,
+    ProcessFailed,
 };
 
-/// Downloads a file from HTTP URL to a temporary location
+/// Downloads a file from HTTP URL to a temporary location using curl subprocess
 fn downloadFromHttp(allocator: std.mem.Allocator, url: []const u8, temp_dir: std.fs.Dir) ![]const u8 {
-    // For now, return error to implement later with proper HTTP client usage
-    _ = allocator;
-    _ = url;
-    _ = temp_dir;
-    log.err("HTTP download not yet implemented", .{});
-    return error.NetworkError;
+    // Generate a unique filename for the downloaded file
+    const filename = try std.fmt.allocPrint(allocator, "download_{d}.tar", .{std.time.timestamp()});
+    defer allocator.free(filename);
+
+    // Create the full path for the downloaded file
+    const temp_path = try temp_dir.realpathAlloc(allocator, ".");
+    defer allocator.free(temp_path);
+    const full_path = try std.fs.path.join(allocator, &.{ temp_path, filename });
+    defer allocator.free(full_path);
+
+    // Use curl subprocess to download the file
+    const curl_args = [_][]const u8{
+        "curl",
+        "-L",          // Follow redirects
+        "-f",          // Fail on HTTP errors
+        "-s",          // Silent mode
+        "-S",          // Show errors even in silent mode
+        "-o", full_path,  // Output file
+        url,
+    };
+
+    log.info("downloading {s} to {s}", .{ url, full_path });
+
+    var child = std.process.Child.init(&curl_args, allocator);
+    child.stdout_behavior = .Ignore;
+    child.stderr_behavior = .Pipe;
+
+    child.spawn() catch |err| {
+        log.err("failed to spawn curl: {}", .{err});
+        return error.ProcessSpawnFailed;
+    };
+
+    // Read stderr before waiting
+    const stderr_content = if (child.stderr) |stderr|
+        stderr.readToEndAlloc(allocator, 4096) catch "unknown error"
+    else
+        "no stderr";
+    defer if (child.stderr != null) allocator.free(stderr_content);
+
+    const term = child.wait() catch |err| {
+        log.err("failed to wait for curl: {}", .{err});
+        return error.ProcessFailed;
+    };
+
+    switch (term) {
+        .Exited => |code| {
+            if (code != 0) {
+                log.err("curl failed with exit code {d}: {s}", .{ code, stderr_content });
+                
+                // Clean up any partial download
+                temp_dir.deleteFile(filename) catch {};
+                return error.NetworkError;
+            }
+        },
+        else => {
+            log.err("curl terminated abnormally: {}", .{term});
+            temp_dir.deleteFile(filename) catch {};
+            return error.ProcessFailed;
+        },
+    }
+
+    // Return the filename (not full path) since caller will use it with temp_dir
+    return try allocator.dupe(u8, filename);
 }
 
-/// Extracts tar file to target directory and validates its contents
-fn extractAndValidate(_: std.mem.Allocator, tar_path: []const u8, target_dir: std.fs.Dir, source_dir: std.fs.Dir) !void {
-    // Open tar file
+/// Extracts tar file to target directory using tar subprocess and validates its contents
+fn extractAndValidate(allocator: std.mem.Allocator, tar_path: []const u8, target_dir: std.fs.Dir, source_dir: std.fs.Dir) !void {
+    // Verify tar file exists
     var tar_file = source_dir.openFile(tar_path, .{}) catch |err| switch (err) {
         error.FileNotFound => return error.FileNotFound,
         else => return error.InvalidTarFormat,
     };
-    defer tar_file.close();
+    tar_file.close();
 
-    // Extract tar to target directory
-    try std.tar.pipeToFileSystem(target_dir, tar_file.reader(), .{});
+    // Get absolute paths for tar extraction
+    const source_path = try source_dir.realpathAlloc(allocator, ".");
+    defer allocator.free(source_path);
+    const target_path = try target_dir.realpathAlloc(allocator, ".");
+    defer allocator.free(target_path);
+    const full_tar_path = try std.fs.path.join(allocator, &.{ source_path, tar_path });
+    defer allocator.free(full_tar_path);
+
+    // Use tar subprocess to extract the file
+    const tar_args = [_][]const u8{
+        "tar",
+        "-xf",         // Extract from file
+        full_tar_path, // Source tar file
+        "-C",          // Change to directory
+        target_path,   // Target directory
+    };
+
+    log.info("extracting {s} to {s}", .{ full_tar_path, target_path });
+
+    var child = std.process.Child.init(&tar_args, allocator);
+    child.stdout_behavior = .Ignore;
+    child.stderr_behavior = .Pipe;
+
+    child.spawn() catch |err| {
+        log.err("failed to spawn tar: {}", .{err});
+        return error.ProcessSpawnFailed;
+    };
+
+    // Read stderr before waiting
+    const stderr_content = if (child.stderr) |stderr|
+        stderr.readToEndAlloc(allocator, 4096) catch "unknown error"
+    else
+        "no stderr";
+    defer if (child.stderr != null) allocator.free(stderr_content);
+
+    const term = child.wait() catch |err| {
+        log.err("failed to wait for tar: {}", .{err});
+        return error.ProcessFailed;
+    };
+
+    switch (term) {
+        .Exited => |code| {
+            if (code != 0) {
+                log.err("tar failed with exit code {d}: {s}", .{ code, stderr_content });
+                return error.ExtractionFailed;
+            }
+        },
+        else => {
+            log.err("tar terminated abnormally: {}", .{term});
+            return error.ProcessFailed;
+        },
+    }
 
     // Validate that we have a manifest file
     const manifest_file = target_dir.openFile("manifest", .{}) catch {
