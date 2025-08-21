@@ -7,10 +7,13 @@ const Scheduler = @import("utils/Scheduler.zig");
 
 const Self = @This();
 
+const DELETE_TIMEOUT_MS = 5000; // 5 seconds timeout for deletion
+
 pub const IndexRef = struct {
     index: Index,
     references: usize = 0,
     delete_files: bool = false,
+    being_deleted: bool = false,
 
     pub fn incRef(self: *IndexRef) void {
         self.references += 1;
@@ -187,6 +190,9 @@ pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool) !*Index {
     defer self.lock.unlock();
 
     if (self.indexes.getEntry(name)) |entry| {
+        if (entry.value_ptr.being_deleted) {
+            return error.IndexBeingDeleted;
+        }
         return borrowIndex(entry.value_ptr);
     }
 
@@ -218,11 +224,44 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
 
     const entry = self.indexes.getEntry(name) orelse return;
 
-    const can_delete = entry.value_ptr.decRef();
-    if (!can_delete) {
-        entry.value_ptr.incRef();
-        return error.IndexInUse;
+    // Mark as being deleted to prevent new references
+    if (entry.value_ptr.being_deleted) {
+        return error.IndexAlreadyBeingDeleted;
     }
+    entry.value_ptr.being_deleted = true;
+    defer {
+        // Reset flag if we fail to delete
+        if (entry.value_ptr.being_deleted) {
+            entry.value_ptr.being_deleted = false;
+        }
+    }
+
+    log.info("marking index {s} for deletion, waiting for references to be released", .{name});
+
+    // Wait for all references except the map's reference to be released
+    const start_time = std.time.milliTimestamp();
+    while (entry.value_ptr.references > 1) {
+        const current_time = std.time.milliTimestamp();
+        if (current_time - start_time > DELETE_TIMEOUT_MS) {
+            log.warn("timeout waiting for index {s} references to be released (current: {d})", .{ name, entry.value_ptr.references });
+            return error.DeleteTimeout;
+        }
+        
+        // Release the lock briefly to allow other operations
+        self.lock.unlock();
+        std.time.sleep(10 * std.time.ns_per_ms); // Sleep for 10ms
+        self.lock.lock();
+        
+        // Check if the entry still exists (in case of concurrent operations)
+        const current_entry = self.indexes.getEntry(name) orelse return error.IndexNotFound;
+        if (current_entry.value_ptr != entry.value_ptr) {
+            return error.IndexNotFound;
+        }
+    }
+
+    // At this point, only the map holds a reference
+    const can_delete = entry.value_ptr.decRef();
+    assert(can_delete); // Should always be true since we waited for references == 1
 
     log.info("deleting index {s}", .{name});
 
@@ -230,6 +269,9 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
         entry.value_ptr.incRef();
         return err;
     };
+
+    // Clear the being_deleted flag since we're about to remove the entry
+    entry.value_ptr.being_deleted = false;
 
     // Ensure Index can safely log/use the name during deinit
     const key_mem = entry.key_ptr.*;
