@@ -88,47 +88,39 @@ pub const StreamConfig = struct {
     duplicate_window: ?u64 = null, // nanoseconds
 
     pub fn toJson(self: StreamConfig, allocator: Allocator) ![]u8 {
-        var json = std.ArrayList(u8).init(allocator);
-        defer json.deinit();
+        const JsonConfig = struct {
+            name: []const u8,
+            subjects: [][]const u8,
+            retention: []const u8,
+            storage: []const u8,
+            max_consumers: ?u32 = null,
+            max_msgs: ?u64 = null,
+            max_bytes: ?u64 = null,
+            max_age: ?u64 = null,
+            max_msg_size: ?u32 = null,
+            num_replicas: ?u8 = null,
+            duplicate_window: ?u64 = null,
+        };
         
-        try json.appendSlice("{");
-        try std.fmt.format(json.writer(), "\"name\":\"{s}\"", .{self.name});
+        const json_config = JsonConfig{
+            .name = self.name,
+            .subjects = self.subjects,
+            .retention = self.retention.toString(),
+            .storage = self.storage.toString(),
+            .max_consumers = self.max_consumers,
+            .max_msgs = self.max_msgs,
+            .max_bytes = self.max_bytes,
+            .max_age = self.max_age,
+            .max_msg_size = self.max_msg_size,
+            .num_replicas = self.num_replicas,
+            .duplicate_window = self.duplicate_window,
+        };
         
-        // Subjects array
-        try json.appendSlice(",\"subjects\":[");
-        for (self.subjects, 0..) |subject, i| {
-            if (i > 0) try json.appendSlice(",");
-            try std.fmt.format(json.writer(), "\"{s}\"", .{subject});
-        }
-        try json.appendSlice("]");
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
         
-        try std.fmt.format(json.writer(), ",\"retention\":\"{s}\"", .{self.retention.toString()});
-        try std.fmt.format(json.writer(), ",\"storage\":\"{s}\"", .{self.storage.toString()});
-        
-        if (self.max_consumers) |max| {
-            try std.fmt.format(json.writer(), ",\"max_consumers\":{d}", .{max});
-        }
-        if (self.max_msgs) |max| {
-            try std.fmt.format(json.writer(), ",\"max_msgs\":{d}", .{max});
-        }
-        if (self.max_bytes) |max| {
-            try std.fmt.format(json.writer(), ",\"max_bytes\":{d}", .{max});
-        }
-        if (self.max_age) |max| {
-            try std.fmt.format(json.writer(), ",\"max_age\":{d}", .{max});
-        }
-        if (self.max_msg_size) |max| {
-            try std.fmt.format(json.writer(), ",\"max_msg_size\":{d}", .{max});
-        }
-        if (self.num_replicas) |num| {
-            try std.fmt.format(json.writer(), ",\"num_replicas\":{d}", .{num});
-        }
-        if (self.duplicate_window) |window| {
-            try std.fmt.format(json.writer(), ",\"duplicate_window\":{d}", .{window});
-        }
-        
-        try json.appendSlice("}");
-        return json.toOwnedSlice();
+        try std.json.stringify(json_config, .{}, list.writer());
+        return list.toOwnedSlice();
     }
 };
 
@@ -151,58 +143,47 @@ pub const ConsumerConfig = struct {
     idle_heartbeat: ?u64 = null, // nanoseconds
 
     pub fn toJson(self: ConsumerConfig, allocator: Allocator) ![]u8 {
-        var json = std.ArrayList(u8).init(allocator);
-        defer json.deinit();
+        const JsonConfig = struct {
+            durable_name: ?[]const u8 = null,
+            deliver_policy: []const u8,
+            opt_start_seq: ?u64 = null,
+            opt_start_time: ?i64 = null,
+            ack_policy: []const u8,
+            ack_wait: ?u64 = null,
+            max_deliver: ?u32 = null,
+            filter_subject: ?[]const u8 = null,
+            replay_policy: ?[]const u8 = null,
+            rate_limit_bps: ?u64 = null,
+            sample_freq: ?[]const u8 = null,
+            max_waiting: ?u32 = null,
+            max_ack_pending: ?u32 = null,
+            flow_control: bool = false,
+            idle_heartbeat: ?u64 = null,
+        };
         
-        try json.appendSlice("{");
+        const json_config = JsonConfig{
+            .durable_name = self.durable_name,
+            .deliver_policy = self.deliver_policy.toString(),
+            .opt_start_seq = self.opt_start_seq,
+            .opt_start_time = self.opt_start_time,
+            .ack_policy = self.ack_policy.toString(),
+            .ack_wait = self.ack_wait,
+            .max_deliver = self.max_deliver,
+            .filter_subject = self.filter_subject,
+            .replay_policy = self.replay_policy,
+            .rate_limit_bps = self.rate_limit_bps,
+            .sample_freq = self.sample_freq,
+            .max_waiting = self.max_waiting,
+            .max_ack_pending = self.max_ack_pending,
+            .flow_control = self.flow_control,
+            .idle_heartbeat = self.idle_heartbeat,
+        };
         
-        var first = true;
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
         
-        if (self.durable_name) |name| {
-            try std.fmt.format(json.writer(), "\"durable_name\":\"{s}\"", .{name});
-            first = false;
-        }
-        
-        if (!first) try json.appendSlice(",");
-        try std.fmt.format(json.writer(), "\"deliver_policy\":\"{s}\"", .{self.deliver_policy.toString()});
-        first = false;
-        
-        if (!first) try json.appendSlice(",");
-        try std.fmt.format(json.writer(), "\"ack_policy\":\"{s}\"", .{self.ack_policy.toString()});
-        
-        if (self.opt_start_seq) |seq| {
-            try std.fmt.format(json.writer(), ",\"opt_start_seq\":{d}", .{seq});
-        }
-        if (self.opt_start_time) |time| {
-            try std.fmt.format(json.writer(), ",\"opt_start_time\":{d}", .{time});
-        }
-        if (self.ack_wait) |wait| {
-            try std.fmt.format(json.writer(), ",\"ack_wait\":{d}", .{wait});
-        }
-        if (self.max_deliver) |max| {
-            try std.fmt.format(json.writer(), ",\"max_deliver\":{d}", .{max});
-        }
-        if (self.filter_subject) |filter| {
-            try std.fmt.format(json.writer(), ",\"filter_subject\":\"{s}\"", .{filter});
-        }
-        if (self.rate_limit_bps) |rate| {
-            try std.fmt.format(json.writer(), ",\"rate_limit_bps\":{d}", .{rate});
-        }
-        if (self.max_waiting) |max| {
-            try std.fmt.format(json.writer(), ",\"max_waiting\":{d}", .{max});
-        }
-        if (self.max_ack_pending) |max| {
-            try std.fmt.format(json.writer(), ",\"max_ack_pending\":{d}", .{max});
-        }
-        if (self.flow_control) {
-            try std.fmt.format(json.writer(), ",\"flow_control\":true", .{});
-        }
-        if (self.idle_heartbeat) |heartbeat| {
-            try std.fmt.format(json.writer(), ",\"idle_heartbeat\":{d}", .{heartbeat});
-        }
-        
-        try json.appendSlice("}");
-        return json.toOwnedSlice();
+        try std.json.stringify(json_config, .{}, list.writer());
+        return list.toOwnedSlice();
     }
 };
 

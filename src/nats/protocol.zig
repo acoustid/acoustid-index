@@ -48,35 +48,11 @@ pub const ConnectInfo = struct {
     nkey: ?[]const u8 = null,
     
     pub fn toJson(self: ConnectInfo, allocator: std.mem.Allocator) ![]u8 {
-        var json = std.ArrayList(u8).init(allocator);
-        defer json.deinit();
+        var list = std.ArrayList(u8).init(allocator);
+        defer list.deinit();
         
-        try json.appendSlice("{");
-        try std.fmt.format(json.writer(), "\"verbose\":{s}", .{if (self.verbose) "true" else "false"});
-        try std.fmt.format(json.writer(), ",\"pedantic\":{s}", .{if (self.pedantic) "true" else "false"});
-        try std.fmt.format(json.writer(), ",\"tls_required\":{s}", .{if (self.tls_required) "true" else "false"});
-        try std.fmt.format(json.writer(), ",\"lang\":\"{s}\"", .{self.lang});
-        try std.fmt.format(json.writer(), ",\"version\":\"{s}\"", .{self.version});
-        try std.fmt.format(json.writer(), ",\"protocol\":{d}", .{self.protocol});
-        try std.fmt.format(json.writer(), ",\"echo\":{s}", .{if (self.echo) "true" else "false"});
-        try std.fmt.format(json.writer(), ",\"no_responders\":{s}", .{if (self.no_responders) "true" else "false"});
-        try std.fmt.format(json.writer(), ",\"headers\":{s}", .{if (self.headers) "true" else "false"});
-        
-        if (self.name) |name| {
-            try std.fmt.format(json.writer(), ",\"name\":\"{s}\"", .{name});
-        }
-        if (self.sig) |sig| {
-            try std.fmt.format(json.writer(), ",\"sig\":\"{s}\"", .{sig});
-        }
-        if (self.jwt) |jwt| {
-            try std.fmt.format(json.writer(), ",\"jwt\":\"{s}\"", .{jwt});
-        }
-        if (self.nkey) |nkey| {
-            try std.fmt.format(json.writer(), ",\"nkey\":\"{s}\"", .{nkey});
-        }
-        
-        try json.appendSlice("}");
-        return json.toOwnedSlice();
+        try std.json.stringify(self, .{}, list.writer());
+        return list.toOwnedSlice();
     }
 };
 
