@@ -163,21 +163,14 @@ fn deleteIndexFiles(self: *Self, name: []const u8) !void {
     };
 }
 
-fn releaseIndexRef(self: *Self, index_ref: *IndexRef) bool {
-    const delete = index_ref.decRef();
-    if (delete) {
-        log.info("deinit on index", .{});
-        index_ref.index.deinit();
-        self.allocator.free(index_ref.index.name);
-    }
-    return delete;
-}
-
 pub fn releaseIndex(self: *Self, index: *Index) void {
     self.lock.lock();
     defer self.lock.unlock();
 
-    _ = self.releaseIndexRef(@fieldParentPtr("index", index));
+    const index_ref: *IndexRef = @fieldParentPtr("index", index);
+    const can_delete = index_ref.decRef();
+    // the last ref should be held by the internal map and that's only released in deleteIndex
+    std.debug.assert(!can_delete);
 }
 
 fn borrowIndex(index_ref: *IndexRef) !*Index {
@@ -225,13 +218,13 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
 
     const entry = self.indexes.getEntry(name) orelse return;
 
-    log.info("deleting index {s}", .{name});
-
-    const deleted = self.releaseIndexRef(entry.value_ptr);
-    if (!deleted) {
+    const can_delete = entry.value_ptr.decRef();
+    if (!can_delete) {
         entry.value_ptr.incRef();
         return error.IndexInUse;
     }
+
+    log.info("deleting index {s}", .{name});
 
     self.deleteIndexFiles(name) catch |err| {
         entry.value_ptr.incRef();
@@ -239,4 +232,6 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
     };
 
     self.indexes.removeByPtr(entry.key_ptr);
+    self.allocator.free(entry.key_ptr.*);
+    entry.value_ptr.index.deinit();
 }
