@@ -231,7 +231,7 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
         return err;
     };
 
-    self.indexes.removeByPtr(entry.key_ptr);
-    self.allocator.free(entry.key_ptr.*);
     entry.value_ptr.index.deinit();
+    self.allocator.free(entry.key_ptr.*);
+    self.indexes.removeByPtr(entry.key_ptr);
 }
