@@ -231,7 +231,9 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
         return err;
     };
 
+    // Ensure Index can safely log/use the name during deinit
+    const key_mem = entry.key_ptr.*;
     entry.value_ptr.index.deinit();
-    self.allocator.free(entry.key_ptr.*);
     self.indexes.removeByPtr(entry.key_ptr);
+    self.allocator.free(key_mem);
 }
