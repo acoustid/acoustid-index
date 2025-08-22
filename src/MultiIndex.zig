@@ -422,6 +422,12 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
     if (entry.value_ptr.being_deleted) {
         return error.IndexAlreadyBeingDeleted;
     }
+    
+    // Cannot delete index while it's being restored
+    if (entry.value_ptr.state == .restoring) {
+        return error.IndexNotReady;
+    }
+    
     entry.value_ptr.being_deleted = true;
     defer {
         // Reset flag if we fail to delete
