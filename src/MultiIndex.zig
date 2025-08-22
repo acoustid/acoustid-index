@@ -353,12 +353,39 @@ fn markIndexRestoreComplete(self: *Self, name: []const u8) !void {
 fn restoreIndexFromHttp(self: *Self, name: []const u8, restore_opts: CreateIndexOptions.RestoreOptions) !void {
     log.info("restoring index {s} from http://{s}:{d}/{s}/_snapshot", .{ name, restore_opts.host, restore_opts.port, restore_opts.index_name });
 
+    // Validate inputs
+    if (restore_opts.port == 0) return error.InvalidPort;
+    if (!isValidName(restore_opts.index_name)) return error.InvalidIndexName;
+    
+    // Basic SSRF protection - block obvious loopback and private addresses
+    if (std.ascii.eqlIgnoreCase(restore_opts.host, "localhost") or
+        std.mem.startsWith(u8, restore_opts.host, "127.") or
+        std.mem.eql(u8, restore_opts.host, "::1") or
+        std.mem.startsWith(u8, restore_opts.host, "10.") or
+        std.mem.startsWith(u8, restore_opts.host, "192.168.") or
+        std.mem.startsWith(u8, restore_opts.host, "169.254.") or
+        std.mem.startsWith(u8, restore_opts.host, "172.")) {
+        return error.ForbiddenHost;
+    }
+
     // Create HTTP client
     var client = std.http.Client{ .allocator = self.allocator };
     defer client.deinit();
 
+    // Handle IPv6 addresses - bracket them if needed
+    var host_buf: ?[]u8 = null;
+    defer if (host_buf) |hb| self.allocator.free(hb);
+    const needs_brackets = std.mem.indexOfScalar(u8, restore_opts.host, ':') != null and
+        !(restore_opts.host.len >= 2 and restore_opts.host[0] == '[' and restore_opts.host[restore_opts.host.len - 1] == ']');
+    const host_for_url = blk: {
+        if (needs_brackets) {
+            host_buf = try std.mem.concat(self.allocator, u8, &[_][]const u8{ "[", restore_opts.host, "]" });
+            break :blk host_buf.?;
+        } else break :blk restore_opts.host;
+    };
+
     // Build URL
-    const url = try std.fmt.allocPrint(self.allocator, "http://{s}:{d}/{s}/_snapshot", .{ restore_opts.host, restore_opts.port, restore_opts.index_name });
+    const url = try std.fmt.allocPrint(self.allocator, "http://{s}:{d}/{s}/_snapshot", .{ host_for_url, restore_opts.port, restore_opts.index_name });
     defer self.allocator.free(url);
 
     // Allocate server header buffer
@@ -370,6 +397,9 @@ fn restoreIndexFromHttp(self: *Self, name: []const u8, restore_opts: CreateIndex
         .server_header_buffer = server_header_buffer,
     });
     defer req.deinit();
+
+    // Note: Accept header would be set here if the API supports it
+    // try req.headers.append("Accept", "application/x-tar");
 
     try req.send();
     try req.finish();
@@ -398,8 +428,12 @@ fn restoreIndexFromHttp(self: *Self, name: []const u8, restore_opts: CreateIndex
     defer tmp_dir.close();
     defer self.dir.deleteTree(tmp_dir_name) catch {};
 
-    // Extract tar directly from HTTP response
-    try std.tar.pipeToFileSystem(tmp_dir, req.reader(), .{});
+    // Enforce maximum snapshot size (4GB limit) to prevent tarbombs
+    const MAX_SNAPSHOT_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+    
+    // Extract tar with size limit to prevent disk exhaustion
+    var limited = std.io.limitedReader(req.reader(), MAX_SNAPSHOT_BYTES);
+    try std.tar.pipeToFileSystem(tmp_dir, limited.reader(), .{});
 
     // Move temporary directory to final location
     self.dir.rename(tmp_dir_name, name) catch |err| {
