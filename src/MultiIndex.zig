@@ -380,9 +380,16 @@ fn restoreIndexFromHttp(self: *Self, name: []const u8, restore_opts: CreateIndex
         return error.HttpRequestFailed;
     }
 
-    // Create temporary directory for extraction
-    const tmp_dir_name = try std.fmt.allocPrint(self.allocator, "{s}.tmp", .{name});
+    // Create temporary directory for extraction with unique name
+    const tmp_dir_name = try std.fmt.allocPrint(self.allocator, "{s}.restore-{d}", .{ name, std.time.milliTimestamp() });
     defer self.allocator.free(tmp_dir_name);
+
+    // Clean up any previous temp dir with the same name
+    self.dir.deleteTree(tmp_dir_name) catch |err| {
+        if (err != error.FileNotFound) {
+            log.warn("failed to remove old temporary directory {s}: {}", .{ tmp_dir_name, err });
+        }
+    };
 
     var tmp_dir = self.dir.makeOpenPath(tmp_dir_name, .{}) catch |err| {
         log.err("failed to create temporary directory {s}: {}", .{ tmp_dir_name, err });
