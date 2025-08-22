@@ -282,6 +282,10 @@ pub const CreateIndexOptions = struct {
         host: []const u8,
         port: u16,
         index_name: []const u8,
+        
+        pub fn msgpackFormat() @import("msgpack").StructFormat {
+            return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+        }
     };
 };
 

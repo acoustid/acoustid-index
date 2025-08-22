@@ -499,17 +499,7 @@ const UpdateResponse = struct {
 };
 
 const CreateIndexRequest = struct {
-    restore: ?RestoreOptions = null,
-    
-    const RestoreOptions = struct {
-        host: []const u8,
-        port: u16,
-        index_name: []const u8,
-        
-        pub fn msgpackFormat() msgpack.StructFormat {
-            return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-        }
-    };
+    restore: ?MultiIndex.CreateIndexOptions.RestoreOptions = null,
     
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
@@ -533,13 +523,7 @@ fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
     if (req.body()) |_| {
         if (getRequestBody(CreateIndexRequest, req, res)) |maybe_request_data| {
             if (maybe_request_data) |request_data| {
-                if (request_data.restore) |restore_opts| {
-                    create_options.restore = .{
-                        .host = restore_opts.host,
-                        .port = restore_opts.port,
-                        .index_name = restore_opts.index_name,
-                    };
-                }
+                create_options.restore = request_data.restore;
             }
         } else |_| {
             // Error already written to response
