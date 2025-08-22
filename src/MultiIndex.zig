@@ -9,11 +9,19 @@ const Self = @This();
 
 const DELETE_TIMEOUT_MS = 5000; // 5 seconds timeout for deletion
 
+pub const IndexState = enum {
+    ready,
+    restoring,
+    error_state,
+};
+
 pub const IndexRef = struct {
     index: Index,
     references: usize = 0,
     delete_files: bool = false,
     being_deleted: bool = false,
+    state: IndexState = .ready,
+    restore_task: ?Scheduler.Task = null,
 
     pub fn incRef(self: *IndexRef) void {
         self.references += 1;
@@ -177,6 +185,11 @@ pub fn releaseIndex(self: *Self, index: *Index) void {
 }
 
 fn borrowIndex(index_ref: *IndexRef) !*Index {
+    switch (index_ref.state) {
+        .ready => {},
+        .restoring => return error.IndexNotReady,
+        .error_state => return error.IndexRestoreFailed,
+    }
     index_ref.incRef();
     return &index_ref.index;
 }
@@ -200,8 +213,64 @@ pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool) !*Index {
         return error.IndexNotFound;
     }
 
-    log.info("creating index {s}", .{name});
+    // Create with no restore options (unlocked version)
+    return self.createIndexUnlocked(name, .{});
+}
 
+fn createIndexUnlocked(self: *Self, name: []const u8, options: CreateIndexOptions) !*Index {
+    // This is the internal version that assumes the lock is already held
+    if (self.indexes.getEntry(name)) |entry| {
+        if (entry.value_ptr.being_deleted) {
+            return error.IndexBeingDeleted;
+        }
+        // Return error only if explicitly requested (e.g., for restore operations)
+        if (options.fail_if_exists or options.restore != null) {
+            return error.IndexAlreadyExists;
+        }
+        // Otherwise maintain idempotent behavior for backward compatibility
+        return borrowIndex(entry.value_ptr);
+    }
+
+    if (options.restore) |restore_opts| {
+        // Create a placeholder entry in restoring state
+        const name_copy = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(name_copy);
+
+        var result = try self.indexes.getOrPut(self.allocator, name_copy);
+        if (result.found_existing) {
+            self.allocator.free(name_copy);
+            unreachable; // We already checked above
+        }
+        errdefer self.indexes.removeByPtr(result.key_ptr);
+
+        // Initialize with placeholder index and restoring state
+        result.value_ptr.* = .{
+            .index = undefined, // Will be initialized after restoration
+            .references = 1,
+            .state = .restoring,
+        };
+
+        // Deep-copy restore options off the request arena
+        const host_copy = try self.allocator.dupe(u8, restore_opts.host);
+        errdefer self.allocator.free(host_copy);
+        const index_name_copy = try self.allocator.dupe(u8, restore_opts.index_name);
+        errdefer self.allocator.free(index_name_copy);
+        const ro_copy = CreateIndexOptions.RestoreOptions{
+            .host = host_copy,
+            .port = restore_opts.port,
+            .index_name = index_name_copy,
+        };
+
+        // Schedule restoration task with owned options
+        const restore_task = try self.scheduler.createTask(.medium, restoreIndexTask, .{ self, name_copy, ro_copy });
+        result.value_ptr.restore_task = restore_task;
+        self.scheduler.scheduleTask(restore_task);
+
+        log.info("scheduled restoration for index {s}", .{name});
+        return error.IndexNotReady; // Caller should handle this as 202 Accepted
+    }
+
+    log.info("creating index {s}", .{name});
     const index_ref = try self.openIndex(name, true);
     return borrowIndex(index_ref);
 }
@@ -210,9 +279,176 @@ pub fn getIndex(self: *Self, name: []const u8) !*Index {
     return self.getOrCreateIndex(name, false);
 }
 
-pub fn createIndex(self: *Self, name: []const u8) !*Index {
-    return self.getOrCreateIndex(name, true);
+pub const CreateIndexOptions = struct {
+    restore: ?RestoreOptions = null,
+    fail_if_exists: bool = false,  // For backward compatibility, default to idempotent behavior
+    
+    pub const RestoreOptions = struct {
+        host: []const u8,
+        port: u16,
+        index_name: []const u8,
+        
+        pub fn msgpackFormat() @import("msgpack").StructFormat {
+            return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+        }
+    };
+};
+
+pub fn createIndex(self: *Self, name: []const u8, options: CreateIndexOptions) !*Index {
+    if (!isValidName(name)) {
+        return error.InvalidIndexName;
+    }
+
+    self.lock.lock();
+    defer self.lock.unlock();
+
+    return self.createIndexUnlocked(name, options);
 }
+
+fn restoreIndexTask(self: *Self, name: []const u8, restore_opts: CreateIndexOptions.RestoreOptions) void {
+    // Ensure we free the deep-copied slices
+    defer self.allocator.free(restore_opts.host);
+    defer self.allocator.free(restore_opts.index_name);
+
+    self.restoreIndexFromHttp(name, restore_opts) catch |err| {
+        log.err("failed to restore index {s}: {}", .{ name, err });
+        self.markIndexRestoreFailed(name);
+        return;
+    };
+    
+    self.markIndexRestoreComplete(name) catch |err| {
+        log.err("failed to complete index restoration for {s}: {}", .{ name, err });
+        self.markIndexRestoreFailed(name);
+        return;
+    };
+}
+
+fn markIndexRestoreFailed(self: *Self, name: []const u8) void {
+    self.lock.lock();
+    defer self.lock.unlock();
+    
+    if (self.indexes.getEntry(name)) |entry| {
+        entry.value_ptr.state = .error_state;
+        // Don't destroy task from within task execution - just clear the reference
+        entry.value_ptr.restore_task = null;
+    }
+}
+
+fn markIndexRestoreComplete(self: *Self, name: []const u8) !void {
+    self.lock.lock();
+    defer self.lock.unlock();
+    
+    const entry = self.indexes.getEntry(name) orelse return error.IndexNotFound;
+    
+    // Initialize the actual index now that files are restored
+    entry.value_ptr.index = try Index.init(self.allocator, self.scheduler, self.dir, name, self.index_options);
+    errdefer entry.value_ptr.index.deinit();
+    
+    try entry.value_ptr.index.open(false); // open existing index
+    
+    // Mark as ready
+    entry.value_ptr.state = .ready;
+    
+    // Don't destroy task from within task execution - just clear the reference
+    entry.value_ptr.restore_task = null;
+    
+    log.info("index {s} restoration completed successfully", .{name});
+}
+
+fn restoreIndexFromHttp(self: *Self, name: []const u8, restore_opts: CreateIndexOptions.RestoreOptions) !void {
+    log.info("restoring index {s} from http://{s}:{d}/{s}/_snapshot", .{ name, restore_opts.host, restore_opts.port, restore_opts.index_name });
+
+    // Validate inputs
+    if (restore_opts.port == 0) return error.InvalidPort;
+    if (!isValidName(restore_opts.index_name)) return error.InvalidIndexName;
+    
+    // Basic SSRF protection - block obvious loopback and private addresses
+    if (std.ascii.eqlIgnoreCase(restore_opts.host, "localhost") or
+        std.mem.startsWith(u8, restore_opts.host, "127.") or
+        std.mem.eql(u8, restore_opts.host, "::1") or
+        std.mem.startsWith(u8, restore_opts.host, "10.") or
+        std.mem.startsWith(u8, restore_opts.host, "192.168.") or
+        std.mem.startsWith(u8, restore_opts.host, "169.254.") or
+        std.mem.startsWith(u8, restore_opts.host, "172.")) {
+        return error.ForbiddenHost;
+    }
+
+    // Create HTTP client
+    var client = std.http.Client{ .allocator = self.allocator };
+    defer client.deinit();
+
+    // Handle IPv6 addresses - bracket them if needed
+    var host_buf: ?[]u8 = null;
+    defer if (host_buf) |hb| self.allocator.free(hb);
+    const needs_brackets = std.mem.indexOfScalar(u8, restore_opts.host, ':') != null and
+        !(restore_opts.host.len >= 2 and restore_opts.host[0] == '[' and restore_opts.host[restore_opts.host.len - 1] == ']');
+    const host_for_url = blk: {
+        if (needs_brackets) {
+            host_buf = try std.mem.concat(self.allocator, u8, &[_][]const u8{ "[", restore_opts.host, "]" });
+            break :blk host_buf.?;
+        } else break :blk restore_opts.host;
+    };
+
+    // Build URL
+    const url = try std.fmt.allocPrint(self.allocator, "http://{s}:{d}/{s}/_snapshot", .{ host_for_url, restore_opts.port, restore_opts.index_name });
+    defer self.allocator.free(url);
+
+    // Allocate server header buffer
+    const server_header_buffer = try self.allocator.alloc(u8, 8192);
+    defer self.allocator.free(server_header_buffer);
+
+    // Create HTTP request
+    var req = try client.open(.GET, try std.Uri.parse(url), .{
+        .server_header_buffer = server_header_buffer,
+    });
+    defer req.deinit();
+
+    // Note: Accept header would be set here if the API supports it
+    // try req.headers.append("Accept", "application/x-tar");
+
+    try req.send();
+    try req.finish();
+    try req.wait();
+
+    if (req.response.status != .ok) {
+        log.err("HTTP request failed with status: {}", .{req.response.status});
+        return error.HttpRequestFailed;
+    }
+
+    // Create temporary directory for extraction with unique name
+    const tmp_dir_name = try std.fmt.allocPrint(self.allocator, "{s}.restore-{d}", .{ name, std.time.milliTimestamp() });
+    defer self.allocator.free(tmp_dir_name);
+
+    // Clean up any previous temp dir with the same name
+    self.dir.deleteTree(tmp_dir_name) catch |err| {
+        if (err != error.FileNotFound) {
+            log.warn("failed to remove old temporary directory {s}: {}", .{ tmp_dir_name, err });
+        }
+    };
+
+    var tmp_dir = self.dir.makeOpenPath(tmp_dir_name, .{}) catch |err| {
+        log.err("failed to create temporary directory {s}: {}", .{ tmp_dir_name, err });
+        return err;
+    };
+    defer tmp_dir.close();
+    defer self.dir.deleteTree(tmp_dir_name) catch {};
+
+    // Enforce maximum snapshot size (4GB limit) to prevent tarbombs
+    const MAX_SNAPSHOT_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+    
+    // Extract tar with size limit to prevent disk exhaustion
+    var limited = std.io.limitedReader(req.reader(), MAX_SNAPSHOT_BYTES);
+    try std.tar.pipeToFileSystem(tmp_dir, limited.reader(), .{});
+
+    // Move temporary directory to final location
+    self.dir.rename(tmp_dir_name, name) catch |err| {
+        log.err("failed to move temporary directory {s} to {s}: {}", .{ tmp_dir_name, name, err });
+        return err;
+    };
+
+    log.info("successfully restored index {s}", .{name});
+}
+
 
 pub fn deleteIndex(self: *Self, name: []const u8) !void {
     if (!isValidName(name)) {
@@ -228,6 +464,12 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
     if (entry.value_ptr.being_deleted) {
         return error.IndexAlreadyBeingDeleted;
     }
+    
+    // Cannot delete index while it's being restored
+    if (entry.value_ptr.state == .restoring) {
+        return error.IndexNotReady;
+    }
+    
     entry.value_ptr.being_deleted = true;
     defer {
         // Reset flag if we fail to delete
@@ -265,6 +507,12 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
 
     log.info("deleting index {s}", .{name});
 
+    // Clean up restore task if it exists
+    if (entry.value_ptr.restore_task) |task| {
+        self.scheduler.destroyTask(task);
+        entry.value_ptr.restore_task = null;
+    }
+
     self.deleteIndexFiles(name) catch |err| {
         entry.value_ptr.incRef();
         return err;
@@ -275,7 +523,10 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
 
     // Ensure Index can safely log/use the name during deinit
     const key_mem = entry.key_ptr.*;
-    entry.value_ptr.index.deinit();
+    // Only deinit the index if it's in ready state (not restoring)
+    if (entry.value_ptr.state == .ready) {
+        entry.value_ptr.index.deinit();
+    }
     self.indexes.removeByPtr(entry.key_ptr);
     self.allocator.free(key_mem);
 }
