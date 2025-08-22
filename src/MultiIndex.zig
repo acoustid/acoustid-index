@@ -289,7 +289,11 @@ pub fn createIndexWithOptions(self: *Self, name: []const u8, options: CreateInde
         if (entry.value_ptr.being_deleted) {
             return error.IndexBeingDeleted;
         }
-        return error.IndexAlreadyExists;
+        // Only return error if restore options are provided - otherwise maintain idempotent behavior
+        if (options.restore != null) {
+            return error.IndexAlreadyExists;
+        }
+        return borrowIndex(entry.value_ptr);
     }
 
     if (options.restore) |restore_opts| {
