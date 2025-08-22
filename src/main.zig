@@ -104,12 +104,14 @@ pub fn main() !void {
     var scheduler = Scheduler.init(allocator);
     defer scheduler.deinit();
 
+    try scheduler.start(threads);
+
     var indexes = MultiIndex.init(allocator, &scheduler, dir, .{
         .parallel_segment_loading_threshold = parallel_loading_threshold,
     });
     defer indexes.deinit();
 
-    try scheduler.start(threads);
+    try indexes.open();
 
     try server.run(allocator, &indexes, address, port, threads);
 }

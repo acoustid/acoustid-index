@@ -7,36 +7,32 @@ const Scheduler = @import("utils/Scheduler.zig");
 
 const Self = @This();
 
+const DELETE_TIMEOUT_MS = 5000; // 5 seconds timeout for deletion
+
 pub const IndexRef = struct {
     index: Index,
-    name: []const u8,
     references: usize = 0,
-    last_used_at: i64 = std.math.minInt(i64),
-
-    pub fn deinit(self: *IndexRef, allocator: std.mem.Allocator) void {
-        allocator.free(self.name);
-        self.index.deinit();
-    }
+    delete_files: bool = false,
+    being_deleted: bool = false,
 
     pub fn incRef(self: *IndexRef) void {
         self.references += 1;
-        self.last_used_at = std.time.milliTimestamp();
     }
 
     pub fn decRef(self: *IndexRef) bool {
         assert(self.references > 0);
         self.references -= 1;
-        self.last_used_at = std.time.milliTimestamp();
         return self.references == 0;
     }
 };
 
 lock: std.Thread.Mutex = .{},
+lock_file: ?std.fs.File = null,
 allocator: std.mem.Allocator,
 scheduler: *Scheduler,
 dir: std.fs.Dir,
 index_options: Index.Options,
-indexes: std.StringHashMap(IndexRef),
+indexes: std.StringHashMapUnmanaged(IndexRef) = .{},
 
 fn isValidName(name: []const u8) bool {
     for (name, 0..) |c, i| {
@@ -72,101 +68,120 @@ pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, dir: std.fs.Dir
         .scheduler = scheduler,
         .dir = dir,
         .index_options = index_options,
-        .indexes = std.StringHashMap(IndexRef).init(allocator),
     };
+}
+
+fn openIndex(self: *Self, path: []const u8, comptime create: bool) !*IndexRef {
+    log.info("loading index {s}", .{path});
+
+    const name = try self.allocator.dupe(u8, path);
+    errdefer self.allocator.free(name);
+
+    var result = try self.indexes.getOrPut(self.allocator, name);
+    if (result.found_existing) {
+        unreachable;
+    }
+    errdefer self.indexes.removeByPtr(result.key_ptr);
+
+    result.value_ptr.* = .{
+        .index = try Index.init(self.allocator, self.scheduler, self.dir, name, self.index_options),
+        .references = 1,
+    };
+    errdefer result.value_ptr.index.deinit();
+
+    result.value_ptr.index.open(create) catch |err| {
+        if (create) {
+            log.err("failed to create index {s}: {}", .{ name, err });
+        } else {
+            log.err("failed to open index {s}: {}", .{ name, err });
+        }
+        return err;
+    };
+
+    return result.value_ptr;
+}
+
+pub fn open(self: *Self) !void {
+    self.lock.lock();
+    defer self.lock.unlock();
+
+    var lock_file = self.dir.createFile(".lock", .{}) catch |err| {
+        log.err("failed to open/create lock file: {}", .{err});
+        return err;
+    };
+    errdefer lock_file.close();
+
+    lock_file.lock(.exclusive) catch |err| {
+        log.err("failed to acquire lock file: {}", .{err});
+        return err;
+    };
+    errdefer lock_file.unlock();
+
+    var iter = self.dir.iterate();
+    while (try iter.next()) |entry| {
+        if (entry.kind != .directory) {
+            continue;
+        }
+        if (!isValidName(entry.name)) {
+            log.warn("skipping unexpected directory {s}", .{entry.name});
+            continue;
+        }
+        _ = try self.openIndex(entry.name, false);
+    }
+
+    self.lock_file = lock_file;
 }
 
 pub fn deinit(self: *Self) void {
     self.lock.lock();
     defer self.lock.unlock();
 
+    if (self.lock_file) |file| {
+        file.unlock();
+        file.close();
+    }
+
     var iter = self.indexes.iterator();
     while (iter.next()) |entry| {
-        self.allocator.free(entry.key_ptr.*);
         entry.value_ptr.index.deinit();
+        self.allocator.free(entry.key_ptr.*);
     }
-    self.indexes.deinit();
+    self.indexes.deinit(self.allocator);
 }
 
 fn deleteIndexFiles(self: *Self, name: []const u8) !void {
     const tmp_name = try std.mem.concat(self.allocator, u8, &[_][]const u8{ name, ".delete" });
     defer self.allocator.free(tmp_name);
+
     self.dir.rename(name, tmp_name) catch |err| {
         if (err == error.FileNotFound) {
             return;
         }
+        log.err("failed to rename index directory {s} to {s}: {}", .{ name, tmp_name, err });
         return err;
     };
-    try self.dir.deleteTree(tmp_name);
-}
 
-fn removeIndex(self: *Self, name: []const u8) void {
-    if (self.indexes.getEntry(name)) |entry| {
-        entry.value_ptr.deinit(self.allocator);
-        self.indexes.removeByPtr(entry.key_ptr);
-    }
-}
-
-fn releaseIndexRef(self: *Self, index_ref: *IndexRef) void {
-    self.lock.lock();
-    defer self.lock.unlock();
-
-    _ = index_ref.decRef();
+    self.dir.deleteTree(tmp_name) catch |err| {
+        log.err("failed to delete index directory {s}: {}", .{ tmp_name, err });
+    };
 }
 
 pub fn releaseIndex(self: *Self, index: *Index) void {
-    self.releaseIndexRef(@fieldParentPtr("index", index));
-}
-
-fn acquireIndex(self: *Self, name: []const u8, create: bool) !*IndexRef {
-    if (!isValidName(name)) {
-        return error.InvalidIndexName;
-    }
-
     self.lock.lock();
     defer self.lock.unlock();
 
-    var result = try self.indexes.getOrPutAdapted(name, self.indexes.ctx);
-    if (result.found_existing) {
-        result.value_ptr.incRef();
-        return result.value_ptr;
-    }
-    errdefer self.indexes.removeByPtr(result.key_ptr);
-
-    result.key_ptr.* = try self.allocator.dupe(u8, name);
-    errdefer self.allocator.free(result.key_ptr.*);
-
-    result.value_ptr.* = .{
-        .index = try Index.init(self.allocator, self.scheduler, self.dir, result.key_ptr.*, self.index_options),
-        .name = result.key_ptr.*,
-    };
-    errdefer result.value_ptr.index.deinit();
-
-    try result.value_ptr.index.open(create);
-
-    result.value_ptr.incRef();
-    return result.value_ptr;
+    const index_ref: *IndexRef = @fieldParentPtr("index", index);
+    const can_delete = index_ref.decRef();
+    // the last ref should be held by the internal map and that's only released in deleteIndex
+    std.debug.assert(!can_delete);
 }
 
-pub fn getIndex(self: *Self, name: []const u8) !*Index {
-    const index_ref = try self.acquireIndex(name, false);
-    errdefer self.releaseIndexRef(index_ref);
-
+fn borrowIndex(index_ref: *IndexRef) !*Index {
+    index_ref.incRef();
     return &index_ref.index;
 }
 
-pub fn createIndex(self: *Self, name: []const u8) !*Index {
-    log.info("creating index {s}", .{name});
-
-    const index_ref = try self.acquireIndex(name, true);
-    errdefer self.releaseIndexRef(index_ref);
-
-    return &index_ref.index;
-}
-
-pub fn deleteIndex(self: *Self, name: []const u8) !void {
-    log.info("deleting index {s}", .{name});
-
+pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool) !*Index {
     if (!isValidName(name)) {
         return error.InvalidIndexName;
     }
@@ -175,10 +190,92 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
     defer self.lock.unlock();
 
     if (self.indexes.getEntry(name)) |entry| {
-        entry.value_ptr.index.deinit();
-        self.allocator.free(entry.key_ptr.*);
-        self.indexes.removeByPtr(entry.key_ptr);
+        if (entry.value_ptr.being_deleted) {
+            return error.IndexBeingDeleted;
+        }
+        return borrowIndex(entry.value_ptr);
     }
 
-    try self.deleteIndexFiles(name);
+    if (!create) {
+        return error.IndexNotFound;
+    }
+
+    log.info("creating index {s}", .{name});
+
+    const index_ref = try self.openIndex(name, true);
+    return borrowIndex(index_ref);
+}
+
+pub fn getIndex(self: *Self, name: []const u8) !*Index {
+    return self.getOrCreateIndex(name, false);
+}
+
+pub fn createIndex(self: *Self, name: []const u8) !*Index {
+    return self.getOrCreateIndex(name, true);
+}
+
+pub fn deleteIndex(self: *Self, name: []const u8) !void {
+    if (!isValidName(name)) {
+        return error.InvalidIndexName;
+    }
+
+    self.lock.lock();
+    defer self.lock.unlock();
+
+    const entry = self.indexes.getEntry(name) orelse return;
+
+    // Mark as being deleted to prevent new references
+    if (entry.value_ptr.being_deleted) {
+        return error.IndexAlreadyBeingDeleted;
+    }
+    entry.value_ptr.being_deleted = true;
+    defer {
+        // Reset flag if we fail to delete
+        if (entry.value_ptr.being_deleted) {
+            entry.value_ptr.being_deleted = false;
+        }
+    }
+
+    log.info("marking index {s} for deletion, waiting for references to be released", .{name});
+
+    // Wait for all references except the map's reference to be released
+    const start_time = std.time.milliTimestamp();
+    while (entry.value_ptr.references > 1) {
+        const current_time = std.time.milliTimestamp();
+        if (current_time - start_time > DELETE_TIMEOUT_MS) {
+            log.warn("timeout waiting for index {s} references to be released (current: {d})", .{ name, entry.value_ptr.references });
+            return error.DeleteTimeout;
+        }
+        
+        // Release the lock briefly to allow other operations
+        self.lock.unlock();
+        std.time.sleep(10 * std.time.ns_per_ms); // Sleep for 10ms
+        self.lock.lock();
+        
+        // Check if the entry still exists (in case of concurrent operations)
+        const current_entry = self.indexes.getEntry(name) orelse return error.IndexNotFound;
+        if (current_entry.value_ptr != entry.value_ptr) {
+            return error.IndexNotFound;
+        }
+    }
+
+    // At this point, only the map holds a reference
+    const can_delete = entry.value_ptr.decRef();
+    assert(can_delete); // Should always be true since we waited for references == 1
+
+    log.info("deleting index {s}", .{name});
+
+    self.deleteIndexFiles(name) catch |err| {
+        entry.value_ptr.incRef();
+        return err;
+    };
+
+    // Clear the being_deleted flag since we're about to remove the entry
+    entry.value_ptr.being_deleted = false;
+
+    // Ensure Index can safely log/use the name during deinit
+    const key_mem = entry.key_ptr.*;
+    entry.value_ptr.index.deinit();
+    self.indexes.removeByPtr(entry.key_ptr);
+    self.allocator.free(key_mem);
 }

@@ -545,8 +545,6 @@ fn handleIndexHealth(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !
     const index = try getIndex(ctx, req, res, false) orelse return;
     defer releaseIndex(ctx, index);
 
-    try index.checkReady();
-
     try res.writer().writeAll("OK\n");
 }
 

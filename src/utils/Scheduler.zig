@@ -44,7 +44,10 @@ pub fn deinit(self: *Self) void {
     self.stop();
     self.threads.deinit(self.allocator);
 
-    std.debug.assert(self.num_tasks == 0);
+    if (self.num_tasks > 0) {
+        log.err("still have {} active tasks", .{self.num_tasks});
+        std.debug.assert(self.num_tasks == 0);
+    }
 }
 
 pub fn createTask(self: *Self, priority: Priority, comptime func: anytype, args: anytype) !Task {

@@ -98,7 +98,6 @@ test "index create, update, reopen and search" {
         defer index.deinit();
 
         try index.open(false);
-        try index.waitForReady(10000);
 
         var collector = SearchResults.init(std.testing.allocator, .{});
         defer collector.deinit();
@@ -157,7 +156,6 @@ test "index many updates and inserts" {
         } });
 
         if (batch.items.len == batch_size or i == total_count) {
-            try index.waitForReady(10000);
             _ = try index.update(batch.items, null, null);
 
             // Clean up allocated hashes
@@ -167,8 +165,6 @@ test "index many updates and inserts" {
             batch.clearRetainingCapacity();
         }
     }
-
-    try index.waitForReady(10000);
 
     // Verification tests
     {
