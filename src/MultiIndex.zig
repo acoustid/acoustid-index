@@ -210,8 +210,97 @@ pub fn getIndex(self: *Self, name: []const u8) !*Index {
     return self.getOrCreateIndex(name, false);
 }
 
+pub const CreateIndexOptions = struct {
+    restore: ?RestoreOptions = null,
+    
+    pub const RestoreOptions = struct {
+        host: []const u8,
+        port: u16,
+        index_name: []const u8,
+    };
+};
+
 pub fn createIndex(self: *Self, name: []const u8) !*Index {
-    return self.getOrCreateIndex(name, true);
+    return self.createIndexWithOptions(name, .{});
+}
+
+fn restoreIndexFromHttp(self: *Self, name: []const u8, restore_opts: CreateIndexOptions.RestoreOptions) !void {
+    log.info("restoring index {s} from http://{s}:{d}/{s}/_snapshot", .{ name, restore_opts.host, restore_opts.port, restore_opts.index_name });
+
+    // Create HTTP client
+    var client = std.http.Client{ .allocator = self.allocator };
+    defer client.deinit();
+
+    // Build URL
+    const url = try std.fmt.allocPrint(self.allocator, "http://{s}:{d}/{s}/_snapshot", .{ restore_opts.host, restore_opts.port, restore_opts.index_name });
+    defer self.allocator.free(url);
+
+    // Allocate server header buffer
+    const server_header_buffer = try self.allocator.alloc(u8, 8192);
+    defer self.allocator.free(server_header_buffer);
+
+    // Create HTTP request
+    var req = try client.open(.GET, try std.Uri.parse(url), .{
+        .server_header_buffer = server_header_buffer,
+    });
+    defer req.deinit();
+
+    try req.send();
+    try req.finish();
+    try req.wait();
+
+    if (req.response.status != .ok) {
+        log.err("HTTP request failed with status: {}", .{req.response.status});
+        return error.HttpRequestFailed;
+    }
+
+    // Create temporary directory for extraction
+    const tmp_dir_name = try std.fmt.allocPrint(self.allocator, "{s}.tmp", .{name});
+    defer self.allocator.free(tmp_dir_name);
+
+    var tmp_dir = self.dir.makeOpenPath(tmp_dir_name, .{}) catch |err| {
+        log.err("failed to create temporary directory {s}: {}", .{ tmp_dir_name, err });
+        return err;
+    };
+    defer tmp_dir.close();
+    defer self.dir.deleteTree(tmp_dir_name) catch {};
+
+    // Extract tar directly from HTTP response
+    try std.tar.pipeToFileSystem(tmp_dir, req.reader(), .{});
+
+    // Move temporary directory to final location
+    self.dir.rename(tmp_dir_name, name) catch |err| {
+        log.err("failed to move temporary directory {s} to {s}: {}", .{ tmp_dir_name, name, err });
+        return err;
+    };
+
+    log.info("successfully restored index {s}", .{name});
+}
+
+pub fn createIndexWithOptions(self: *Self, name: []const u8, options: CreateIndexOptions) !*Index {
+    if (!isValidName(name)) {
+        return error.InvalidIndexName;
+    }
+
+    self.lock.lock();
+    defer self.lock.unlock();
+
+    if (self.indexes.getEntry(name)) |entry| {
+        if (entry.value_ptr.being_deleted) {
+            return error.IndexBeingDeleted;
+        }
+        return error.IndexAlreadyExists;
+    }
+
+    if (options.restore) |restore_opts| {
+        // Handle restoration from HTTP source
+        try self.restoreIndexFromHttp(name, restore_opts);
+    }
+
+    log.info("creating index {s}", .{name});
+
+    const index_ref = try self.openIndex(name, true);
+    return borrowIndex(index_ref);
 }
 
 pub fn deleteIndex(self: *Self, name: []const u8) !void {

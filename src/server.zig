@@ -499,6 +499,18 @@ const UpdateResponse = struct {
 };
 
 const CreateIndexRequest = struct {
+    restore: ?RestoreOptions = null,
+    
+    const RestoreOptions = struct {
+        host: []const u8,
+        port: u16,
+        index_name: []const u8,
+        
+        pub fn msgpackFormat() msgpack.StructFormat {
+            return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+        }
+    };
+    
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
     }
@@ -515,7 +527,33 @@ const CreateIndexResponse = struct {
 fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = req.param("index") orelse return;
 
-    const index = try ctx.indexes.createIndex(index_name);
+    // Parse request body for restoration options
+    var create_options = MultiIndex.CreateIndexOptions{};
+    
+    if (req.body()) |_| {
+        if (getRequestBody(CreateIndexRequest, req, res)) |maybe_request_data| {
+            if (maybe_request_data) |request_data| {
+                if (request_data.restore) |restore_opts| {
+                    create_options.restore = .{
+                        .host = restore_opts.host,
+                        .port = restore_opts.port,
+                        .index_name = restore_opts.index_name,
+                    };
+                }
+            }
+        } else |_| {
+            // Error already written to response
+            return;
+        }
+    }
+
+    const index = ctx.indexes.createIndexWithOptions(index_name, create_options) catch |err| {
+        if (err == error.IndexAlreadyExists) {
+            try writeErrorResponse(409, err, req, res);
+            return;
+        }
+        return err;
+    };
     defer ctx.indexes.releaseIndex(index);
     
     var index_reader = try index.acquireReader();
