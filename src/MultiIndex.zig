@@ -9,11 +9,19 @@ const Self = @This();
 
 const DELETE_TIMEOUT_MS = 5000; // 5 seconds timeout for deletion
 
+pub const IndexState = enum {
+    ready,
+    restoring,
+    error_state,
+};
+
 pub const IndexRef = struct {
     index: Index,
     references: usize = 0,
     delete_files: bool = false,
     being_deleted: bool = false,
+    state: IndexState = .ready,
+    restore_task: ?Scheduler.Task = null,
 
     pub fn incRef(self: *IndexRef) void {
         self.references += 1;
@@ -177,6 +185,11 @@ pub fn releaseIndex(self: *Self, index: *Index) void {
 }
 
 fn borrowIndex(index_ref: *IndexRef) !*Index {
+    switch (index_ref.state) {
+        .ready => {},
+        .restoring => return error.IndexNotReady,
+        .error_state => return error.IndexRestoreFailed,
+    }
     index_ref.incRef();
     return &index_ref.index;
 }
@@ -200,8 +213,52 @@ pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool) !*Index {
         return error.IndexNotFound;
     }
 
-    log.info("creating index {s}", .{name});
+    // Create with no restore options (unlocked version)
+    return self.createIndexUnlocked(name, .{});
+}
 
+fn createIndexUnlocked(self: *Self, name: []const u8, options: CreateIndexOptions) !*Index {
+    // This is the internal version that assumes the lock is already held
+    if (self.indexes.getEntry(name)) |entry| {
+        if (entry.value_ptr.being_deleted) {
+            return error.IndexBeingDeleted;
+        }
+        // Only return error if restore options are provided - otherwise maintain idempotent behavior
+        if (options.restore != null) {
+            return error.IndexAlreadyExists;
+        }
+        return borrowIndex(entry.value_ptr);
+    }
+
+    if (options.restore) |restore_opts| {
+        // Create a placeholder entry in restoring state
+        const name_copy = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(name_copy);
+
+        var result = try self.indexes.getOrPut(self.allocator, name_copy);
+        if (result.found_existing) {
+            self.allocator.free(name_copy);
+            unreachable; // We already checked above
+        }
+        errdefer self.indexes.removeByPtr(result.key_ptr);
+
+        // Initialize with placeholder index and restoring state
+        result.value_ptr.* = .{
+            .index = undefined, // Will be initialized after restoration
+            .references = 1,
+            .state = .restoring,
+        };
+
+        // Schedule restoration task
+        const restore_task = try self.scheduler.createTask(.medium, restoreIndexTask, .{ self, name_copy, restore_opts });
+        result.value_ptr.restore_task = restore_task;
+        self.scheduler.scheduleTask(restore_task);
+
+        log.info("scheduled restoration for index {s}", .{name});
+        return error.IndexNotReady; // Caller should handle this as 202 Accepted
+    }
+
+    log.info("creating index {s}", .{name});
     const index_ref = try self.openIndex(name, true);
     return borrowIndex(index_ref);
 }
@@ -220,8 +277,66 @@ pub const CreateIndexOptions = struct {
     };
 };
 
-pub fn createIndex(self: *Self, name: []const u8) !*Index {
-    return self.createIndexWithOptions(name, .{});
+pub fn createIndex(self: *Self, name: []const u8, options: CreateIndexOptions) !*Index {
+    if (!isValidName(name)) {
+        return error.InvalidIndexName;
+    }
+
+    self.lock.lock();
+    defer self.lock.unlock();
+
+    return self.createIndexUnlocked(name, options);
+}
+
+fn restoreIndexTask(self: *Self, name: []const u8, restore_opts: CreateIndexOptions.RestoreOptions) void {
+    self.restoreIndexFromHttp(name, restore_opts) catch |err| {
+        log.err("failed to restore index {s}: {}", .{ name, err });
+        self.markIndexRestoreFailed(name);
+        return;
+    };
+    
+    self.markIndexRestoreComplete(name) catch |err| {
+        log.err("failed to complete index restoration for {s}: {}", .{ name, err });
+        self.markIndexRestoreFailed(name);
+        return;
+    };
+}
+
+fn markIndexRestoreFailed(self: *Self, name: []const u8) void {
+    self.lock.lock();
+    defer self.lock.unlock();
+    
+    if (self.indexes.getEntry(name)) |entry| {
+        entry.value_ptr.state = .error_state;
+        if (entry.value_ptr.restore_task) |task| {
+            self.scheduler.destroyTask(task);
+            entry.value_ptr.restore_task = null;
+        }
+    }
+}
+
+fn markIndexRestoreComplete(self: *Self, name: []const u8) !void {
+    self.lock.lock();
+    defer self.lock.unlock();
+    
+    const entry = self.indexes.getEntry(name) orelse return error.IndexNotFound;
+    
+    // Initialize the actual index now that files are restored
+    entry.value_ptr.index = try Index.init(self.allocator, self.scheduler, self.dir, name, self.index_options);
+    errdefer entry.value_ptr.index.deinit();
+    
+    try entry.value_ptr.index.open(false); // open existing index
+    
+    // Mark as ready
+    entry.value_ptr.state = .ready;
+    
+    // Clean up restore task
+    if (entry.value_ptr.restore_task) |task| {
+        self.scheduler.destroyTask(task);
+        entry.value_ptr.restore_task = null;
+    }
+    
+    log.info("index {s} restoration completed successfully", .{name});
 }
 
 fn restoreIndexFromHttp(self: *Self, name: []const u8, restore_opts: CreateIndexOptions.RestoreOptions) !void {
@@ -277,35 +392,6 @@ fn restoreIndexFromHttp(self: *Self, name: []const u8, restore_opts: CreateIndex
     log.info("successfully restored index {s}", .{name});
 }
 
-pub fn createIndexWithOptions(self: *Self, name: []const u8, options: CreateIndexOptions) !*Index {
-    if (!isValidName(name)) {
-        return error.InvalidIndexName;
-    }
-
-    self.lock.lock();
-    defer self.lock.unlock();
-
-    if (self.indexes.getEntry(name)) |entry| {
-        if (entry.value_ptr.being_deleted) {
-            return error.IndexBeingDeleted;
-        }
-        // Only return error if restore options are provided - otherwise maintain idempotent behavior
-        if (options.restore != null) {
-            return error.IndexAlreadyExists;
-        }
-        return borrowIndex(entry.value_ptr);
-    }
-
-    if (options.restore) |restore_opts| {
-        // Handle restoration from HTTP source
-        try self.restoreIndexFromHttp(name, restore_opts);
-    }
-
-    log.info("creating index {s}", .{name});
-
-    const index_ref = try self.openIndex(name, true);
-    return borrowIndex(index_ref);
-}
 
 pub fn deleteIndex(self: *Self, name: []const u8) !void {
     if (!isValidName(name)) {
@@ -358,6 +444,12 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
 
     log.info("deleting index {s}", .{name});
 
+    // Clean up restore task if it exists
+    if (entry.value_ptr.restore_task) |task| {
+        self.scheduler.destroyTask(task);
+        entry.value_ptr.restore_task = null;
+    }
+
     self.deleteIndexFiles(name) catch |err| {
         entry.value_ptr.incRef();
         return err;
@@ -368,7 +460,10 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
 
     // Ensure Index can safely log/use the name during deinit
     const key_mem = entry.key_ptr.*;
-    entry.value_ptr.index.deinit();
+    // Only deinit the index if it's in ready state (not restoring)
+    if (entry.value_ptr.state == .ready) {
+        entry.value_ptr.index.deinit();
+    }
     self.indexes.removeByPtr(entry.key_ptr);
     self.allocator.free(key_mem);
 }

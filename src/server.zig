@@ -547,12 +547,19 @@ fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
         }
     }
 
-    const index = ctx.indexes.createIndexWithOptions(index_name, create_options) catch |err| {
-        if (err == error.IndexAlreadyExists) {
-            try writeErrorResponse(409, err, req, res);
-            return;
+    const index = ctx.indexes.createIndex(index_name, create_options) catch |err| {
+        switch (err) {
+            error.IndexAlreadyExists => {
+                try writeErrorResponse(409, err, req, res);
+                return;
+            },
+            error.IndexNotReady => {
+                // Return 202 Accepted for async restoration
+                res.status = 202;
+                return writeResponse(EmptyResponse{}, req, res);
+            },
+            else => return err,
         }
-        return err;
     };
     defer ctx.indexes.releaseIndex(index);
     
