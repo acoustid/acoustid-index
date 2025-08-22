@@ -249,8 +249,19 @@ fn createIndexUnlocked(self: *Self, name: []const u8, options: CreateIndexOption
             .state = .restoring,
         };
 
-        // Schedule restoration task
-        const restore_task = try self.scheduler.createTask(.medium, restoreIndexTask, .{ self, name_copy, restore_opts });
+        // Deep-copy restore options off the request arena
+        const host_copy = try self.allocator.dupe(u8, restore_opts.host);
+        errdefer self.allocator.free(host_copy);
+        const index_name_copy = try self.allocator.dupe(u8, restore_opts.index_name);
+        errdefer self.allocator.free(index_name_copy);
+        const ro_copy = CreateIndexOptions.RestoreOptions{
+            .host = host_copy,
+            .port = restore_opts.port,
+            .index_name = index_name_copy,
+        };
+
+        // Schedule restoration task with owned options
+        const restore_task = try self.scheduler.createTask(.medium, restoreIndexTask, .{ self, name_copy, ro_copy });
         result.value_ptr.restore_task = restore_task;
         self.scheduler.scheduleTask(restore_task);
 
@@ -289,6 +300,10 @@ pub fn createIndex(self: *Self, name: []const u8, options: CreateIndexOptions) !
 }
 
 fn restoreIndexTask(self: *Self, name: []const u8, restore_opts: CreateIndexOptions.RestoreOptions) void {
+    // Ensure we free the deep-copied slices
+    defer self.allocator.free(restore_opts.host);
+    defer self.allocator.free(restore_opts.index_name);
+
     self.restoreIndexFromHttp(name, restore_opts) catch |err| {
         log.err("failed to restore index {s}: {}", .{ name, err });
         self.markIndexRestoreFailed(name);
