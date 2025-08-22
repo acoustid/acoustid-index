@@ -524,6 +524,8 @@ fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
         if (getRequestBody(CreateIndexRequest, req, res)) |maybe_request_data| {
             if (maybe_request_data) |request_data| {
                 create_options.restore = request_data.restore;
+                // Only fail if exists when restore options are provided
+                create_options.fail_if_exists = (request_data.restore != null);
             }
         } else |_| {
             // Error already written to response

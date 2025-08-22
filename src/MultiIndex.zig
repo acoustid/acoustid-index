@@ -223,8 +223,12 @@ fn createIndexUnlocked(self: *Self, name: []const u8, options: CreateIndexOption
         if (entry.value_ptr.being_deleted) {
             return error.IndexBeingDeleted;
         }
-        // Always return error when index already exists - server maps this to 409
-        return error.IndexAlreadyExists;
+        // Return error only if explicitly requested (e.g., for restore operations)
+        if (options.fail_if_exists or options.restore != null) {
+            return error.IndexAlreadyExists;
+        }
+        // Otherwise maintain idempotent behavior for backward compatibility
+        return borrowIndex(entry.value_ptr);
     }
 
     if (options.restore) |restore_opts| {
@@ -277,6 +281,7 @@ pub fn getIndex(self: *Self, name: []const u8) !*Index {
 
 pub const CreateIndexOptions = struct {
     restore: ?RestoreOptions = null,
+    fail_if_exists: bool = false,  // For backward compatibility, default to idempotent behavior
     
     pub const RestoreOptions = struct {
         host: []const u8,
