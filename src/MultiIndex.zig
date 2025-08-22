@@ -324,10 +324,8 @@ fn markIndexRestoreFailed(self: *Self, name: []const u8) void {
     
     if (self.indexes.getEntry(name)) |entry| {
         entry.value_ptr.state = .error_state;
-        if (entry.value_ptr.restore_task) |task| {
-            self.scheduler.destroyTask(task);
-            entry.value_ptr.restore_task = null;
-        }
+        // Don't destroy task from within task execution - just clear the reference
+        entry.value_ptr.restore_task = null;
     }
 }
 
@@ -346,11 +344,8 @@ fn markIndexRestoreComplete(self: *Self, name: []const u8) !void {
     // Mark as ready
     entry.value_ptr.state = .ready;
     
-    // Clean up restore task
-    if (entry.value_ptr.restore_task) |task| {
-        self.scheduler.destroyTask(task);
-        entry.value_ptr.restore_task = null;
-    }
+    // Don't destroy task from within task execution - just clear the reference
+    entry.value_ptr.restore_task = null;
     
     log.info("index {s} restoration completed successfully", .{name});
 }
