@@ -499,6 +499,8 @@ const UpdateResponse = struct {
 };
 
 const CreateIndexRequest = struct {
+    restore: ?MultiIndex.CreateIndexOptions.RestoreOptions = null,
+    
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
     }
@@ -515,7 +517,36 @@ const CreateIndexResponse = struct {
 fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = req.param("index") orelse return;
 
-    const index = try ctx.indexes.createIndex(index_name);
+    // Parse request body for restoration options
+    var create_options = MultiIndex.CreateIndexOptions{};
+    
+    if (req.body()) |_| {
+        if (getRequestBody(CreateIndexRequest, req, res)) |maybe_request_data| {
+            if (maybe_request_data) |request_data| {
+                create_options.restore = request_data.restore;
+                // Only fail if exists when restore options are provided
+                create_options.fail_if_exists = (request_data.restore != null);
+            }
+        } else |_| {
+            // Error already written to response
+            return;
+        }
+    }
+
+    const index = ctx.indexes.createIndex(index_name, create_options) catch |err| {
+        switch (err) {
+            error.IndexAlreadyExists => {
+                try writeErrorResponse(409, err, req, res);
+                return;
+            },
+            error.IndexNotReady => {
+                // Return 202 Accepted for async restoration
+                res.status = 202;
+                return writeResponse(EmptyResponse{}, req, res);
+            },
+            else => return err,
+        }
+    };
     defer ctx.indexes.releaseIndex(index);
     
     var index_reader = try index.acquireReader();
