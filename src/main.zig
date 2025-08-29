@@ -113,9 +113,8 @@ pub fn main() !void {
             log.err("failed to connect to NATS at {s}: {}", .{url, err});
             return err;
         };
-        log.info("successfully connected to NATS");
+        log.info("successfully connected to NATS", .{});
     }
-
     try metrics.initializeMetrics(allocator, .{ .prefix = "aindex_" });
     defer metrics.deinitMetrics();
 
