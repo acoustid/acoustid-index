@@ -20,6 +20,10 @@
             .url = "git+https://github.com/lalinsky/msgpack.zig?ref=v0.3.0#9b6c28d2924c6bdd4dcf6a71bb25c8a8e246c589",
             .hash = "msgpack-0.3.0-ZOu9PE-pAQAVlR3s1gMD2xxG4JbVZfkWlYc9wTln7r0h",
         },
+        .nats = .{
+            .url = "git+https://github.com/lalinsky/nats.zig#3bcc42e6d5e9938f9faa377551756c7a154be312",
+            .hash = "nats-0.0.0-JvIiUMwTBADf2A8GRS1AQYOp_RIWDMH0iCsDAv8MYJl8",
+        },
     },
     .paths = .{
         "build.zig",
