@@ -109,7 +109,11 @@ pub fn main() !void {
         var nc = nats.Connection.init(allocator, .{});
         defer nc.deinit();
 
-        try nc.connect(url);
+        nc.connect(url) catch |err| {
+            log.err("failed to connect to NATS at {s}: {}", .{url, err});
+            return err;
+        };
+        log.info("successfully connected to NATS");
     }
 
     try metrics.initializeMetrics(allocator, .{ .prefix = "aindex_" });
