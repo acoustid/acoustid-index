@@ -143,7 +143,7 @@ pub fn run(comptime T: type, allocator: std.mem.Allocator, indexes: *T, address:
     router.get("/:index", HandlerWrapper(T, handleGetIndex).wrapper, .{});
     router.put("/:index", HandlerWrapper(T, handlePutIndex).wrapper, .{});
     router.delete("/:index", HandlerWrapper(T, handleDeleteIndex).wrapper, .{});
-    
+
     // Snapshot endpoint - only available for types that support direct index access
     if (@hasDecl(T, "getIndex") and @hasDecl(T, "releaseIndex")) {
         router.get("/:index/_snapshot", HandlerWrapper(T, handleSnapshot).wrapper, .{});
@@ -186,7 +186,6 @@ fn getIndexName(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?[]
     };
     return index_name;
 }
-
 
 const ContentType = enum {
     json,
@@ -357,7 +356,6 @@ fn handleHeadFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request
     res.status = 200;
 }
 
-
 fn handleGetFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = try getIndexName(req, res, true) orelse return;
     const id = try getId(req, res, true) orelse return;
@@ -444,7 +442,6 @@ fn handleDeleteFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Reque
     return writeResponse(EmptyResponse{}, req, res);
 }
 
-
 fn handleGetIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = try getIndexName(req, res, true) orelse return;
 
@@ -467,7 +464,6 @@ const CreateIndexRequest = struct {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
     }
 };
-
 
 fn handlePutIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = try getIndexName(req, res, true) orelse return;
@@ -534,7 +530,6 @@ fn handleIndexHealth(comptime T: type, ctx: *Context(T), req: *httpz.Request, re
     try res.writer().writeAll("OK\n");
 }
 
-
 fn handleHealth(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     _ = ctx;
     _ = req;
@@ -546,7 +541,7 @@ fn handleHealth(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *h
 // Route is conditionally registered based on @hasDecl checks
 fn handleSnapshot(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = try getIndexName(req, res, true) orelse return;
-    
+
     const index = ctx.indexes.getIndex(index_name) catch |err| {
         log.warn("error during getIndex: {}", .{err});
         if (err == error.IndexNotFound) {

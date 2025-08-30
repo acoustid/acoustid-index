@@ -214,7 +214,6 @@ pub fn getIndex(self: *Self, name: []const u8) !*Index {
     return self.getOrCreateIndex(name, false);
 }
 
-
 pub fn deleteIndex(self: *Self, name: []const u8) !void {
     if (!isValidName(name)) {
         return error.InvalidIndexName;
@@ -247,12 +246,12 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
             log.warn("timeout waiting for index {s} references to be released (current: {d})", .{ name, entry.value_ptr.references });
             return error.DeleteTimeout;
         }
-        
+
         // Release the lock briefly to allow other operations
         self.lock.unlock();
         std.time.sleep(10 * std.time.ns_per_ms); // Sleep for 10ms
         self.lock.lock();
-        
+
         // Check if the entry still exists (in case of concurrent operations)
         const current_entry = self.indexes.getEntry(name) orelse return error.IndexNotFound;
         if (current_entry.value_ptr != entry.value_ptr) {
@@ -383,7 +382,7 @@ pub fn createIndex(
     index_name: []const u8,
 ) !api.CreateIndexResponse {
     _ = allocator; // Response doesn't need allocation
-    
+
     const index = try self.getOrCreateIndex(index_name, true);
     defer self.releaseIndex(index);
 
