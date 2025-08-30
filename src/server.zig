@@ -312,7 +312,7 @@ fn handleSearch(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *h
     const body = try getRequestBody(api.SearchRequest, req, res) orelse return;
 
     const response = ctx.indexes.search(req.arena, index_name, body) catch |err| {
-        if (err == error.IndexNotFound) {
+        if (err == error.IndexBeingDeleted or err == error.IndexNotFound) {
             try writeErrorResponse(404, err, req, res);
             return;
         }
@@ -331,7 +331,7 @@ fn handleUpdate(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *h
         if (err == error.VersionMismatch) {
             return writeErrorResponse(409, err, req, res);
         }
-        if (err == error.IndexNotFound) {
+        if (err == error.IndexBeingDeleted or err == error.IndexNotFound) {
             return writeErrorResponse(404, err, req, res);
         }
         return err;
@@ -346,7 +346,7 @@ fn handleHeadFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request
     const id = try getId(req, res, false) orelse return;
 
     ctx.indexes.checkFingerprintExists(index_name, id) catch |err| {
-        if (err == error.IndexNotFound or err == error.FingerprintNotFound) {
+        if (err == error.IndexBeingDeleted or err == error.IndexNotFound or err == error.FingerprintNotFound) {
             res.status = 404;
             return;
         }
@@ -361,11 +361,7 @@ fn handleGetFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request,
     const id = try getId(req, res, true) orelse return;
 
     const response = ctx.indexes.getFingerprintInfo(req.arena, index_name, id) catch |err| {
-        if (err == error.IndexNotFound) {
-            try writeErrorResponse(404, err, req, res);
-            return;
-        }
-        if (err == error.FingerprintNotFound) {
+        if (err == error.IndexBeingDeleted or err == error.IndexNotFound or err == error.FingerprintNotFound) {
             try writeErrorResponse(404, err, req, res);
             return;
         }
@@ -404,7 +400,7 @@ fn handlePutFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request,
         if (err == error.VersionMismatch) {
             return writeErrorResponse(409, err, req, res);
         }
-        if (err == error.IndexNotFound) {
+        if (err == error.IndexBeingDeleted or err == error.IndexNotFound) {
             return writeErrorResponse(404, err, req, res);
         }
         return err;
@@ -432,7 +428,7 @@ fn handleDeleteFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Reque
         if (err == error.VersionMismatch) {
             return writeErrorResponse(409, err, req, res);
         }
-        if (err == error.IndexNotFound) {
+        if (err == error.IndexBeingDeleted or err == error.IndexNotFound) {
             return writeErrorResponse(404, err, req, res);
         }
         return err;
@@ -446,7 +442,7 @@ fn handleGetIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: 
     const index_name = try getIndexName(req, res, true) orelse return;
 
     const response = ctx.indexes.getIndexInfo(req.arena, index_name) catch |err| {
-        if (err == error.IndexNotFound) {
+        if (err == error.IndexBeingDeleted or err == error.IndexNotFound) {
             try writeErrorResponse(404, err, req, res);
             return;
         }
@@ -469,6 +465,10 @@ fn handlePutIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: 
     const index_name = try getIndexName(req, res, true) orelse return;
 
     const response = ctx.indexes.createIndex(req.arena, index_name) catch |err| {
+        if (err == error.IndexBeingDeleted) {
+            try writeErrorResponse(409, err, req, res);
+            return;
+        }
         if (err == error.InvalidIndexName) {
             try writeErrorResponse(400, err, req, res);
             return;
@@ -506,7 +506,7 @@ fn handleHeadIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res:
     const index_name = try getIndexName(req, res, false) orelse return;
 
     ctx.indexes.checkIndexExists(index_name) catch |err| {
-        if (err == error.IndexNotFound) {
+        if (err == error.IndexBeingDeleted or err == error.IndexNotFound) {
             res.status = 404;
             return;
         }
@@ -520,7 +520,7 @@ fn handleIndexHealth(comptime T: type, ctx: *Context(T), req: *httpz.Request, re
     const index_name = try getIndexName(req, res, false) orelse return;
 
     ctx.indexes.checkIndexExists(index_name) catch |err| {
-        if (err == error.IndexNotFound) {
+        if (err == error.IndexBeingDeleted or err == error.IndexNotFound) {
             res.status = 404;
             return;
         }
@@ -544,7 +544,7 @@ fn handleSnapshot(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: 
 
     const index = ctx.indexes.getIndex(index_name) catch |err| {
         log.warn("error during getIndex: {}", .{err});
-        if (err == error.IndexNotFound) {
+        if (err == error.IndexBeingDeleted or err == error.IndexNotFound) {
             try writeErrorResponse(404, err, req, res);
             return;
         }
