@@ -2,10 +2,13 @@
 
 import logging
 import re
-from aiohttp.web import Response, json_response, Application, AppRunner, TCPSite
+import msgspec
+import msgspec.json
+from aiohttp.web import Response, json_response, Application, AppRunner, TCPSite, Request
 import nats
 
-from .errors import InconsistentIndexState
+from .errors import InconsistentIndexState, IndexNotFound
+from .models import UpdateRequest
 
 
 logger = logging.getLogger(__name__)
@@ -120,6 +123,58 @@ async def get_index_status(request):
         return json_response({}, status=404)
 
 
+async def update_index(request: Request):
+    """Handle fingerprint updates - POST /{index}/_update"""
+    index_name = request.match_info["index"]
+    manager = request.app["index_manager"]
+
+    # Validate index name
+    if not is_valid_index_name(index_name):
+        logger.warning(f"Invalid index name: '{index_name}'")
+        return json_response(
+            {
+                "error": "Invalid index name. Must start with alphanumeric character and contain only alphanumeric, underscore, and hyphen characters.",
+                "index": index_name,
+            },
+            status=400,
+        )
+
+    try:
+        # Parse request with msgspec
+        request_body = await request.text()
+        update_request = msgspec.json.decode(request_body, type=UpdateRequest)
+
+        # Validate that each change has either insert or delete (not both or neither)
+        for change in update_request.changes:
+            has_insert = change.insert is not None
+            has_delete = change.delete is not None
+            if has_insert == has_delete:  # both true or both false
+                return json_response(
+                    {"error": "Each change must have exactly one of insert or delete operation"}, status=400
+                )
+
+        # Publish update to NATS
+        version = await manager.publish_update(
+            index_name,
+            update_request.changes,
+            update_request.metadata,
+        )
+
+        return json_response({"version": version}, status=200)
+
+    except (ValueError, msgspec.DecodeError, msgspec.ValidationError) as e:
+        logger.warning(f"Invalid request format for '{index_name}': {e}")
+        return json_response({"error": "Invalid request format"}, status=400)
+    except IndexNotFound:
+        return json_response({"error": "IndexNotFound"}, status=404)
+    except InconsistentIndexState as exc:
+        logger.warning("Failed to update index %s", index_name, exc_info=True)
+        return json_response({"error": str(exc)}, status=409)
+    except Exception as exc:
+        logger.error("Failed to update index %s", index_name, exc_info=True)
+        return json_response({"error": str(exc)}, status=500)
+
+
 def create_app(nats_connection: nats.NATS, index_manager) -> Application:
     """Create and configure the aiohttp application."""
     app = Application()
@@ -136,7 +191,10 @@ def create_app(nats_connection: nats.NATS, index_manager) -> Application:
     app.router.add_delete("/{index}", delete_index)
     app.router.add_get("/{index}", get_index_status)
 
-    logger.info("HTTP server configured with /_health and index management endpoints")
+    # Add update route
+    app.router.add_post("/{index}/_update", update_index)
+
+    logger.info("HTTP server configured with /_health, index management, and update endpoints")
     return app
 
 
