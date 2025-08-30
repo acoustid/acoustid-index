@@ -9,14 +9,84 @@ const MultiIndex = @import("MultiIndex.zig");
 const IndexReader = @import("IndexReader.zig");
 const common = @import("common.zig");
 const SearchResults = common.SearchResults;
+const DocInfo = common.DocInfo;
 const Change = @import("change.zig").Change;
 const Deadline = @import("utils/Deadline.zig");
 const Metadata = @import("Metadata.zig");
 
+// Types needed for vtable interface
+const GetIndexInfoResult = struct {
+    version: u64,
+    metadata: Metadata,
+    stats: IndexReader.Stats,
+};
+
+const GetSegmentInfoResult = struct {
+    kind: []const u8,
+    version: u64,
+    merges: u64,
+    min_doc_id: u32,
+    max_doc_id: u32,
+};
+
 const metrics = @import("metrics.zig");
 
+// Generic index manager interface using vtable pattern
+const IndexManagerVTable = struct {
+    search: *const fn (ptr: *anyopaque, index_name: []const u8, hashes: []u32, results: *SearchResults, deadline: Deadline) anyerror!void,
+    update: *const fn (ptr: *anyopaque, index_name: []const u8, changes: []const Change, metadata: ?Metadata, expected_version: ?u64) anyerror!u64,
+    getFingerprintInfo: *const fn (ptr: *anyopaque, index_name: []const u8, id: u32) anyerror!?DocInfo,
+    getIndexInfo: *const fn (ptr: *anyopaque, index_name: []const u8, arena: std.mem.Allocator) anyerror!GetIndexInfoResult,
+    createIndexAndGetInfo: *const fn (ptr: *anyopaque, index_name: []const u8) anyerror!u64,
+    deleteIndex: *const fn (ptr: *anyopaque, index_name: []const u8) anyerror!void,
+    indexExists: *const fn (ptr: *anyopaque, index_name: []const u8) bool,
+    getSegmentsInfo: *const fn (ptr: *anyopaque, index_name: []const u8, arena: std.mem.Allocator) anyerror![]GetSegmentInfoResult,
+    buildSnapshot: *const fn (ptr: *anyopaque, index_name: []const u8, writer: std.io.AnyWriter, arena: std.mem.Allocator) anyerror!void,
+};
+
+const IndexManager = struct {
+    ptr: *anyopaque,
+    vtable: *const IndexManagerVTable,
+
+    pub fn search(self: IndexManager, index_name: []const u8, hashes: []u32, results: *SearchResults, deadline: Deadline) !void {
+        return self.vtable.search(self.ptr, index_name, hashes, results, deadline);
+    }
+
+    pub fn update(self: IndexManager, index_name: []const u8, changes: []const Change, metadata: ?Metadata, expected_version: ?u64) !u64 {
+        return self.vtable.update(self.ptr, index_name, changes, metadata, expected_version);
+    }
+
+    pub fn getFingerprintInfo(self: IndexManager, index_name: []const u8, id: u32) !?DocInfo {
+        return self.vtable.getFingerprintInfo(self.ptr, index_name, id);
+    }
+
+    pub fn getIndexInfo(self: IndexManager, index_name: []const u8, arena: std.mem.Allocator) !GetIndexInfoResult {
+        return self.vtable.getIndexInfo(self.ptr, index_name, arena);
+    }
+
+    pub fn createIndexAndGetInfo(self: IndexManager, index_name: []const u8) !u64 {
+        return self.vtable.createIndexAndGetInfo(self.ptr, index_name);
+    }
+
+    pub fn deleteIndex(self: IndexManager, index_name: []const u8) !void {
+        return self.vtable.deleteIndex(self.ptr, index_name);
+    }
+
+    pub fn indexExists(self: IndexManager, index_name: []const u8) bool {
+        return self.vtable.indexExists(self.ptr, index_name);
+    }
+
+    pub fn getSegmentsInfo(self: IndexManager, index_name: []const u8, arena: std.mem.Allocator) ![]GetSegmentInfoResult {
+        return self.vtable.getSegmentsInfo(self.ptr, index_name, arena);
+    }
+
+    pub fn buildSnapshot(self: IndexManager, index_name: []const u8, writer: std.io.AnyWriter, arena: std.mem.Allocator) !void {
+        return self.vtable.buildSnapshot(self.ptr, index_name, writer, arena);
+    }
+};
+
 const Context = struct {
-    indexes: *MultiIndex,
+    indexes: IndexManager,
 
     pub fn notFound(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
         return handleNotFound(ctx, req, res);
@@ -27,20 +97,35 @@ const Context = struct {
     }
 };
 
-const Server = httpz.Server(*Context);
-
-var global_server: ?*Server = null;
+// Generic global server storage - must be set before signal handlers
+var global_server_storage: ?struct {
+    ptr: *anyopaque,
+    stop_fn: *const fn (*anyopaque) void,
+} = null;
 
 fn shutdown(_: c_int) callconv(.C) void {
-    if (global_server) |server| {
+    if (global_server_storage) |gs| {
         log.info("stopping", .{});
-        global_server = null;
-        server.stop();
+        const temp_ptr = gs.ptr;
+        const temp_fn = gs.stop_fn;
+        global_server_storage = null;
+        temp_fn(temp_ptr);
     }
 }
 
-fn installSignalHandlers(server: *Server) void {
-    global_server = server;
+fn installSignalHandlers(server: anytype) void {
+    const ServerType = @TypeOf(server.*);
+    const serverStopFn = struct {
+        fn stopFn(ptr: *anyopaque) void {
+            const s: *ServerType = @ptrCast(@alignCast(ptr));
+            s.stop();
+        }
+    }.stopFn;
+    
+    global_server_storage = .{
+        .ptr = server,
+        .stop_fn = serverStopFn,
+    };
 
     std.posix.sigaction(std.posix.SIG.INT, &.{
         .handler = .{ .handler = shutdown },
@@ -55,8 +140,91 @@ fn installSignalHandlers(server: *Server) void {
     }, null);
 }
 
-pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const u8, port: u16, threads: u16) !void {
-    var ctx = Context{ .indexes = indexes };
+// Helper to create IndexManager from any type that implements the required interface
+pub fn createIndexManager(comptime T: type, instance: *T) IndexManager {
+    const vtable = IndexManagerVTable{
+        .search = struct {
+            fn search(ptr: *anyopaque, index_name: []const u8, hashes: []u32, results: *SearchResults, deadline: Deadline) anyerror!void {
+                const self: *T = @ptrCast(@alignCast(ptr));
+                return self.search(index_name, hashes, results, deadline);
+            }
+        }.search,
+        .update = struct {
+            fn update(ptr: *anyopaque, index_name: []const u8, changes: []const Change, metadata: ?Metadata, expected_version: ?u64) anyerror!u64 {
+                const self: *T = @ptrCast(@alignCast(ptr));
+                return self.update(index_name, changes, metadata, expected_version);
+            }
+        }.update,
+        .getFingerprintInfo = struct {
+            fn getFingerprintInfo(ptr: *anyopaque, index_name: []const u8, id: u32) anyerror!?DocInfo {
+                const self: *T = @ptrCast(@alignCast(ptr));
+                return self.getFingerprintInfo(index_name, id);
+            }
+        }.getFingerprintInfo,
+        .getIndexInfo = struct {
+            fn getIndexInfo(ptr: *anyopaque, index_name: []const u8, arena: std.mem.Allocator) anyerror!GetIndexInfoResult {
+                const self: *T = @ptrCast(@alignCast(ptr));
+                const result = try self.getIndexInfo(index_name, arena);
+                return GetIndexInfoResult{
+                    .version = result.version,
+                    .metadata = result.metadata,
+                    .stats = result.stats,
+                };
+            }
+        }.getIndexInfo,
+        .createIndexAndGetInfo = struct {
+            fn createIndexAndGetInfo(ptr: *anyopaque, index_name: []const u8) anyerror!u64 {
+                const self: *T = @ptrCast(@alignCast(ptr));
+                return self.createIndexAndGetInfo(index_name);
+            }
+        }.createIndexAndGetInfo,
+        .deleteIndex = struct {
+            fn deleteIndex(ptr: *anyopaque, index_name: []const u8) anyerror!void {
+                const self: *T = @ptrCast(@alignCast(ptr));
+                return self.deleteIndex(index_name);
+            }
+        }.deleteIndex,
+        .indexExists = struct {
+            fn indexExists(ptr: *anyopaque, index_name: []const u8) bool {
+                const self: *T = @ptrCast(@alignCast(ptr));
+                return self.indexExists(index_name);
+            }
+        }.indexExists,
+        .getSegmentsInfo = struct {
+            fn getSegmentsInfo(ptr: *anyopaque, index_name: []const u8, arena: std.mem.Allocator) anyerror![]GetSegmentInfoResult {
+                const self: *T = @ptrCast(@alignCast(ptr));
+                const results = try self.getSegmentsInfo(index_name, arena);
+                const converted = try arena.alloc(GetSegmentInfoResult, results.len);
+                for (results, 0..) |r, i| {
+                    converted[i] = GetSegmentInfoResult{
+                        .kind = r.kind,
+                        .version = r.version,
+                        .merges = r.merges,
+                        .min_doc_id = r.min_doc_id,
+                        .max_doc_id = r.max_doc_id,
+                    };
+                }
+                return converted;
+            }
+        }.getSegmentsInfo,
+        .buildSnapshot = struct {
+            fn buildSnapshot(ptr: *anyopaque, index_name: []const u8, writer: std.io.AnyWriter, arena: std.mem.Allocator) anyerror!void {
+                const self: *T = @ptrCast(@alignCast(ptr));
+                return self.buildSnapshot(index_name, writer, arena);
+            }
+        }.buildSnapshot,
+    };
+    
+    return IndexManager{
+        .ptr = instance,
+        .vtable = &vtable,
+    };
+}
+
+pub fn run(allocator: std.mem.Allocator, indexes: anytype, address: []const u8, port: u16, threads: u16) !void {
+    const T = @TypeOf(indexes.*);
+    const manager = createIndexManager(T, indexes);
+    var ctx = Context{ .indexes = manager };
 
     const config = httpz.Config{
         .address = address,
@@ -73,6 +241,7 @@ pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const 
         },
     };
 
+    const Server = httpz.Server(*Context);
     var server = try Server.init(allocator, config, &ctx);
     defer server.deinit();
 
@@ -236,11 +405,11 @@ const ErrorResponse = struct {
     }
 };
 
-fn handleNotFound(_: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn handleNotFound(_: anytype, req: *httpz.Request, res: *httpz.Response) !void {
     try writeErrorResponse(404, error.NotFound, req, res);
 }
 
-fn handleError(_: *Context, req: *httpz.Request, res: *httpz.Response, err: anyerror) void {
+fn handleError(_: anytype, req: *httpz.Request, res: *httpz.Response, err: anyerror) void {
     switch (err) {
         error.IndexNotReady => {
             writeErrorResponse(503, err, req, res) catch {
