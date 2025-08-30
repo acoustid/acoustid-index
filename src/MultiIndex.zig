@@ -3,7 +3,13 @@ const log = std.log.scoped(.multi_index);
 const assert = std.debug.assert;
 
 const Index = @import("Index.zig");
+const IndexReader = @import("IndexReader.zig");
 const Scheduler = @import("utils/Scheduler.zig");
+const Change = @import("change.zig").Change;
+const Metadata = @import("change.zig").Metadata;
+const SearchResults = @import("common.zig").SearchResults;
+const DocInfo = @import("common.zig").DocInfo;
+const Deadline = @import("utils/Deadline.zig");
 
 const Self = @This();
 
@@ -278,4 +284,123 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
     entry.value_ptr.index.deinit();
     self.indexes.removeByPtr(entry.key_ptr);
     self.allocator.free(key_mem);
+}
+
+pub fn search(self: *Self, index_name: []const u8, hashes: []u32, results: *SearchResults, deadline: Deadline) !void {
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+    
+    try index.search(hashes, results, deadline);
+}
+
+pub fn update(self: *Self, index_name: []const u8, changes: []const Change, metadata: ?Metadata, expected_version: ?u64) !u64 {
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+    
+    return try index.update(changes, metadata, expected_version);
+}
+
+pub fn indexExists(self: *Self, index_name: []const u8) bool {
+    if (!isValidName(index_name)) {
+        return false;
+    }
+    
+    self.lock.lock();
+    defer self.lock.unlock();
+    
+    const entry = self.indexes.getEntry(index_name) orelse return false;
+    return !entry.value_ptr.being_deleted;
+}
+
+const GetIndexInfoResult = struct {
+    version: u64,
+    metadata: Metadata,
+    stats: IndexReader.Stats,
+};
+
+pub fn getIndexInfo(self: *Self, index_name: []const u8, arena: std.mem.Allocator) !GetIndexInfoResult {
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+    
+    var index_reader = try index.acquireReader();
+    defer index.releaseReader(&index_reader);
+    
+    return GetIndexInfoResult{
+        .version = index_reader.getVersion(),
+        .metadata = try index_reader.getMetadata(arena),
+        .stats = index_reader.getStats(),
+    };
+}
+
+pub fn getFingerprintInfo(self: *Self, index_name: []const u8, id: u32) !?DocInfo {
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+    
+    var index_reader = try index.acquireReader();
+    defer index.releaseReader(&index_reader);
+    
+    return try index_reader.getDocInfo(id);
+}
+
+const GetSegmentInfoResult = struct {
+    kind: []const u8,
+    version: u64,
+    merges: u64,
+    min_doc_id: u32,
+    max_doc_id: u32,
+};
+
+pub fn getSegmentsInfo(self: *Self, index_name: []const u8, arena: std.mem.Allocator) ![]GetSegmentInfoResult {
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+    
+    var reader = try index.acquireReader();
+    defer index.releaseReader(&reader);
+    
+    const num_segments = reader.file_segments.value.count() + reader.memory_segments.value.count();
+    const segments = try arena.alloc(GetSegmentInfoResult, num_segments);
+    
+    var i: usize = 0;
+    
+    for (reader.file_segments.value.nodes.items) |segment| {
+        segments[i] = .{
+            .kind = "file",
+            .version = segment.value.info.version,
+            .merges = segment.value.info.merges,
+            .min_doc_id = segment.value.min_doc_id,
+            .max_doc_id = segment.value.max_doc_id,
+        };
+        i += 1;
+    }
+    
+    for (reader.memory_segments.value.nodes.items) |segment| {
+        segments[i] = .{
+            .kind = "memory",
+            .version = segment.value.info.version,
+            .merges = segment.value.info.merges,
+            .min_doc_id = segment.value.min_doc_id,
+            .max_doc_id = segment.value.max_doc_id,
+        };
+        i += 1;
+    }
+    
+    return segments;
+}
+
+pub fn createIndexAndGetInfo(self: *Self, index_name: []const u8) !u64 {
+    const index = try self.createIndex(index_name);
+    defer self.releaseIndex(index);
+    
+    var index_reader = try index.acquireReader();
+    defer index.releaseReader(&index_reader);
+    
+    return index_reader.getVersion();
+}
+
+pub fn buildSnapshot(self: *Self, index_name: []const u8, writer: anytype, arena: std.mem.Allocator) !void {
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+    
+    const snapshot = @import("snapshot.zig");
+    try snapshot.buildSnapshot(writer, index, arena);
 }

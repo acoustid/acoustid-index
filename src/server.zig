@@ -6,13 +6,11 @@ const log = std.log.scoped(.server);
 const msgpack = @import("msgpack");
 
 const MultiIndex = @import("MultiIndex.zig");
-const Index = @import("Index.zig");
 const IndexReader = @import("IndexReader.zig");
 const common = @import("common.zig");
 const SearchResults = common.SearchResults;
 const Change = @import("change.zig").Change;
 const Deadline = @import("utils/Deadline.zig");
-const snapshot = @import("snapshot.zig");
 const Metadata = @import("Metadata.zig");
 
 const metrics = @import("metrics.zig");
@@ -166,34 +164,6 @@ fn getId(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?u32 {
     };
 }
 
-fn getIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response, send_body: bool) !?*Index {
-    const index_name = req.param("index") orelse {
-        log.warn("missing index parameter", .{});
-        if (send_body) {
-            try writeErrorResponse(400, error.MissingIndexName, req, res);
-        } else {
-            res.status = 400;
-        }
-        return null;
-    };
-    const index = ctx.indexes.getIndex(index_name) catch |err| {
-        log.warn("error during getIndex: {}", .{err});
-        if (err == error.IndexNotFound) {
-            if (send_body) {
-                try writeErrorResponse(404, err, req, res);
-            } else {
-                res.status = 404;
-            }
-            return null;
-        }
-        return err;
-    };
-    return index;
-}
-
-fn releaseIndex(ctx: *Context, index: *Index) void {
-    ctx.indexes.releaseIndex(index);
-}
 
 const ContentType = enum {
     json,
@@ -318,8 +288,11 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 
     const body = try getRequestBody(SearchRequestJSON, req, res) orelse return;
 
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
+    const index_name = req.param("index") orelse {
+        log.warn("missing index parameter", .{});
+        try writeErrorResponse(400, error.MissingIndexName, req, res);
+        return;
+    };
 
     const limit = @max(@min(body.limit, max_search_limit), min_search_limit);
 
@@ -337,7 +310,13 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
         .min_score_pct = 10,
     });
 
-    try index.search(body.query, &collector, deadline);
+    ctx.indexes.search(index_name, body.query, &collector, deadline) catch |err| {
+        if (err == error.IndexNotFound) {
+            try writeErrorResponse(404, err, req, res);
+            return;
+        }
+        return err;
+    };
 
     const results = collector.getResults();
 
@@ -369,14 +348,22 @@ const UpdateRequestJSON = struct {
 fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const body = try getRequestBody(UpdateRequestJSON, req, res) orelse return;
 
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
+    const index_name = req.param("index") orelse {
+        log.warn("missing index parameter", .{});
+        try writeErrorResponse(400, error.MissingIndexName, req, res);
+        return;
+    };
 
     metrics.update(body.changes.len);
 
-    const new_version = index.update(body.changes, body.metadata, body.expected_version) catch |err| {
+    const new_version = ctx.indexes.update(index_name, body.changes, body.metadata, body.expected_version) catch |err| {
+        if (err == error.IndexNotFound) {
+            try writeErrorResponse(404, err, req, res);
+            return;
+        }
         if (err == error.VersionMismatch) {
-            return writeErrorResponse(409, err, req, res);
+            try writeErrorResponse(409, err, req, res);
+            return;
         }
         return err;
     };
@@ -385,14 +372,20 @@ fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 }
 
 fn handleHeadFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, false) orelse return;
-    defer releaseIndex(ctx, index);
-
-    var index_reader = try index.acquireReader();
-    defer index.releaseReader(&index_reader);
+    const index_name = req.param("index") orelse {
+        res.status = 400;
+        return;
+    };
 
     const id = try getId(req, res, false) orelse return;
-    const info = try index_reader.getDocInfo(id);
+    
+    const info = ctx.indexes.getFingerprintInfo(index_name, id) catch |err| {
+        if (err == error.IndexNotFound) {
+            res.status = 404;
+            return;
+        }
+        return err;
+    };
 
     res.status = if (info == null) 404 else 200;
 }
@@ -406,14 +399,21 @@ const GetFingerprintResponse = struct {
 };
 
 fn handleGetFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
-
-    var index_reader = try index.acquireReader();
-    defer index.releaseReader(&index_reader);
+    const index_name = req.param("index") orelse {
+        log.warn("missing index parameter", .{});
+        try writeErrorResponse(400, error.MissingIndexName, req, res);
+        return;
+    };
 
     const id = try getId(req, res, true) orelse return;
-    const info = try index_reader.getDocInfo(id) orelse {
+    
+    const info = ctx.indexes.getFingerprintInfo(index_name, id) catch |err| {
+        if (err == error.IndexNotFound) {
+            try writeErrorResponse(404, err, req, res);
+            return;
+        }
+        return err;
+    } orelse {
         return writeErrorResponse(404, error.FingerprintNotFound, req, res);
     };
 
@@ -431,8 +431,11 @@ const PutFingerprintRequest = struct {
 fn handlePutFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const body = try getRequestBody(PutFingerprintRequest, req, res) orelse return;
 
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
+    const index_name = req.param("index") orelse {
+        log.warn("missing index parameter", .{});
+        try writeErrorResponse(400, error.MissingIndexName, req, res);
+        return;
+    };
 
     const id = try getId(req, res, true) orelse return;
     const change: Change = .{ .insert = .{
@@ -442,14 +445,23 @@ fn handlePutFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response
 
     metrics.update(1);
 
-    _ = try index.update(&[_]Change{change}, null, null);
+    _ = ctx.indexes.update(index_name, &[_]Change{change}, null, null) catch |err| {
+        if (err == error.IndexNotFound) {
+            try writeErrorResponse(404, err, req, res);
+            return;
+        }
+        return err;
+    };
 
     return writeResponse(EmptyResponse{}, req, res);
 }
 
 fn handleDeleteFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
+    const index_name = req.param("index") orelse {
+        log.warn("missing index parameter", .{});
+        try writeErrorResponse(400, error.MissingIndexName, req, res);
+        return;
+    };
 
     const id = try getId(req, res, true) orelse return;
     const change: Change = .{ .delete = .{
@@ -458,7 +470,13 @@ fn handleDeleteFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Respo
 
     metrics.update(1);
 
-    _ = try index.update(&[_]Change{change}, null, null);
+    _ = ctx.indexes.update(index_name, &[_]Change{change}, null, null) catch |err| {
+        if (err == error.IndexNotFound) {
+            try writeErrorResponse(404, err, req, res);
+            return;
+        }
+        return err;
+    };
 
     return writeResponse(EmptyResponse{}, req, res);
 }
@@ -474,16 +492,24 @@ const GetIndexResponse = struct {
 };
 
 fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
+    const index_name = req.param("index") orelse {
+        log.warn("missing index parameter", .{});
+        try writeErrorResponse(400, error.MissingIndexName, req, res);
+        return;
+    };
 
-    var index_reader = try index.acquireReader();
-    defer index.releaseReader(&index_reader);
+    const info = ctx.indexes.getIndexInfo(index_name, req.arena) catch |err| {
+        if (err == error.IndexNotFound) {
+            try writeErrorResponse(404, err, req, res);
+            return;
+        }
+        return err;
+    };
 
     const response = GetIndexResponse{
-        .version = index_reader.getVersion(),
-        .metadata = try index_reader.getMetadata(req.arena),
-        .stats = index_reader.getStats(),
+        .version = info.version,
+        .metadata = info.metadata,
+        .stats = info.stats,
     };
     return writeResponse(response, req, res);
 }
@@ -513,16 +539,16 @@ const CreateIndexResponse = struct {
 };
 
 fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_name = req.param("index") orelse return;
+    const index_name = req.param("index") orelse {
+        log.warn("missing index parameter", .{});
+        try writeErrorResponse(400, error.MissingIndexName, req, res);
+        return;
+    };
 
-    const index = try ctx.indexes.createIndex(index_name);
-    defer ctx.indexes.releaseIndex(index);
-    
-    var index_reader = try index.acquireReader();
-    defer index.releaseReader(&index_reader);
+    const version = try ctx.indexes.createIndexAndGetInfo(index_name);
     
     const response = CreateIndexResponse{
-        .version = index_reader.getVersion(),
+        .version = version,
     };
 
     return writeResponse(response, req, res);
@@ -537,19 +563,32 @@ fn handleDeleteIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !
 }
 
 fn handleHeadIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, false) orelse return;
-    defer releaseIndex(ctx, index);
+    const index_name = req.param("index") orelse {
+        res.status = 400;
+        return;
+    };
+
+    if (!ctx.indexes.indexExists(index_name)) {
+        res.status = 404;
+    }
 }
 
 fn handleIndexHealth(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, false) orelse return;
-    defer releaseIndex(ctx, index);
+    const index_name = req.param("index") orelse {
+        res.status = 400;
+        try res.writer().writeAll("Bad Request\n");
+        return;
+    };
+
+    if (!ctx.indexes.indexExists(index_name)) {
+        res.status = 404;
+        try res.writer().writeAll("Not Found\n");
+        return;
+    }
 
     try res.writer().writeAll("OK\n");
 }
 
-const MEMORY_SEGMENT = "memory";
-const FILE_SEGMENT = "file";
 
 pub const GetSegmentResponse = struct {
     kind: []const u8,
@@ -564,37 +603,29 @@ pub const GetSegmentsResponse = struct {
 };
 
 fn handleGetSegments(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
+    const index_name = req.param("index") orelse {
+        log.warn("missing index parameter", .{});
+        try writeErrorResponse(400, error.MissingIndexName, req, res);
+        return;
+    };
 
-    var reader = try index.acquireReader();
-    defer index.releaseReader(&reader);
+    const segments_info = ctx.indexes.getSegmentsInfo(index_name, req.arena) catch |err| {
+        if (err == error.IndexNotFound) {
+            try writeErrorResponse(404, err, req, res);
+            return;
+        }
+        return err;
+    };
 
-    const num_segments = reader.file_segments.value.count() + reader.memory_segments.value.count();
-    const segments = try req.arena.alloc(GetSegmentResponse, num_segments);
-
-    var i: usize = 0;
-
-    for (reader.file_segments.value.nodes.items) |segment| {
+    const segments = try req.arena.alloc(GetSegmentResponse, segments_info.len);
+    for (segments_info, 0..) |info, i| {
         segments[i] = .{
-            .kind = FILE_SEGMENT,
-            .version = segment.value.info.version,
-            .merges = segment.value.info.merges,
-            .min_doc_id = segment.value.min_doc_id,
-            .max_doc_id = segment.value.max_doc_id,
+            .kind = info.kind,
+            .version = info.version,
+            .merges = info.merges,
+            .min_doc_id = info.min_doc_id,
+            .max_doc_id = info.max_doc_id,
         };
-        i += 1;
-    }
-
-    for (reader.memory_segments.value.nodes.items) |segment| {
-        segments[i] = .{
-            .kind = MEMORY_SEGMENT,
-            .version = segment.value.info.version,
-            .merges = segment.value.info.merges,
-            .min_doc_id = segment.value.min_doc_id,
-            .max_doc_id = segment.value.max_doc_id,
-        };
-        i += 1;
     }
 
     return writeResponse(GetSegmentsResponse{ .segments = segments }, req, res);
@@ -608,15 +639,24 @@ fn handleHealth(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 }
 
 fn handleSnapshot(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
+    const index_name = req.param("index") orelse {
+        log.warn("missing index parameter", .{});
+        try writeErrorResponse(400, error.MissingIndexName, req, res);
+        return;
+    };
 
     // Set response headers for tar download
     res.header("content-type", "application/x-tar");
     res.header("content-disposition", "attachment; filename=\"index_snapshot.tar\"");
 
-    // Build snapshot using the dedicated module
-    try snapshot.buildSnapshot(res.writer().any(), index, req.arena);
+    // Build snapshot using MultiIndex method
+    ctx.indexes.buildSnapshot(index_name, res.writer().any(), req.arena) catch |err| {
+        if (err == error.IndexNotFound) {
+            try writeErrorResponse(404, err, req, res);
+            return;
+        }
+        return err;
+    };
 }
 
 fn handleMetrics(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
