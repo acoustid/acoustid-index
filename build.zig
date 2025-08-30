@@ -35,6 +35,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const nats = b.dependency("nats", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const main_exe = b.addExecutable(.{
         .name = "fpindex",
         .root_source_file = b.path("src/main.zig"),
@@ -44,11 +49,12 @@ pub fn build(b: *std.Build) void {
 
     // Link libc for C allocator used in ReleaseFast mode
     main_exe.linkLibC();
-    
+
     main_exe.root_module.addImport("httpz", httpz.module("httpz"));
     main_exe.root_module.addImport("metrics", metrics.module("metrics"));
     main_exe.root_module.addImport("zul", zul.module("zul"));
     main_exe.root_module.addImport("msgpack", msgpack.module("msgpack"));
+    main_exe.root_module.addImport("nats", nats.module("nats"));
 
     b.installArtifact(main_exe);
 
@@ -72,11 +78,12 @@ pub fn build(b: *std.Build) void {
 
     // Link libc for C allocator used in ReleaseFast mode
     main_tests.linkLibC();
-    
+
     main_tests.root_module.addImport("httpz", httpz.module("httpz"));
     main_tests.root_module.addImport("metrics", metrics.module("metrics"));
     main_tests.root_module.addImport("zul", zul.module("zul"));
     main_tests.root_module.addImport("msgpack", msgpack.module("msgpack"));
+    main_tests.root_module.addImport("nats", nats.module("nats"));
 
     const run_unit_tests = b.addRunArtifact(main_tests);
     run_unit_tests.has_side_effects = true;

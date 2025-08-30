@@ -2,6 +2,7 @@ const builtin = @import("builtin");
 const std = @import("std");
 const log = std.log.scoped(.main);
 const zul = @import("zul");
+const nats = @import("nats");
 
 const Scheduler = @import("utils/Scheduler.zig");
 const MultiIndex = @import("MultiIndex.zig");
@@ -48,6 +49,8 @@ fn printHelp() !void {
     try stdout.print("  --threads                       Number of threads to use\n", .{});
     try stdout.print("  --log-level                     Log level (debug, info, warn, error)\n", .{});
     try stdout.print("  --parallel-loading-threshold    Minimum segments to trigger parallel loading (default: 8)\n", .{});
+    try stdout.print("  --cluster                       Enable cluster mode\n", .{});
+    try stdout.print("  --nats-url URL                  NATS server URL\n", .{});
 }
 
 pub fn main() !void {
@@ -98,6 +101,20 @@ pub fn main() !void {
     const parallel_loading_threshold = try std.fmt.parseInt(usize, parallel_loading_threshold_str, 10);
     log.info("using parallel loading threshold of {}", .{parallel_loading_threshold});
 
+    const cluster_mode = args.contains("cluster");
+    if (cluster_mode) {
+        const url = args.get("nats-url") orelse "nats://localhost:4222";
+        log.info("connecting to NATS at {s}", .{url});
+
+        var nc = nats.Connection.init(allocator, .{});
+        defer nc.deinit();
+
+        nc.connect(url) catch |err| {
+            log.err("failed to connect to NATS at {s}: {}", .{url, err});
+            return err;
+        };
+        log.info("successfully connected to NATS", .{});
+    }
     try metrics.initializeMetrics(allocator, .{ .prefix = "aindex_" });
     defer metrics.deinitMetrics();
 
