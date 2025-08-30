@@ -143,7 +143,11 @@ pub fn run(comptime T: type, allocator: std.mem.Allocator, indexes: *T, address:
     router.get("/:index", HandlerWrapper(T, handleGetIndex).wrapper, .{});
     router.put("/:index", HandlerWrapper(T, handlePutIndex).wrapper, .{});
     router.delete("/:index", HandlerWrapper(T, handleDeleteIndex).wrapper, .{});
-    router.get("/:index/_snapshot", HandlerWrapper(T, handleSnapshot).wrapper, .{});
+    
+    // Snapshot endpoint - only available for types that support direct index access
+    if (@hasDecl(T, "getIndex") and @hasDecl(T, "releaseIndex")) {
+        router.get("/:index/_snapshot", HandlerWrapper(T, handleSnapshot).wrapper, .{});
+    }
 
     log.info("listening on {s}:{d}", .{ address, port });
     try server.listen();
@@ -183,34 +187,6 @@ fn getIndexName(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?[]
     return index_name;
 }
 
-fn getIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response, send_body: bool) !?*Index {
-    const index_name = req.param("index") orelse {
-        log.warn("missing index parameter", .{});
-        if (send_body) {
-            try writeErrorResponse(400, error.MissingIndexName, req, res);
-        } else {
-            res.status = 400;
-        }
-        return null;
-    };
-    const index = ctx.indexes.getIndex(index_name) catch |err| {
-        log.warn("error during getIndex: {}", .{err});
-        if (err == error.IndexNotFound) {
-            if (send_body) {
-                try writeErrorResponse(404, err, req, res);
-            } else {
-                res.status = 404;
-            }
-            return null;
-        }
-        return err;
-    };
-    return index;
-}
-
-fn releaseIndex(comptime T: type, ctx: *Context(T), index: *Index) void {
-    ctx.indexes.releaseIndex(index);
-}
 
 const ContentType = enum {
     json,
@@ -566,9 +542,20 @@ fn handleHealth(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *h
     try res.writer().writeAll("OK\n");
 }
 
+// Snapshot handler - only used for types that support direct index access (like MultiIndex)
+// Route is conditionally registered based on @hasDecl checks
 fn handleSnapshot(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(T, ctx, req, res, true) orelse return;
-    defer releaseIndex(T, ctx, index);
+    const index_name = try getIndexName(req, res, true) orelse return;
+    
+    const index = ctx.indexes.getIndex(index_name) catch |err| {
+        log.warn("error during getIndex: {}", .{err});
+        if (err == error.IndexNotFound) {
+            try writeErrorResponse(404, err, req, res);
+            return;
+        }
+        return err;
+    };
+    defer ctx.indexes.releaseIndex(index);
 
     // Set response headers for tar download
     res.header("content-type", "application/x-tar");
