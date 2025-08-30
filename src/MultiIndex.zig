@@ -4,6 +4,10 @@ const assert = std.debug.assert;
 
 const Index = @import("Index.zig");
 const Scheduler = @import("utils/Scheduler.zig");
+const api = @import("api.zig");
+const SearchResults = @import("common.zig").SearchResults;
+const Deadline = @import("utils/Deadline.zig");
+const metrics = @import("metrics.zig");
 
 const Self = @This();
 
@@ -278,4 +282,68 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
     entry.value_ptr.index.deinit();
     self.indexes.removeByPtr(entry.key_ptr);
     self.allocator.free(key_mem);
+}
+
+pub fn search(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+    request: api.SearchRequest,
+) !api.SearchResponse {
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+
+    // Validate and clamp limits
+    const limit = @max(@min(request.limit, api.max_search_limit), api.min_search_limit);
+    const timeout = @min(request.timeout, api.max_search_timeout);
+    const deadline = Deadline.init(timeout);
+
+    metrics.search();
+
+    var collector = SearchResults.init(allocator, .{
+        .max_results = limit,
+        .min_score = @intCast((request.query.len + 19) / 20),
+        .min_score_pct = 10,
+    });
+    defer collector.deinit();
+
+    try index.search(request.query, &collector, deadline);
+
+    const results = collector.getResults();
+
+    if (results.len == 0) {
+        metrics.searchMiss();
+    } else {
+        metrics.searchHit();
+    }
+
+    // Convert results to API format
+    const response_results = try allocator.alloc(api.SearchResult, results.len);
+    for (results, 0..) |r, i| {
+        response_results[i] = .{ .id = r.id, .score = r.score };
+    }
+
+    return api.SearchResponse{ .results = response_results };
+}
+
+pub fn update(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+    request: api.UpdateRequest,
+) !api.UpdateResponse {
+    _ = allocator; // Response doesn't need allocation
+
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+
+    metrics.update(request.changes.len);
+
+    const new_version = try index.update(
+        request.changes,
+        request.metadata,
+        request.expected_version,
+    );
+
+    return api.UpdateResponse{ .version = new_version };
 }

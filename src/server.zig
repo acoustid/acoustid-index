@@ -14,6 +14,7 @@ const Change = @import("change.zig").Change;
 const Deadline = @import("utils/Deadline.zig");
 const snapshot = @import("snapshot.zig");
 const Metadata = @import("Metadata.zig");
+const api = @import("api.zig");
 
 const metrics = @import("metrics.zig");
 
@@ -148,39 +149,6 @@ pub fn run(comptime T: type, allocator: std.mem.Allocator, indexes: *T, address:
     try server.listen();
 }
 
-const default_search_timeout = 500;
-const max_search_timeout = 10000;
-
-const default_search_limit = 40;
-const min_search_limit = 1;
-const max_search_limit = 100;
-
-const SearchRequestJSON = struct {
-    query: []u32,
-    timeout: u32 = default_search_timeout,
-    limit: u32 = default_search_limit,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
-
-const SearchResultJSON = struct {
-    id: u32,
-    score: u32,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
-
-const SearchResultsJSON = struct {
-    results: []SearchResultJSON,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
 
 fn getId(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?u32 {
     const id_str = req.param("id") orelse {
@@ -201,6 +169,19 @@ fn getId(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?u32 {
         }
         return null;
     };
+}
+
+fn getIndexName(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?[]const u8 {
+    const index_name = req.param("index") orelse {
+        log.warn("missing index parameter", .{});
+        if (send_body) {
+            try writeErrorResponse(400, error.MissingIndexName, req, res);
+        } else {
+            res.status = 400;
+        }
+        return null;
+    };
+    return index_name;
 }
 
 fn getIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response, send_body: bool) !?*Index {
@@ -353,72 +334,36 @@ fn handleSearch(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *h
     const start_time = std.time.milliTimestamp();
     defer metrics.searchDuration(std.time.milliTimestamp() - start_time);
 
-    const body = try getRequestBody(SearchRequestJSON, req, res) orelse return;
+    const index_name = try getIndexName(req, res, true) orelse return;
+    const body = try getRequestBody(api.SearchRequest, req, res) orelse return;
 
-    const index = try getIndex(T, ctx, req, res, true) orelse return;
-    defer releaseIndex(T, ctx, index);
-
-    const limit = @max(@min(body.limit, max_search_limit), min_search_limit);
-
-    var timeout = body.timeout;
-    if (timeout > max_search_timeout) {
-        timeout = max_search_timeout;
-    }
-    const deadline = Deadline.init(timeout);
-
-    metrics.search();
-
-    var collector = SearchResults.init(req.arena, .{
-        .max_results = limit,
-        .min_score = @intCast((body.query.len + 19) / 20),
-        .min_score_pct = 10,
-    });
-
-    try index.search(body.query, &collector, deadline);
-
-    const results = collector.getResults();
-
-    if (results.len == 0) {
-        metrics.searchMiss();
-    } else {
-        metrics.searchHit();
-    }
-
-    var results_json = SearchResultsJSON{
-        .results = try req.arena.alloc(SearchResultJSON, results.len),
-    };
-    for (results, 0..) |r, i| {
-        results_json.results[i] = SearchResultJSON{ .id = r.id, .score = r.score };
-    }
-    return writeResponse(results_json, req, res);
-}
-
-const UpdateRequestJSON = struct {
-    changes: []Change,
-    metadata: ?Metadata = null,
-    expected_version: ?u64 = null,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
-
-fn handleUpdate(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const body = try getRequestBody(UpdateRequestJSON, req, res) orelse return;
-
-    const index = try getIndex(T, ctx, req, res, true) orelse return;
-    defer releaseIndex(T, ctx, index);
-
-    metrics.update(body.changes.len);
-
-    const new_version = index.update(body.changes, body.metadata, body.expected_version) catch |err| {
-        if (err == error.VersionMismatch) {
-            return writeErrorResponse(409, err, req, res);
+    const response = ctx.indexes.search(req.arena, index_name, body) catch |err| {
+        if (err == error.IndexNotFound) {
+            try writeErrorResponse(404, err, req, res);
+            return;
         }
         return err;
     };
 
-    return writeResponse(UpdateResponse{ .version = new_version }, req, res);
+    return writeResponse(response, req, res);
+}
+
+
+fn handleUpdate(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index_name = try getIndexName(req, res, true) orelse return;
+    const body = try getRequestBody(api.UpdateRequest, req, res) orelse return;
+
+    const response = ctx.indexes.update(req.arena, index_name, body) catch |err| {
+        if (err == error.VersionMismatch) {
+            return writeErrorResponse(409, err, req, res);
+        }
+        if (err == error.IndexNotFound) {
+            return writeErrorResponse(404, err, req, res);
+        }
+        return err;
+    };
+
+    return writeResponse(response, req, res);
 }
 
 fn handleHeadFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
@@ -526,14 +471,6 @@ fn handleGetIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: 
 }
 
 const EmptyResponse = struct {};
-
-const UpdateResponse = struct {
-    version: u64,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
 
 const CreateIndexRequest = struct {
     pub fn msgpackFormat() msgpack.StructFormat {
