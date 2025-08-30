@@ -394,3 +394,43 @@ pub fn createIndex(
         .version = index_reader.getVersion(),
     };
 }
+
+pub fn getFingerprintInfo(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+    fingerprint_id: u32,
+) !api.GetFingerprintInfoResponse {
+    _ = allocator; // Response doesn't need allocation
+
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+
+    var index_reader = try index.acquireReader();
+    defer index.releaseReader(&index_reader);
+
+    const info = try index_reader.getDocInfo(fingerprint_id) orelse {
+        return error.FingerprintNotFound;
+    };
+
+    return api.GetFingerprintInfoResponse{
+        .version = info.version,
+    };
+}
+
+pub fn checkFingerprintExists(
+    self: *Self,
+    index_name: []const u8,
+    fingerprint_id: u32,
+) !void {
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+
+    var index_reader = try index.acquireReader();
+    defer index.releaseReader(&index_reader);
+
+    const info = try index_reader.getDocInfo(fingerprint_id);
+    if (info == null) {
+        return error.FingerprintNotFound;
+    }
+}

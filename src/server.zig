@@ -368,39 +368,39 @@ fn handleUpdate(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *h
 }
 
 fn handleHeadFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(T, ctx, req, res, false) orelse return;
-    defer releaseIndex(T, ctx, index);
-
-    var index_reader = try index.acquireReader();
-    defer index.releaseReader(&index_reader);
-
+    const index_name = try getIndexName(req, res, false) orelse return;
     const id = try getId(req, res, false) orelse return;
-    const info = try index_reader.getDocInfo(id);
 
-    res.status = if (info == null) 404 else 200;
-}
-
-const GetFingerprintResponse = struct {
-    version: u64,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
-
-fn handleGetFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(T, ctx, req, res, true) orelse return;
-    defer releaseIndex(T, ctx, index);
-
-    var index_reader = try index.acquireReader();
-    defer index.releaseReader(&index_reader);
-
-    const id = try getId(req, res, true) orelse return;
-    const info = try index_reader.getDocInfo(id) orelse {
-        return writeErrorResponse(404, error.FingerprintNotFound, req, res);
+    ctx.indexes.checkFingerprintExists(index_name, id) catch |err| {
+        if (err == error.IndexNotFound or err == error.FingerprintNotFound) {
+            res.status = 404;
+            return;
+        }
+        return err;
     };
 
-    return writeResponse(GetFingerprintResponse{ .version = info.version }, req, res);
+    res.status = 200;
+}
+
+
+fn handleGetFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index_name = try getIndexName(req, res, true) orelse return;
+    const id = try getId(req, res, true) orelse return;
+
+    const response = ctx.indexes.getFingerprintInfo(req.arena, index_name, id) catch |err| {
+        if (err == error.IndexNotFound) {
+            try writeErrorResponse(404, err, req, res);
+            return;
+        }
+        if (err == error.FingerprintNotFound) {
+            try writeErrorResponse(404, err, req, res);
+            return;
+        }
+        return err;
+    };
+    comptime assert(@TypeOf(response) == api.GetFingerprintInfoResponse);
+
+    return writeResponse(response, req, res);
 }
 
 const PutFingerprintRequest = struct {
