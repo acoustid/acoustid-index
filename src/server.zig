@@ -149,7 +149,6 @@ pub fn run(comptime T: type, allocator: std.mem.Allocator, indexes: *T, address:
     try server.listen();
 }
 
-
 fn getId(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?u32 {
     const id_str = req.param("id") orelse {
         log.warn("missing id parameter", .{});
@@ -348,7 +347,6 @@ fn handleSearch(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *h
     return writeResponse(response, req, res);
 }
 
-
 fn handleUpdate(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = try getIndexName(req, res, true) orelse return;
     const body = try getRequestBody(api.UpdateRequest, req, res) orelse return;
@@ -411,36 +409,57 @@ const PutFingerprintRequest = struct {
 };
 
 fn handlePutFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index_name = try getIndexName(req, res, true) orelse return;
+    const id = try getId(req, res, true) orelse return;
     const body = try getRequestBody(PutFingerprintRequest, req, res) orelse return;
 
-    const index = try getIndex(T, ctx, req, res, true) orelse return;
-    defer releaseIndex(T, ctx, index);
-
-    const id = try getId(req, res, true) orelse return;
-    const change: Change = .{ .insert = .{
+    var changes: [1]Change = .{.{ .insert = .{
         .id = id,
         .hashes = body.hashes,
-    } };
+    } }};
 
-    metrics.update(1);
+    const update_request = api.UpdateRequest{
+        .changes = &changes,
+        .metadata = null,
+        .expected_version = null,
+    };
 
-    _ = try index.update(&[_]Change{change}, null, null);
+    _ = ctx.indexes.update(req.arena, index_name, update_request) catch |err| {
+        if (err == error.VersionMismatch) {
+            return writeErrorResponse(409, err, req, res);
+        }
+        if (err == error.IndexNotFound) {
+            return writeErrorResponse(404, err, req, res);
+        }
+        return err;
+    };
 
     return writeResponse(EmptyResponse{}, req, res);
 }
 
 fn handleDeleteFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(T, ctx, req, res, true) orelse return;
-    defer releaseIndex(T, ctx, index);
-
+    const index_name = try getIndexName(req, res, true) orelse return;
     const id = try getId(req, res, true) orelse return;
-    const change: Change = .{ .delete = .{
+
+    var changes: [1]Change = .{.{ .delete = .{
         .id = id,
-    } };
+    } }};
 
-    metrics.update(1);
+    const update_request = api.UpdateRequest{
+        .changes = &changes,
+        .metadata = null,
+        .expected_version = null,
+    };
 
-    _ = try index.update(&[_]Change{change}, null, null);
+    _ = ctx.indexes.update(req.arena, index_name, update_request) catch |err| {
+        if (err == error.VersionMismatch) {
+            return writeErrorResponse(409, err, req, res);
+        }
+        if (err == error.IndexNotFound) {
+            return writeErrorResponse(404, err, req, res);
+        }
+        return err;
+    };
 
     return writeResponse(EmptyResponse{}, req, res);
 }
