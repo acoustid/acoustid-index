@@ -113,7 +113,7 @@ pub fn main() !void {
 
     try indexes.open();
 
-    try server.run(allocator, &indexes, address, port, threads);
+    try server.run(MultiIndex, allocator, &indexes, address, port, threads);
 }
 
 test {

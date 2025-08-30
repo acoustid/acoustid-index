@@ -17,32 +17,57 @@ const Metadata = @import("Metadata.zig");
 
 const metrics = @import("metrics.zig");
 
-const Context = struct {
-    indexes: *MultiIndex,
+fn Context(comptime T: type) type {
+    return struct {
+        indexes: *T,
 
-    pub fn notFound(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-        return handleNotFound(ctx, req, res);
-    }
+        const Self = @This();
 
-    pub fn uncaughtError(ctx: *Context, req: *httpz.Request, res: *httpz.Response, err: anyerror) void {
-        return handleError(ctx, req, res, err);
+        pub fn notFound(ctx: *Self, req: *httpz.Request, res: *httpz.Response) !void {
+            return handleNotFound(T, ctx, req, res);
+        }
+
+        pub fn uncaughtError(ctx: *Self, req: *httpz.Request, res: *httpz.Response, err: anyerror) void {
+            return handleError(T, ctx, req, res, err);
+        }
+    };
+}
+
+fn Server(comptime T: type) type {
+    return httpz.Server(*Context(T));
+}
+
+// Interface for server shutdown
+const ServerStopper = struct {
+    ptr: *anyopaque,
+    stopFn: *const fn (*anyopaque) void,
+
+    pub fn stop(self: ServerStopper) void {
+        self.stopFn(self.ptr);
     }
 };
 
-const Server = httpz.Server(*Context);
-
-var global_server: ?*Server = null;
+var global_server: ?ServerStopper = null;
 
 fn shutdown(_: c_int) callconv(.C) void {
     if (global_server) |server| {
         log.info("stopping", .{});
-        global_server = null;
         server.stop();
+        global_server = null;
     }
 }
 
-fn installSignalHandlers(server: *Server) void {
-    global_server = server;
+fn installSignalHandlers(comptime T: type, server: *Server(T)) void {
+    const ServerType = Server(T);
+    global_server = .{
+        .ptr = server,
+        .stopFn = struct {
+            fn stop(ptr: *anyopaque) void {
+                const s: *ServerType = @ptrCast(@alignCast(ptr));
+                s.stop();
+            }
+        }.stop,
+    };
 
     std.posix.sigaction(std.posix.SIG.INT, &.{
         .handler = .{ .handler = shutdown },
@@ -57,8 +82,19 @@ fn installSignalHandlers(server: *Server) void {
     }, null);
 }
 
-pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const u8, port: u16, threads: u16) !void {
-    var ctx = Context{ .indexes = indexes };
+// Generic wrapper generator - creates a struct with the wrapper function
+fn HandlerWrapper(comptime T: type, comptime handler_fn: anytype) type {
+    const ContextType = Context(T);
+    return struct {
+        pub fn wrapper(context: *ContextType, req: *httpz.Request, res: *httpz.Response) !void {
+            return handler_fn(T, context, req, res);
+        }
+    };
+}
+
+pub fn run(comptime T: type, allocator: std.mem.Allocator, indexes: *T, address: []const u8, port: u16, threads: u16) !void {
+    const ContextType = Context(T);
+    var ctx = ContextType{ .indexes = indexes };
 
     const config = httpz.Config{
         .address = address,
@@ -75,37 +111,38 @@ pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const 
         },
     };
 
-    var server = try Server.init(allocator, config, &ctx);
+    const ServerType = Server(T);
+    var server = try ServerType.init(allocator, config, &ctx);
     defer server.deinit();
 
-    installSignalHandlers(&server);
+    installSignalHandlers(T, &server);
 
     var router = try server.router(.{});
 
     // Monitoring API
-    router.get("/_metrics", handleMetrics, .{});
-    router.get("/_health", handleHealth, .{});
-    router.get("/:index/_health", handleIndexHealth, .{});
+    router.get("/_metrics", HandlerWrapper(T, handleMetrics).wrapper, .{});
+    router.get("/_health", HandlerWrapper(T, handleHealth).wrapper, .{});
+    router.get("/:index/_health", HandlerWrapper(T, handleIndexHealth).wrapper, .{});
 
     // Search API
-    router.post("/:index/_search", handleSearch, .{});
+    router.post("/:index/_search", HandlerWrapper(T, handleSearch).wrapper, .{});
 
     // Bulk API
-    router.post("/:index/_update", handleUpdate, .{});
+    router.post("/:index/_update", HandlerWrapper(T, handleUpdate).wrapper, .{});
 
     // Fingerprint API
-    router.head("/:index/:id", handleHeadFingerprint, .{});
-    router.get("/:index/:id", handleGetFingerprint, .{});
-    router.put("/:index/:id", handlePutFingerprint, .{});
-    router.delete("/:index/:id", handleDeleteFingerprint, .{});
+    router.head("/:index/:id", HandlerWrapper(T, handleHeadFingerprint).wrapper, .{});
+    router.get("/:index/:id", HandlerWrapper(T, handleGetFingerprint).wrapper, .{});
+    router.put("/:index/:id", HandlerWrapper(T, handlePutFingerprint).wrapper, .{});
+    router.delete("/:index/:id", HandlerWrapper(T, handleDeleteFingerprint).wrapper, .{});
 
     // Index API
-    router.head("/:index", handleHeadIndex, .{});
-    router.get("/:index", handleGetIndex, .{});
-    router.put("/:index", handlePutIndex, .{});
-    router.delete("/:index", handleDeleteIndex, .{});
-    router.get("/:index/_segments", handleGetSegments, .{});
-    router.get("/:index/_snapshot", handleSnapshot, .{});
+    router.head("/:index", HandlerWrapper(T, handleHeadIndex).wrapper, .{});
+    router.get("/:index", HandlerWrapper(T, handleGetIndex).wrapper, .{});
+    router.put("/:index", HandlerWrapper(T, handlePutIndex).wrapper, .{});
+    router.delete("/:index", HandlerWrapper(T, handleDeleteIndex).wrapper, .{});
+    router.get("/:index/_segments", HandlerWrapper(T, handleGetSegments).wrapper, .{});
+    router.get("/:index/_snapshot", HandlerWrapper(T, handleSnapshot).wrapper, .{});
 
     log.info("listening on {s}:{d}", .{ address, port });
     try server.listen();
@@ -166,7 +203,7 @@ fn getId(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?u32 {
     };
 }
 
-fn getIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response, send_body: bool) !?*Index {
+fn getIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response, send_body: bool) !?*Index {
     const index_name = req.param("index") orelse {
         log.warn("missing index parameter", .{});
         if (send_body) {
@@ -191,7 +228,7 @@ fn getIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response, send_body:
     return index;
 }
 
-fn releaseIndex(ctx: *Context, index: *Index) void {
+fn releaseIndex(comptime T: type, ctx: *Context(T), index: *Index) void {
     ctx.indexes.releaseIndex(index);
 }
 
@@ -253,11 +290,11 @@ const ErrorResponse = struct {
     }
 };
 
-fn handleNotFound(_: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn handleNotFound(comptime T: type, _: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     try writeErrorResponse(404, error.NotFound, req, res);
 }
 
-fn handleError(_: *Context, req: *httpz.Request, res: *httpz.Response, err: anyerror) void {
+fn handleError(comptime T: type, _: *Context(T), req: *httpz.Request, res: *httpz.Response, err: anyerror) void {
     switch (err) {
         error.IndexNotReady => {
             writeErrorResponse(503, err, req, res) catch {
@@ -312,14 +349,14 @@ fn getRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !
     unreachable;
 }
 
-fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn handleSearch(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     const start_time = std.time.milliTimestamp();
     defer metrics.searchDuration(std.time.milliTimestamp() - start_time);
 
     const body = try getRequestBody(SearchRequestJSON, req, res) orelse return;
 
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
+    const index = try getIndex(T, ctx, req, res, true) orelse return;
+    defer releaseIndex(T, ctx, index);
 
     const limit = @max(@min(body.limit, max_search_limit), min_search_limit);
 
@@ -366,11 +403,11 @@ const UpdateRequestJSON = struct {
     }
 };
 
-fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn handleUpdate(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     const body = try getRequestBody(UpdateRequestJSON, req, res) orelse return;
 
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
+    const index = try getIndex(T, ctx, req, res, true) orelse return;
+    defer releaseIndex(T, ctx, index);
 
     metrics.update(body.changes.len);
 
@@ -384,9 +421,9 @@ fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
     return writeResponse(UpdateResponse{ .version = new_version }, req, res);
 }
 
-fn handleHeadFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, false) orelse return;
-    defer releaseIndex(ctx, index);
+fn handleHeadFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index = try getIndex(T, ctx, req, res, false) orelse return;
+    defer releaseIndex(T, ctx, index);
 
     var index_reader = try index.acquireReader();
     defer index.releaseReader(&index_reader);
@@ -405,9 +442,9 @@ const GetFingerprintResponse = struct {
     }
 };
 
-fn handleGetFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
+fn handleGetFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index = try getIndex(T, ctx, req, res, true) orelse return;
+    defer releaseIndex(T, ctx, index);
 
     var index_reader = try index.acquireReader();
     defer index.releaseReader(&index_reader);
@@ -428,11 +465,11 @@ const PutFingerprintRequest = struct {
     }
 };
 
-fn handlePutFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn handlePutFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     const body = try getRequestBody(PutFingerprintRequest, req, res) orelse return;
 
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
+    const index = try getIndex(T, ctx, req, res, true) orelse return;
+    defer releaseIndex(T, ctx, index);
 
     const id = try getId(req, res, true) orelse return;
     const change: Change = .{ .insert = .{
@@ -447,9 +484,9 @@ fn handlePutFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response
     return writeResponse(EmptyResponse{}, req, res);
 }
 
-fn handleDeleteFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
+fn handleDeleteFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index = try getIndex(T, ctx, req, res, true) orelse return;
+    defer releaseIndex(T, ctx, index);
 
     const id = try getId(req, res, true) orelse return;
     const change: Change = .{ .delete = .{
@@ -473,9 +510,9 @@ const GetIndexResponse = struct {
     }
 };
 
-fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
+fn handleGetIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index = try getIndex(T, ctx, req, res, true) orelse return;
+    defer releaseIndex(T, ctx, index);
 
     var index_reader = try index.acquireReader();
     defer index.releaseReader(&index_reader);
@@ -512,15 +549,15 @@ const CreateIndexResponse = struct {
     }
 };
 
-fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn handlePutIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = req.param("index") orelse return;
 
     const index = try ctx.indexes.createIndex(index_name);
-    defer ctx.indexes.releaseIndex(index);
-    
+    defer releaseIndex(T, ctx, index);
+
     var index_reader = try index.acquireReader();
     defer index.releaseReader(&index_reader);
-    
+
     const response = CreateIndexResponse{
         .version = index_reader.getVersion(),
     };
@@ -528,7 +565,7 @@ fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
     return writeResponse(response, req, res);
 }
 
-fn handleDeleteIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn handleDeleteIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = req.param("index") orelse return;
 
     try ctx.indexes.deleteIndex(index_name);
@@ -536,14 +573,14 @@ fn handleDeleteIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !
     return writeResponse(EmptyResponse{}, req, res);
 }
 
-fn handleHeadIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, false) orelse return;
-    defer releaseIndex(ctx, index);
+fn handleHeadIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index = try getIndex(T, ctx, req, res, false) orelse return;
+    defer releaseIndex(T, ctx, index);
 }
 
-fn handleIndexHealth(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, false) orelse return;
-    defer releaseIndex(ctx, index);
+fn handleIndexHealth(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index = try getIndex(T, ctx, req, res, false) orelse return;
+    defer releaseIndex(T, ctx, index);
 
     try res.writer().writeAll("OK\n");
 }
@@ -563,9 +600,9 @@ pub const GetSegmentsResponse = struct {
     segments: []GetSegmentResponse,
 };
 
-fn handleGetSegments(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
+fn handleGetSegments(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index = try getIndex(T, ctx, req, res, true) orelse return;
+    defer releaseIndex(T, ctx, index);
 
     var reader = try index.acquireReader();
     defer index.releaseReader(&reader);
@@ -600,16 +637,16 @@ fn handleGetSegments(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !
     return writeResponse(GetSegmentsResponse{ .segments = segments }, req, res);
 }
 
-fn handleHealth(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn handleHealth(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     _ = ctx;
     _ = req;
 
     try res.writer().writeAll("OK\n");
 }
 
-fn handleSnapshot(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
+fn handleSnapshot(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index = try getIndex(T, ctx, req, res, true) orelse return;
+    defer releaseIndex(T, ctx, index);
 
     // Set response headers for tar download
     res.header("content-type", "application/x-tar");
@@ -619,7 +656,7 @@ fn handleSnapshot(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
     try snapshot.buildSnapshot(res.writer().any(), index, req.arena);
 }
 
-fn handleMetrics(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn handleMetrics(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     _ = ctx;
     _ = req;
 
