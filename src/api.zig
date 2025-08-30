@@ -56,3 +56,29 @@ pub const UpdateResponse = struct {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
     }
 };
+
+// Index info models
+pub const IndexStats = struct {
+    min_doc_id: u32,
+    max_doc_id: u32,
+    num_segments: usize,
+    num_docs: u32,
+};
+
+pub const GetIndexInfoResponse = struct {
+    version: u64,
+    metadata: Metadata,
+    stats: IndexStats,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+pub const CreateIndexResponse = struct {
+    version: u64,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};

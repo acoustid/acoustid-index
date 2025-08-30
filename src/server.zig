@@ -2,6 +2,7 @@ const std = @import("std");
 const httpz = @import("httpz");
 const json = std.json;
 const log = std.log.scoped(.server);
+const assert = std.debug.assert;
 
 const msgpack = @import("msgpack");
 
@@ -343,6 +344,7 @@ fn handleSearch(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *h
         }
         return err;
     };
+    comptime assert(@TypeOf(response) == api.SearchResponse);
 
     return writeResponse(response, req, res);
 }
@@ -360,6 +362,7 @@ fn handleUpdate(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *h
         }
         return err;
     };
+    comptime assert(@TypeOf(response) == api.UpdateResponse);
 
     return writeResponse(response, req, res);
 }
@@ -424,7 +427,7 @@ fn handlePutFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request,
         .expected_version = null,
     };
 
-    _ = ctx.indexes.update(req.arena, index_name, update_request) catch |err| {
+    const response = ctx.indexes.update(req.arena, index_name, update_request) catch |err| {
         if (err == error.VersionMismatch) {
             return writeErrorResponse(409, err, req, res);
         }
@@ -433,6 +436,7 @@ fn handlePutFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request,
         }
         return err;
     };
+    comptime assert(@TypeOf(response) == api.UpdateResponse);
 
     return writeResponse(EmptyResponse{}, req, res);
 }
@@ -451,7 +455,7 @@ fn handleDeleteFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Reque
         .expected_version = null,
     };
 
-    _ = ctx.indexes.update(req.arena, index_name, update_request) catch |err| {
+    const response = ctx.indexes.update(req.arena, index_name, update_request) catch |err| {
         if (err == error.VersionMismatch) {
             return writeErrorResponse(409, err, req, res);
         }
@@ -460,32 +464,24 @@ fn handleDeleteFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Reque
         }
         return err;
     };
+    comptime assert(@TypeOf(response) == api.UpdateResponse);
 
     return writeResponse(EmptyResponse{}, req, res);
 }
 
-const GetIndexResponse = struct {
-    version: u64,
-    metadata: Metadata,
-    stats: IndexReader.Stats,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
 
 fn handleGetIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(T, ctx, req, res, true) orelse return;
-    defer releaseIndex(T, ctx, index);
+    const index_name = try getIndexName(req, res, true) orelse return;
 
-    var index_reader = try index.acquireReader();
-    defer index.releaseReader(&index_reader);
-
-    const response = GetIndexResponse{
-        .version = index_reader.getVersion(),
-        .metadata = try index_reader.getMetadata(req.arena),
-        .stats = index_reader.getStats(),
+    const response = ctx.indexes.getIndexInfo(req.arena, index_name) catch |err| {
+        if (err == error.IndexNotFound) {
+            try writeErrorResponse(404, err, req, res);
+            return;
+        }
+        return err;
     };
+    comptime assert(@TypeOf(response) == api.GetIndexInfoResponse);
+
     return writeResponse(response, req, res);
 }
 
@@ -497,46 +493,68 @@ const CreateIndexRequest = struct {
     }
 };
 
-const CreateIndexResponse = struct {
-    version: u64,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
 
 fn handlePutIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index_name = req.param("index") orelse return;
+    const index_name = try getIndexName(req, res, true) orelse return;
 
-    const index = try ctx.indexes.createIndex(index_name);
-    defer releaseIndex(T, ctx, index);
-
-    var index_reader = try index.acquireReader();
-    defer index.releaseReader(&index_reader);
-
-    const response = CreateIndexResponse{
-        .version = index_reader.getVersion(),
+    const response = ctx.indexes.createIndex(req.arena, index_name) catch |err| {
+        if (err == error.InvalidIndexName) {
+            try writeErrorResponse(400, err, req, res);
+            return;
+        }
+        return err;
     };
+    comptime assert(@TypeOf(response) == api.CreateIndexResponse);
 
     return writeResponse(response, req, res);
 }
 
 fn handleDeleteIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index_name = req.param("index") orelse return;
+    const index_name = try getIndexName(req, res, true) orelse return;
 
-    try ctx.indexes.deleteIndex(index_name);
+    ctx.indexes.deleteIndex(index_name) catch |err| {
+        if (err == error.InvalidIndexName) {
+            try writeErrorResponse(400, err, req, res);
+            return;
+        }
+        if (err == error.IndexNotFound) {
+            try writeErrorResponse(404, err, req, res);
+            return;
+        }
+        if (err == error.DeleteTimeout or err == error.IndexAlreadyBeingDeleted) {
+            try writeErrorResponse(409, err, req, res);
+            return;
+        }
+        return err;
+    };
 
     return writeResponse(EmptyResponse{}, req, res);
 }
 
 fn handleHeadIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(T, ctx, req, res, false) orelse return;
-    defer releaseIndex(T, ctx, index);
+    const index_name = try getIndexName(req, res, false) orelse return;
+
+    ctx.indexes.checkIndexExists(index_name) catch |err| {
+        if (err == error.IndexNotFound) {
+            res.status = 404;
+            return;
+        }
+        return err;
+    };
+
+    res.status = 200;
 }
 
 fn handleIndexHealth(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(T, ctx, req, res, false) orelse return;
-    defer releaseIndex(T, ctx, index);
+    const index_name = try getIndexName(req, res, false) orelse return;
+
+    ctx.indexes.checkIndexExists(index_name) catch |err| {
+        if (err == error.IndexNotFound) {
+            res.status = 404;
+            return;
+        }
+        return err;
+    };
 
     try res.writer().writeAll("OK\n");
 }

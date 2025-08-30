@@ -214,9 +214,6 @@ pub fn getIndex(self: *Self, name: []const u8) !*Index {
     return self.getOrCreateIndex(name, false);
 }
 
-pub fn createIndex(self: *Self, name: []const u8) !*Index {
-    return self.getOrCreateIndex(name, true);
-}
 
 pub fn deleteIndex(self: *Self, name: []const u8) !void {
     if (!isValidName(name)) {
@@ -346,4 +343,54 @@ pub fn update(
     );
 
     return api.UpdateResponse{ .version = new_version };
+}
+
+pub fn getIndexInfo(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+) !api.GetIndexInfoResponse {
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+
+    var index_reader = try index.acquireReader();
+    defer index.releaseReader(&index_reader);
+
+    return api.GetIndexInfoResponse{
+        .version = index_reader.getVersion(),
+        .metadata = try index_reader.getMetadata(allocator),
+        .stats = api.IndexStats{
+            .min_doc_id = index_reader.getMinDocId(),
+            .max_doc_id = index_reader.getMaxDocId(),
+            .num_segments = index_reader.getNumSegments(),
+            .num_docs = index_reader.getNumDocs(),
+        },
+    };
+}
+
+pub fn checkIndexExists(
+    self: *Self,
+    index_name: []const u8,
+) !void {
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+    // Just checking existence, no need to return anything
+}
+
+pub fn createIndex(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+) !api.CreateIndexResponse {
+    _ = allocator; // Response doesn't need allocation
+    
+    const index = try self.getOrCreateIndex(index_name, true);
+    defer self.releaseIndex(index);
+
+    var index_reader = try index.acquireReader();
+    defer index.releaseReader(&index_reader);
+
+    return api.CreateIndexResponse{
+        .version = index_reader.getVersion(),
+    };
 }
