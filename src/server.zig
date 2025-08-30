@@ -143,6 +143,19 @@ const SearchResultsJSON = struct {
     }
 };
 
+fn getIndexName(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?[]const u8 {
+    const index_name = req.param("index") orelse {
+        log.warn("missing index parameter", .{});
+        if (send_body) {
+            try writeErrorResponse(400, error.MissingIndexName, req, res);
+        } else {
+            res.status = 400;
+        }
+        return null;
+    };
+    return index_name;
+}
+
 fn getId(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?u32 {
     const id_str = req.param("id") orelse {
         log.warn("missing id parameter", .{});
@@ -288,11 +301,7 @@ fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 
     const body = try getRequestBody(SearchRequestJSON, req, res) orelse return;
 
-    const index_name = req.param("index") orelse {
-        log.warn("missing index parameter", .{});
-        try writeErrorResponse(400, error.MissingIndexName, req, res);
-        return;
-    };
+    const index_name = try getIndexName(req, res, true) orelse return;
 
     const limit = @max(@min(body.limit, max_search_limit), min_search_limit);
 
@@ -348,11 +357,7 @@ const UpdateRequestJSON = struct {
 fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const body = try getRequestBody(UpdateRequestJSON, req, res) orelse return;
 
-    const index_name = req.param("index") orelse {
-        log.warn("missing index parameter", .{});
-        try writeErrorResponse(400, error.MissingIndexName, req, res);
-        return;
-    };
+    const index_name = try getIndexName(req, res, true) orelse return;
 
     metrics.update(body.changes.len);
 
@@ -372,10 +377,7 @@ fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 }
 
 fn handleHeadFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_name = req.param("index") orelse {
-        res.status = 400;
-        return;
-    };
+    const index_name = try getIndexName(req, res, false) orelse return;
 
     const id = try getId(req, res, false) orelse return;
     
@@ -399,11 +401,7 @@ const GetFingerprintResponse = struct {
 };
 
 fn handleGetFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_name = req.param("index") orelse {
-        log.warn("missing index parameter", .{});
-        try writeErrorResponse(400, error.MissingIndexName, req, res);
-        return;
-    };
+    const index_name = try getIndexName(req, res, true) orelse return;
 
     const id = try getId(req, res, true) orelse return;
     
@@ -431,11 +429,7 @@ const PutFingerprintRequest = struct {
 fn handlePutFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
     const body = try getRequestBody(PutFingerprintRequest, req, res) orelse return;
 
-    const index_name = req.param("index") orelse {
-        log.warn("missing index parameter", .{});
-        try writeErrorResponse(400, error.MissingIndexName, req, res);
-        return;
-    };
+    const index_name = try getIndexName(req, res, true) orelse return;
 
     const id = try getId(req, res, true) orelse return;
     const change: Change = .{ .insert = .{
@@ -457,11 +451,7 @@ fn handlePutFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response
 }
 
 fn handleDeleteFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_name = req.param("index") orelse {
-        log.warn("missing index parameter", .{});
-        try writeErrorResponse(400, error.MissingIndexName, req, res);
-        return;
-    };
+    const index_name = try getIndexName(req, res, true) orelse return;
 
     const id = try getId(req, res, true) orelse return;
     const change: Change = .{ .delete = .{
@@ -492,11 +482,7 @@ const GetIndexResponse = struct {
 };
 
 fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_name = req.param("index") orelse {
-        log.warn("missing index parameter", .{});
-        try writeErrorResponse(400, error.MissingIndexName, req, res);
-        return;
-    };
+    const index_name = try getIndexName(req, res, true) orelse return;
 
     const info = ctx.indexes.getIndexInfo(index_name, req.arena) catch |err| {
         if (err == error.IndexNotFound) {
@@ -539,11 +525,7 @@ const CreateIndexResponse = struct {
 };
 
 fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_name = req.param("index") orelse {
-        log.warn("missing index parameter", .{});
-        try writeErrorResponse(400, error.MissingIndexName, req, res);
-        return;
-    };
+    const index_name = try getIndexName(req, res, true) orelse return;
 
     const version = try ctx.indexes.createIndexAndGetInfo(index_name);
     
@@ -555,7 +537,7 @@ fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !voi
 }
 
 fn handleDeleteIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_name = req.param("index") orelse return;
+    const index_name = try getIndexName(req, res, true) orelse return;
 
     try ctx.indexes.deleteIndex(index_name);
 
@@ -563,10 +545,7 @@ fn handleDeleteIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !
 }
 
 fn handleHeadIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_name = req.param("index") orelse {
-        res.status = 400;
-        return;
-    };
+    const index_name = try getIndexName(req, res, false) orelse return;
 
     if (!ctx.indexes.indexExists(index_name)) {
         res.status = 404;
@@ -574,8 +553,7 @@ fn handleHeadIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !vo
 }
 
 fn handleIndexHealth(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_name = req.param("index") orelse {
-        res.status = 400;
+    const index_name = try getIndexName(req, res, false) orelse {
         try res.writer().writeAll("Bad Request\n");
         return;
     };
@@ -603,11 +581,7 @@ pub const GetSegmentsResponse = struct {
 };
 
 fn handleGetSegments(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_name = req.param("index") orelse {
-        log.warn("missing index parameter", .{});
-        try writeErrorResponse(400, error.MissingIndexName, req, res);
-        return;
-    };
+    const index_name = try getIndexName(req, res, true) orelse return;
 
     const segments_info = ctx.indexes.getSegmentsInfo(index_name, req.arena) catch |err| {
         if (err == error.IndexNotFound) {
@@ -639,11 +613,7 @@ fn handleHealth(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void 
 }
 
 fn handleSnapshot(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_name = req.param("index") orelse {
-        log.warn("missing index parameter", .{});
-        try writeErrorResponse(400, error.MissingIndexName, req, res);
-        return;
-    };
+    const index_name = try getIndexName(req, res, true) orelse return;
 
     // Set response headers for tar download
     res.header("content-type", "application/x-tar");
