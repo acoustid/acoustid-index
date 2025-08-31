@@ -219,10 +219,10 @@ pub fn open(self: *Self) !void {
     self.lock_file = lock_file;
 
     // Schedule periodic cleanup task
-    self.cleanup_task = try self.scheduler.createTask(.low, cleanupDeletedIndexesTask, .{self});
-    if (self.cleanup_task) |task| {
-        self.scheduler.scheduleTask(task); // Start cleanup immediately
-    }
+    // self.cleanup_task = try self.scheduler.createTask(.low, cleanupDeletedIndexesTask, .{self});
+    // if (self.cleanup_task) |task| {
+    //     self.scheduler.scheduleTask(task); // Start cleanup immediately
+    // }
 }
 
 pub fn deinit(self: *Self) void {
@@ -246,133 +246,133 @@ pub fn deinit(self: *Self) void {
     self.indexes.deinit(self.allocator);
 }
 
-fn cleanupDeletedIndexesTask(self: *Self) void {
-    self.cleanupDeletedIndexes() catch |err| {
-        log.err("cleanup task failed: {}", .{err});
-    };
+// fn cleanupDeletedIndexesTask(self: *Self) void {
+//     self.cleanupDeletedIndexes() catch |err| {
+//         log.err("cleanup task failed: {}", .{err});
+//     };
+//
+//     // Reschedule for next cleanup
+//     if (self.cleanup_task) |task| {
+//         self.scheduler.scheduleTask(task);
+//     }
+// }
 
-    // Reschedule for next cleanup
-    if (self.cleanup_task) |task| {
-        self.scheduler.scheduleTask(task);
-    }
-}
+// fn cleanupDeletedIndexes(self: *Self) !void {
+//     log.info("running cleanup of deleted indexes", .{});
+//
+//     var iter = self.dir.iterate();
+//     while (try iter.next()) |entry| {
+//         if (entry.kind != .directory) continue;
+//         if (!isValidName(entry.name)) continue;
+//
+//         // Read redirect file
+//         var cleanup_index_dir = self.dir.openDir(entry.name, .{}) catch continue;
+//         defer cleanup_index_dir.close();
+//
+//         const redirect = index_redirect.readRedirectFile(cleanup_index_dir, self.allocator) catch |err| {
+//             if (err == error.FileNotFound) {
+//                 // No redirect file, check for orphaned data directories
+//                 try self.cleanupOrphanedDataDirs(entry.name);
+//             }
+//             continue;
+//         };
+//
+//         if (!redirect.deleted) continue;
+//
+//         // Get data directory name
+//         const data_dir = try redirect.getDataDir(self.allocator);
+//         defer self.allocator.free(data_dir);
+//
+//         // Check if data directory exists and get its manifest age
+//         var index_dir = self.dir.openDir(entry.name, .{}) catch continue;
+//         defer index_dir.close();
+//
+//         var data_subdir = index_dir.openDir(data_dir, .{}) catch {
+//             // Data directory already gone, just remove redirect
+//             try self.removeRedirectAndCleanup(entry.name);
+//             continue;
+//         };
+//         defer data_subdir.close();
+//
+//         const manifest_stat = data_subdir.statFile("manifest") catch {
+//             // No manifest, safe to delete immediately
+//             try self.removeRedirectAndCleanup(entry.name);
+//             continue;
+//         };
+//
+//         // Check age of manifest file (1 hour = 3600 seconds)
+//         const current_time = std.time.timestamp();
+//         const manifest_age = current_time - manifest_stat.mtime;
+//
+//         if (manifest_age > 3600) { // 1 hour
+//             log.info("cleaning up deleted index {s} (manifest age: {}s)", .{ entry.name, manifest_age });
+//             try self.removeRedirectAndCleanup(entry.name);
+//         }
+//     }
+// }
 
-fn cleanupDeletedIndexes(self: *Self) !void {
-    log.info("running cleanup of deleted indexes", .{});
+// fn cleanupOrphanedDataDirs(self: *Self, index_name: []const u8) !void {
+//     var index_dir = self.dir.openDir(index_name, .{}) catch return;
+//     defer index_dir.close();
+//
+//     var iter = index_dir.iterate();
+//     while (try iter.next()) |entry| {
+//         if (entry.kind != .directory) continue;
+//         if (!std.mem.startsWith(u8, entry.name, "data.")) continue;
+//
+//         // Orphaned data directory, check age and remove
+//         var data_subdir = index_dir.openDir(entry.name, .{}) catch continue;
+//         defer data_subdir.close();
+//
+//         const manifest_stat = data_subdir.statFile("manifest") catch {
+//             // No manifest, safe to delete
+//             index_dir.deleteTree(entry.name) catch |err| {
+//                 log.warn("failed to delete orphaned data dir {s}/{s}: {}", .{ index_name, entry.name, err });
+//             };
+//             continue;
+//         };
+//
+//         const current_time = std.time.timestamp();
+//         const manifest_age = current_time - manifest_stat.mtime;
+//
+//         if (manifest_age > 3600) { // 1 hour
+//             log.info("cleaning up orphaned data directory {s}/{s}", .{ index_name, entry.name });
+//             index_dir.deleteTree(entry.name) catch |err| {
+//                 log.warn("failed to delete orphaned data dir {s}/{s}: {}", .{ index_name, entry.name, err });
+//             };
+//         }
+//     }
+// }
 
-    var iter = self.dir.iterate();
-    while (try iter.next()) |entry| {
-        if (entry.kind != .directory) continue;
-        if (!isValidName(entry.name)) continue;
-
-        // Read redirect file
-        var cleanup_index_dir = self.dir.openDir(entry.name, .{}) catch continue;
-        defer cleanup_index_dir.close();
-
-        const redirect = index_redirect.readRedirectFile(cleanup_index_dir, self.allocator) catch |err| {
-            if (err == error.FileNotFound) {
-                // No redirect file, check for orphaned data directories
-                try self.cleanupOrphanedDataDirs(entry.name);
-            }
-            continue;
-        };
-
-        if (!redirect.deleted) continue;
-
-        // Get data directory name
-        const data_dir = try redirect.getDataDir(self.allocator);
-        defer self.allocator.free(data_dir);
-
-        // Check if data directory exists and get its manifest age
-        var index_dir = self.dir.openDir(entry.name, .{}) catch continue;
-        defer index_dir.close();
-
-        var data_subdir = index_dir.openDir(data_dir, .{}) catch {
-            // Data directory already gone, just remove redirect
-            try self.removeRedirectAndCleanup(entry.name);
-            continue;
-        };
-        defer data_subdir.close();
-
-        const manifest_stat = data_subdir.statFile("manifest") catch {
-            // No manifest, safe to delete immediately
-            try self.removeRedirectAndCleanup(entry.name);
-            continue;
-        };
-
-        // Check age of manifest file (1 hour = 3600 seconds)
-        const current_time = std.time.timestamp();
-        const manifest_age = current_time - manifest_stat.mtime;
-
-        if (manifest_age > 3600) { // 1 hour
-            log.info("cleaning up deleted index {s} (manifest age: {}s)", .{ entry.name, manifest_age });
-            try self.removeRedirectAndCleanup(entry.name);
-        }
-    }
-}
-
-fn cleanupOrphanedDataDirs(self: *Self, index_name: []const u8) !void {
-    var index_dir = self.dir.openDir(index_name, .{}) catch return;
-    defer index_dir.close();
-
-    var iter = index_dir.iterate();
-    while (try iter.next()) |entry| {
-        if (entry.kind != .directory) continue;
-        if (!std.mem.startsWith(u8, entry.name, "data.")) continue;
-
-        // Orphaned data directory, check age and remove
-        var data_subdir = index_dir.openDir(entry.name, .{}) catch continue;
-        defer data_subdir.close();
-
-        const manifest_stat = data_subdir.statFile("manifest") catch {
-            // No manifest, safe to delete
-            index_dir.deleteTree(entry.name) catch |err| {
-                log.warn("failed to delete orphaned data dir {s}/{s}: {}", .{ index_name, entry.name, err });
-            };
-            continue;
-        };
-
-        const current_time = std.time.timestamp();
-        const manifest_age = current_time - manifest_stat.mtime;
-
-        if (manifest_age > 3600) { // 1 hour
-            log.info("cleaning up orphaned data directory {s}/{s}", .{ index_name, entry.name });
-            index_dir.deleteTree(entry.name) catch |err| {
-                log.warn("failed to delete orphaned data dir {s}/{s}: {}", .{ index_name, entry.name, err });
-            };
-        }
-    }
-}
-
-fn removeRedirectAndCleanup(self: *Self, index_name: []const u8) !void {
-    var index_dir = self.dir.openDir(index_name, .{}) catch return;
-    defer index_dir.close();
-
-    // Delete redirect file
-    index_dir.deleteFile("current") catch |err| {
-        if (err != error.FileNotFound) {
-            log.warn("failed to delete redirect file for {s}: {}", .{ index_name, err });
-        }
-    };
-
-    // Delete all data directories
-    var iter = index_dir.iterate();
-    while (try iter.next()) |entry| {
-        if (entry.kind != .directory) continue;
-        if (!std.mem.startsWith(u8, entry.name, "data.")) continue;
-
-        index_dir.deleteTree(entry.name) catch |err| {
-            log.warn("failed to delete data directory {s}/{s}: {}", .{ index_name, entry.name, err });
-        };
-    }
-
-    // Try to delete the index directory if it's empty
-    self.dir.deleteDir(index_name) catch |err| {
-        if (err != error.DirNotEmpty and err != error.FileNotFound) {
-            log.warn("failed to delete empty index directory {s}: {}", .{ index_name, err });
-        }
-    };
-}
+// fn removeRedirectAndCleanup(self: *Self, index_name: []const u8) !void {
+//     var index_dir = self.dir.openDir(index_name, .{}) catch return;
+//     defer index_dir.close();
+//
+//     // Delete redirect file
+//     index_dir.deleteFile("current") catch |err| {
+//         if (err != error.FileNotFound) {
+//             log.warn("failed to delete redirect file for {s}: {}", .{ index_name, err });
+//         }
+//     };
+//
+//     // Delete all data directories
+//     var iter = index_dir.iterate();
+//     while (try iter.next()) |entry| {
+//         if (entry.kind != .directory) continue;
+//         if (!std.mem.startsWith(u8, entry.name, "data.")) continue;
+//
+//         index_dir.deleteTree(entry.name) catch |err| {
+//             log.warn("failed to delete data directory {s}/{s}: {}", .{ index_name, entry.name, err });
+//         };
+//     }
+//
+//     // Try to delete the index directory if it's empty
+//     self.dir.deleteDir(index_name) catch |err| {
+//         if (err != error.DirNotEmpty and err != error.FileNotFound) {
+//             log.warn("failed to delete empty index directory {s}: {}", .{ index_name, err });
+//         }
+//     };
+// }
 
 fn deleteIndexFiles(self: *Self, name: []const u8) !void {
     const tmp_name = try std.mem.concat(self.allocator, u8, &[_][]const u8{ name, ".delete" });
