@@ -39,12 +39,56 @@ pub fn maxItemsPerBlock(block_size: usize) usize {
 }
 
 pub const max_file_name_size = 64;
-const segment_file_name_fmt = "{x:0>16}-{x:0>8}.data";
+const segment_file_suffix = ".data";
+const segment_file_name_fmt = "{x:0>16}-{x:0>8}" ++ segment_file_suffix;
 pub const manifest_file_name = "manifest";
 
 pub fn buildSegmentFileName(buf: []u8, info: SegmentInfo) []u8 {
     assert(buf.len == max_file_name_size);
     return std.fmt.bufPrint(buf, segment_file_name_fmt, .{ info.version, info.merges }) catch unreachable;
+}
+
+/// Returns true if the given name is a manifest file name
+pub fn isManifestFileName(name: []const u8) bool {
+    return std.mem.eql(u8, name, manifest_file_name);
+}
+
+/// Returns true if the given name is a valid segment file name
+pub fn isSegmentFileName(name: []const u8) bool {
+    return parseSegmentFileName(name) != null;
+}
+
+/// Parses a segment file name and returns the SegmentInfo if valid
+/// Returns null if the name doesn't match the segment file format
+pub fn parseSegmentFileName(name: []const u8) ?SegmentInfo {
+    // Check suffix first
+    if (!std.mem.endsWith(u8, name, segment_file_suffix)) {
+        return null;
+    }
+    
+    // Remove suffix to get the version-merges part
+    const name_without_suffix = name[0..name.len - segment_file_suffix.len];
+    
+    // Should be exactly 25 chars: 16 hex + 1 dash + 8 hex
+    if (name_without_suffix.len != 25) {
+        return null;
+    }
+    
+    // Find the dash separator
+    if (name_without_suffix[16] != '-') {
+        return null;
+    }
+    
+    // Parse version (first 16 hex chars)
+    const version = std.fmt.parseUnsigned(u64, name_without_suffix[0..16], 16) catch return null;
+    
+    // Parse merges (last 8 hex chars)
+    const merges = std.fmt.parseUnsigned(u32, name_without_suffix[17..25], 16) catch return null;
+    
+    return SegmentInfo{
+        .version = version,
+        .merges = merges,
+    };
 }
 
 // Use block header from block.zig (already imported above)
@@ -478,6 +522,63 @@ pub fn readManifestFile(dir: std.fs.Dir, allocator: std.mem.Allocator) ![]Segmen
     }
 
     return try msgpack.decodeLeaky([]SegmentInfo, allocator, reader);
+}
+
+test "parseSegmentFileName" {
+    // Valid cases
+    try testing.expectEqualDeep(SegmentInfo{ .version = 0x0123456789ABCDEF, .merges = 0x12345678 }, parseSegmentFileName("0123456789abcdef-12345678.data"));
+    try testing.expectEqualDeep(SegmentInfo{ .version = 0, .merges = 0 }, parseSegmentFileName("0000000000000000-00000000.data"));
+    try testing.expectEqualDeep(SegmentInfo{ .version = 0xFFFFFFFFFFFFFFFF, .merges = 0xFFFFFFFF }, parseSegmentFileName("ffffffffffffffff-ffffffff.data"));
+
+    // Invalid cases - should return null
+    try testing.expect(parseSegmentFileName("") == null);
+    try testing.expect(parseSegmentFileName("invalid") == null);
+    try testing.expect(parseSegmentFileName("0123456789abcdef-12345678") == null); // missing .data
+    try testing.expect(parseSegmentFileName("0123456789abcdef-12345678.txt") == null); // wrong suffix
+    try testing.expect(parseSegmentFileName("123456789abcdef-12345678.data") == null); // too short version
+    try testing.expect(parseSegmentFileName("01234567890abcdef-12345678.data") == null); // too long version
+    try testing.expect(parseSegmentFileName("0123456789abcdef_12345678.data") == null); // wrong separator
+    try testing.expect(parseSegmentFileName("0123456789abcdef-1234567.data") == null); // too short merges
+    try testing.expect(parseSegmentFileName("0123456789abcdef-123456789.data") == null); // too long merges
+    try testing.expect(parseSegmentFileName("0123456789abcdefg-12345678.data") == null); // invalid hex in version
+    try testing.expect(parseSegmentFileName("0123456789abcdef-1234567g.data") == null); // invalid hex in merges
+    // Path traversal attempts
+    try testing.expect(parseSegmentFileName("../0123456789abcdef-12345678.data") == null);
+    try testing.expect(parseSegmentFileName("/tmp/0123456789abcdef-12345678.data") == null);
+    try testing.expect(parseSegmentFileName("dir/0123456789abcdef-12345678.data") == null);
+}
+
+test "isSegmentFileName" {
+    // Valid segment file names
+    try testing.expect(isSegmentFileName("0123456789abcdef-12345678.data"));
+    try testing.expect(isSegmentFileName("0000000000000000-00000000.data"));
+    try testing.expect(isSegmentFileName("ffffffffffffffff-ffffffff.data"));
+
+    // Invalid segment file names
+    try testing.expect(!isSegmentFileName(""));
+    try testing.expect(!isSegmentFileName("invalid"));
+    try testing.expect(!isSegmentFileName("0123456789abcdef-12345678"));
+    try testing.expect(!isSegmentFileName("0123456789abcdef-12345678.txt"));
+    try testing.expect(!isSegmentFileName("manifest"));
+    // Path traversal attempts
+    try testing.expect(!isSegmentFileName("../0123456789abcdef-12345678.data"));
+    try testing.expect(!isSegmentFileName("/tmp/0123456789abcdef-12345678.data"));
+    try testing.expect(!isSegmentFileName("dir/0123456789abcdef-12345678.data"));
+}
+
+test "isManifestFileName" {
+    // Valid manifest file name
+    try testing.expect(isManifestFileName("manifest"));
+    
+    // Invalid manifest file names
+    try testing.expect(!isManifestFileName(""));
+    try testing.expect(!isManifestFileName("Manifest"));
+    try testing.expect(!isManifestFileName("manifest.txt"));
+    try testing.expect(!isManifestFileName("0123456789abcdef-12345678.data"));
+    // Path traversal attempts
+    try testing.expect(!isManifestFileName("../manifest"));
+    try testing.expect(!isManifestFileName("/tmp/manifest"));
+    try testing.expect(!isManifestFileName("dir/manifest"));
 }
 
 test "readIndexFile/writeIndexFile" {
