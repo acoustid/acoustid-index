@@ -23,7 +23,6 @@ class ServerManager:
 
     def start(self):
         command = [
-            'valgrind',
             'zig-out/bin/fpindex',
             '--dir', str(self.data_dir),
             '--port', str(self.port),
