@@ -5,6 +5,46 @@ const Index = @import("Index.zig");
 const filefmt = @import("filefmt.zig");
 const SegmentInfo = @import("segment.zig").SegmentInfo;
 
+/// Restores an index from a tar snapshot, creating a new index
+pub fn restoreSnapshot(
+    reader: anytype,
+    allocator: std.mem.Allocator,
+    scheduler: *@import("utils/Scheduler.zig"),
+    parent_dir: std.fs.Dir,
+    path: []const u8,
+    options: Index.Options,
+) !Index {
+    // Create index directory
+    var extract_dir = try parent_dir.makeOpenPath(path, .{ .iterate = true });
+    defer extract_dir.close();
+    errdefer parent_dir.deleteTree(path) catch {}; // Clean up directory if anything fails
+    
+    // Extract tar contents to index directory
+    try std.tar.pipeToFileSystem(extract_dir, reader, .{});
+    
+    // Create and initialize the index
+    var index = try Index.init(allocator, scheduler, parent_dir, path, options);
+    errdefer index.deinit(); // Clean up index if open fails
+    
+    // Open the index to load from extracted files
+    try index.open(false);
+    
+    return index;
+}
+
+fn cleanupExtractedFiles(dir: std.fs.Dir) void {
+    // Remove manifest file if it exists
+    dir.deleteFile(filefmt.manifest_file_name) catch {};
+    
+    // Remove any .data files (segment files)
+    var it = dir.iterate();
+    while (it.next() catch null) |entry| {
+        if (entry.kind == .file and std.mem.endsWith(u8, entry.name, ".data")) {
+            dir.deleteFile(entry.name) catch {};
+        }
+    }
+}
+
 /// Builds a tar snapshot of the index by adding manifest file, file segments, and WAL files
 pub fn buildSnapshot(
     writer: anytype,
@@ -117,26 +157,69 @@ test "index snapshot" {
 
     try std.testing.expect(buffer.items.len > 10);
 
-    // Restore the snapshot
-
-    var extract_dir = try tmp_dir.dir.makeOpenPath("extract", .{});
-    defer extract_dir.close();
+    // Restore the snapshot using restoreSnapshot()
 
     var tar_file_reader = std.io.fixedBufferStream(buffer.items);
-    try std.tar.pipeToFileSystem(extract_dir, tar_file_reader.reader(), .{});
-
-    // Open a second index instance from the restored snapshot
-
-    var index2 = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "extract", .{
+    var index2 = try restoreSnapshot(tar_file_reader.reader(), std.testing.allocator, &scheduler, tmp_dir.dir, "extract", .{
         .min_segment_size = 1,
     });
     defer index2.deinit();
-
-    try index2.open(true);
 
     var index_reader2 = try index2.acquireReader();
     defer index2.releaseReader(&index_reader2);
 
     const i = try index_reader2.getDocInfo(1);
     try std.testing.expect(i != null);
+}
+
+test "restore snapshot with corrupt tar" {
+    const Scheduler = @import("utils/Scheduler.zig");
+
+    var scheduler = Scheduler.init(std.testing.allocator);
+    defer scheduler.deinit();
+
+    try scheduler.start(4);
+    defer scheduler.stop();
+
+    var tmp_dir = std.testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    // Try to restore from corrupt data
+    const corrupt_data = "not a tar file";
+    var reader = std.io.fixedBufferStream(corrupt_data);
+    
+    const result = restoreSnapshot(reader.reader(), std.testing.allocator, &scheduler, tmp_dir.dir, "test_corrupt", .{});
+    try std.testing.expectError(error.UnexpectedEndOfStream, result);
+}
+
+test "restore snapshot cleanup on failure" {
+    const Scheduler = @import("utils/Scheduler.zig");
+
+    var scheduler = Scheduler.init(std.testing.allocator);
+    defer scheduler.deinit();
+
+    try scheduler.start(4);
+    defer scheduler.stop();
+
+    var tmp_dir = std.testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    // Create a valid tar with manifest but no segment files to trigger load failure
+    var buffer = std.ArrayList(u8).init(std.testing.allocator);
+    defer buffer.deinit();
+
+    var tar_writer = std.tar.writer(buffer.writer().any());
+    
+    // Add invalid manifest that will cause open() to fail
+    const invalid_manifest = "invalid manifest content";
+    try tar_writer.writeFileBytes(filefmt.manifest_file_name, invalid_manifest, .{});
+    try tar_writer.finish();
+
+    var reader = std.io.fixedBufferStream(buffer.items);
+    const result = restoreSnapshot(reader.reader(), std.testing.allocator, &scheduler, tmp_dir.dir, "test_cleanup", .{});
+    try std.testing.expectError(error.InvalidFormat, result);
+
+    // Verify cleanup: directory should be removed entirely
+    const dir_result = tmp_dir.dir.openDir("test_cleanup", .{});
+    try std.testing.expectError(error.FileNotFound, dir_result);
 }
