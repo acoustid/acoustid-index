@@ -57,6 +57,72 @@ pub fn restoreSnapshot(
     return index;
 }
 
+/// Downloads and extracts an index from a tar snapshot URL, creating a new index
+pub fn downloadAndExtractSnapshot(
+    url: []const u8,
+    allocator: std.mem.Allocator,
+    scheduler: *Scheduler,
+    parent_dir: std.fs.Dir,
+    path: []const u8,
+    options: Index.Options,
+) !Index {
+    std.log.info("downloading snapshot from {s}", .{url});
+    
+    // Parse the URL
+    const uri = std.Uri.parse(url) catch |err| {
+        std.log.err("invalid URL {s}: {}", .{ url, err });
+        return err;
+    };
+    
+    // Create HTTP client
+    var client = std.http.Client{ .allocator = allocator };
+    defer client.deinit();
+    
+    // Prepare request
+    var header_buffer: [8192]u8 = undefined;
+    var req = client.open(.GET, uri, .{
+        .server_header_buffer = &header_buffer,
+    }) catch |err| {
+        std.log.err("failed to create HTTP request for {s}: {}", .{ url, err });
+        return err;
+    };
+    defer req.deinit();
+    
+    // Send request
+    req.send() catch |err| {
+        std.log.err("failed to send HTTP request to {s}: {}", .{ url, err });
+        return err;
+    };
+    
+    req.finish() catch |err| {
+        std.log.err("failed to finish HTTP request to {s}: {}", .{ url, err });
+        return err;
+    };
+    
+    // Wait for response
+    req.wait() catch |err| {
+        std.log.err("failed to receive HTTP response from {s}: {}", .{ url, err });
+        return err;
+    };
+    
+    // Check HTTP status
+    if (req.response.status != .ok) {
+        std.log.err("HTTP error {d} when downloading from {s}", .{ @intFromEnum(req.response.status), url });
+        return error.HttpError;
+    }
+    
+    // Log content info if available
+    if (req.response.content_length) |content_length| {
+        std.log.info("downloading {} bytes from {s}", .{ content_length, url });
+    } else {
+        std.log.info("downloading from {s} (size unknown)", .{url});
+    }
+    
+    // Stream the response directly to restoreSnapshot
+    const reader = req.reader();
+    return restoreSnapshot(reader, allocator, scheduler, parent_dir, path, options);
+}
+
 fn extractTarEntry(entry: anytype, extract_dir: std.fs.Dir) !void {
     var file = try extract_dir.createFile(entry.name, .{});
     errdefer extract_dir.deleteFile(entry.name) catch |err| {
@@ -247,4 +313,49 @@ test "restore snapshot cleanup on failure" {
     // Verify cleanup: directory should be removed entirely
     const dir_result = tmp_dir.dir.openDir("test_cleanup", .{});
     try std.testing.expectError(error.FileNotFound, dir_result);
+}
+
+test "downloadAndExtractSnapshot invalid URL" {
+    var scheduler = Scheduler.init(std.testing.allocator);
+    defer scheduler.deinit();
+
+    try scheduler.start(4);
+    defer scheduler.stop();
+
+    var tmp_dir = std.testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    // Test with invalid URL
+    const result = downloadAndExtractSnapshot(
+        "not-a-valid-url",
+        std.testing.allocator,
+        &scheduler,
+        tmp_dir.dir,
+        "test_download",
+        .{},
+    );
+    try std.testing.expectError(error.InvalidFormat, result);
+}
+
+test "downloadAndExtractSnapshot nonexistent host" {
+    var scheduler = Scheduler.init(std.testing.allocator);
+    defer scheduler.deinit();
+
+    try scheduler.start(4);
+    defer scheduler.stop();
+
+    var tmp_dir = std.testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    // Test with nonexistent host - this should fail at the network level
+    const result = downloadAndExtractSnapshot(
+        "http://nonexistent-host-12345.invalid/file.tar",
+        std.testing.allocator,
+        &scheduler,
+        tmp_dir.dir,
+        "test_download",
+        .{},
+    );
+    // This could fail with various network errors, just ensure it doesn't crash
+    _ = result catch {};
 }
