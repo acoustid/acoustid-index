@@ -102,9 +102,9 @@ pub fn createTask(self: *Self, comptime func: anytype, args: anytype) !*Task {
     return task;
 }
 
-pub fn createRepeatingTask(self: *Self, interval_ns: u64, comptime func: anytype, args: anytype) !*Task {
+pub fn createRepeatingTask(self: *Self, interval_ms: u32, comptime func: anytype, args: anytype) !*Task {
     const task = try self.createTask(func, args);
-    task.interval_ns = interval_ns;
+    task.interval_ns = interval_ms * std.time.ns_per_ms;
     return task;
 }
 
@@ -152,7 +152,7 @@ pub fn scheduleTask(self: *Self, task: *Task) void {
 }
 
 
-pub fn scheduleTaskAfter(self: *Self, task: *Task, delay_ms: u64) void {
+pub fn scheduleTaskAfter(self: *Self, task: *Task, delay_ms: u32) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
@@ -359,7 +359,7 @@ test "Scheduler: repeating task" {
     };
     var counter: Counter = .{};
 
-    const task = try scheduler.createRepeatingTask(100 * std.time.ns_per_ms, Counter.incr, .{&counter});
+    const task = try scheduler.createRepeatingTask(100, Counter.incr, .{&counter});
     defer scheduler.destroyTask(task);
 
     scheduler.scheduleTask(task);
