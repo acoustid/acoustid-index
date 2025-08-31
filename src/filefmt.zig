@@ -39,8 +39,8 @@ pub fn maxItemsPerBlock(block_size: usize) usize {
 }
 
 pub const max_file_name_size = 64;
-const segment_file_name_fmt = "{x:0>16}-{x:0>8}.data";
 const segment_file_suffix = ".data";
+const segment_file_name_fmt = "{x:0>16}-{x:0>8}" ++ segment_file_suffix;
 pub const manifest_file_name = "manifest";
 
 pub fn buildSegmentFileName(buf: []u8, info: SegmentInfo) []u8 {

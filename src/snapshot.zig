@@ -124,7 +124,7 @@ pub fn downloadAndExtractSnapshot(
 }
 
 fn extractTarEntry(entry: anytype, extract_dir: std.fs.Dir) !void {
-    var file = try extract_dir.createFile(entry.name, .{});
+    var file = try extract_dir.createFile(entry.name, .{ .exclusive = true });
     errdefer extract_dir.deleteFile(entry.name) catch |err| {
         std.log.err("failed to clean up partially extracted file {s}: {}", .{ entry.name, err });
     };
