@@ -16,11 +16,47 @@ pub fn restoreSnapshot(
 ) !Index {
     // Create index directory
     var extract_dir = try parent_dir.makeOpenPath(path, .{ .iterate = true });
-    defer extract_dir.close();
     errdefer parent_dir.deleteTree(path) catch {}; // Clean up directory if anything fails
+    defer extract_dir.close();
     
-    // Extract tar contents to index directory
-    try std.tar.pipeToFileSystem(extract_dir, reader, .{});
+    // Extract tar contents using iterator for pattern matching
+    var file_name_buffer: [256]u8 = undefined;
+    var link_name_buffer: [256]u8 = undefined;
+    var tar_iterator = std.tar.iterator(reader, .{
+        .file_name_buffer = &file_name_buffer,
+        .link_name_buffer = &link_name_buffer,
+    });
+    while (try tar_iterator.next()) |entry| {
+        // Only extract files we need: manifest and .data segment files
+        if (std.mem.eql(u8, entry.name, filefmt.manifest_file_name) or 
+           std.mem.endsWith(u8, entry.name, ".data")) {
+            
+            // Validate path safety - reject absolute paths and path traversal
+            if (entry.name[0] == '/' or std.mem.indexOf(u8, entry.name, "..") != null) {
+                return error.UnsafePath;
+            }
+            
+            switch (entry.kind) {
+                .file => {
+                    var file = try extract_dir.createFile(entry.name, .{});
+                    defer file.close();
+                    var reader_entry = entry.reader();
+                    var file_writer = file.writer();
+                    
+                    var buffer: [4096]u8 = undefined;
+                    while (true) {
+                        const bytes_read = try reader_entry.read(&buffer);
+                        if (bytes_read == 0) break;
+                        try file_writer.writeAll(buffer[0..bytes_read]);
+                    }
+                },
+                else => {
+                    // Skip directories, symlinks, etc.
+                    continue;
+                },
+            }
+        }
+    }
     
     // Create and initialize the index
     var index = try Index.init(allocator, scheduler, parent_dir, path, options);
