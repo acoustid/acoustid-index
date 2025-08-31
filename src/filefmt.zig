@@ -522,6 +522,63 @@ pub fn readManifestFile(dir: std.fs.Dir, allocator: std.mem.Allocator) ![]Segmen
     return try msgpack.decodeLeaky([]SegmentInfo, allocator, reader);
 }
 
+test "parseSegmentFileName" {
+    // Valid cases
+    try testing.expectEqualDeep(SegmentInfo{ .version = 0x0123456789ABCDEF, .merges = 0x12345678 }, parseSegmentFileName("0123456789abcdef-12345678.data"));
+    try testing.expectEqualDeep(SegmentInfo{ .version = 0, .merges = 0 }, parseSegmentFileName("0000000000000000-00000000.data"));
+    try testing.expectEqualDeep(SegmentInfo{ .version = 0xFFFFFFFFFFFFFFFF, .merges = 0xFFFFFFFF }, parseSegmentFileName("ffffffffffffffff-ffffffff.data"));
+
+    // Invalid cases - should return null
+    try testing.expect(parseSegmentFileName("") == null);
+    try testing.expect(parseSegmentFileName("invalid") == null);
+    try testing.expect(parseSegmentFileName("0123456789abcdef-12345678") == null); // missing .data
+    try testing.expect(parseSegmentFileName("0123456789abcdef-12345678.txt") == null); // wrong suffix
+    try testing.expect(parseSegmentFileName("123456789abcdef-12345678.data") == null); // too short version
+    try testing.expect(parseSegmentFileName("01234567890abcdef-12345678.data") == null); // too long version
+    try testing.expect(parseSegmentFileName("0123456789abcdef_12345678.data") == null); // wrong separator
+    try testing.expect(parseSegmentFileName("0123456789abcdef-1234567.data") == null); // too short merges
+    try testing.expect(parseSegmentFileName("0123456789abcdef-123456789.data") == null); // too long merges
+    try testing.expect(parseSegmentFileName("0123456789abcdefg-12345678.data") == null); // invalid hex in version
+    try testing.expect(parseSegmentFileName("0123456789abcdef-1234567g.data") == null); // invalid hex in merges
+    // Path traversal attempts
+    try testing.expect(parseSegmentFileName("../0123456789abcdef-12345678.data") == null);
+    try testing.expect(parseSegmentFileName("/tmp/0123456789abcdef-12345678.data") == null);
+    try testing.expect(parseSegmentFileName("dir/0123456789abcdef-12345678.data") == null);
+}
+
+test "isSegmentFileName" {
+    // Valid segment file names
+    try testing.expect(isSegmentFileName("0123456789abcdef-12345678.data"));
+    try testing.expect(isSegmentFileName("0000000000000000-00000000.data"));
+    try testing.expect(isSegmentFileName("ffffffffffffffff-ffffffff.data"));
+
+    // Invalid segment file names
+    try testing.expect(!isSegmentFileName(""));
+    try testing.expect(!isSegmentFileName("invalid"));
+    try testing.expect(!isSegmentFileName("0123456789abcdef-12345678"));
+    try testing.expect(!isSegmentFileName("0123456789abcdef-12345678.txt"));
+    try testing.expect(!isSegmentFileName("manifest"));
+    // Path traversal attempts
+    try testing.expect(!isSegmentFileName("../0123456789abcdef-12345678.data"));
+    try testing.expect(!isSegmentFileName("/tmp/0123456789abcdef-12345678.data"));
+    try testing.expect(!isSegmentFileName("dir/0123456789abcdef-12345678.data"));
+}
+
+test "isManifestFileName" {
+    // Valid manifest file name
+    try testing.expect(isManifestFileName("manifest"));
+    
+    // Invalid manifest file names
+    try testing.expect(!isManifestFileName(""));
+    try testing.expect(!isManifestFileName("Manifest"));
+    try testing.expect(!isManifestFileName("manifest.txt"));
+    try testing.expect(!isManifestFileName("0123456789abcdef-12345678.data"));
+    // Path traversal attempts
+    try testing.expect(!isManifestFileName("../manifest"));
+    try testing.expect(!isManifestFileName("/tmp/manifest"));
+    try testing.expect(!isManifestFileName("dir/manifest"));
+}
+
 test "readIndexFile/writeIndexFile" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
