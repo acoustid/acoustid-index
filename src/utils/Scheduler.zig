@@ -113,7 +113,7 @@ fn removeFromQueue(self: *Self, task: *Task) void {
     if (std.mem.indexOfScalar(*Task, self.queue.items, task)) |index| {
         _ = self.queue.removeIndex(index);
         task.scheduled = false;
-        task.next_run_time_ns = std.math.maxInt(u64); // Defensive: invalid time
+        task.next_run_time_ns = 0; // Reset to immediate so it can be re-enqueued
     }
 }
 
