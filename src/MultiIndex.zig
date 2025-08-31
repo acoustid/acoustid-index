@@ -166,7 +166,7 @@ fn openIndex(self: *Self, path: []const u8, create: bool) !*IndexRef {
 
     result.value_ptr.index.value = try Index.init(self.allocator, self.scheduler, result.value_ptr.index_dir, name, data_path, self.index_options);
     result.value_ptr.index.has_value = true;
-    errdefer result.value_ptr.deinit();
+    errdefer result.value_ptr.index.deinit();
 
     result.value_ptr.index.value.open(create) catch |err| {
         if (create) {
