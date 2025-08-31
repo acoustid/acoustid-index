@@ -27,17 +27,15 @@ pub fn restoreSnapshot(
         .link_name_buffer = &link_name_buffer,
     });
     while (try tar_iterator.next()) |entry| {
-        // Only extract files we need: manifest and .data segment files
-        if (std.mem.eql(u8, entry.name, filefmt.manifest_file_name) or 
-           std.mem.endsWith(u8, entry.name, filefmt.segment_file_suffix)) {
-            
+        // Only extract files we need: manifest and valid segment files
+        const is_manifest = std.mem.eql(u8, entry.name, filefmt.manifest_file_name);
+        const is_segment = filefmt.parseSegmentFileName(entry.name) != null;
+        
+        if (is_manifest or is_segment) {
             // Validate path safety - reject absolute paths and path traversal
             if (entry.name[0] == '/' or std.mem.indexOf(u8, entry.name, "..") != null) {
                 return error.UnsafePath;
             }
-            
-            // Validate filename does not contain slashes
-            try filefmt.rejectNameWithSlash(entry.name);
             
             switch (entry.kind) {
                 .file => {
@@ -75,10 +73,10 @@ fn cleanupExtractedFiles(dir: std.fs.Dir) void {
     // Remove manifest file if it exists
     dir.deleteFile(filefmt.manifest_file_name) catch {};
     
-    // Remove any .data files (segment files)
+    // Remove any valid segment files
     var it = dir.iterate();
     while (it.next() catch null) |entry| {
-        if (entry.kind == .file and std.mem.endsWith(u8, entry.name, filefmt.segment_file_suffix)) {
+        if (entry.kind == .file and filefmt.parseSegmentFileName(entry.name) != null) {
             dir.deleteFile(entry.name) catch {};
         }
     }

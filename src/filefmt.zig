@@ -40,7 +40,7 @@ pub fn maxItemsPerBlock(block_size: usize) usize {
 
 pub const max_file_name_size = 64;
 const segment_file_name_fmt = "{x:0>16}-{x:0>8}.data";
-pub const segment_file_suffix = ".data";
+const segment_file_suffix = ".data";
 pub const manifest_file_name = "manifest";
 
 pub fn buildSegmentFileName(buf: []u8, info: SegmentInfo) []u8 {
@@ -48,11 +48,37 @@ pub fn buildSegmentFileName(buf: []u8, info: SegmentInfo) []u8 {
     return std.fmt.bufPrint(buf, segment_file_name_fmt, .{ info.version, info.merges }) catch unreachable;
 }
 
-/// Validates that a file name does not contain slashes (path separators)
-pub fn rejectNameWithSlash(name: []const u8) !void {
-    if (std.mem.indexOfScalar(u8, name, '/') != null) {
-        return error.InvalidFileName;
+/// Parses a segment file name and returns the SegmentInfo if valid
+/// Returns null if the name doesn't match the segment file format
+pub fn parseSegmentFileName(name: []const u8) ?SegmentInfo {
+    // Check suffix first
+    if (!std.mem.endsWith(u8, name, segment_file_suffix)) {
+        return null;
     }
+    
+    // Remove suffix to get the version-merges part
+    const name_without_suffix = name[0..name.len - segment_file_suffix.len];
+    
+    // Should be exactly 25 chars: 16 hex + 1 dash + 8 hex
+    if (name_without_suffix.len != 25) {
+        return null;
+    }
+    
+    // Find the dash separator
+    if (name_without_suffix[16] != '-') {
+        return null;
+    }
+    
+    // Parse version (first 16 hex chars)
+    const version = std.fmt.parseUnsigned(u64, name_without_suffix[0..16], 16) catch return null;
+    
+    // Parse merges (last 8 hex chars)
+    const merges = std.fmt.parseUnsigned(u32, name_without_suffix[17..25], 16) catch return null;
+    
+    return SegmentInfo{
+        .version = version,
+        .merges = merges,
+    };
 }
 
 // Use block header from block.zig (already imported above)
