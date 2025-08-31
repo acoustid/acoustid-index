@@ -104,7 +104,7 @@ pub fn createTask(self: *Self, comptime func: anytype, args: anytype) !*Task {
 
 pub fn createRepeatingTask(self: *Self, interval_ms: u32, comptime func: anytype, args: anytype) !*Task {
     const task = try self.createTask(func, args);
-    task.interval_ns = interval_ms * std.time.ns_per_ms;
+    task.interval_ns = @as(u64, interval_ms) * std.time.ns_per_ms;
     return task;
 }
 
@@ -158,7 +158,7 @@ pub fn scheduleTaskAfter(self: *Self, task: *Task, delay_ms: u32) void {
 
     // Use monotonic time from scheduler timer
     const current_time_ns = self.timer.read();
-    const delay_ns = delay_ms * std.time.ns_per_ms;
+    const delay_ns = @as(u64, delay_ms) * std.time.ns_per_ms;
     const run_time_ns = current_time_ns + delay_ns;
 
     if (task.running) {
