@@ -206,8 +206,9 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
 
     try buffered_writer.flush();
 
-    const padding_size = block_size - counting_writer.bytes_written % block_size;
-    try writer.writeByteNTimes(0, padding_size);
+    const rem = counting_writer.bytes_written % block_size;
+    const padding_size = if (rem == 0) 0 else block_size - rem;
+    if (padding_size > 0) try writer.writeByteNTimes(0, padding_size);
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -317,8 +318,9 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     }
 
     const block_size = header.block_size;
-    const padding_size = block_size - fixed_buffer_stream.pos % block_size;
-    try fixed_buffer_stream.seekBy(@intCast(padding_size));
+    const rem = fixed_buffer_stream.pos % block_size;
+    const padding_size = if (rem == 0) 0 else block_size - rem;
+    if (padding_size > 0) try fixed_buffer_stream.seekBy(@intCast(padding_size));
 
     const blocks_data_start = fixed_buffer_stream.pos;
 
