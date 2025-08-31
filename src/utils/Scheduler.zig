@@ -19,30 +19,24 @@ const TaskStatus = struct {
     deinitFn: *const fn (ctx: *anyopaque, allocator: std.mem.Allocator) void,
     interval_ns: ?u64 = null,
     next_run_time_ns: ?u64 = null,
-    sequence: u64 = 0,  // For absolute ordering when timestamps are equal
 };
 
-const TaskData = struct {
-    task_status: TaskStatus,
-    // No need for next/prev pointers - priority queue handles ordering
-};
+pub const Task = *TaskStatus;
 
-pub const Task = *TaskData;
+const TaskQueue = std.PriorityQueue(*TaskStatus, void, compareTasksByDeadline);
 
-const TaskQueue = std.PriorityQueue(*TaskData, void, compareTasksByDeadline);
-
-fn compareTasksByDeadline(context: void, a: *TaskData, b: *TaskData) std.math.Order {
+fn compareTasksByDeadline(context: void, a: *TaskStatus, b: *TaskStatus) std.math.Order {
     _ = context;
     // Both tasks should have next_run_time_ns set (immediate tasks get current time)
-    const a_time = a.task_status.next_run_time_ns orelse unreachable;
-    const b_time = b.task_status.next_run_time_ns orelse unreachable;
+    const a_time = a.next_run_time_ns orelse unreachable;
+    const b_time = b.next_run_time_ns orelse unreachable;
     
     // Primary ordering by timestamp
     const time_order = std.math.order(a_time, b_time);
     if (time_order != .eq) return time_order;
     
-    // Secondary ordering by sequence for absolute order
-    return std.math.order(a.task_status.sequence, b.task_status.sequence);
+    // Secondary ordering by pointer address for absolute order
+    return std.math.order(@intFromPtr(a), @intFromPtr(b));
 }
 
 const Self = @This();
@@ -50,25 +44,24 @@ const Self = @This();
 allocator: std.mem.Allocator,
 threads: std.ArrayListUnmanaged(std.Thread) = .{},
 
-task_queue: TaskQueue,
+queue: TaskQueue,
 queue_not_empty: std.Thread.Condition = .{},
 queue_mutex: std.Thread.Mutex = .{},
 stopping: bool = false,
 
 num_tasks: usize = 0,
-next_sequence: u64 = 0,  // For absolute ordering
 
 pub fn init(allocator: std.mem.Allocator) Self {
     return .{
         .allocator = allocator,
-        .task_queue = TaskQueue.init(allocator, {}),
+        .queue = TaskQueue.init(allocator, {}),
     };
 }
 
 pub fn deinit(self: *Self) void {
     self.stop();
     self.threads.deinit(self.allocator);
-    self.task_queue.deinit();
+    self.queue.deinit();
 
     if (self.num_tasks > 0) {
         log.err("still have {} active tasks", .{self.num_tasks});
@@ -80,7 +73,7 @@ pub fn createTask(self: *Self, priority: Priority, comptime func: anytype, args:
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
-    const task = try self.allocator.create(TaskData);
+    const task = try self.allocator.create(TaskStatus);
     errdefer self.allocator.destroy(task);
 
     const Args = @TypeOf(args);
@@ -104,14 +97,12 @@ pub fn createTask(self: *Self, priority: Priority, comptime func: anytype, args:
     closure.arguments = args;
 
     task.* = .{
-        .task_status = .{
-            .priority = priority,
-            .ctx = closure,
-            .runFn = Closure.run,
-            .deinitFn = Closure.deinit,
-        },
+        .priority = priority,
+        .ctx = closure,
+        .runFn = Closure.run,
+        .deinitFn = Closure.deinit,
     };
-    task.task_status.done.set();
+    task.done.set();
 
     self.num_tasks += 1;
 
@@ -120,12 +111,12 @@ pub fn createTask(self: *Self, priority: Priority, comptime func: anytype, args:
 
 pub fn createRepeatingTask(self: *Self, priority: Priority, interval_ns: u64, comptime func: anytype, args: anytype) !Task {
     const task = try self.createTask(priority, func, args);
-    task.task_status.interval_ns = interval_ns;
+    task.interval_ns = interval_ns;
     return task;
 }
 
 fn findTaskIndex(self: *Self, target_task: Task) ?usize {
-    for (self.task_queue.items, 0..) |task, index| {
+    for (self.queue.items, 0..) |task, index| {
         if (task == target_task) return index;
     }
     return null;
@@ -135,20 +126,20 @@ fn dequeue(self: *Self, task: Task) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
-    if (task.task_status.scheduled) {
-        _ = self.task_queue.removeIndex(self.findTaskIndex(task) orelse return);
-        task.task_status.scheduled = false;
+    if (task.scheduled) {
+        _ = self.queue.removeIndex(self.findTaskIndex(task) orelse return);
+        task.scheduled = false;
     }
 
-    task.task_status.reschedule = 0;
+    task.reschedule = 0;
 }
 
 pub fn destroyTask(self: *Self, task: Task) void {
     self.dequeue(task);
 
-    task.task_status.done.wait();
+    task.done.wait();
 
-    task.task_status.deinitFn(task.task_status.ctx, self.allocator);
+    task.deinitFn(task.ctx, self.allocator);
     self.allocator.destroy(task);
 
     std.debug.assert(self.num_tasks > 0);
@@ -159,8 +150,8 @@ pub fn scheduleTask(self: *Self, task: Task) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
-    if (task.task_status.scheduled or task.task_status.running) {
-        task.task_status.reschedule += 1;
+    if (task.scheduled or task.running) {
+        task.reschedule += 1;
     } else {
         self.enqueue(task);
     }
@@ -170,19 +161,19 @@ pub fn scheduleTaskAtNs(self: *Self, task: Task, timestamp_ns: u64) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
-    if (task.task_status.running) {
+    if (task.running) {
         // Schedule the next run for this absolute time
-        task.task_status.reschedule += 1;
-        task.task_status.next_run_time_ns = timestamp_ns;
+        task.reschedule += 1;
+        task.next_run_time_ns = timestamp_ns;
         return;
     }
 
-    if (task.task_status.scheduled) {
+    if (task.scheduled) {
         // Remove from current position using removeIndex()
-        _ = self.task_queue.removeIndex(self.findTaskIndex(task) orelse return);
+        _ = self.queue.removeIndex(self.findTaskIndex(task) orelse return);
     }
 
-    task.task_status.next_run_time_ns = timestamp_ns;
+    task.next_run_time_ns = timestamp_ns;
     self.enqueue(task);
 }
 
@@ -193,17 +184,17 @@ pub fn scheduleTaskAfter(self: *Self, task: Task, delay_ns: u64) void {
     const current_time_ns: u64 = @intCast(std.time.nanoTimestamp());
     const run_time_ns = current_time_ns + delay_ns;
 
-    if (task.task_status.running) {
-        task.task_status.reschedule += 1;
-        task.task_status.next_run_time_ns = run_time_ns;
+    if (task.running) {
+        task.reschedule += 1;
+        task.next_run_time_ns = run_time_ns;
         return;
     }
 
-    if (task.task_status.scheduled) {
-        _ = self.task_queue.removeIndex(self.findTaskIndex(task) orelse return);
+    if (task.scheduled) {
+        _ = self.queue.removeIndex(self.findTaskIndex(task) orelse return);
     }
 
-    task.task_status.next_run_time_ns = run_time_ns;
+    task.next_run_time_ns = run_time_ns;
     self.enqueue(task);
 }
 
@@ -211,44 +202,40 @@ pub fn cancelRepeatingTask(self: *Self, task: Task) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
-    task.task_status.interval_ns = null;
+    task.interval_ns = null;
     
     // If queued and not running, unschedule immediately
-    if (task.task_status.scheduled and !task.task_status.running) {
-        _ = self.task_queue.removeIndex(self.findTaskIndex(task) orelse return);
-        task.task_status.scheduled = false;
-        task.task_status.next_run_time_ns = null;
+    if (task.scheduled and !task.running) {
+        _ = self.queue.removeIndex(self.findTaskIndex(task) orelse return);
+        task.scheduled = false;
+        task.next_run_time_ns = null;
     }
     
     // Clear any pending reschedules and complete if nothing pending
-    task.task_status.reschedule = 0;
-    if (!task.task_status.running) {
-        task.task_status.done.set();
+    task.reschedule = 0;
+    if (!task.running) {
+        task.done.set();
     }
 }
 
 fn getNextDeadline(self: *Self) ?u64 {
-    return if (self.task_queue.peek()) |task| task.task_status.next_run_time_ns else null;
+    return if (self.queue.peek()) |task| task.next_run_time_ns else null;
 }
 
-fn enqueue(self: *Self, task: *TaskData) void {
-    task.task_status.scheduled = true;
+fn enqueue(self: *Self, task: *TaskStatus) void {
+    task.scheduled = true;
     
-    // Treat immediate tasks as "scheduled now" with absolute ordering
-    if (task.task_status.next_run_time_ns == null) {
+    // Treat immediate tasks as "scheduled now"
+    if (task.next_run_time_ns == null) {
         const current_time: u64 = @intCast(std.time.nanoTimestamp());
-        task.task_status.next_run_time_ns = current_time;
+        task.next_run_time_ns = current_time;
     }
     
-    // Assign sequence number for absolute ordering
-    task.task_status.sequence = self.next_sequence;
-    self.next_sequence += 1;
-    
-    self.task_queue.add(task) catch |err| {
+    self.queue.add(task) catch |err| {
         log.err("failed to add task to queue: {}", .{err});
         // Fallback: mark as not scheduled and signal done
-        task.task_status.scheduled = false;
-        task.task_status.done.set();
+        task.scheduled = false;
+        task.done.set();
         return;
     };
     
@@ -256,7 +243,7 @@ fn enqueue(self: *Self, task: *TaskData) void {
 }
 
 
-fn getTaskToRun(self: *Self) ?*TaskData {
+fn getTaskToRun(self: *Self) ?*TaskStatus {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
@@ -264,12 +251,12 @@ fn getTaskToRun(self: *Self) ?*TaskData {
         const current_time: u64 = @intCast(std.time.nanoTimestamp());
         
         // O(1) peek at next task + O(log n) removal if ready
-        if (self.task_queue.peek()) |task| {
-            if (task.task_status.next_run_time_ns.? <= current_time) {
-                const removed_task = self.task_queue.remove();
-                removed_task.task_status.scheduled = false;
-                removed_task.task_status.running = true;
-                removed_task.task_status.done.reset();
+        if (self.queue.peek()) |task| {
+            if (task.next_run_time_ns.? <= current_time) {
+                const removed_task = self.queue.remove();
+                removed_task.scheduled = false;
+                removed_task.running = true;
+                removed_task.done.reset();
                 
                 return removed_task;
             }
@@ -286,32 +273,32 @@ fn getTaskToRun(self: *Self) ?*TaskData {
     return null;
 }
 
-fn markAsDone(self: *Self, task: *TaskData) void {
+fn markAsDone(self: *Self, task: *TaskStatus) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
-    const has_manual_reschedule = task.task_status.reschedule > 0;
-    const is_repeating = task.task_status.interval_ns != null;
+    const has_manual_reschedule = task.reschedule > 0;
+    const is_repeating = task.interval_ns != null;
     
     if (has_manual_reschedule or is_repeating) {
         if (has_manual_reschedule) {
-            task.task_status.reschedule -= 1;
+            task.reschedule -= 1;
         }
         
         if (is_repeating) {
             // If a manual absolute time was set during execution, keep it
-            if (!(has_manual_reschedule and task.task_status.next_run_time_ns != null)) {
-                const interval = task.task_status.interval_ns.?;
+            if (!(has_manual_reschedule and task.next_run_time_ns != null)) {
+                const interval = task.interval_ns.?;
                 const current_time: u64 = @intCast(std.time.nanoTimestamp());
-                task.task_status.next_run_time_ns = current_time + interval;
+                task.next_run_time_ns = current_time + interval;
             }
         }
         
-        task.task_status.running = false;
+        task.running = false;
         self.enqueue(task);
     } else {
-        task.task_status.running = false;
-        task.task_status.done.set();
+        task.running = false;
+        task.done.set();
     }
 }
 
@@ -320,7 +307,7 @@ fn workerThreadFunc(self: *Self) void {
         const task = self.getTaskToRun() orelse break;
         defer self.markAsDone(task);
 
-        task.task_status.runFn(task.task_status.ctx);
+        task.runFn(task.ctx);
     }
 }
 
