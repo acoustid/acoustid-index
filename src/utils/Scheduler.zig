@@ -49,12 +49,15 @@ queue_not_empty: std.Thread.Condition = .{},
 queue_mutex: std.Thread.Mutex = .{},
 stopping: bool = false,
 
+// Monotonic timer for precise scheduling
+timer: std.time.Timer = undefined,
 num_tasks: usize = 0,
 
 pub fn init(allocator: std.mem.Allocator) Self {
     return .{
         .allocator = allocator,
         .queue = TaskQueue.init(allocator, {}),
+        .timer = std.time.Timer.start() catch unreachable, // Start monotonic timer
     };
 }
 
@@ -157,32 +160,14 @@ pub fn scheduleTask(self: *Self, task: Task) void {
     }
 }
 
-pub fn scheduleTaskAtNs(self: *Self, task: Task, timestamp_ns: u64) void {
+
+pub fn scheduleTaskAfter(self: *Self, task: Task, delay_ms: u64) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
-    if (task.running) {
-        // Schedule the next run for this absolute time
-        task.reschedule += 1;
-        task.next_run_time_ns = timestamp_ns;
-        return;
-    }
-
-    if (task.scheduled) {
-        // Remove from current position using removeIndex()
-        _ = self.queue.removeIndex(self.findTaskIndex(task) orelse return);
-    }
-
-    task.next_run_time_ns = timestamp_ns;
-    self.enqueue(task);
-}
-
-pub fn scheduleTaskAfter(self: *Self, task: Task, delay_ns: u64) void {
-    self.queue_mutex.lock();
-    defer self.queue_mutex.unlock();
-
-    const nano_ts = std.time.nanoTimestamp();
-    const current_time_ns: u64 = if (nano_ts >= 0) @intCast(nano_ts) else 0;
+    // Use monotonic time from scheduler timer
+    const current_time_ns = self.timer.read();
+    const delay_ns = delay_ms * std.time.ns_per_ms;
     const run_time_ns = current_time_ns + delay_ns;
 
     if (task.running) {
@@ -228,8 +213,7 @@ fn enqueue(self: *Self, task: *TaskStatus) void {
     
     // Treat immediate tasks as "scheduled now"
     if (task.next_run_time_ns == null) {
-        const nano_ts = std.time.nanoTimestamp();
-        task.next_run_time_ns = if (nano_ts >= 0) @intCast(nano_ts) else 0;
+        task.next_run_time_ns = self.timer.read();
     }
     
     self.queue.add(task) catch |err| {
@@ -249,12 +233,12 @@ fn getTaskToRun(self: *Self) ?*TaskStatus {
     defer self.queue_mutex.unlock();
 
     while (!self.stopping) {
-        const nano_ts = std.time.nanoTimestamp();
-        const current_time_ns: u64 = if (nano_ts >= 0) @intCast(nano_ts) else 0;
+        const current_time_ns = self.timer.read();
         
         // O(1) peek at next task + O(log n) removal if ready
         if (self.queue.peek()) |task| {
-            if (task.next_run_time_ns.? <= current_time_ns) {
+            const task_time_ns = task.next_run_time_ns orelse unreachable;
+            if (current_time_ns >= task_time_ns) {
                 const removed_task = self.queue.remove();
                 removed_task.scheduled = false;
                 removed_task.running = true;
@@ -266,8 +250,8 @@ fn getTaskToRun(self: *Self) ?*TaskStatus {
         
         // Calculate timeout using next deadline (O(1) peek)
         const timeout_ns: u64 = if (self.getNextDeadline()) |deadline| blk: {
-            const delta_ns: u64 = if (deadline > current_time_ns) deadline - current_time_ns else 0;
-            break :blk delta_ns;
+            // If deadline has passed, use 0 timeout; otherwise use remaining time
+            break :blk if (current_time_ns >= deadline) 0 else deadline - current_time_ns;
         } else std.time.ns_per_min;
             
         self.queue_not_empty.timedWait(&self.queue_mutex, timeout_ns) catch {};
@@ -291,8 +275,7 @@ fn markAsDone(self: *Self, task: *TaskStatus) void {
             // If a manual absolute time was set during execution, keep it
             if (!(has_manual_reschedule and task.next_run_time_ns != null)) {
                 const interval = task.interval_ns.?;
-                const nano_ts = std.time.nanoTimestamp();
-                const current_time_ns: u64 = if (nano_ts >= 0) @intCast(nano_ts) else 0;
+                const current_time_ns = self.timer.read();
                 task.next_run_time_ns = current_time_ns + interval;
             }
         }
@@ -408,25 +391,24 @@ test "Scheduler: scheduled task with delay" {
 
     const Counter = struct {
         count: usize = 0,
-        start_time: u64,
+        start_time_ns: u64,
+        scheduler_timer: *std.time.Timer,
 
         fn incr(self: *@This()) void {
-            const nano_ts = std.time.nanoTimestamp();
-            const current_time_ns: u64 = if (nano_ts >= 0) @intCast(nano_ts) else 0;
-            const elapsed_ns = current_time_ns - self.start_time;
+            const current_time_ns = self.scheduler_timer.read();
+            const elapsed_ns = current_time_ns - self.start_time_ns;
             if (elapsed_ns >= 200 * std.time.ns_per_ms) {
                 self.count += 1;
             }
         }
     };
-    const nano_ts = std.time.nanoTimestamp();
-    const start_time_ns: u64 = if (nano_ts >= 0) @intCast(nano_ts) else 0;
-    var counter: Counter = .{ .start_time = start_time_ns };
+    const start_time_ns = scheduler.timer.read();
+    var counter: Counter = .{ .start_time_ns = start_time_ns, .scheduler_timer = &scheduler.timer };
 
     const task = try scheduler.createTask(.high, Counter.incr, .{&counter});
     defer scheduler.destroyTask(task);
 
-    scheduler.scheduleTaskAfter(task, 200 * std.time.ns_per_ms);
+    scheduler.scheduleTaskAfter(task, 200); // 200ms delay
 
     try scheduler.start(1);
     std.time.sleep(300 * std.time.ns_per_ms);
