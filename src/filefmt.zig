@@ -48,6 +48,16 @@ pub fn buildSegmentFileName(buf: []u8, info: SegmentInfo) []u8 {
     return std.fmt.bufPrint(buf, segment_file_name_fmt, .{ info.version, info.merges }) catch unreachable;
 }
 
+/// Returns true if the given name is a manifest file name
+pub fn isManifestFileName(name: []const u8) bool {
+    return std.mem.eql(u8, name, manifest_file_name);
+}
+
+/// Returns true if the given name is a valid segment file name
+pub fn isSegmentFileName(name: []const u8) bool {
+    return parseSegmentFileName(name) != null;
+}
+
 /// Parses a segment file name and returns the SegmentInfo if valid
 /// Returns null if the name doesn't match the segment file format
 pub fn parseSegmentFileName(name: []const u8) ?SegmentInfo {
