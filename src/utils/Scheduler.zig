@@ -18,7 +18,7 @@ const TaskStatus = struct {
     runFn: *const fn (ctx: *anyopaque) void,
     deinitFn: *const fn (ctx: *anyopaque, allocator: std.mem.Allocator) void,
     interval_ns: ?u64 = null,
-    next_run_time: ?i64 = null,
+    next_run_time_ns: ?u64 = null,
 };
 
 const Queue = std.DoublyLinkedList(TaskStatus);
@@ -28,9 +28,9 @@ const TaskQueue = std.PriorityQueue(*Queue.Node, void, compareTasksByDeadline);
 
 fn compareTasksByDeadline(context: void, a: *Queue.Node, b: *Queue.Node) std.math.Order {
     _ = context;
-    // Both tasks should have next_run_time set (immediate tasks get current time)
-    const a_time = a.data.next_run_time orelse unreachable;
-    const b_time = b.data.next_run_time orelse unreachable;
+    // Both tasks should have next_run_time_ns set (immediate tasks get current time)
+    const a_time = a.data.next_run_time_ns orelse unreachable;
+    const b_time = b.data.next_run_time_ns orelse unreachable;
     return std.math.order(a_time, b_time);
 }
 
@@ -150,10 +150,12 @@ pub fn scheduleTaskAt(self: *Self, task: Task, timestamp_ms: i64) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
+    const timestamp_ns = @as(u64, @intCast(timestamp_ms)) * std.time.ns_per_ms;
+
     if (task.data.running) {
         // Schedule the next run for this absolute time
         task.data.reschedule += 1;
-        task.data.next_run_time = timestamp_ms;
+        task.data.next_run_time_ns = timestamp_ns;
         return;
     }
 
@@ -162,7 +164,7 @@ pub fn scheduleTaskAt(self: *Self, task: Task, timestamp_ms: i64) void {
         self.dequeueInternal(task);
     }
 
-    task.data.next_run_time = timestamp_ms;
+    task.data.next_run_time_ns = timestamp_ns;
     self.enqueue(task);
 }
 
@@ -181,7 +183,7 @@ pub fn cancelRepeatingTask(self: *Self, task: Task) void {
     // If queued and not running, unschedule immediately
     if (task.data.scheduled and !task.data.running) {
         self.dequeueInternal(task);
-        task.data.next_run_time = null;
+        task.data.next_run_time_ns = null;
     }
     
     // Clear any pending reschedules and complete if nothing pending
@@ -191,16 +193,16 @@ pub fn cancelRepeatingTask(self: *Self, task: Task) void {
     }
 }
 
-fn getNextDeadline(self: *Self) ?i64 {
-    return if (self.task_queue.peek()) |task| task.data.next_run_time else null;
+fn getNextDeadline(self: *Self) ?u64 {
+    return if (self.task_queue.peek()) |task| task.data.next_run_time_ns else null;
 }
 
 fn enqueue(self: *Self, task: *Queue.Node) void {
     task.data.scheduled = true;
     
     // Treat immediate tasks as "scheduled now"
-    if (task.data.next_run_time == null) {
-        task.data.next_run_time = std.time.milliTimestamp();
+    if (task.data.next_run_time_ns == null) {
+        task.data.next_run_time_ns = @as(u64, @intCast(std.time.nanoTimestamp()));
     }
     
     self.task_queue.add(task) catch |err| {
@@ -244,11 +246,11 @@ fn getTaskToRun(self: *Self) ?*Queue.Node {
     defer self.queue_mutex.unlock();
 
     while (!self.stopping) {
-        const current_time = std.time.milliTimestamp();
+        const current_time = @as(u64, @intCast(std.time.nanoTimestamp()));
         
         // O(1) peek at next task + O(log n) removal if ready
         if (self.task_queue.peek()) |task| {
-            if (task.data.next_run_time.? <= current_time) {
+            if (task.data.next_run_time_ns.? <= current_time) {
                 const removed_task = self.task_queue.remove();
                 removed_task.prev = null;
                 removed_task.next = null;
@@ -262,9 +264,8 @@ fn getTaskToRun(self: *Self) ?*Queue.Node {
         
         // Calculate timeout using next deadline (O(1) peek)
         const timeout_ns: u64 = if (self.getNextDeadline()) |deadline| blk: {
-            const delta_ms: i64 = deadline - current_time;
-            const clamped_ms: i64 = if (delta_ms > 0) delta_ms else 0;
-            break :blk @as(u64, @intCast(clamped_ms)) * std.time.ns_per_ms;
+            const delta_ns: u64 = if (deadline > current_time) deadline - current_time else 0;
+            break :blk delta_ns;
         } else std.time.ns_per_min;
             
         self.queue_not_empty.timedWait(&self.queue_mutex, timeout_ns) catch {};
@@ -286,9 +287,9 @@ fn markAsDone(self: *Self, task: *Queue.Node) void {
         
         if (is_repeating) {
             // If a manual absolute time was set during execution, keep it
-            if (!(has_manual_reschedule and task.data.next_run_time != null)) {
+            if (!(has_manual_reschedule and task.data.next_run_time_ns != null)) {
                 const interval = task.data.interval_ns.?;
-                task.data.next_run_time = std.time.milliTimestamp() + @as(i64, @intCast(interval / std.time.ns_per_ms));
+                task.data.next_run_time_ns = @as(u64, @intCast(std.time.nanoTimestamp())) + interval;
             }
         }
         
@@ -403,16 +404,16 @@ test "Scheduler: scheduled task with delay" {
 
     const Counter = struct {
         count: usize = 0,
-        start_time: i64,
+        start_time: u64,
 
         fn incr(self: *@This()) void {
-            const elapsed = std.time.milliTimestamp() - self.start_time;
-            if (elapsed >= 200) {
+            const elapsed_ns = @as(u64, @intCast(std.time.nanoTimestamp())) - self.start_time;
+            if (elapsed_ns >= 200 * std.time.ns_per_ms) {
                 self.count += 1;
             }
         }
     };
-    var counter: Counter = .{ .start_time = std.time.milliTimestamp() };
+    var counter: Counter = .{ .start_time = @as(u64, @intCast(std.time.nanoTimestamp())) };
 
     const task = try scheduler.createTask(.high, Counter.incr, .{&counter});
     defer scheduler.destroyTask(task);
