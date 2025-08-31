@@ -10,7 +10,7 @@ const TaskStatus = struct {
     runFn: *const fn (ctx: *anyopaque) void,
     deinitFn: *const fn (ctx: *anyopaque, allocator: std.mem.Allocator) void,
     interval_ns: ?u64 = null,
-    next_run_time_ns: ?u64 = null,
+    next_run_time_ns: u64,
 };
 
 pub const Task = *TaskStatus;
@@ -20,8 +20,8 @@ const TaskQueue = std.PriorityQueue(*TaskStatus, void, compareTasksByDeadline);
 fn compareTasksByDeadline(context: void, a: *TaskStatus, b: *TaskStatus) std.math.Order {
     _ = context;
     // Both tasks should have next_run_time_ns set (immediate tasks get current time)
-    const a_time = a.next_run_time_ns orelse unreachable;
-    const b_time = b.next_run_time_ns orelse unreachable;
+    const a_time = a.next_run_time_ns;
+    const b_time = b.next_run_time_ns;
     
     // Primary ordering by timestamp
     const time_order = std.math.order(a_time, b_time);
@@ -95,6 +95,7 @@ pub fn createTask(self: *Self, comptime func: anytype, args: anytype) !Task {
         .ctx = closure,
         .runFn = Closure.run,
         .deinitFn = Closure.deinit,
+        .next_run_time_ns = 0, // Will be set when scheduled
     };
     task.done.set();
 
@@ -185,7 +186,7 @@ pub fn cancelRepeatingTask(self: *Self, task: Task) void {
     if (task.scheduled and !task.running) {
         _ = self.queue.removeIndex(self.findTaskIndex(task) orelse return);
         task.scheduled = false;
-        task.next_run_time_ns = null;
+        task.next_run_time_ns = 0;
     }
     
     // Clear any pending reschedules and complete if nothing pending
@@ -203,7 +204,7 @@ fn enqueue(self: *Self, task: *TaskStatus) void {
     task.scheduled = true;
     
     // Treat immediate tasks as "scheduled now"
-    if (task.next_run_time_ns == null) {
+    if (task.next_run_time_ns == 0) {
         task.next_run_time_ns = self.timer.read();
     }
     
@@ -228,7 +229,7 @@ fn getTaskToRun(self: *Self) ?*TaskStatus {
         
         // O(1) peek at next task + O(log n) removal if ready
         if (self.queue.peek()) |task| {
-            const task_time_ns = task.next_run_time_ns orelse unreachable;
+            const task_time_ns = task.next_run_time_ns;
             if (current_time_ns >= task_time_ns) {
                 const removed_task = self.queue.remove();
                 removed_task.scheduled = false;
@@ -263,8 +264,8 @@ fn markAsDone(self: *Self, task: *TaskStatus) void {
         }
         
         if (is_repeating) {
-            // If a manual absolute time was set during execution, keep it
-            if (!(has_manual_reschedule and task.next_run_time_ns != null)) {
+            // If no manual absolute time was set during execution, use interval
+            if (!has_manual_reschedule) {
                 const interval = task.interval_ns.?;
                 const current_time_ns = self.timer.read();
                 task.next_run_time_ns = current_time_ns + interval;
