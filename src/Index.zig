@@ -381,7 +381,7 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
             .concurrency_semaphore = &concurrency_semaphore,
         };
 
-        const task = self.scheduler.createTask(.high, loadSegmentTask, .{load_context}) catch |err| {
+        const task = self.scheduler.createTask(loadSegmentTask, .{load_context}) catch |err| {
             // If task creation fails, release the semaphore and stop creating more tasks
             concurrency_semaphore.post();
             task_creation_error = err;
@@ -422,9 +422,9 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
 }
 
 fn completeLoading(self: *Self, last_commit_id: u64) !void {
-    self.memory_segment_merge_task = try self.scheduler.createTask(.high, memorySegmentMergeTask, .{self});
-    self.checkpoint_task = try self.scheduler.createTask(.medium, checkpointTask, .{self});
-    self.file_segment_merge_task = try self.scheduler.createTask(.low, fileSegmentMergeTask, .{self});
+    self.memory_segment_merge_task = try self.scheduler.createTask(memorySegmentMergeTask, .{self});
+    self.checkpoint_task = try self.scheduler.createTask(checkpointTask, .{self});
+    self.file_segment_merge_task = try self.scheduler.createTask(fileSegmentMergeTask, .{self});
 
     try self.oplog.open(last_commit_id + 1, updateInternal, self);
 

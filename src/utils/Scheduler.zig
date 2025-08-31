@@ -1,19 +1,11 @@
 const std = @import("std");
 const log = std.log.scoped(.scheduler);
 
-const Priority = enum(u8) {
-    high = 0,
-    medium = 1,
-    low = 2,
-    do_not_run = 3,
-};
-
 const TaskStatus = struct {
     reschedule: usize = 0,
     scheduled: bool = false,
     running: bool = false,
     done: std.Thread.ResetEvent = .{},
-    priority: Priority,
     ctx: *anyopaque,
     runFn: *const fn (ctx: *anyopaque) void,
     deinitFn: *const fn (ctx: *anyopaque, allocator: std.mem.Allocator) void,
@@ -72,7 +64,7 @@ pub fn deinit(self: *Self) void {
     }
 }
 
-pub fn createTask(self: *Self, priority: Priority, comptime func: anytype, args: anytype) !Task {
+pub fn createTask(self: *Self, comptime func: anytype, args: anytype) !Task {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
@@ -100,7 +92,6 @@ pub fn createTask(self: *Self, priority: Priority, comptime func: anytype, args:
     closure.arguments = args;
 
     task.* = .{
-        .priority = priority,
         .ctx = closure,
         .runFn = Closure.run,
         .deinitFn = Closure.deinit,
@@ -112,8 +103,8 @@ pub fn createTask(self: *Self, priority: Priority, comptime func: anytype, args:
     return task;
 }
 
-pub fn createRepeatingTask(self: *Self, priority: Priority, interval_ns: u64, comptime func: anytype, args: anytype) !Task {
-    const task = try self.createTask(priority, func, args);
+pub fn createRepeatingTask(self: *Self, interval_ns: u64, comptime func: anytype, args: anytype) !Task {
+    const task = try self.createTask(func, args);
     task.interval_ns = interval_ns;
     return task;
 }
@@ -342,7 +333,7 @@ test "Scheduler: smoke test" {
     };
     var counter: Counter = .{};
 
-    const task = try scheduler.createTask(.high, Counter.incr, .{&counter});
+    const task = try scheduler.createTask(Counter.incr, .{&counter});
     defer scheduler.destroyTask(task);
 
     for (0..3) |_| {
@@ -370,7 +361,7 @@ test "Scheduler: repeating task" {
     };
     var counter: Counter = .{};
 
-    const task = try scheduler.createRepeatingTask(.high, 100 * std.time.ns_per_ms, Counter.incr, .{&counter});
+    const task = try scheduler.createRepeatingTask(100 * std.time.ns_per_ms, Counter.incr, .{&counter});
     defer scheduler.destroyTask(task);
 
     scheduler.scheduleTask(task);
@@ -405,7 +396,7 @@ test "Scheduler: scheduled task with delay" {
     const start_time_ns = scheduler.timer.read();
     var counter: Counter = .{ .start_time_ns = start_time_ns, .scheduler_timer = &scheduler.timer };
 
-    const task = try scheduler.createTask(.high, Counter.incr, .{&counter});
+    const task = try scheduler.createTask(Counter.incr, .{&counter});
     defer scheduler.destroyTask(task);
 
     scheduler.scheduleTaskAfter(task, 200); // 200ms delay
@@ -435,10 +426,10 @@ test "Scheduler: multiple repeating tasks with different intervals" {
     };
     var counter: Counter = .{};
 
-    const fast_task = try scheduler.createRepeatingTask(.high, 50 * std.time.ns_per_ms, Counter.incrFast, .{&counter});
+    const fast_task = try scheduler.createRepeatingTask(50 * std.time.ns_per_ms, Counter.incrFast, .{&counter});
     defer scheduler.destroyTask(fast_task);
     
-    const slow_task = try scheduler.createRepeatingTask(.high, 150 * std.time.ns_per_ms, Counter.incrSlow, .{&counter});
+    const slow_task = try scheduler.createRepeatingTask(150 * std.time.ns_per_ms, Counter.incrSlow, .{&counter});
     defer scheduler.destroyTask(slow_task);
 
     scheduler.scheduleTask(fast_task);
