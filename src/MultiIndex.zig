@@ -58,7 +58,7 @@ pub const IndexRef = struct {
     }
 };
 
-const IndexRefHashMap = std.StringHashMapUnmanaged(IndexRef);
+const IndexRefHashMap = std.StringHashMapUnmanaged(*IndexRef);
 
 lock: std.Thread.Mutex = .{},
 lock_file: ?std.fs.File = null,
@@ -119,14 +119,16 @@ fn openExistingIndex(self: *Self, path: []const u8) !*IndexRef {
     const name = redirect.name;
 
     const entry = try self.indexes.getOrPut(self.allocator, name);
-    errdefer self.indexes.removeByPtr(entry.key_ptr);
+    errdefer if (!entry.found_existing) self.indexes.removeByPtr(entry.key_ptr);
 
     if (entry.found_existing) {
         return error.IndexAlreadyLoaded;
     }
 
-    entry.key_ptr.* = name;
-    const ref = entry.value_ptr;
+    var ref = try self.allocator.create(IndexRef);
+    errdefer self.allocator.destroy(ref);
+
+    entry.value_ptr.* = ref;
 
     ref.* = .{
         .index_dir = index_dir,
@@ -152,24 +154,30 @@ fn openExistingIndex(self: *Self, path: []const u8) !*IndexRef {
 
 fn createNewIndex(self: *Self, original_name: []const u8) !*IndexRef {
     const entry = try self.indexes.getOrPut(self.allocator, original_name);
-    errdefer self.indexes.removeByPtr(entry.key_ptr);
 
-    const ref = entry.value_ptr;
     const found_existing = entry.found_existing;
+    errdefer if (!found_existing) self.indexes.removeByPtr(entry.key_ptr);
 
     if (!found_existing) {
+        // change the key to a newly allocated one
         entry.key_ptr.* = try self.allocator.dupe(u8, original_name);
     }
     errdefer if (!found_existing) self.allocator.free(entry.key_ptr.*);
 
+    const name = entry.key_ptr.*;
+
+    var ref: *IndexRef = undefined;
     if (!found_existing) {
+        ref = try self.allocator.create(IndexRef);
         ref.* = .{
             .index_dir = undefined, // will be set later
             .redirect = undefined, // will be set later
         };
+        entry.value_ptr.* = ref;
+    } else {
+        ref = entry.value_ptr.*;
     }
-
-    const name = entry.key_ptr.*;
+    errdefer if (!found_existing) self.allocator.destroy(ref);
 
     if (!found_existing) {
         ref.redirect = IndexRedirect.init(name);
@@ -270,7 +278,8 @@ pub fn deinit(self: *Self) void {
 
     var iter = self.indexes.iterator();
     while (iter.next()) |entry| {
-        entry.value_ptr.deinit();
+        entry.value_ptr.*.deinit();
+        self.allocator.destroy(entry.value_ptr.*);
         self.allocator.free(entry.key_ptr.*);
     }
     self.indexes.deinit(self.allocator);
@@ -446,13 +455,13 @@ pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool) !*Index {
     self.lock.lock();
     defer self.lock.unlock();
 
-    if (self.indexes.getEntry(name)) |entry| {
-        if (entry.value_ptr.index.has_value) {
+    if (self.indexes.get(name)) |index_ref| {
+        if (index_ref.index.has_value) {
             // Index exists and is active
-            if (entry.value_ptr.being_deleted) {
+            if (index_ref.being_deleted) {
                 return error.IndexBeingDeleted;
             }
-            return borrowIndex(entry.value_ptr);
+            return borrowIndex(index_ref);
         }
         // Index is deleted (has_value == false) - fall through to handle recreation if create=true
     }
@@ -477,24 +486,24 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
     self.lock.lock();
     defer self.lock.unlock();
 
-    const entry = self.indexes.getEntry(name) orelse return;
-    if (!entry.value_ptr.index.has_value) return;
+    const index_ref = self.indexes.get(name) orelse return;
+    if (!index_ref.index.has_value) return;
 
     // Mark as being deleted to prevent new references
-    if (entry.value_ptr.being_deleted) {
+    if (index_ref.being_deleted) {
         return error.IndexAlreadyBeingDeleted;
     }
-    entry.value_ptr.being_deleted = true;
-    defer entry.value_ptr.being_deleted = false;
+    index_ref.being_deleted = true;
+    defer index_ref.being_deleted = false;
 
     log.info("marking index {s} for deletion, waiting for references to be released", .{name});
 
     // Wait for all references except the map's reference to be released
     const start_time = std.time.milliTimestamp();
-    while (entry.value_ptr.references > 1) {
+    while (index_ref.references > 1) {
         const current_time = std.time.milliTimestamp();
         if (current_time - start_time > DELETE_TIMEOUT_MS) {
-            log.warn("timeout waiting for index {s} references to be released (current: {d})", .{ name, entry.value_ptr.references });
+            log.warn("timeout waiting for index {s} references to be released (current: {d})", .{ name, index_ref.references });
             return error.DeleteTimeout;
         }
 
@@ -504,8 +513,8 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
         self.lock.lock();
 
         // Check if the entry still exists (in case of concurrent operations)
-        const current_entry = self.indexes.getEntry(name) orelse return error.IndexNotFound;
-        if (current_entry.value_ptr != entry.value_ptr) {
+        const current_index_ref = self.indexes.get(name) orelse return error.IndexNotFound;
+        if (current_index_ref != index_ref) {
             return error.IndexNotFound;
         }
     }
@@ -513,16 +522,16 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
     log.info("deleting index {s}", .{name});
 
     // Mark redirect as deleted
-    entry.value_ptr.redirect.deleted = true;
-    errdefer entry.value_ptr.redirect.deleted = false;
+    index_ref.redirect.deleted = true;
+    errdefer index_ref.redirect.deleted = false;
 
-    index_redirect.writeRedirectFile(entry.value_ptr.index_dir, entry.value_ptr.redirect) catch |err| {
+    index_redirect.writeRedirectFile(index_ref.index_dir, index_ref.redirect) catch |err| {
         log.err("failed to mark redirect as deleted for index {s}: {}", .{ name, err });
         return err;
     };
 
     // Close the index
-    entry.value_ptr.index.clear();
+    index_ref.index.clear();
 }
 
 pub fn search(
