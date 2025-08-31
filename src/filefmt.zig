@@ -40,11 +40,19 @@ pub fn maxItemsPerBlock(block_size: usize) usize {
 
 pub const max_file_name_size = 64;
 const segment_file_name_fmt = "{x:0>16}-{x:0>8}.data";
+pub const segment_file_suffix = ".data";
 pub const manifest_file_name = "manifest";
 
 pub fn buildSegmentFileName(buf: []u8, info: SegmentInfo) []u8 {
     assert(buf.len == max_file_name_size);
     return std.fmt.bufPrint(buf, segment_file_name_fmt, .{ info.version, info.merges }) catch unreachable;
+}
+
+/// Validates that a file name does not contain slashes (path separators)
+pub fn rejectNameWithSlash(name: []const u8) !void {
+    if (std.mem.indexOfScalar(u8, name, '/') != null) {
+        return error.InvalidFileName;
+    }
 }
 
 // Use block header from block.zig (already imported above)
