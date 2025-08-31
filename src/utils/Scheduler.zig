@@ -424,10 +424,10 @@ test "Scheduler: multiple repeating tasks with different intervals" {
     };
     var counter: Counter = .{};
 
-    const fast_task = try scheduler.createRepeatingTask(50 * std.time.ns_per_ms, Counter.incrFast, .{&counter});
+    const fast_task = try scheduler.createRepeatingTask(50, Counter.incrFast, .{&counter});
     defer scheduler.destroyTask(fast_task);
     
-    const slow_task = try scheduler.createRepeatingTask(150 * std.time.ns_per_ms, Counter.incrSlow, .{&counter});
+    const slow_task = try scheduler.createRepeatingTask(150, Counter.incrSlow, .{&counter});
     defer scheduler.destroyTask(slow_task);
 
     scheduler.scheduleTask(fast_task);
