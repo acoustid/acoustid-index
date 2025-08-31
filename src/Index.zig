@@ -79,8 +79,8 @@ fn getMemorySegmentSize(segment: SharedPtr(MemorySegment)) usize {
     return segment.value.getSize();
 }
 
-pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, parent_dir: std.fs.Dir, path: []const u8, options: Options) !Self {
-    var dir = try parent_dir.makeOpenPath(path, .{ .iterate = true });
+pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, parent_dir: std.fs.Dir, name: []const u8, data_path: []const u8, options: Options) !Self {
+    var dir = try parent_dir.makeOpenPath(data_path, .{ .iterate = true });
     errdefer dir.close();
 
     var oplog = try Oplog.init(allocator, dir);
@@ -116,7 +116,7 @@ pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, parent_dir: std
         .allocator = allocator,
         .scheduler = scheduler,
         .dir = dir,
-        .name = path,
+        .name = name,
         .oplog = oplog,
         .segments_lock = .{},
         .memory_segments = memory_segments,
