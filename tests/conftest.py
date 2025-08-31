@@ -23,6 +23,7 @@ class ServerManager:
 
     def start(self):
         command = [
+            'valgrind',
             'zig-out/bin/fpindex',
             '--dir', str(self.data_dir),
             '--port', str(self.port),
@@ -113,23 +114,23 @@ class Client:
         self.base_url = base_url
 
     def head(self, url, **kwargs):
-        kwargs.setdefault('timeout', 1)
+        kwargs.setdefault('timeout', 10)
         return self.session.head(urljoin(self.base_url, url), **kwargs)
 
     def get(self, url, **kwargs):
-        kwargs.setdefault('timeout', 1)
+        kwargs.setdefault('timeout', 10)
         return self.session.get(urljoin(self.base_url, url), **kwargs)
 
     def put(self, url, **kwargs):
-        kwargs.setdefault('timeout', 1)
+        kwargs.setdefault('timeout', 10)
         return self.session.put(urljoin(self.base_url, url), **kwargs)
 
     def post(self, url, **kwargs):
-        kwargs.setdefault('timeout', 1)
+        kwargs.setdefault('timeout', 10)
         return self.session.post(urljoin(self.base_url, url), **kwargs)
 
     def delete(self, url, **kwargs):
-        kwargs.setdefault('timeout', 1)
+        kwargs.setdefault('timeout', 10)
         return self.session.delete(urljoin(self.base_url, url), **kwargs)
 
 

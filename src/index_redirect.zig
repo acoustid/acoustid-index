@@ -33,8 +33,8 @@ pub const IndexRedirect = struct {
     pub fn init(index_name: []const u8) IndexRedirect {
         return .{
             .name = index_name,
-            .version = 0,
-            .deleted = true,
+            .version = 1,
+            .deleted = false,
         };
     }
 

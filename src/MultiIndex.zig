@@ -38,7 +38,7 @@ pub const IndexRef = struct {
     index: OptionalIndex = .{},
     index_dir: std.fs.Dir,
     redirect: IndexRedirect,
-    references: usize = 0,
+    references: usize = 1,
     delete_files: bool = false,
     being_deleted: bool = false,
 
@@ -58,13 +58,15 @@ pub const IndexRef = struct {
     }
 };
 
+const IndexRefHashMap = std.StringHashMapUnmanaged(IndexRef);
+
 lock: std.Thread.Mutex = .{},
 lock_file: ?std.fs.File = null,
 allocator: std.mem.Allocator,
 scheduler: *Scheduler,
 dir: std.fs.Dir,
 index_options: Index.Options,
-indexes: std.StringHashMapUnmanaged(IndexRef) = .{},
+indexes: IndexRefHashMap = .{},
 cleanup_task: ?Scheduler.Task = null,
 
 fn isValidName(name: []const u8) bool {
@@ -104,85 +106,112 @@ pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, dir: std.fs.Dir
     };
 }
 
-fn openIndex(self: *Self, path: []const u8, create: bool) !*IndexRef {
-    log.info("loading index {s}", .{path});
+fn openExistingIndex(self: *Self, path: []const u8) !*IndexRef {
+    var index_dir = try self.dir.openDir(path, .{});
+    errdefer index_dir.close();
 
-    const name = try self.allocator.dupe(u8, path);
-    errdefer self.allocator.free(name);
-
-    var save_redirect = false;
-
-    var result = try self.indexes.getOrPut(self.allocator, name);
-    errdefer if (!result.found_existing) {
-        self.indexes.removeByPtr(result.key_ptr);
-    };
-
-    // Set defaults
-    if (!result.found_existing) {
-        result.value_ptr.index = .{ .has_value = false };
-        result.value_ptr.references = 1;
-    } else {
-        assert(!result.value_ptr.index.has_value);
-    }
-
-    // Open index directory, if needed
-    if (!result.found_existing) {
-        result.value_ptr.index_dir = try self.dir.makeOpenPath(name, .{});
-    }
-    errdefer if (!result.found_existing) {
-        result.value_ptr.index_dir.close();
-    };
-
-    // Load redirect file, if needed
-    if (!result.found_existing) {
-        result.value_ptr.redirect = index_redirect.readRedirectFile(result.value_ptr.index_dir, self.allocator) catch |err| blk: {
-            if (err == error.FileNotFound and create) {
-                break :blk IndexRedirect.init(name);
-            } else {
-                return err;
-            }
-        };
-    } else {
-        assert(result.value_ptr.redirect.deleted == true);
-    }
-
-    // Increment version, in case of a previously deleted index
-    var previous_redirect: ?IndexRedirect = null;
-    if (result.value_ptr.redirect.deleted) {
-        if (!create) {
-            return error.IndexNotFound;
-        }
-        previous_redirect = result.value_ptr.redirect;
-        result.value_ptr.redirect = result.value_ptr.redirect.nextVersion();
-        save_redirect = true;
-    }
-    errdefer if (previous_redirect) |prev| {
-        result.value_ptr.redirect = prev;
-    };
-
-    // Generate data directory name
-    const data_path = try result.value_ptr.redirect.getDataDir(self.allocator);
-    errdefer self.allocator.free(data_path);
-
-    result.value_ptr.index.value = try Index.init(self.allocator, self.scheduler, result.value_ptr.index_dir, name, data_path, self.index_options);
-    result.value_ptr.index.has_value = true;
-    errdefer result.value_ptr.index.deinit();
-
-    result.value_ptr.index.value.open(create) catch |err| {
-        if (create) {
-            log.err("failed to create index {s}: {}", .{ name, err });
-        } else {
-            log.err("failed to open index {s}: {}", .{ name, err });
-        }
+    const redirect = index_redirect.readRedirectFile(index_dir, self.allocator) catch |err| {
+        log.err("failed to read redirect file: {}", .{err});
         return err;
     };
+    errdefer self.allocator.free(redirect.name);
 
-    // If this was a create operation, write the redirect file
-    if (save_redirect) {
-        try index_redirect.writeRedirectFile(result.value_ptr.index_dir, result.value_ptr.redirect);
+    const name = redirect.name;
+
+    const entry = try self.indexes.getOrPut(self.allocator, name);
+    errdefer self.indexes.removeByPtr(entry.key_ptr);
+
+    if (entry.found_existing) {
+        return error.IndexAlreadyLoaded;
     }
 
-    return result.value_ptr;
+    entry.key_ptr.* = name;
+    const ref = entry.value_ptr;
+
+    ref.* = .{
+        .index_dir = index_dir,
+        .redirect = redirect,
+    };
+
+    const data_path = try ref.redirect.getDataDir(self.allocator);
+    defer self.allocator.free(data_path); // always clean up, index doesn't keep it
+
+    log.info("opening index {s} from {s}/{s}", .{ name, path, data_path });
+
+    ref.index.value = try Index.init(self.allocator, self.scheduler, ref.index_dir, name, data_path, self.index_options);
+    ref.index.has_value = true;
+    errdefer {
+        ref.index.value.deinit();
+        ref.index.has_value = false;
+    }
+
+    try ref.index.value.open(false);
+
+    return ref;
+}
+
+fn createNewIndex(self: *Self, original_name: []const u8) !*IndexRef {
+    const entry = try self.indexes.getOrPut(self.allocator, original_name);
+    errdefer self.indexes.removeByPtr(entry.key_ptr);
+
+    const ref = entry.value_ptr;
+    const found_existing = entry.found_existing;
+
+    if (!found_existing) {
+        entry.key_ptr.* = try self.allocator.dupe(u8, original_name);
+    }
+    errdefer if (!found_existing) self.allocator.free(entry.key_ptr.*);
+
+    if (!found_existing) {
+        ref.* = .{
+            .index_dir = undefined, // will be set later
+            .redirect = undefined, // will be set later
+        };
+    }
+
+    const name = entry.key_ptr.*;
+
+    if (!found_existing) {
+        ref.redirect = IndexRedirect.init(name);
+    } else {
+        ref.redirect = ref.redirect.nextVersion();
+    }
+    errdefer ref.redirect.deleted = true;
+
+    if (!found_existing) {
+        ref.index_dir = try self.dir.makeOpenPath(name, .{});
+    }
+    errdefer if (!found_existing) {
+        ref.index_dir.close();
+        self.dir.deleteTree(name) catch |err| {
+            log.err("failed to clean up index directory {s}: {}", .{ name, err });
+        };
+    };
+
+    const data_path = try ref.redirect.getDataDir(self.allocator);
+    defer self.allocator.free(data_path); // always clean up, index doesn't keep it
+
+    log.info("creating index {s} in {s}/{s}", .{ original_name, name, data_path });
+
+    errdefer {
+        ref.index_dir.deleteTree(data_path) catch |err| {
+            log.err("failed to clean up index directory {s}/{s}: {}", .{ name, data_path, err });
+        };
+    }
+
+    ref.index.value = try Index.init(self.allocator, self.scheduler, ref.index_dir, name, data_path, self.index_options);
+    ref.index.has_value = true;
+    errdefer {
+        ref.index.value.deinit();
+        ref.index.has_value = false;
+    }
+
+    try ref.index.value.open(true);
+
+    log.debug("Index {s} created successfully", .{ref.redirect.name});
+    try index_redirect.writeRedirectFile(ref.index_dir, ref.redirect);
+
+    return ref;
 }
 
 pub fn open(self: *Self) !void {
@@ -201,6 +230,9 @@ pub fn open(self: *Self) !void {
     };
     errdefer lock_file.unlock();
 
+    self.lock_file = lock_file;
+    errdefer self.lock_file = null;
+
     var iter = self.dir.iterate();
     while (try iter.next()) |entry| {
         if (entry.kind != .directory) {
@@ -211,12 +243,10 @@ pub fn open(self: *Self) !void {
             continue;
         }
 
-        _ = self.openIndex(entry.name, false) catch |err| {
+        _ = self.openExistingIndex(entry.name) catch |err| {
             log.warn("failed to open index {s}: {}", .{ entry.name, err });
         };
     }
-
-    self.lock_file = lock_file;
 
     // Schedule periodic cleanup task
     // self.cleanup_task = try self.scheduler.createTask(.low, cleanupDeletedIndexesTask, .{self});
@@ -431,9 +461,7 @@ pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool) !*Index {
         return error.IndexNotFound;
     }
 
-    log.info("creating index {s}", .{name});
-
-    const index_ref = try self.openIndex(name, create);
+    const index_ref = try self.createNewIndex(name);
     return borrowIndex(index_ref);
 }
 
@@ -450,18 +478,14 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
     defer self.lock.unlock();
 
     const entry = self.indexes.getEntry(name) orelse return;
+    if (!entry.value_ptr.index.has_value) return;
 
     // Mark as being deleted to prevent new references
     if (entry.value_ptr.being_deleted) {
         return error.IndexAlreadyBeingDeleted;
     }
     entry.value_ptr.being_deleted = true;
-    defer {
-        // Reset flag if we fail to delete
-        if (entry.value_ptr.being_deleted) {
-            entry.value_ptr.being_deleted = false;
-        }
-    }
+    defer entry.value_ptr.being_deleted = false;
 
     log.info("marking index {s} for deletion, waiting for references to be released", .{name});
 
@@ -486,26 +510,19 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
         }
     }
 
-    // At this point, only the map holds a reference
-    const can_delete = entry.value_ptr.decRef();
-    assert(can_delete); // Should always be true since we waited for references == 1
-
     log.info("deleting index {s}", .{name});
 
     // Mark redirect as deleted
     entry.value_ptr.redirect.deleted = true;
+    errdefer entry.value_ptr.redirect.deleted = false;
 
     index_redirect.writeRedirectFile(entry.value_ptr.index_dir, entry.value_ptr.redirect) catch |err| {
-        entry.value_ptr.incRef();
         log.err("failed to mark redirect as deleted for index {s}: {}", .{ name, err });
         return err;
     };
 
-    // Deinit the Index after successful redirect write
+    // Close the index
     entry.value_ptr.index.clear();
-
-    // Clear the being_deleted flag - keep the deleted IndexRef in the map for cleanup
-    entry.value_ptr.being_deleted = false;
 }
 
 pub fn search(
@@ -660,4 +677,101 @@ pub fn checkFingerprintExists(
     if (info == null) {
         return error.FingerprintNotFound;
     }
+}
+
+const TestContext = struct {
+    tmp_dir: std.testing.TmpDir = undefined,
+    scheduler: Scheduler = undefined,
+    indexes: Self = undefined,
+
+    pub fn setup(ctx: *TestContext) !void {
+        ctx.tmp_dir = std.testing.tmpDir(.{});
+        ctx.scheduler = Scheduler.init(std.testing.allocator);
+        ctx.indexes = Self.init(std.testing.allocator, &ctx.scheduler, ctx.tmp_dir.dir, .{});
+
+        try ctx.scheduler.start(2);
+    }
+
+    pub fn teardown(ctx: *TestContext) void {
+        ctx.indexes.deinit();
+        ctx.scheduler.deinit();
+        ctx.tmp_dir.cleanup();
+    }
+};
+
+test "setup" {
+    var ctx: TestContext = .{};
+    try ctx.setup();
+    defer ctx.teardown();
+}
+
+test "createIndex" {
+    var ctx: TestContext = .{};
+    try ctx.setup();
+    defer ctx.teardown();
+
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    try std.testing.expectEqual(0, info.version);
+    try ctx.indexes.checkIndexExists("foo");
+}
+
+test "createIndex twice" {
+    var ctx: TestContext = .{};
+    try ctx.setup();
+    defer ctx.teardown();
+
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    try std.testing.expectEqual(0, info.version);
+    try ctx.indexes.checkIndexExists("foo");
+
+    const info2 = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    try std.testing.expectEqual(0, info2.version);
+    try ctx.indexes.checkIndexExists("foo");
+}
+
+test "deleteIndex" {
+    var ctx: TestContext = .{};
+    try ctx.setup();
+    defer ctx.teardown();
+
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    try std.testing.expectEqual(0, info.version);
+    try ctx.indexes.checkIndexExists("foo");
+
+    try ctx.indexes.deleteIndex("foo");
+    try std.testing.expectError(error.IndexNotFound, ctx.indexes.checkIndexExists("foo"));
+}
+
+test "deleteIndex twice" {
+    var ctx: TestContext = .{};
+    try ctx.setup();
+    defer ctx.teardown();
+
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    try std.testing.expectEqual(0, info.version);
+    try ctx.indexes.checkIndexExists("foo");
+
+    try ctx.indexes.deleteIndex("foo");
+    try std.testing.expectError(error.IndexNotFound, ctx.indexes.checkIndexExists("foo"));
+
+    try ctx.indexes.deleteIndex("foo");
+    try std.testing.expectError(error.IndexNotFound, ctx.indexes.checkIndexExists("foo"));
+}
+
+test "update" {
+    var ctx: TestContext = .{};
+    try ctx.setup();
+    defer ctx.teardown();
+
+    const Change = @import("change.zig").Change;
+
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    try std.testing.expectEqual(0, info.version);
+
+    var changes = [_]Change{
+        .{ .insert = .{ .id = 1, .hashes = &[_]u32{ 1, 2, 3 } } },
+    };
+
+    const result = try ctx.indexes.update(std.testing.allocator, "foo", .{ .changes = &changes });
+    try std.testing.expectEqual(1, result.version);
 }
