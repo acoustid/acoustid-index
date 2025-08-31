@@ -2,6 +2,7 @@ const std = @import("std");
 const httpz = @import("httpz");
 const json = std.json;
 const log = std.log.scoped(.server);
+const assert = std.debug.assert;
 
 const msgpack = @import("msgpack");
 
@@ -14,6 +15,7 @@ const Change = @import("change.zig").Change;
 const Deadline = @import("utils/Deadline.zig");
 const snapshot = @import("snapshot.zig");
 const Metadata = @import("Metadata.zig");
+const api = @import("api.zig");
 
 const metrics = @import("metrics.zig");
 
@@ -141,46 +143,15 @@ pub fn run(comptime T: type, allocator: std.mem.Allocator, indexes: *T, address:
     router.get("/:index", HandlerWrapper(T, handleGetIndex).wrapper, .{});
     router.put("/:index", HandlerWrapper(T, handlePutIndex).wrapper, .{});
     router.delete("/:index", HandlerWrapper(T, handleDeleteIndex).wrapper, .{});
-    router.get("/:index/_segments", HandlerWrapper(T, handleGetSegments).wrapper, .{});
-    router.get("/:index/_snapshot", HandlerWrapper(T, handleSnapshot).wrapper, .{});
+
+    // Snapshot endpoint - only available for types that support direct index access
+    if (@hasDecl(T, "getIndex") and @hasDecl(T, "releaseIndex")) {
+        router.get("/:index/_snapshot", HandlerWrapper(T, handleSnapshot).wrapper, .{});
+    }
 
     log.info("listening on {s}:{d}", .{ address, port });
     try server.listen();
 }
-
-const default_search_timeout = 500;
-const max_search_timeout = 10000;
-
-const default_search_limit = 40;
-const min_search_limit = 1;
-const max_search_limit = 100;
-
-const SearchRequestJSON = struct {
-    query: []u32,
-    timeout: u32 = default_search_timeout,
-    limit: u32 = default_search_limit,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
-
-const SearchResultJSON = struct {
-    id: u32,
-    score: u32,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
-
-const SearchResultsJSON = struct {
-    results: []SearchResultJSON,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
 
 fn getId(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?u32 {
     const id_str = req.param("id") orelse {
@@ -203,7 +174,7 @@ fn getId(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?u32 {
     };
 }
 
-fn getIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response, send_body: bool) !?*Index {
+fn getIndexName(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?[]const u8 {
     const index_name = req.param("index") orelse {
         log.warn("missing index parameter", .{});
         if (send_body) {
@@ -213,23 +184,7 @@ fn getIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz
         }
         return null;
     };
-    const index = ctx.indexes.getIndex(index_name) catch |err| {
-        log.warn("error during getIndex: {}", .{err});
-        if (err == error.IndexNotFound) {
-            if (send_body) {
-                try writeErrorResponse(404, err, req, res);
-            } else {
-                res.status = 404;
-            }
-            return null;
-        }
-        return err;
-    };
-    return index;
-}
-
-fn releaseIndex(comptime T: type, ctx: *Context(T), index: *Index) void {
-    ctx.indexes.releaseIndex(index);
+    return index_name;
 }
 
 const ContentType = enum {
@@ -317,6 +272,18 @@ fn writeErrorResponse(status: u16, err: anyerror, req: *httpz.Request, res: *htt
     try writeResponse(ErrorResponse{ .@"error" = @errorName(err) }, req, res);
 }
 
+fn writeIndexErrorAs404(req: *httpz.Request, res: *httpz.Response, err: anyerror, send_body: bool) !bool {
+    if (err == error.IndexBeingDeleted or err == error.IndexNotFound or err == error.InvalidIndexName) {
+        if (send_body) {
+            try writeErrorResponse(404, err, req, res);
+        } else {
+            res.status = 404;
+        }
+        return true;
+    }
+    return false;
+}
+
 fn getRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !?T {
     const content = req.body() orelse {
         log.warn("no body", .{});
@@ -353,108 +320,65 @@ fn handleSearch(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *h
     const start_time = std.time.milliTimestamp();
     defer metrics.searchDuration(std.time.milliTimestamp() - start_time);
 
-    const body = try getRequestBody(SearchRequestJSON, req, res) orelse return;
+    const index_name = try getIndexName(req, res, true) orelse return;
+    const body = try getRequestBody(api.SearchRequest, req, res) orelse return;
 
-    const index = try getIndex(T, ctx, req, res, true) orelse return;
-    defer releaseIndex(T, ctx, index);
-
-    const limit = @max(@min(body.limit, max_search_limit), min_search_limit);
-
-    var timeout = body.timeout;
-    if (timeout > max_search_timeout) {
-        timeout = max_search_timeout;
-    }
-    const deadline = Deadline.init(timeout);
-
-    metrics.search();
-
-    var collector = SearchResults.init(req.arena, .{
-        .max_results = limit,
-        .min_score = @intCast((body.query.len + 19) / 20),
-        .min_score_pct = 10,
-    });
-
-    try index.search(body.query, &collector, deadline);
-
-    const results = collector.getResults();
-
-    if (results.len == 0) {
-        metrics.searchMiss();
-    } else {
-        metrics.searchHit();
-    }
-
-    var results_json = SearchResultsJSON{
-        .results = try req.arena.alloc(SearchResultJSON, results.len),
+    const response = ctx.indexes.search(req.arena, index_name, body) catch |err| {
+        if (try writeIndexErrorAs404(req, res, err, true)) return;
+        return err;
     };
-    for (results, 0..) |r, i| {
-        results_json.results[i] = SearchResultJSON{ .id = r.id, .score = r.score };
-    }
-    return writeResponse(results_json, req, res);
+    comptime assert(@TypeOf(response) == api.SearchResponse);
+
+    return writeResponse(response, req, res);
 }
 
-const UpdateRequestJSON = struct {
-    changes: []Change,
-    metadata: ?Metadata = null,
-    expected_version: ?u64 = null,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
-
 fn handleUpdate(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const body = try getRequestBody(UpdateRequestJSON, req, res) orelse return;
+    const index_name = try getIndexName(req, res, true) orelse return;
+    const body = try getRequestBody(api.UpdateRequest, req, res) orelse return;
 
-    const index = try getIndex(T, ctx, req, res, true) orelse return;
-    defer releaseIndex(T, ctx, index);
-
-    metrics.update(body.changes.len);
-
-    const new_version = index.update(body.changes, body.metadata, body.expected_version) catch |err| {
+    const response = ctx.indexes.update(req.arena, index_name, body) catch |err| {
         if (err == error.VersionMismatch) {
             return writeErrorResponse(409, err, req, res);
         }
+        if (try writeIndexErrorAs404(req, res, err, true)) return;
         return err;
     };
+    comptime assert(@TypeOf(response) == api.UpdateResponse);
 
-    return writeResponse(UpdateResponse{ .version = new_version }, req, res);
+    return writeResponse(response, req, res);
 }
 
 fn handleHeadFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(T, ctx, req, res, false) orelse return;
-    defer releaseIndex(T, ctx, index);
-
-    var index_reader = try index.acquireReader();
-    defer index.releaseReader(&index_reader);
-
+    const index_name = try getIndexName(req, res, false) orelse return;
     const id = try getId(req, res, false) orelse return;
-    const info = try index_reader.getDocInfo(id);
 
-    res.status = if (info == null) 404 else 200;
-}
-
-const GetFingerprintResponse = struct {
-    version: u64,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
-
-fn handleGetFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(T, ctx, req, res, true) orelse return;
-    defer releaseIndex(T, ctx, index);
-
-    var index_reader = try index.acquireReader();
-    defer index.releaseReader(&index_reader);
-
-    const id = try getId(req, res, true) orelse return;
-    const info = try index_reader.getDocInfo(id) orelse {
-        return writeErrorResponse(404, error.FingerprintNotFound, req, res);
+    ctx.indexes.checkFingerprintExists(index_name, id) catch |err| {
+        if (err == error.FingerprintNotFound) {
+            res.status = 404;
+            return;
+        }
+        if (try writeIndexErrorAs404(req, res, err, false)) return;
+        return err;
     };
 
-    return writeResponse(GetFingerprintResponse{ .version = info.version }, req, res);
+    res.status = 200;
+}
+
+fn handleGetFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index_name = try getIndexName(req, res, true) orelse return;
+    const id = try getId(req, res, true) orelse return;
+
+    const response = ctx.indexes.getFingerprintInfo(req.arena, index_name, id) catch |err| {
+        if (err == error.FingerprintNotFound) {
+            try writeErrorResponse(404, err, req, res);
+            return;
+        }
+        if (try writeIndexErrorAs404(req, res, err, true)) return;
+        return err;
+    };
+    comptime assert(@TypeOf(response) == api.GetFingerprintInfoResponse);
+
+    return writeResponse(response, req, res);
 }
 
 const PutFingerprintRequest = struct {
@@ -466,74 +390,72 @@ const PutFingerprintRequest = struct {
 };
 
 fn handlePutFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index_name = try getIndexName(req, res, true) orelse return;
+    const id = try getId(req, res, true) orelse return;
     const body = try getRequestBody(PutFingerprintRequest, req, res) orelse return;
 
-    const index = try getIndex(T, ctx, req, res, true) orelse return;
-    defer releaseIndex(T, ctx, index);
-
-    const id = try getId(req, res, true) orelse return;
-    const change: Change = .{ .insert = .{
+    var changes: [1]Change = .{.{ .insert = .{
         .id = id,
         .hashes = body.hashes,
-    } };
+    } }};
 
-    metrics.update(1);
+    const update_request = api.UpdateRequest{
+        .changes = &changes,
+        .metadata = null,
+        .expected_version = null,
+    };
 
-    _ = try index.update(&[_]Change{change}, null, null);
+    const response = ctx.indexes.update(req.arena, index_name, update_request) catch |err| {
+        if (err == error.VersionMismatch) {
+            return writeErrorResponse(409, err, req, res);
+        }
+        if (try writeIndexErrorAs404(req, res, err, true)) return;
+        return err;
+    };
+    comptime assert(@TypeOf(response) == api.UpdateResponse);
 
     return writeResponse(EmptyResponse{}, req, res);
 }
 
 fn handleDeleteFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(T, ctx, req, res, true) orelse return;
-    defer releaseIndex(T, ctx, index);
-
+    const index_name = try getIndexName(req, res, true) orelse return;
     const id = try getId(req, res, true) orelse return;
-    const change: Change = .{ .delete = .{
+
+    var changes: [1]Change = .{.{ .delete = .{
         .id = id,
-    } };
+    } }};
 
-    metrics.update(1);
+    const update_request = api.UpdateRequest{
+        .changes = &changes,
+        .metadata = null,
+        .expected_version = null,
+    };
 
-    _ = try index.update(&[_]Change{change}, null, null);
+    const response = ctx.indexes.update(req.arena, index_name, update_request) catch |err| {
+        if (err == error.VersionMismatch) {
+            return writeErrorResponse(409, err, req, res);
+        }
+        if (try writeIndexErrorAs404(req, res, err, true)) return;
+        return err;
+    };
+    comptime assert(@TypeOf(response) == api.UpdateResponse);
 
     return writeResponse(EmptyResponse{}, req, res);
 }
 
-const GetIndexResponse = struct {
-    version: u64,
-    metadata: Metadata,
-    stats: IndexReader.Stats,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
-
 fn handleGetIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(T, ctx, req, res, true) orelse return;
-    defer releaseIndex(T, ctx, index);
+    const index_name = try getIndexName(req, res, true) orelse return;
 
-    var index_reader = try index.acquireReader();
-    defer index.releaseReader(&index_reader);
-
-    const response = GetIndexResponse{
-        .version = index_reader.getVersion(),
-        .metadata = try index_reader.getMetadata(req.arena),
-        .stats = index_reader.getStats(),
+    const response = ctx.indexes.getIndexInfo(req.arena, index_name) catch |err| {
+        if (try writeIndexErrorAs404(req, res, err, true)) return;
+        return err;
     };
+    comptime assert(@TypeOf(response) == api.GetIndexInfoResponse);
+
     return writeResponse(response, req, res);
 }
 
 const EmptyResponse = struct {};
-
-const UpdateResponse = struct {
-    version: u64,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
 
 const CreateIndexRequest = struct {
     pub fn msgpackFormat() msgpack.StructFormat {
@@ -541,100 +463,70 @@ const CreateIndexRequest = struct {
     }
 };
 
-const CreateIndexResponse = struct {
-    version: u64,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
-
 fn handlePutIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index_name = req.param("index") orelse return;
+    const index_name = try getIndexName(req, res, true) orelse return;
 
-    const index = try ctx.indexes.createIndex(index_name);
-    defer releaseIndex(T, ctx, index);
-
-    var index_reader = try index.acquireReader();
-    defer index.releaseReader(&index_reader);
-
-    const response = CreateIndexResponse{
-        .version = index_reader.getVersion(),
+    const response = ctx.indexes.createIndex(req.arena, index_name) catch |err| {
+        if (err == error.InvalidIndexName) {
+            try writeErrorResponse(400, err, req, res);
+            return;
+        }
+        if (err == error.IndexBeingDeleted) {
+            try writeErrorResponse(409, err, req, res);
+            return;
+        }
+        return err;
     };
+    comptime assert(@TypeOf(response) == api.CreateIndexResponse);
 
     return writeResponse(response, req, res);
 }
 
 fn handleDeleteIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index_name = req.param("index") orelse return;
+    const index_name = try getIndexName(req, res, true) orelse return;
 
-    try ctx.indexes.deleteIndex(index_name);
+    ctx.indexes.deleteIndex(index_name) catch |err| {
+        if (err == error.InvalidIndexName) {
+            try writeErrorResponse(400, err, req, res);
+            return;
+        }
+        if (err == error.IndexNotFound) {
+            try writeErrorResponse(404, err, req, res);
+            return;
+        }
+        if (err == error.DeleteTimeout or err == error.IndexAlreadyBeingDeleted) {
+            try writeErrorResponse(409, err, req, res);
+            return;
+        }
+        return err;
+    };
 
     return writeResponse(EmptyResponse{}, req, res);
 }
 
 fn handleHeadIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(T, ctx, req, res, false) orelse return;
-    defer releaseIndex(T, ctx, index);
+    const index_name = try getIndexName(req, res, false) orelse return;
+
+    ctx.indexes.checkIndexExists(index_name) catch |err| {
+        if (try writeIndexErrorAs404(req, res, err, false)) return;
+        return err;
+    };
+
+    res.status = 200;
 }
 
 fn handleIndexHealth(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(T, ctx, req, res, false) orelse return;
-    defer releaseIndex(T, ctx, index);
+    const index_name = try getIndexName(req, res, false) orelse return;
+
+    ctx.indexes.checkIndexExists(index_name) catch |err| {
+        if (err == error.IndexBeingDeleted or err == error.IndexNotFound or err == error.InvalidIndexName) {
+            res.status = 404;
+            return;
+        }
+        return err;
+    };
 
     try res.writer().writeAll("OK\n");
-}
-
-const MEMORY_SEGMENT = "memory";
-const FILE_SEGMENT = "file";
-
-pub const GetSegmentResponse = struct {
-    kind: []const u8,
-    version: u64,
-    merges: u64,
-    min_doc_id: u32,
-    max_doc_id: u32,
-};
-
-pub const GetSegmentsResponse = struct {
-    segments: []GetSegmentResponse,
-};
-
-fn handleGetSegments(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(T, ctx, req, res, true) orelse return;
-    defer releaseIndex(T, ctx, index);
-
-    var reader = try index.acquireReader();
-    defer index.releaseReader(&reader);
-
-    const num_segments = reader.file_segments.value.count() + reader.memory_segments.value.count();
-    const segments = try req.arena.alloc(GetSegmentResponse, num_segments);
-
-    var i: usize = 0;
-
-    for (reader.file_segments.value.nodes.items) |segment| {
-        segments[i] = .{
-            .kind = FILE_SEGMENT,
-            .version = segment.value.info.version,
-            .merges = segment.value.info.merges,
-            .min_doc_id = segment.value.min_doc_id,
-            .max_doc_id = segment.value.max_doc_id,
-        };
-        i += 1;
-    }
-
-    for (reader.memory_segments.value.nodes.items) |segment| {
-        segments[i] = .{
-            .kind = MEMORY_SEGMENT,
-            .version = segment.value.info.version,
-            .merges = segment.value.info.merges,
-            .min_doc_id = segment.value.min_doc_id,
-            .max_doc_id = segment.value.max_doc_id,
-        };
-        i += 1;
-    }
-
-    return writeResponse(GetSegmentsResponse{ .segments = segments }, req, res);
 }
 
 fn handleHealth(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
@@ -644,9 +536,17 @@ fn handleHealth(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *h
     try res.writer().writeAll("OK\n");
 }
 
+// Snapshot handler - only used for types that support direct index access (like MultiIndex)
+// Route is conditionally registered based on @hasDecl checks
 fn handleSnapshot(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(T, ctx, req, res, true) orelse return;
-    defer releaseIndex(T, ctx, index);
+    const index_name = try getIndexName(req, res, true) orelse return;
+
+    const index = ctx.indexes.getIndex(index_name) catch |err| {
+        log.warn("error during getIndex: {}", .{err});
+        if (try writeIndexErrorAs404(req, res, err, true)) return;
+        return err;
+    };
+    defer ctx.indexes.releaseIndex(index);
 
     // Set response headers for tar download
     res.header("content-type", "application/x-tar");

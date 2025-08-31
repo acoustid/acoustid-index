@@ -4,6 +4,10 @@ const assert = std.debug.assert;
 
 const Index = @import("Index.zig");
 const Scheduler = @import("utils/Scheduler.zig");
+const api = @import("api.zig");
+const SearchResults = @import("common.zig").SearchResults;
+const Deadline = @import("utils/Deadline.zig");
+const metrics = @import("metrics.zig");
 
 const Self = @This();
 
@@ -210,10 +214,6 @@ pub fn getIndex(self: *Self, name: []const u8) !*Index {
     return self.getOrCreateIndex(name, false);
 }
 
-pub fn createIndex(self: *Self, name: []const u8) !*Index {
-    return self.getOrCreateIndex(name, true);
-}
-
 pub fn deleteIndex(self: *Self, name: []const u8) !void {
     if (!isValidName(name)) {
         return error.InvalidIndexName;
@@ -246,12 +246,12 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
             log.warn("timeout waiting for index {s} references to be released (current: {d})", .{ name, entry.value_ptr.references });
             return error.DeleteTimeout;
         }
-        
+
         // Release the lock briefly to allow other operations
         self.lock.unlock();
         std.time.sleep(10 * std.time.ns_per_ms); // Sleep for 10ms
         self.lock.lock();
-        
+
         // Check if the entry still exists (in case of concurrent operations)
         const current_entry = self.indexes.getEntry(name) orelse return error.IndexNotFound;
         if (current_entry.value_ptr != entry.value_ptr) {
@@ -278,4 +278,158 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
     entry.value_ptr.index.deinit();
     self.indexes.removeByPtr(entry.key_ptr);
     self.allocator.free(key_mem);
+}
+
+pub fn search(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+    request: api.SearchRequest,
+) !api.SearchResponse {
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+
+    // Validate and clamp limits
+    const limit = @max(@min(request.limit, api.max_search_limit), api.min_search_limit);
+    const timeout = @min(request.timeout, api.max_search_timeout);
+    const deadline = Deadline.init(timeout);
+
+    metrics.search();
+
+    var collector = SearchResults.init(allocator, .{
+        .max_results = limit,
+        .min_score = @intCast((request.query.len + 19) / 20),
+        .min_score_pct = 10,
+    });
+    defer collector.deinit();
+
+    try index.search(request.query, &collector, deadline);
+
+    const results = collector.getResults();
+
+    if (results.len == 0) {
+        metrics.searchMiss();
+    } else {
+        metrics.searchHit();
+    }
+
+    // Convert results to API format
+    const response_results = try allocator.alloc(api.SearchResult, results.len);
+    for (results, 0..) |r, i| {
+        response_results[i] = .{ .id = r.id, .score = r.score };
+    }
+
+    return api.SearchResponse{ .results = response_results };
+}
+
+pub fn update(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+    request: api.UpdateRequest,
+) !api.UpdateResponse {
+    _ = allocator; // Response doesn't need allocation
+
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+
+    metrics.update(request.changes.len);
+
+    const new_version = try index.update(
+        request.changes,
+        request.metadata,
+        request.expected_version,
+    );
+
+    return api.UpdateResponse{ .version = new_version };
+}
+
+pub fn getIndexInfo(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+) !api.GetIndexInfoResponse {
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+
+    var index_reader = try index.acquireReader();
+    defer index.releaseReader(&index_reader);
+
+    return api.GetIndexInfoResponse{
+        .version = index_reader.getVersion(),
+        .metadata = try index_reader.getMetadata(allocator),
+        .stats = api.IndexStats{
+            .min_doc_id = index_reader.getMinDocId(),
+            .max_doc_id = index_reader.getMaxDocId(),
+            .num_segments = index_reader.getNumSegments(),
+            .num_docs = index_reader.getNumDocs(),
+        },
+    };
+}
+
+pub fn checkIndexExists(
+    self: *Self,
+    index_name: []const u8,
+) !void {
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+    // Just checking existence, no need to return anything
+}
+
+pub fn createIndex(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+) !api.CreateIndexResponse {
+    _ = allocator; // Response doesn't need allocation
+
+    const index = try self.getOrCreateIndex(index_name, true);
+    defer self.releaseIndex(index);
+
+    var index_reader = try index.acquireReader();
+    defer index.releaseReader(&index_reader);
+
+    return api.CreateIndexResponse{
+        .version = index_reader.getVersion(),
+    };
+}
+
+pub fn getFingerprintInfo(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+    fingerprint_id: u32,
+) !api.GetFingerprintInfoResponse {
+    _ = allocator; // Response doesn't need allocation
+
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+
+    var index_reader = try index.acquireReader();
+    defer index.releaseReader(&index_reader);
+
+    const info = try index_reader.getDocInfo(fingerprint_id) orelse {
+        return error.FingerprintNotFound;
+    };
+
+    return api.GetFingerprintInfoResponse{
+        .version = info.version,
+    };
+}
+
+pub fn checkFingerprintExists(
+    self: *Self,
+    index_name: []const u8,
+    fingerprint_id: u32,
+) !void {
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+
+    var index_reader = try index.acquireReader();
+    defer index.releaseReader(&index_reader);
+
+    const info = try index_reader.getDocInfo(fingerprint_id);
+    if (info == null) {
+        return error.FingerprintNotFound;
+    }
 }

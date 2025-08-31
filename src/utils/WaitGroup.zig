@@ -25,10 +25,10 @@ pub fn add(self: *Self, delta: usize) void {
     if (delta > std.math.maxInt(u32)) {
         @panic("WaitGroup delta too large");
     }
-    
+
     const delta_u32 = @as(u32, @intCast(delta));
     const old_counter = self.counter.fetchAdd(delta_u32, .acq_rel);
-    
+
     // Check for overflow
     if (old_counter > std.math.maxInt(u32) - delta_u32) {
         @panic("WaitGroup counter overflow");
@@ -40,11 +40,11 @@ pub fn add(self: *Self, delta: usize) void {
 /// If the counter reaches 0, any threads waiting on wait() will be unblocked.
 pub fn done(self: *Self) void {
     const old_counter = self.counter.fetchSub(1, .acq_rel);
-    
+
     if (old_counter == 0) {
         @panic("WaitGroup counter went negative");
     }
-    
+
     if (old_counter == 1) {
         // Counter reached 0, wake all waiters
         self.mutex.lock();
@@ -58,7 +58,7 @@ pub fn done(self: *Self) void {
 pub fn wait(self: *Self) void {
     self.mutex.lock();
     defer self.mutex.unlock();
-    
+
     while (self.counter.load(.acquire) != 0) {
         self.condition.wait(&self.mutex);
     }
@@ -148,9 +148,9 @@ test "WaitGroup multiple add/done cycles" {
     // First cycle: add multiple tasks, complete them all
     wg.add(3);
     try testing.expectEqual(@as(usize, 3), wg.getCount());
-    
+
     wg.done();
-    wg.done(); 
+    wg.done();
     wg.done();
     try testing.expect(wg.isComplete());
 
@@ -158,7 +158,7 @@ test "WaitGroup multiple add/done cycles" {
     wg.add(2);
     try testing.expectEqual(@as(usize, 2), wg.getCount());
     try testing.expect(!wg.isComplete());
-    
+
     wg.done();
     wg.done();
     try testing.expect(wg.isComplete());
