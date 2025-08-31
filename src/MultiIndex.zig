@@ -67,7 +67,7 @@ scheduler: *Scheduler,
 dir: std.fs.Dir,
 index_options: Index.Options,
 indexes: IndexRefHashMap = .{},
-cleanup_task: ?Scheduler.Task = null,
+cleanup_task: ?*Scheduler.Task = null,
 
 fn isValidName(name: []const u8) bool {
     for (name, 0..) |c, i| {
