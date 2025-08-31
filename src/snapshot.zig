@@ -75,19 +75,6 @@ fn extractTarEntry(entry: anytype, extract_dir: std.fs.Dir) !void {
     }
 }
 
-fn cleanupExtractedFiles(dir: std.fs.Dir) void {
-    // Remove manifest file if it exists
-    dir.deleteFile(filefmt.manifest_file_name) catch {};
-    
-    // Remove any valid segment files
-    var it = dir.iterate();
-    while (it.next() catch null) |entry| {
-        if (entry.kind == .file and filefmt.isSegmentFileName(entry.name)) {
-            dir.deleteFile(entry.name) catch {};
-        }
-    }
-}
-
 /// Builds a tar snapshot of the index by adding manifest file, file segments, and WAL files
 pub fn buildSnapshot(
     writer: anytype,
