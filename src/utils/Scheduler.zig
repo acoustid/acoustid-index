@@ -1,7 +1,7 @@
 const std = @import("std");
 const log = std.log.scoped(.scheduler);
 
-const TaskStatus = struct {
+pub const Task = struct {
     reschedule: usize = 0,
     scheduled: bool = false,
     running: bool = false,
@@ -13,11 +13,9 @@ const TaskStatus = struct {
     next_run_time_ns: u64,
 };
 
-pub const Task = *TaskStatus;
+const TaskQueue = std.PriorityQueue(*Task, void, compareTasksByDeadline);
 
-const TaskQueue = std.PriorityQueue(*TaskStatus, void, compareTasksByDeadline);
-
-fn compareTasksByDeadline(context: void, a: *TaskStatus, b: *TaskStatus) std.math.Order {
+fn compareTasksByDeadline(context: void, a: *Task, b: *Task) std.math.Order {
     _ = context;
     // Both tasks should have next_run_time_ns set (immediate tasks get current time)
     const a_time = a.next_run_time_ns;
@@ -64,11 +62,11 @@ pub fn deinit(self: *Self) void {
     }
 }
 
-pub fn createTask(self: *Self, comptime func: anytype, args: anytype) !Task {
+pub fn createTask(self: *Self, comptime func: anytype, args: anytype) !*Task {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
-    const task = try self.allocator.create(TaskStatus);
+    const task = try self.allocator.create(Task);
     errdefer self.allocator.destroy(task);
 
     const Args = @TypeOf(args);
@@ -104,22 +102,22 @@ pub fn createTask(self: *Self, comptime func: anytype, args: anytype) !Task {
     return task;
 }
 
-pub fn createRepeatingTask(self: *Self, interval_ns: u64, comptime func: anytype, args: anytype) !Task {
+pub fn createRepeatingTask(self: *Self, interval_ns: u64, comptime func: anytype, args: anytype) !*Task {
     const task = try self.createTask(func, args);
     task.interval_ns = interval_ns;
     return task;
 }
 
 
-fn removeFromQueue(self: *Self, task: Task) void {
-    if (std.mem.indexOfScalar(*TaskStatus, self.queue.items, task)) |index| {
+fn removeFromQueue(self: *Self, task: *Task) void {
+    if (std.mem.indexOfScalar(*Task, self.queue.items, task)) |index| {
         _ = self.queue.removeIndex(index);
         task.scheduled = false;
         task.next_run_time_ns = std.math.maxInt(u64); // Defensive: invalid time
     }
 }
 
-fn dequeue(self: *Self, task: Task) void {
+fn dequeue(self: *Self, task: *Task) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
@@ -130,7 +128,7 @@ fn dequeue(self: *Self, task: Task) void {
     task.reschedule = 0;
 }
 
-pub fn destroyTask(self: *Self, task: Task) void {
+pub fn destroyTask(self: *Self, task: *Task) void {
     self.dequeue(task);
 
     task.done.wait();
@@ -142,7 +140,7 @@ pub fn destroyTask(self: *Self, task: Task) void {
     self.num_tasks -= 1;
 }
 
-pub fn scheduleTask(self: *Self, task: Task) void {
+pub fn scheduleTask(self: *Self, task: *Task) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
@@ -154,7 +152,7 @@ pub fn scheduleTask(self: *Self, task: Task) void {
 }
 
 
-pub fn scheduleTaskAfter(self: *Self, task: Task, delay_ms: u64) void {
+pub fn scheduleTaskAfter(self: *Self, task: *Task, delay_ms: u64) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
@@ -177,7 +175,7 @@ pub fn scheduleTaskAfter(self: *Self, task: Task, delay_ms: u64) void {
     self.enqueue(task);
 }
 
-pub fn cancelRepeatingTask(self: *Self, task: Task) void {
+pub fn cancelRepeatingTask(self: *Self, task: *Task) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
@@ -199,7 +197,7 @@ fn getNextDeadline(self: *Self) ?u64 {
     return if (self.queue.peek()) |task| task.next_run_time_ns else null;
 }
 
-fn enqueue(self: *Self, task: *TaskStatus) void {
+fn enqueue(self: *Self, task: *Task) void {
     task.scheduled = true;
     
     // Treat immediate tasks as "scheduled now"
@@ -219,7 +217,7 @@ fn enqueue(self: *Self, task: *TaskStatus) void {
 }
 
 
-fn getTaskToRun(self: *Self) ?*TaskStatus {
+fn getTaskToRun(self: *Self) ?*Task {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
@@ -250,7 +248,7 @@ fn getTaskToRun(self: *Self) ?*TaskStatus {
     return null;
 }
 
-fn markAsDone(self: *Self, task: *TaskStatus) void {
+fn markAsDone(self: *Self, task: *Task) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 

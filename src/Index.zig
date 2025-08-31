@@ -67,9 +67,9 @@ segments_lock: std.Thread.RwLock = .{},
 memory_segments: SegmentListManager(MemorySegment),
 file_segments: SegmentListManager(FileSegment),
 
-checkpoint_task: ?Scheduler.Task = null,
-file_segment_merge_task: ?Scheduler.Task = null,
-memory_segment_merge_task: ?Scheduler.Task = null,
+checkpoint_task: ?*Scheduler.Task = null,
+file_segment_merge_task: ?*Scheduler.Task = null,
+memory_segment_merge_task: ?*Scheduler.Task = null,
 
 fn getFileSegmentSize(segment: SharedPtr(FileSegment)) usize {
     return segment.value.getSize();
@@ -356,7 +356,7 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
     @memset(results, error.NotLoaded);
 
     // Allocate local array for tasks
-    var tasks = std.ArrayListUnmanaged(Scheduler.Task){};
+    var tasks = std.ArrayListUnmanaged(*Scheduler.Task){};
     defer {
         for (tasks.items) |task| {
             self.scheduler.destroyTask(task);
