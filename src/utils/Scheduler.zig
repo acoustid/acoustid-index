@@ -110,11 +110,13 @@ pub fn createRepeatingTask(self: *Self, interval_ns: u64, comptime func: anytype
     return task;
 }
 
-fn findTaskIndex(self: *Self, target_task: Task) ?usize {
-    for (self.queue.items, 0..) |task, index| {
-        if (task == target_task) return index;
+
+fn removeFromQueue(self: *Self, task: Task) void {
+    if (std.mem.indexOfScalar(*TaskStatus, self.queue.items, task)) |index| {
+        _ = self.queue.removeIndex(index);
+        task.scheduled = false;
+        task.next_run_time_ns = std.math.maxInt(u64); // Defensive: invalid time
     }
-    return null;
 }
 
 fn dequeue(self: *Self, task: Task) void {
@@ -122,8 +124,7 @@ fn dequeue(self: *Self, task: Task) void {
     defer self.queue_mutex.unlock();
 
     if (task.scheduled) {
-        _ = self.queue.removeIndex(self.findTaskIndex(task) orelse return);
-        task.scheduled = false;
+        self.removeFromQueue(task);
     }
 
     task.reschedule = 0;
@@ -169,7 +170,7 @@ pub fn scheduleTaskAfter(self: *Self, task: Task, delay_ms: u64) void {
     }
 
     if (task.scheduled) {
-        _ = self.queue.removeIndex(self.findTaskIndex(task) orelse return);
+        self.removeFromQueue(task);
     }
 
     task.next_run_time_ns = run_time_ns;
@@ -184,9 +185,7 @@ pub fn cancelRepeatingTask(self: *Self, task: Task) void {
     
     // If queued and not running, unschedule immediately
     if (task.scheduled and !task.running) {
-        _ = self.queue.removeIndex(self.findTaskIndex(task) orelse return);
-        task.scheduled = false;
-        task.next_run_time_ns = 0;
+        self.removeFromQueue(task);
     }
     
     // Clear any pending reschedules and complete if nothing pending
