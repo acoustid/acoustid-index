@@ -76,7 +76,7 @@ test "index snapshot" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
-    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "index", .{
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "index", "index", .{
         .min_segment_size = 1, // to trigger checkpoint immediately
     });
     defer index.deinit();
@@ -127,7 +127,7 @@ test "index snapshot" {
 
     // Open a second index instance from the restored snapshot
 
-    var index2 = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "extract", .{
+    var index2 = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "extract", "extract", .{
         .min_segment_size = 1,
     });
     defer index2.deinit();
