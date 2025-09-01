@@ -8,16 +8,40 @@ const api = @import("api.zig");
 const SearchResults = @import("common.zig").SearchResults;
 const Deadline = @import("utils/Deadline.zig");
 const metrics = @import("metrics.zig");
+const index_redirect = @import("index_redirect.zig");
+const IndexRedirect = index_redirect.IndexRedirect;
 
 const Self = @This();
 
 const DELETE_TIMEOUT_MS = 5000; // 5 seconds timeout for deletion
 
+const OptionalIndex = struct {
+    value: Index = undefined,
+    has_value: bool = false,
+
+    pub fn clear(self: *OptionalIndex) void {
+        if (self.has_value) {
+            self.value.deinit();
+        }
+        self.has_value = false;
+    }
+
+    pub fn get(self: *OptionalIndex) ?*Index {
+        if (self.has_value) {
+            return &self.value;
+        }
+        return null;
+    }
+};
+
 pub const IndexRef = struct {
-    index: Index,
-    references: usize = 0,
+    index: OptionalIndex = .{},
+    index_dir: std.fs.Dir,
+    redirect: IndexRedirect,
+    references: usize = 1,
     delete_files: bool = false,
     being_deleted: bool = false,
+    reference_released: std.Thread.Condition = .{},
 
     pub fn incRef(self: *IndexRef) void {
         self.references += 1;
@@ -28,7 +52,14 @@ pub const IndexRef = struct {
         self.references -= 1;
         return self.references == 0;
     }
+
+    pub fn deinit(self: *IndexRef) void {
+        self.index.clear();
+        self.index_dir.close();
+    }
 };
+
+const IndexRefHashMap = std.StringHashMapUnmanaged(*IndexRef);
 
 lock: std.Thread.Mutex = .{},
 lock_file: ?std.fs.File = null,
@@ -36,7 +67,8 @@ allocator: std.mem.Allocator,
 scheduler: *Scheduler,
 dir: std.fs.Dir,
 index_options: Index.Options,
-indexes: std.StringHashMapUnmanaged(IndexRef) = .{},
+indexes: IndexRefHashMap = .{},
+cleanup_task: ?*Scheduler.Task = null,
 
 fn isValidName(name: []const u8) bool {
     for (name, 0..) |c, i| {
@@ -75,34 +107,120 @@ pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, dir: std.fs.Dir
     };
 }
 
-fn openIndex(self: *Self, path: []const u8, comptime create: bool) !*IndexRef {
-    log.info("loading index {s}", .{path});
+fn openExistingIndex(self: *Self, path: []const u8) !*IndexRef {
+    var index_dir = try self.dir.openDir(path, .{});
+    errdefer index_dir.close();
 
-    const name = try self.allocator.dupe(u8, path);
-    errdefer self.allocator.free(name);
-
-    var result = try self.indexes.getOrPut(self.allocator, name);
-    if (result.found_existing) {
-        unreachable;
-    }
-    errdefer self.indexes.removeByPtr(result.key_ptr);
-
-    result.value_ptr.* = .{
-        .index = try Index.init(self.allocator, self.scheduler, self.dir, name, self.index_options),
-        .references = 1,
-    };
-    errdefer result.value_ptr.index.deinit();
-
-    result.value_ptr.index.open(create) catch |err| {
-        if (create) {
-            log.err("failed to create index {s}: {}", .{ name, err });
-        } else {
-            log.err("failed to open index {s}: {}", .{ name, err });
-        }
+    const redirect = index_redirect.readRedirectFile(index_dir, self.allocator) catch |err| {
+        log.err("failed to read redirect file: {}", .{err});
         return err;
     };
+    errdefer self.allocator.free(redirect.name);
 
-    return result.value_ptr;
+    const name = redirect.name;
+
+    const entry = try self.indexes.getOrPut(self.allocator, name);
+    errdefer if (!entry.found_existing) self.indexes.removeByPtr(entry.key_ptr);
+
+    if (entry.found_existing) {
+        return error.IndexAlreadyLoaded;
+    }
+
+    var ref = try self.allocator.create(IndexRef);
+    errdefer self.allocator.destroy(ref);
+
+    entry.value_ptr.* = ref;
+
+    ref.* = .{
+        .index_dir = index_dir,
+        .redirect = redirect,
+    };
+
+    const data_path = try ref.redirect.getDataDir(self.allocator);
+    defer self.allocator.free(data_path); // always clean up, index doesn't keep it
+
+    log.info("opening index {s} from {s}/{s}", .{ name, path, data_path });
+
+    ref.index.value = try Index.init(self.allocator, self.scheduler, ref.index_dir, name, data_path, self.index_options);
+    ref.index.has_value = true;
+    errdefer {
+        ref.index.value.deinit();
+        ref.index.has_value = false;
+    }
+
+    try ref.index.value.open(false);
+
+    return ref;
+}
+
+fn createNewIndex(self: *Self, original_name: []const u8) !*IndexRef {
+    const entry = try self.indexes.getOrPut(self.allocator, original_name);
+
+    const found_existing = entry.found_existing;
+    errdefer if (!found_existing) self.indexes.removeByPtr(entry.key_ptr);
+
+    if (!found_existing) {
+        // change the key to a newly allocated one
+        entry.key_ptr.* = try self.allocator.dupe(u8, original_name);
+    }
+    errdefer if (!found_existing) self.allocator.free(entry.key_ptr.*);
+
+    const name = entry.key_ptr.*;
+
+    var ref: *IndexRef = undefined;
+    if (!found_existing) {
+        ref = try self.allocator.create(IndexRef);
+        ref.* = .{
+            .index_dir = undefined, // will be set later
+            .redirect = undefined, // will be set later
+        };
+        entry.value_ptr.* = ref;
+    } else {
+        ref = entry.value_ptr.*;
+    }
+    errdefer if (!found_existing) self.allocator.destroy(ref);
+
+    if (!found_existing) {
+        ref.redirect = IndexRedirect.init(name);
+    } else {
+        ref.redirect = ref.redirect.nextVersion();
+    }
+    errdefer ref.redirect.deleted = true;
+
+    if (!found_existing) {
+        ref.index_dir = try self.dir.makeOpenPath(name, .{ .iterate = true });
+    }
+    errdefer if (!found_existing) {
+        ref.index_dir.close();
+        self.dir.deleteTree(name) catch |err| {
+            log.err("failed to clean up index directory {s}: {}", .{ name, err });
+        };
+    };
+
+    const data_path = try ref.redirect.getDataDir(self.allocator);
+    defer self.allocator.free(data_path); // always clean up, index doesn't keep it
+
+    log.info("creating index {s} in {s}/{s}", .{ original_name, name, data_path });
+
+    errdefer {
+        ref.index_dir.deleteTree(data_path) catch |err| {
+            log.err("failed to clean up index directory {s}/{s}: {}", .{ name, data_path, err });
+        };
+    }
+
+    ref.index.value = try Index.init(self.allocator, self.scheduler, ref.index_dir, name, data_path, self.index_options);
+    ref.index.has_value = true;
+    errdefer {
+        ref.index.value.deinit();
+        ref.index.has_value = false;
+    }
+
+    try ref.index.value.open(true);
+
+    log.debug("Index {s} created successfully", .{ref.redirect.name});
+    try index_redirect.writeRedirectFile(ref.index_dir, ref.redirect, self.allocator);
+
+    return ref;
 }
 
 pub fn open(self: *Self) !void {
@@ -121,6 +239,9 @@ pub fn open(self: *Self) !void {
     };
     errdefer lock_file.unlock();
 
+    self.lock_file = lock_file;
+    errdefer self.lock_file = null;
+
     var iter = self.dir.iterate();
     while (try iter.next()) |entry| {
         if (entry.kind != .directory) {
@@ -130,15 +251,26 @@ pub fn open(self: *Self) !void {
             log.warn("skipping unexpected directory {s}", .{entry.name});
             continue;
         }
-        _ = try self.openIndex(entry.name, false);
+
+        _ = self.openExistingIndex(entry.name) catch |err| {
+            log.warn("failed to open index {s}: {}", .{ entry.name, err });
+        };
     }
 
-    self.lock_file = lock_file;
+    // Schedule periodic cleanup task
+    // self.cleanup_task = try self.scheduler.createTask(.low, cleanupDeletedIndexesTask, .{self});
+    // if (self.cleanup_task) |task| {
+    //     self.scheduler.scheduleTask(task); // Start cleanup immediately
+    // }
 }
 
 pub fn deinit(self: *Self) void {
     self.lock.lock();
     defer self.lock.unlock();
+
+    if (self.cleanup_task) |task| {
+        self.scheduler.destroyTask(task);
+    }
 
     if (self.lock_file) |file| {
         file.unlock();
@@ -147,11 +279,140 @@ pub fn deinit(self: *Self) void {
 
     var iter = self.indexes.iterator();
     while (iter.next()) |entry| {
-        entry.value_ptr.index.deinit();
+        entry.value_ptr.*.deinit();
+        self.allocator.destroy(entry.value_ptr.*);
         self.allocator.free(entry.key_ptr.*);
     }
     self.indexes.deinit(self.allocator);
 }
+
+// fn cleanupDeletedIndexesTask(self: *Self) void {
+//     self.cleanupDeletedIndexes() catch |err| {
+//         log.err("cleanup task failed: {}", .{err});
+//     };
+//
+//     // Reschedule for next cleanup
+//     if (self.cleanup_task) |task| {
+//         self.scheduler.scheduleTask(task);
+//     }
+// }
+
+// fn cleanupDeletedIndexes(self: *Self) !void {
+//     log.info("running cleanup of deleted indexes", .{});
+//
+//     var iter = self.dir.iterate();
+//     while (try iter.next()) |entry| {
+//         if (entry.kind != .directory) continue;
+//         if (!isValidName(entry.name)) continue;
+//
+//         // Read redirect file
+//         var cleanup_index_dir = self.dir.openDir(entry.name, .{}) catch continue;
+//         defer cleanup_index_dir.close();
+//
+//         const redirect = index_redirect.readRedirectFile(cleanup_index_dir, self.allocator) catch |err| {
+//             if (err == error.FileNotFound) {
+//                 // No redirect file, check for orphaned data directories
+//                 try self.cleanupOrphanedDataDirs(entry.name);
+//             }
+//             continue;
+//         };
+//
+//         if (!redirect.deleted) continue;
+//
+//         // Get data directory name
+//         const data_dir = try redirect.getDataDir(self.allocator);
+//         defer self.allocator.free(data_dir);
+//
+//         // Check if data directory exists and get its manifest age
+//         var index_dir = self.dir.openDir(entry.name, .{}) catch continue;
+//         defer index_dir.close();
+//
+//         var data_subdir = index_dir.openDir(data_dir, .{}) catch {
+//             // Data directory already gone, just remove redirect
+//             try self.removeRedirectAndCleanup(entry.name);
+//             continue;
+//         };
+//         defer data_subdir.close();
+//
+//         const manifest_stat = data_subdir.statFile("manifest") catch {
+//             // No manifest, safe to delete immediately
+//             try self.removeRedirectAndCleanup(entry.name);
+//             continue;
+//         };
+//
+//         // Check age of manifest file (1 hour = 3600 seconds)
+//         const current_time = std.time.timestamp();
+//         const manifest_age = current_time - manifest_stat.mtime;
+//
+//         if (manifest_age > 3600) { // 1 hour
+//             log.info("cleaning up deleted index {s} (manifest age: {}s)", .{ entry.name, manifest_age });
+//             try self.removeRedirectAndCleanup(entry.name);
+//         }
+//     }
+// }
+
+// fn cleanupOrphanedDataDirs(self: *Self, index_name: []const u8) !void {
+//     var index_dir = self.dir.openDir(index_name, .{}) catch return;
+//     defer index_dir.close();
+//
+//     var iter = index_dir.iterate();
+//     while (try iter.next()) |entry| {
+//         if (entry.kind != .directory) continue;
+//         if (!std.mem.startsWith(u8, entry.name, "data.")) continue;
+//
+//         // Orphaned data directory, check age and remove
+//         var data_subdir = index_dir.openDir(entry.name, .{}) catch continue;
+//         defer data_subdir.close();
+//
+//         const manifest_stat = data_subdir.statFile("manifest") catch {
+//             // No manifest, safe to delete
+//             index_dir.deleteTree(entry.name) catch |err| {
+//                 log.warn("failed to delete orphaned data dir {s}/{s}: {}", .{ index_name, entry.name, err });
+//             };
+//             continue;
+//         };
+//
+//         const current_time = std.time.timestamp();
+//         const manifest_age = current_time - manifest_stat.mtime;
+//
+//         if (manifest_age > 3600) { // 1 hour
+//             log.info("cleaning up orphaned data directory {s}/{s}", .{ index_name, entry.name });
+//             index_dir.deleteTree(entry.name) catch |err| {
+//                 log.warn("failed to delete orphaned data dir {s}/{s}: {}", .{ index_name, entry.name, err });
+//             };
+//         }
+//     }
+// }
+
+// fn removeRedirectAndCleanup(self: *Self, index_name: []const u8) !void {
+//     var index_dir = self.dir.openDir(index_name, .{}) catch return;
+//     defer index_dir.close();
+//
+//     // Delete redirect file
+//     index_dir.deleteFile("current") catch |err| {
+//         if (err != error.FileNotFound) {
+//             log.warn("failed to delete redirect file for {s}: {}", .{ index_name, err });
+//         }
+//     };
+//
+//     // Delete all data directories
+//     var iter = index_dir.iterate();
+//     while (try iter.next()) |entry| {
+//         if (entry.kind != .directory) continue;
+//         if (!std.mem.startsWith(u8, entry.name, "data.")) continue;
+//
+//         index_dir.deleteTree(entry.name) catch |err| {
+//             log.warn("failed to delete data directory {s}/{s}: {}", .{ index_name, entry.name, err });
+//         };
+//     }
+//
+//     // Try to delete the index directory if it's empty
+//     self.dir.deleteDir(index_name) catch |err| {
+//         if (err != error.DirNotEmpty and err != error.FileNotFound) {
+//             log.warn("failed to delete empty index directory {s}: {}", .{ index_name, err });
+//         }
+//     };
+// }
 
 fn deleteIndexFiles(self: *Self, name: []const u8) !void {
     const tmp_name = try std.mem.concat(self.allocator, u8, &[_][]const u8{ name, ".delete" });
@@ -174,15 +435,20 @@ pub fn releaseIndex(self: *Self, index: *Index) void {
     self.lock.lock();
     defer self.lock.unlock();
 
-    const index_ref: *IndexRef = @fieldParentPtr("index", index);
+    const optional_index: *OptionalIndex = @fieldParentPtr("value", index);
+    const index_ref: *IndexRef = @fieldParentPtr("index", optional_index);
     const can_delete = index_ref.decRef();
     // the last ref should be held by the internal map and that's only released in deleteIndex
     std.debug.assert(!can_delete);
+    
+    // Notify any waiting deleteIndex operations
+    index_ref.reference_released.broadcast();
 }
 
-fn borrowIndex(index_ref: *IndexRef) !*Index {
+fn borrowIndex(index_ref: *IndexRef) *Index {
+    assert(index_ref.index.has_value);
     index_ref.incRef();
-    return &index_ref.index;
+    return &index_ref.index.value;
 }
 
 pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool) !*Index {
@@ -193,20 +459,22 @@ pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool) !*Index {
     self.lock.lock();
     defer self.lock.unlock();
 
-    if (self.indexes.getEntry(name)) |entry| {
-        if (entry.value_ptr.being_deleted) {
-            return error.IndexBeingDeleted;
+    if (self.indexes.get(name)) |index_ref| {
+        if (index_ref.index.has_value) {
+            // Index exists and is active
+            if (index_ref.being_deleted) {
+                return error.IndexBeingDeleted;
+            }
+            return borrowIndex(index_ref);
         }
-        return borrowIndex(entry.value_ptr);
+        // Index is deleted (has_value == false) - fall through to handle recreation if create=true
     }
 
     if (!create) {
         return error.IndexNotFound;
     }
 
-    log.info("creating index {s}", .{name});
-
-    const index_ref = try self.openIndex(name, true);
+    const index_ref = try self.createNewIndex(name);
     return borrowIndex(index_ref);
 }
 
@@ -222,62 +490,53 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
     self.lock.lock();
     defer self.lock.unlock();
 
-    const entry = self.indexes.getEntry(name) orelse return;
+    const index_ref = self.indexes.get(name) orelse return;
+    if (!index_ref.index.has_value) return;
 
     // Mark as being deleted to prevent new references
-    if (entry.value_ptr.being_deleted) {
+    if (index_ref.being_deleted) {
         return error.IndexAlreadyBeingDeleted;
     }
-    entry.value_ptr.being_deleted = true;
-    defer {
-        // Reset flag if we fail to delete
-        if (entry.value_ptr.being_deleted) {
-            entry.value_ptr.being_deleted = false;
-        }
-    }
+    index_ref.being_deleted = true;
+    defer index_ref.being_deleted = false;
 
     log.info("marking index {s} for deletion, waiting for references to be released", .{name});
 
     // Wait for all references except the map's reference to be released
-    const start_time = std.time.milliTimestamp();
-    while (entry.value_ptr.references > 1) {
-        const current_time = std.time.milliTimestamp();
-        if (current_time - start_time > DELETE_TIMEOUT_MS) {
-            log.warn("timeout waiting for index {s} references to be released (current: {d})", .{ name, entry.value_ptr.references });
+    var timer = try std.time.Timer.start();
+    while (index_ref.references > 1) {
+        const elapsed_ms = timer.read() / std.time.ns_per_ms;
+        if (elapsed_ms > DELETE_TIMEOUT_MS) {
+            log.warn("timeout waiting for index {s} references to be released (current: {d})", .{ name, index_ref.references });
             return error.DeleteTimeout;
         }
 
-        // Release the lock briefly to allow other operations
-        self.lock.unlock();
-        std.time.sleep(10 * std.time.ns_per_ms); // Sleep for 10ms
-        self.lock.lock();
+        // Wait on condition variable with remaining timeout
+        const remaining_timeout_ns = (DELETE_TIMEOUT_MS - elapsed_ms) * std.time.ns_per_ms;
+        index_ref.reference_released.timedWait(&self.lock, remaining_timeout_ns) catch {
+            // Timeout occurred, continue the loop to check references again
+        };
 
         // Check if the entry still exists (in case of concurrent operations)
-        const current_entry = self.indexes.getEntry(name) orelse return error.IndexNotFound;
-        if (current_entry.value_ptr != entry.value_ptr) {
+        const current_index_ref = self.indexes.get(name) orelse return error.IndexNotFound;
+        if (current_index_ref != index_ref) {
             return error.IndexNotFound;
         }
     }
 
-    // At this point, only the map holds a reference
-    const can_delete = entry.value_ptr.decRef();
-    assert(can_delete); // Should always be true since we waited for references == 1
-
     log.info("deleting index {s}", .{name});
 
-    self.deleteIndexFiles(name) catch |err| {
-        entry.value_ptr.incRef();
+    // Mark redirect as deleted
+    index_ref.redirect.deleted = true;
+    errdefer index_ref.redirect.deleted = false;
+
+    index_redirect.writeRedirectFile(index_ref.index_dir, index_ref.redirect, self.allocator) catch |err| {
+        log.err("failed to mark redirect as deleted for index {s}: {}", .{ name, err });
         return err;
     };
 
-    // Clear the being_deleted flag since we're about to remove the entry
-    entry.value_ptr.being_deleted = false;
-
-    // Ensure Index can safely log/use the name during deinit
-    const key_mem = entry.key_ptr.*;
-    entry.value_ptr.index.deinit();
-    self.indexes.removeByPtr(entry.key_ptr);
-    self.allocator.free(key_mem);
+    // Close the index
+    index_ref.index.clear();
 }
 
 pub fn search(
@@ -432,4 +691,101 @@ pub fn checkFingerprintExists(
     if (info == null) {
         return error.FingerprintNotFound;
     }
+}
+
+const TestContext = struct {
+    tmp_dir: std.testing.TmpDir = undefined,
+    scheduler: Scheduler = undefined,
+    indexes: Self = undefined,
+
+    pub fn setup(ctx: *TestContext) !void {
+        ctx.tmp_dir = std.testing.tmpDir(.{});
+        ctx.scheduler = Scheduler.init(std.testing.allocator);
+        ctx.indexes = Self.init(std.testing.allocator, &ctx.scheduler, ctx.tmp_dir.dir, .{});
+
+        try ctx.scheduler.start(2);
+    }
+
+    pub fn teardown(ctx: *TestContext) void {
+        ctx.indexes.deinit();
+        ctx.scheduler.deinit();
+        ctx.tmp_dir.cleanup();
+    }
+};
+
+test "setup" {
+    var ctx: TestContext = .{};
+    try ctx.setup();
+    defer ctx.teardown();
+}
+
+test "createIndex" {
+    var ctx: TestContext = .{};
+    try ctx.setup();
+    defer ctx.teardown();
+
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    try std.testing.expectEqual(0, info.version);
+    try ctx.indexes.checkIndexExists("foo");
+}
+
+test "createIndex twice" {
+    var ctx: TestContext = .{};
+    try ctx.setup();
+    defer ctx.teardown();
+
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    try std.testing.expectEqual(0, info.version);
+    try ctx.indexes.checkIndexExists("foo");
+
+    const info2 = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    try std.testing.expectEqual(0, info2.version);
+    try ctx.indexes.checkIndexExists("foo");
+}
+
+test "deleteIndex" {
+    var ctx: TestContext = .{};
+    try ctx.setup();
+    defer ctx.teardown();
+
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    try std.testing.expectEqual(0, info.version);
+    try ctx.indexes.checkIndexExists("foo");
+
+    try ctx.indexes.deleteIndex("foo");
+    try std.testing.expectError(error.IndexNotFound, ctx.indexes.checkIndexExists("foo"));
+}
+
+test "deleteIndex twice" {
+    var ctx: TestContext = .{};
+    try ctx.setup();
+    defer ctx.teardown();
+
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    try std.testing.expectEqual(0, info.version);
+    try ctx.indexes.checkIndexExists("foo");
+
+    try ctx.indexes.deleteIndex("foo");
+    try std.testing.expectError(error.IndexNotFound, ctx.indexes.checkIndexExists("foo"));
+
+    try ctx.indexes.deleteIndex("foo");
+    try std.testing.expectError(error.IndexNotFound, ctx.indexes.checkIndexExists("foo"));
+}
+
+test "update" {
+    var ctx: TestContext = .{};
+    try ctx.setup();
+    defer ctx.teardown();
+
+    const Change = @import("change.zig").Change;
+
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    try std.testing.expectEqual(0, info.version);
+
+    var changes = [_]Change{
+        .{ .insert = .{ .id = 1, .hashes = &[_]u32{ 1, 2, 3 } } },
+    };
+
+    const result = try ctx.indexes.update(std.testing.allocator, "foo", .{ .changes = &changes });
+    try std.testing.expectEqual(1, result.version);
 }

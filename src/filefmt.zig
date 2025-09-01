@@ -65,26 +65,26 @@ pub fn parseSegmentFileName(name: []const u8) ?SegmentInfo {
     if (!std.mem.endsWith(u8, name, segment_file_suffix)) {
         return null;
     }
-    
+
     // Remove suffix to get the version-merges part
-    const name_without_suffix = name[0..name.len - segment_file_suffix.len];
-    
+    const name_without_suffix = name[0 .. name.len - segment_file_suffix.len];
+
     // Should be exactly 25 chars: 16 hex + 1 dash + 8 hex
     if (name_without_suffix.len != 25) {
         return null;
     }
-    
+
     // Find the dash separator
     if (name_without_suffix[16] != '-') {
         return null;
     }
-    
+
     // Parse version (first 16 hex chars)
     const version = std.fmt.parseUnsigned(u64, name_without_suffix[0..16], 16) catch return null;
-    
+
     // Parse merges (last 8 hex chars)
     const merges = std.fmt.parseUnsigned(u32, name_without_suffix[17..25], 16) catch return null;
-    
+
     return SegmentInfo{
         .version = version,
         .merges = merges,
@@ -494,11 +494,9 @@ pub fn writeManifestFile(dir: std.fs.Dir, segments: []const SegmentInfo) !void {
     const writer = buffered_writer.writer();
 
     try encodeManifestData(segments, writer);
-
     try buffered_writer.flush();
 
     try file.file.sync();
-
     try file.finish();
 
     log.info("wrote index file {s} (segments = {})", .{
@@ -569,7 +567,7 @@ test "isSegmentFileName" {
 test "isManifestFileName" {
     // Valid manifest file name
     try testing.expect(isManifestFileName("manifest"));
-    
+
     // Invalid manifest file names
     try testing.expect(!isManifestFileName(""));
     try testing.expect(!isManifestFileName("Manifest"));

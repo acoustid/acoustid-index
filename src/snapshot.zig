@@ -21,7 +21,7 @@ pub fn restoreSnapshot(
         std.log.err("failed to clean up directory {s}: {}", .{ path, err });
     };
     defer extract_dir.close();
-    
+
     // Extract tar contents using iterator for pattern matching
     var file_name_buffer: [256]u8 = undefined;
     var link_name_buffer: [256]u8 = undefined;
@@ -34,7 +34,7 @@ pub fn restoreSnapshot(
         if (entry.kind != .file) {
             continue;
         }
-        
+
         // Check if it's a manifest file
         if (filefmt.isManifestFileName(entry.name)) {
             try extractTarEntry(entry, extract_dir);
@@ -46,14 +46,14 @@ pub fn restoreSnapshot(
             std.log.warn("skipping unknown file in snapshot: {s}", .{entry.name});
         }
     }
-    
+
     // Create and initialize the index
-    var index = try Index.init(allocator, scheduler, parent_dir, path, options);
+    var index = try Index.init(allocator, scheduler, parent_dir, path, path, options);
     errdefer index.deinit(); // Clean up index if open fails
-    
+
     // Open the index to load from extracted files
     try index.open(false);
-    
+
     return index;
 }
 
@@ -67,17 +67,17 @@ pub fn downloadAndExtractSnapshot(
     options: Index.Options,
 ) !Index {
     std.log.info("downloading snapshot from {s}", .{url});
-    
+
     // Parse the URL
     const uri = std.Uri.parse(url) catch |err| {
         std.log.err("invalid URL {s}: {}", .{ url, err });
         return err;
     };
-    
+
     // Create HTTP client
     var client = std.http.Client{ .allocator = allocator };
     defer client.deinit();
-    
+
     // Prepare request
     var header_buffer: [8192]u8 = undefined;
     var req = client.open(.GET, uri, .{
@@ -87,37 +87,37 @@ pub fn downloadAndExtractSnapshot(
         return err;
     };
     defer req.deinit();
-    
+
     // Send request
     req.send() catch |err| {
         std.log.err("failed to send HTTP request to {s}: {}", .{ url, err });
         return err;
     };
-    
+
     req.finish() catch |err| {
         std.log.err("failed to finish HTTP request to {s}: {}", .{ url, err });
         return err;
     };
-    
+
     // Wait for response
     req.wait() catch |err| {
         std.log.err("failed to receive HTTP response from {s}: {}", .{ url, err });
         return err;
     };
-    
+
     // Check HTTP status
     if (req.response.status != .ok) {
         std.log.err("HTTP error {d} when downloading from {s}", .{ @intFromEnum(req.response.status), url });
         return error.HttpError;
     }
-    
+
     // Log content info if available
     if (req.response.content_length) |content_length| {
         std.log.info("downloading {} bytes from {s}", .{ content_length, url });
     } else {
         std.log.info("downloading from {s} (size unknown)", .{url});
     }
-    
+
     // Stream the response directly to restoreSnapshot
     const reader = req.reader();
     return restoreSnapshot(reader, allocator, scheduler, parent_dir, path, options);
@@ -129,10 +129,10 @@ fn extractTarEntry(entry: anytype, extract_dir: std.fs.Dir) !void {
         std.log.err("failed to clean up partially extracted file {s}: {}", .{ entry.name, err });
     };
     defer file.close();
-    
+
     var reader_entry = entry.reader();
     var file_writer = file.writer();
-    
+
     var buffer: [4096]u8 = undefined;
     while (true) {
         const bytes_read = try reader_entry.read(&buffer);
@@ -211,7 +211,7 @@ test "index snapshot" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
-    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "index", .{
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "index", "index", .{
         .min_segment_size = 1, // to trigger checkpoint immediately
     });
     defer index.deinit();
@@ -280,7 +280,7 @@ test "restore snapshot with corrupt tar" {
     // Try to restore from corrupt data
     const corrupt_data = "not a tar file";
     var reader = std.io.fixedBufferStream(corrupt_data);
-    
+
     const result = restoreSnapshot(reader.reader(), std.testing.allocator, &scheduler, tmp_dir.dir, "test_corrupt", .{});
     try std.testing.expectError(error.UnexpectedEndOfStream, result);
 }
@@ -300,7 +300,7 @@ test "restore snapshot cleanup on failure" {
     defer buffer.deinit();
 
     var tar_writer = std.tar.writer(buffer.writer().any());
-    
+
     // Add invalid manifest that will cause open() to fail
     const invalid_manifest = "invalid manifest content";
     try tar_writer.writeFileBytes(filefmt.manifest_file_name, invalid_manifest, .{});
