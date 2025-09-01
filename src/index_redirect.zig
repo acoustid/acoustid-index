@@ -42,7 +42,7 @@ pub const IndexRedirect = struct {
 };
 
 const index_redirect_file_name = "current";
-const index_redirect_file_header_magic: u32 = 0x49445831; // "IRD1" in big endian
+const index_redirect_file_header_magic: u32 = 'I' << 24 | 'R' << 16 | 'D' << 8 | '1';
 const max_redirect_file_size: u64 = 64 * 1024; // 64KB
 
 const IndexRedirectFileHeader = struct {
@@ -96,6 +96,21 @@ pub fn readRedirectFile(index_dir: std.fs.Dir, allocator: std.mem.Allocator) !In
     return try msgpack.decodeLeaky(IndexRedirect, allocator, data_stream.reader());
 }
 
+pub fn atomicBackup(dir: std.fs.Dir, comptime src: []const u8, comptime suffix: []const u8) !void {
+    const dest = src ++ suffix;
+    const tmp_dest = dest ++ ".tmp";
+    std.posix.linkat(dir.fd, src, dir.fd, tmp_dest, 0) catch |err| switch (err) {
+        error.FileNotFound => return, // File not found, nothing to backup
+        error.PathAlreadyExists => {
+            // Found existing file, delete it
+            try std.posix.unlinkat(dir.fd, tmp_dest, 0);
+            try std.posix.linkat(dir.fd, src, dir.fd, tmp_dest, 0);
+        },
+        else => return err,
+    };
+    try std.posix.renameat(dir.fd, tmp_dest, dir.fd, dest);
+}
+
 pub fn writeRedirectFile(index_dir: std.fs.Dir, redirect: IndexRedirect, allocator: std.mem.Allocator) !void {
     var buffer = std.ArrayList(u8).init(allocator);
     defer buffer.deinit();
@@ -121,16 +136,9 @@ pub fn writeRedirectFile(index_dir: std.fs.Dir, redirect: IndexRedirect, allocat
     try file.file.sync();
 
     // Create hardlink backup of existing file before finishing
-    const backup_name = index_redirect_file_name ++ ".backup";
-    std.posix.linkat(index_dir.fd, index_redirect_file_name, index_dir.fd, backup_name, 0) catch |err| switch (err) {
-        error.FileNotFound => {}, // No existing file to backup
-        error.PathAlreadyExists => {
-            try index_dir.deleteFile(backup_name);
-            try std.posix.linkat(index_dir.fd, index_redirect_file_name, index_dir.fd, backup_name, 0);
-        },
-        else => return err,
-    };
+    try atomicBackup(index_dir, index_redirect_file_name, ".backup");
 
+    // Final rename to replace existing file
     try file.finish();
 
     log.info("wrote index redirect: {s} (version={}, deleted={})", .{ redirect.name, redirect.version, redirect.deleted });
