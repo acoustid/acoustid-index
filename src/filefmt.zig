@@ -39,12 +39,56 @@ pub fn maxItemsPerBlock(block_size: usize) usize {
 }
 
 pub const max_file_name_size = 64;
-const segment_file_name_fmt = "{x:0>16}-{x:0>8}.data";
+const segment_file_suffix = ".data";
+const segment_file_name_fmt = "{x:0>16}-{x:0>8}" ++ segment_file_suffix;
 pub const manifest_file_name = "manifest";
 
 pub fn buildSegmentFileName(buf: []u8, info: SegmentInfo) []u8 {
     assert(buf.len == max_file_name_size);
     return std.fmt.bufPrint(buf, segment_file_name_fmt, .{ info.version, info.merges }) catch unreachable;
+}
+
+/// Returns true if the given name is a manifest file name
+pub fn isManifestFileName(name: []const u8) bool {
+    return std.mem.eql(u8, name, manifest_file_name);
+}
+
+/// Returns true if the given name is a valid segment file name
+pub fn isSegmentFileName(name: []const u8) bool {
+    return parseSegmentFileName(name) != null;
+}
+
+/// Parses a segment file name and returns the SegmentInfo if valid
+/// Returns null if the name doesn't match the segment file format
+pub fn parseSegmentFileName(name: []const u8) ?SegmentInfo {
+    // Check suffix first
+    if (!std.mem.endsWith(u8, name, segment_file_suffix)) {
+        return null;
+    }
+
+    // Remove suffix to get the version-merges part
+    const name_without_suffix = name[0 .. name.len - segment_file_suffix.len];
+
+    // Should be exactly 25 chars: 16 hex + 1 dash + 8 hex
+    if (name_without_suffix.len != 25) {
+        return null;
+    }
+
+    // Find the dash separator
+    if (name_without_suffix[16] != '-') {
+        return null;
+    }
+
+    // Parse version (first 16 hex chars)
+    const version = std.fmt.parseUnsigned(u64, name_without_suffix[0..16], 16) catch return null;
+
+    // Parse merges (last 8 hex chars)
+    const merges = std.fmt.parseUnsigned(u32, name_without_suffix[17..25], 16) catch return null;
+
+    return SegmentInfo{
+        .version = version,
+        .merges = merges,
+    };
 }
 
 // Use block header from block.zig (already imported above)
@@ -206,8 +250,9 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
 
     try buffered_writer.flush();
 
-    const padding_size = block_size - counting_writer.bytes_written % block_size;
-    try writer.writeByteNTimes(0, padding_size);
+    const rem = counting_writer.bytes_written % block_size;
+    const padding_size = if (rem == 0) 0 else block_size - rem;
+    if (padding_size > 0) try writer.writeByteNTimes(0, padding_size);
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
@@ -241,6 +286,21 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
         blocks_result.footer.num_items,
         blocks_result.footer.checksum,
     });
+}
+
+pub fn atomicBackup(dir: std.fs.Dir, comptime src: []const u8, comptime suffix: []const u8) !void {
+    const dest = src ++ suffix;
+    const tmp_dest = dest ++ ".tmp";
+    std.posix.linkat(dir.fd, src, dir.fd, tmp_dest, 0) catch |err| switch (err) {
+        error.FileNotFound => return, // File not found, nothing to backup
+        error.PathAlreadyExists => {
+            // Found existing file, delete it
+            try std.posix.unlinkat(dir.fd, tmp_dest, 0);
+            try std.posix.linkat(dir.fd, src, dir.fd, tmp_dest, 0);
+        },
+        else => return err,
+    };
+    try std.posix.renameat(dir.fd, tmp_dest, dir.fd, dest);
 }
 
 pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !void {
@@ -317,8 +377,9 @@ pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !v
     }
 
     const block_size = header.block_size;
-    const padding_size = block_size - fixed_buffer_stream.pos % block_size;
-    try fixed_buffer_stream.seekBy(@intCast(padding_size));
+    const rem = fixed_buffer_stream.pos % block_size;
+    const padding_size = if (rem == 0) 0 else block_size - rem;
+    if (padding_size > 0) try fixed_buffer_stream.seekBy(@intCast(padding_size));
 
     const blocks_data_start = fixed_buffer_stream.pos;
 
@@ -423,75 +484,150 @@ test "writeFile/readFile" {
     }
 }
 
-const manifest_header_magic_v1: u32 = 0x49445831; // "IDX1" in big endian
 
-const ManifestFileHeader = struct {
-    magic: u32 = manifest_header_magic_v1,
+test "parseSegmentFileName" {
+    // Valid cases
+    try testing.expectEqualDeep(SegmentInfo{ .version = 0x0123456789ABCDEF, .merges = 0x12345678 }, parseSegmentFileName("0123456789abcdef-12345678.data"));
+    try testing.expectEqualDeep(SegmentInfo{ .version = 0, .merges = 0 }, parseSegmentFileName("0000000000000000-00000000.data"));
+    try testing.expectEqualDeep(SegmentInfo{ .version = 0xFFFFFFFFFFFFFFFF, .merges = 0xFFFFFFFF }, parseSegmentFileName("ffffffffffffffff-ffffffff.data"));
 
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .field_index } };
-    }
-};
-
-pub fn encodeManifestData(segments: []const SegmentInfo, writer: anytype) !void {
-    try msgpack.encode(ManifestFileHeader{}, writer);
-    try msgpack.encode(segments, writer);
+    // Invalid cases - should return null
+    try testing.expect(parseSegmentFileName("") == null);
+    try testing.expect(parseSegmentFileName("invalid") == null);
+    try testing.expect(parseSegmentFileName("0123456789abcdef-12345678") == null); // missing .data
+    try testing.expect(parseSegmentFileName("0123456789abcdef-12345678.txt") == null); // wrong suffix
+    try testing.expect(parseSegmentFileName("123456789abcdef-12345678.data") == null); // too short version
+    try testing.expect(parseSegmentFileName("01234567890abcdef-12345678.data") == null); // too long version
+    try testing.expect(parseSegmentFileName("0123456789abcdef_12345678.data") == null); // wrong separator
+    try testing.expect(parseSegmentFileName("0123456789abcdef-1234567.data") == null); // too short merges
+    try testing.expect(parseSegmentFileName("0123456789abcdef-123456789.data") == null); // too long merges
+    try testing.expect(parseSegmentFileName("0123456789abcdefg-12345678.data") == null); // invalid hex in version
+    try testing.expect(parseSegmentFileName("0123456789abcdef-1234567g.data") == null); // invalid hex in merges
+    // Path traversal attempts
+    try testing.expect(parseSegmentFileName("../0123456789abcdef-12345678.data") == null);
+    try testing.expect(parseSegmentFileName("/tmp/0123456789abcdef-12345678.data") == null);
+    try testing.expect(parseSegmentFileName("dir/0123456789abcdef-12345678.data") == null);
 }
 
-pub fn writeManifestFile(dir: std.fs.Dir, segments: []const SegmentInfo) !void {
-    log.info("writing manifest file {s}", .{manifest_file_name});
+test "isSegmentFileName" {
+    // Valid segment file names
+    try testing.expect(isSegmentFileName("0123456789abcdef-12345678.data"));
+    try testing.expect(isSegmentFileName("0000000000000000-00000000.data"));
+    try testing.expect(isSegmentFileName("ffffffffffffffff-ffffffff.data"));
 
-    var file = try dir.atomicFile(manifest_file_name, .{});
-    defer file.deinit();
-
-    var buffered_writer = std.io.bufferedWriter(file.file.writer());
-    const writer = buffered_writer.writer();
-
-    try encodeManifestData(segments, writer);
-
-    try buffered_writer.flush();
-
-    try file.file.sync();
-
-    try file.finish();
-
-    log.info("wrote index file {s} (segments = {})", .{
-        manifest_file_name,
-        segments.len,
-    });
+    // Invalid segment file names
+    try testing.expect(!isSegmentFileName(""));
+    try testing.expect(!isSegmentFileName("invalid"));
+    try testing.expect(!isSegmentFileName("0123456789abcdef-12345678"));
+    try testing.expect(!isSegmentFileName("0123456789abcdef-12345678.txt"));
+    try testing.expect(!isSegmentFileName("manifest"));
+    // Path traversal attempts
+    try testing.expect(!isSegmentFileName("../0123456789abcdef-12345678.data"));
+    try testing.expect(!isSegmentFileName("/tmp/0123456789abcdef-12345678.data"));
+    try testing.expect(!isSegmentFileName("dir/0123456789abcdef-12345678.data"));
 }
 
-pub fn readManifestFile(dir: std.fs.Dir, allocator: std.mem.Allocator) ![]SegmentInfo {
-    log.info("reading manifest file {s}", .{manifest_file_name});
+test "isManifestFileName" {
+    // Valid manifest file name
+    try testing.expect(isManifestFileName("manifest"));
 
-    var file = try dir.openFile(manifest_file_name, .{});
-    defer file.close();
-
-    var buffered_reader = std.io.bufferedReader(file.reader());
-    const reader = buffered_reader.reader();
-
-    const header = try msgpack.decodeLeaky(ManifestFileHeader, null, reader);
-    if (header.magic != manifest_header_magic_v1) {
-        return error.InvalidManifestFile;
-    }
-
-    return try msgpack.decodeLeaky([]SegmentInfo, allocator, reader);
+    // Invalid manifest file names
+    try testing.expect(!isManifestFileName(""));
+    try testing.expect(!isManifestFileName("Manifest"));
+    try testing.expect(!isManifestFileName("manifest.txt"));
+    try testing.expect(!isManifestFileName("0123456789abcdef-12345678.data"));
+    // Path traversal attempts
+    try testing.expect(!isManifestFileName("../manifest"));
+    try testing.expect(!isManifestFileName("/tmp/manifest"));
+    try testing.expect(!isManifestFileName("dir/manifest"));
 }
 
-test "readIndexFile/writeIndexFile" {
+test "atomicBackup file not found" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const segments = [_]SegmentInfo{
-        .{ .version = 1, .merges = 0 },
-        .{ .version = 2, .merges = 1 },
-        .{ .version = 4, .merges = 0 },
+    // Backup non-existent file should succeed without error
+    try atomicBackup(tmp.dir, "nonexistent", ".backup");
+
+    // Backup file should not be created
+    _ = tmp.dir.openFile("nonexistent.backup", .{}) catch |err| switch (err) {
+        error.FileNotFound => return, // Expected
+        else => return err,
     };
-
-    try writeManifestFile(tmp.dir, &segments);
-
-    const segments2 = try readManifestFile(tmp.dir, std.testing.allocator);
-    defer std.testing.allocator.free(segments2);
-
-    try testing.expectEqualSlices(SegmentInfo, &segments, segments2);
 }
+
+test "atomicBackup creates backup" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const original_content = "test content";
+
+    // Create original file
+    {
+        var file = try tmp.dir.createFile("original", .{});
+        defer file.close();
+        try file.writeAll(original_content);
+    }
+
+    // Create backup
+    try atomicBackup(tmp.dir, "original", ".backup");
+
+    // Verify backup exists and has correct content
+    {
+        var backup_file = try tmp.dir.openFile("original.backup", .{});
+        defer backup_file.close();
+        
+        const backup_content = try backup_file.readToEndAlloc(testing.allocator, 1024);
+        defer testing.allocator.free(backup_content);
+        
+        try testing.expectEqualStrings(original_content, backup_content);
+    }
+
+    // Original file should still exist
+    {
+        var original_file = try tmp.dir.openFile("original", .{});
+        defer original_file.close();
+        
+        const content = try original_file.readToEndAlloc(testing.allocator, 1024);
+        defer testing.allocator.free(content);
+        
+        try testing.expectEqualStrings(original_content, content);
+    }
+}
+
+test "atomicBackup overwrites existing backup" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const original_content = "new content";
+    const old_backup_content = "old backup content";
+
+    // Create original file
+    {
+        var file = try tmp.dir.createFile("original", .{});
+        defer file.close();
+        try file.writeAll(original_content);
+    }
+
+    // Create old backup file
+    {
+        var backup_file = try tmp.dir.createFile("original.backup", .{});
+        defer backup_file.close();
+        try backup_file.writeAll(old_backup_content);
+    }
+
+    // Create new backup (should overwrite old one)
+    try atomicBackup(tmp.dir, "original", ".backup");
+
+    // Verify backup has new content (from original file)
+    {
+        var backup_file = try tmp.dir.openFile("original.backup", .{});
+        defer backup_file.close();
+        
+        const backup_content = try backup_file.readToEndAlloc(testing.allocator, 1024);
+        defer testing.allocator.free(backup_content);
+        
+        try testing.expectEqualStrings(original_content, backup_content);
+    }
+}
+

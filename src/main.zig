@@ -119,7 +119,7 @@ pub fn main() !void {
 
     const cluster_mode = args.contains("cluster");
     if (!cluster_mode) {
-        try server.run(allocator, &indexes, address, port, threads);
+        try server.run(MultiIndex, allocator, &indexes, address, port, threads);
         return;
     }
 
@@ -134,7 +134,7 @@ pub fn main() !void {
     var cluster = ClusterMultiIndex.init(allocator, &nc, &indexes);
     defer cluster.deinit();
 
-    try server.run(allocator, &cluster, address, port, threads);
+    try server.run(ClusterMultiIndex, allocator, &cluster, address, port, threads);
 }
 
 test {

@@ -25,7 +25,7 @@ test "index does not exist" {
     var scheduler = Scheduler.init(std.testing.allocator);
     defer scheduler.deinit();
 
-    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", "idx", .{});
     defer index.deinit();
 
     const result = index.open(false);
@@ -39,7 +39,7 @@ test "index create, update and search" {
     var scheduler = Scheduler.init(std.testing.allocator);
     defer scheduler.deinit();
 
-    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", "idx", .{});
     defer index.deinit();
 
     try index.open(true);
@@ -82,7 +82,7 @@ test "index create, update, reopen and search" {
     var hashes: [100]u32 = undefined;
 
     {
-        var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
+        var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", "idx", .{});
         defer index.deinit();
 
         try index.open(true);
@@ -94,7 +94,7 @@ test "index create, update, reopen and search" {
     }
 
     {
-        var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
+        var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", "idx", .{});
         defer index.deinit();
 
         try index.open(false);
@@ -116,7 +116,7 @@ test "index many updates and inserts" {
     defer scheduler.deinit();
     try scheduler.start(2);
 
-    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", "idx", .{
         .min_segment_size = 50_000,
         .max_segment_size = 75_000_000,
     });
@@ -216,7 +216,7 @@ test "index, multiple fingerprints with the same hashes" {
     var scheduler = Scheduler.init(std.testing.allocator);
     defer scheduler.deinit();
 
-    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", "idx", .{});
     defer index.deinit();
 
     try index.open(true);

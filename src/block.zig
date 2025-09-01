@@ -161,21 +161,21 @@ pub const BlockReader = struct {
         // Each time the hash changes, reset the base to min_doc_id
         var last_docid = self.min_doc_id;
         var last_hash: u32 = if (header.num_items > 0) self.hashes[0] else 0;
-        
+
         for (0..header.num_items) |i| {
             const current_hash = self.hashes[i];
-            
+
             // If hash changed, reset base to min_doc_id
             if (current_hash != last_hash) {
                 last_docid = self.min_doc_id;
                 last_hash = current_hash;
             }
-            
+
             // Apply delta decoding
             self.docids[i] += last_docid;
             last_docid = self.docids[i];
         }
-        
+
         self.docids_loaded = true;
     }
 
@@ -184,12 +184,10 @@ pub const BlockReader = struct {
         return self.getHeaderPtr().min_hash;
     }
 
-
     /// Get the number of items in this block
     pub fn getNumItems(self: *BlockReader) u16 {
         return self.getHeaderPtr().num_items;
     }
-
 
     /// Find all occurrences of a hash in this block
     /// Returns the range [start, end) of matching indices
@@ -202,10 +200,10 @@ pub const BlockReader = struct {
 
         const header = self.getHeaderPtr();
         const hashes_slice = self.hashes[0..header.num_items];
-        
+
         // Find all occurrences of hash using equalRange
         const range = std.sort.equalRange(u32, hashes_slice, hash, orderU32);
-        
+
         return HashRange{ .start = range[0], .end = range[1] };
     }
 
@@ -232,7 +230,7 @@ pub const BlockReader = struct {
 
         const docids = self.docids[range.start..range.end];
 
-        // Apply delta decoding - since range is at hash boundaries, 
+        // Apply delta decoding - since range is at hash boundaries,
         // first docid is relative to min_doc_id, rest are relative to previous
         streamvbyte.svbDeltaDecodeInPlace(docids, self.min_doc_id);
 
@@ -394,7 +392,7 @@ test "BlockReader range-based docid decoding" {
 /// BlockEncoder handles encoding of (hash, docid) items into compressed blocks
 pub const BlockEncoder = struct {
     num_items: u16 = 0,
-    
+
     last_hash: u32 = 0,
     last_docid: u32 = 0,
 
@@ -424,7 +422,7 @@ pub const BlockEncoder = struct {
 
             // Encode hash delta
             chunk_hashes[i] = current_hash - self.last_hash;
-            
+
             // Encode docid delta - reset to min_doc_id on hash boundaries
             if (current_hash != self.last_hash) {
                 // Hash changed, encode relative to min_doc_id
@@ -462,7 +460,7 @@ pub const BlockEncoder = struct {
         // Commit the chunk
         self.out_hashes.len += encoded_hashes_size;
         self.out_hashes_control.len += 1;
-        
+
         self.out_docids.len += encoded_docids_size;
         self.out_docids_control.len += 1;
 
@@ -693,4 +691,3 @@ test "BlockEncoder reuse across multiple blocks" {
     // Should correctly encode and decode the second block
     try testing.expectEqualSlices(u32, &[_]u32{ 3, 4 }, docids2);
 }
-
