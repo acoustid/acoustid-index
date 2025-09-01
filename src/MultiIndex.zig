@@ -41,6 +41,7 @@ pub const IndexRef = struct {
     references: usize = 1,
     delete_files: bool = false,
     being_deleted: bool = false,
+    reference_released: std.Thread.Condition = .{},
 
     pub fn incRef(self: *IndexRef) void {
         self.references += 1;
@@ -439,6 +440,9 @@ pub fn releaseIndex(self: *Self, index: *Index) void {
     const can_delete = index_ref.decRef();
     // the last ref should be held by the internal map and that's only released in deleteIndex
     std.debug.assert(!can_delete);
+    
+    // Notify any waiting deleteIndex operations
+    index_ref.reference_released.broadcast();
 }
 
 fn borrowIndex(index_ref: *IndexRef) *Index {
@@ -499,18 +503,19 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
     log.info("marking index {s} for deletion, waiting for references to be released", .{name});
 
     // Wait for all references except the map's reference to be released
-    const start_time = std.time.milliTimestamp();
+    var timer = try std.time.Timer.start();
     while (index_ref.references > 1) {
-        const current_time = std.time.milliTimestamp();
-        if (current_time - start_time > DELETE_TIMEOUT_MS) {
+        const elapsed_ms = timer.read() / std.time.ns_per_ms;
+        if (elapsed_ms > DELETE_TIMEOUT_MS) {
             log.warn("timeout waiting for index {s} references to be released (current: {d})", .{ name, index_ref.references });
             return error.DeleteTimeout;
         }
 
-        // Release the lock briefly to allow other operations
-        self.lock.unlock();
-        std.time.sleep(10 * std.time.ns_per_ms); // Sleep for 10ms
-        self.lock.lock();
+        // Wait on condition variable with remaining timeout
+        const remaining_timeout_ns = (DELETE_TIMEOUT_MS - elapsed_ms) * std.time.ns_per_ms;
+        index_ref.reference_released.timedWait(&self.lock, remaining_timeout_ns) catch {
+            // Timeout occurred, continue the loop to check references again
+        };
 
         // Check if the entry still exists (in case of concurrent operations)
         const current_index_ref = self.indexes.get(name) orelse return error.IndexNotFound;
