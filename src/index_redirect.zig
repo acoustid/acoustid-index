@@ -63,11 +63,6 @@ const IndexRedirectFileHeader = struct {
     }
 };
 
-pub fn encodeIndexRedirect(index_redirect: IndexRedirect, writer: anytype) !void {
-    try msgpack.encode(IndexRedirectFileHeader{}, writer);
-    try msgpack.encode(index_redirect, writer);
-}
-
 pub fn readRedirectFile(index_dir: std.fs.Dir, allocator: std.mem.Allocator) !IndexRedirect {
     var file = try index_dir.openFile(index_redirect_file_name, .{});
     defer file.close();
