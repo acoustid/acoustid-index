@@ -43,6 +43,7 @@ pub const IndexRedirect = struct {
 
 const index_redirect_file_name = "current";
 const index_redirect_file_header_magic: u32 = 0x49445831; // "IRD1" in big endian
+const max_redirect_file_size: u64 = 64 * 1024; // 64KB
 
 const IndexRedirectFileHeader = struct {
     magic: u32 = index_redirect_file_header_magic,
@@ -79,7 +80,11 @@ pub fn readRedirectFile(index_dir: std.fs.Dir, allocator: std.mem.Allocator) !In
 
     const header = header_parsed.value;
     if (header.magic != index_redirect_file_header_magic) {
-        return error.InvalidIndexRedirectFile;
+        return error.WrongIndexRedirectFileHeader;
+    }
+
+    if (header.size > max_redirect_file_size) {
+        return error.IndexRedirectFileTooLarge;
     }
 
     const data_buffer = try allocator.alloc(u8, header.size);
@@ -119,7 +124,7 @@ pub fn writeRedirectFile(index_dir: std.fs.Dir, redirect: IndexRedirect, allocat
     try buffered_writer.flush();
 
     try file.file.sync();
-    
+
     // Create hardlink backup of existing file before finishing
     const backup_name = index_redirect_file_name ++ ".backup";
     std.posix.linkat(index_dir.fd, index_redirect_file_name, index_dir.fd, backup_name, 0) catch |err| switch (err) {
@@ -130,7 +135,7 @@ pub fn writeRedirectFile(index_dir: std.fs.Dir, redirect: IndexRedirect, allocat
         },
         else => return err,
     };
-    
+
     try file.finish();
 
     log.info("wrote index redirect: {s} (version={}, deleted={})", .{ redirect.name, redirect.version, redirect.deleted });
