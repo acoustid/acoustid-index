@@ -23,14 +23,6 @@ pub fn deinit(self: *Self) void {
     _ = self;
 }
 
-pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool) !*Index {
-    return self.local_indexes.getOrCreateIndex(name, create);
-}
-
-pub fn getIndex(self: *Self, name: []const u8) !*Index {
-    return self.local_indexes.getIndex(name);
-}
-
 pub fn createIndex(
     self: *Self,
     allocator: std.mem.Allocator,
@@ -41,10 +33,6 @@ pub fn createIndex(
 
 pub fn deleteIndex(self: *Self, name: []const u8) !void {
     return self.local_indexes.deleteIndex(name);
-}
-
-pub fn releaseIndex(self: *Self, index: *Index) void {
-    self.local_indexes.releaseIndex(index);
 }
 
 pub fn search(
