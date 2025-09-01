@@ -2,6 +2,7 @@ const std = @import("std");
 const log = std.log.scoped(.index_redirect);
 
 const msgpack = @import("msgpack");
+const filefmt = @import("filefmt.zig");
 
 pub const IndexRedirect = struct {
     name: []const u8, // Logical index name (e.g., "foo.bar")
@@ -64,7 +65,15 @@ const IndexRedirectFileHeader = struct {
 };
 
 pub fn readRedirectFile(index_dir: std.fs.Dir, allocator: std.mem.Allocator) !IndexRedirect {
-    var file = try index_dir.openFile(index_redirect_file_name, .{});
+    return readRedirectFileInternal(index_dir, allocator, index_redirect_file_name);
+}
+
+pub fn readRedirectFileBackup(index_dir: std.fs.Dir, allocator: std.mem.Allocator) !IndexRedirect {
+    return readRedirectFileInternal(index_dir, allocator, index_redirect_file_name ++ ".backup");
+}
+
+fn readRedirectFileInternal(index_dir: std.fs.Dir, allocator: std.mem.Allocator, file_name: []const u8) !IndexRedirect {
+    var file = try index_dir.openFile(file_name, .{});
     defer file.close();
 
     var buffered_reader = std.io.bufferedReader(file.reader());
@@ -96,20 +105,6 @@ pub fn readRedirectFile(index_dir: std.fs.Dir, allocator: std.mem.Allocator) !In
     return try msgpack.decodeLeaky(IndexRedirect, allocator, data_stream.reader());
 }
 
-pub fn atomicBackup(dir: std.fs.Dir, comptime src: []const u8, comptime suffix: []const u8) !void {
-    const dest = src ++ suffix;
-    const tmp_dest = dest ++ ".tmp";
-    std.posix.linkat(dir.fd, src, dir.fd, tmp_dest, 0) catch |err| switch (err) {
-        error.FileNotFound => return, // File not found, nothing to backup
-        error.PathAlreadyExists => {
-            // Found existing file, delete it
-            try std.posix.unlinkat(dir.fd, tmp_dest, 0);
-            try std.posix.linkat(dir.fd, src, dir.fd, tmp_dest, 0);
-        },
-        else => return err,
-    };
-    try std.posix.renameat(dir.fd, tmp_dest, dir.fd, dest);
-}
 
 pub fn writeRedirectFile(index_dir: std.fs.Dir, redirect: IndexRedirect, allocator: std.mem.Allocator) !void {
     var buffer = std.ArrayList(u8).init(allocator);
@@ -136,10 +131,87 @@ pub fn writeRedirectFile(index_dir: std.fs.Dir, redirect: IndexRedirect, allocat
     try file.file.sync();
 
     // Create hardlink backup of existing file before finishing
-    try atomicBackup(index_dir, index_redirect_file_name, ".backup");
+    try filefmt.atomicBackup(index_dir, index_redirect_file_name, ".backup");
 
     // Final rename to replace existing file
     try file.finish();
 
     log.info("wrote index redirect: {s} (version={}, deleted={})", .{ redirect.name, redirect.version, redirect.deleted });
+}
+
+const testing = std.testing;
+
+test "IndexRedirect init" {
+    const redirect = IndexRedirect.init("test.index");
+    try testing.expectEqualStrings("test.index", redirect.name);
+    try testing.expectEqual(1, redirect.version);
+    try testing.expectEqual(false, redirect.deleted);
+}
+
+test "IndexRedirect nextVersion" {
+    const redirect = IndexRedirect.init("test.index");
+    const next = redirect.nextVersion();
+    try testing.expectEqualStrings("test.index", next.name);
+    try testing.expectEqual(2, next.version);
+    try testing.expectEqual(false, next.deleted);
+}
+
+test "IndexRedirect getDataDir" {
+    const redirect = IndexRedirect{ .name = "test", .version = 42, .deleted = false };
+    const data_dir = try redirect.getDataDir(testing.allocator);
+    defer testing.allocator.free(data_dir);
+    try testing.expectEqualStrings("data.42", data_dir);
+}
+
+test "writeRedirectFile/readRedirectFile" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const original_redirect = IndexRedirect{
+        .name = "test.index",
+        .version = 123,
+        .deleted = false,
+    };
+
+    try writeRedirectFile(tmp.dir, original_redirect, testing.allocator);
+
+    const read_redirect = try readRedirectFile(tmp.dir, testing.allocator);
+    defer testing.allocator.free(read_redirect.name);
+
+    try testing.expectEqualStrings(original_redirect.name, read_redirect.name);
+    try testing.expectEqual(original_redirect.version, read_redirect.version);
+    try testing.expectEqual(original_redirect.deleted, read_redirect.deleted);
+}
+
+test "writeRedirectFile creates backup" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const redirect1 = IndexRedirect{
+        .name = "test.index",
+        .version = 1,
+        .deleted = false,
+    };
+
+    const redirect2 = IndexRedirect{
+        .name = "test.index", 
+        .version = 2,
+        .deleted = false,
+    };
+
+    // Write first file
+    try writeRedirectFile(tmp.dir, redirect1, testing.allocator);
+
+    // Write second file (should create backup of first)
+    try writeRedirectFile(tmp.dir, redirect2, testing.allocator);
+
+    // Current file should have version 2
+    const current_redirect = try readRedirectFile(tmp.dir, testing.allocator);
+    defer testing.allocator.free(current_redirect.name);
+    try testing.expectEqual(2, current_redirect.version);
+
+    // Backup should contain version 1
+    const backup_redirect = try readRedirectFileBackup(tmp.dir, testing.allocator);
+    defer testing.allocator.free(backup_redirect.name);
+    try testing.expectEqual(1, backup_redirect.version);
 }
