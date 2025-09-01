@@ -6,6 +6,7 @@ const nats = @import("nats");
 
 const Scheduler = @import("utils/Scheduler.zig");
 const MultiIndex = @import("MultiIndex.zig");
+const ClusterMultiIndex = @import("ClusterMultiIndex.zig");
 const server = @import("server.zig");
 const metrics = @import("metrics.zig");
 
@@ -101,17 +102,6 @@ pub fn main() !void {
     const parallel_loading_threshold = try std.fmt.parseInt(usize, parallel_loading_threshold_str, 10);
     log.info("using parallel loading threshold of {}", .{parallel_loading_threshold});
 
-    const cluster_mode = args.contains("cluster");
-    if (cluster_mode) {
-        const url = args.get("nats-url") orelse "nats://localhost:4222";
-        log.info("connecting to NATS at {s}", .{url});
-
-        var nc = nats.Connection.init(allocator, .{});
-        defer nc.deinit();
-
-        try nc.connect(url);
-    }
-
     try metrics.initializeMetrics(allocator, .{ .prefix = "aindex_" });
     defer metrics.deinitMetrics();
 
@@ -127,7 +117,24 @@ pub fn main() !void {
 
     try indexes.open();
 
-    try server.run(allocator, &indexes, address, port, threads);
+    const cluster_mode = args.contains("cluster");
+    if (!cluster_mode) {
+        try server.run(allocator, &indexes, address, port, threads);
+        return;
+    }
+
+    const url = args.get("nats-url") orelse "nats://localhost:4222";
+    log.info("connecting to NATS at {s}", .{url});
+
+    var nc = nats.Connection.init(allocator, .{});
+    defer nc.deinit();
+
+    try nc.connect(url);
+
+    var cluster = ClusterMultiIndex.init(allocator, &nc, &indexes);
+    defer cluster.deinit();
+
+    try server.run(allocator, &cluster, address, port, threads);
 }
 
 test {
