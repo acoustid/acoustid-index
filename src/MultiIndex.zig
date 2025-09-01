@@ -187,7 +187,7 @@ fn createNewIndex(self: *Self, original_name: []const u8) !*IndexRef {
     errdefer ref.redirect.deleted = true;
 
     if (!found_existing) {
-        ref.index_dir = try self.dir.makeOpenPath(name, .{});
+        ref.index_dir = try self.dir.makeOpenPath(name, .{ .iterate = true });
     }
     errdefer if (!found_existing) {
         ref.index_dir.close();
@@ -217,7 +217,7 @@ fn createNewIndex(self: *Self, original_name: []const u8) !*IndexRef {
     try ref.index.value.open(true);
 
     log.debug("Index {s} created successfully", .{ref.redirect.name});
-    try index_redirect.writeRedirectFile(ref.index_dir, ref.redirect);
+    try index_redirect.writeRedirectFile(ref.index_dir, ref.redirect, self.allocator);
 
     return ref;
 }
@@ -525,7 +525,7 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
     index_ref.redirect.deleted = true;
     errdefer index_ref.redirect.deleted = false;
 
-    index_redirect.writeRedirectFile(index_ref.index_dir, index_ref.redirect) catch |err| {
+    index_redirect.writeRedirectFile(index_ref.index_dir, index_ref.redirect, self.allocator) catch |err| {
         log.err("failed to mark redirect as deleted for index {s}: {}", .{ name, err });
         return err;
     };
