@@ -119,6 +119,18 @@ pub fn writeRedirectFile(index_dir: std.fs.Dir, redirect: IndexRedirect, allocat
     try buffered_writer.flush();
 
     try file.file.sync();
+    
+    // Create hardlink backup of existing file before finishing
+    const backup_name = index_redirect_file_name ++ ".backup";
+    std.posix.linkat(index_dir.fd, index_redirect_file_name, index_dir.fd, backup_name, 0) catch |err| switch (err) {
+        error.FileNotFound => {}, // No existing file to backup
+        error.PathAlreadyExists => {
+            try index_dir.deleteFile(backup_name);
+            try std.posix.linkat(index_dir.fd, index_redirect_file_name, index_dir.fd, backup_name, 0);
+        },
+        else => return err,
+    };
+    
     try file.finish();
 
     log.info("wrote index redirect: {s} (version={}, deleted={})", .{ redirect.name, redirect.version, redirect.deleted });
