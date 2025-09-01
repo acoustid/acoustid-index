@@ -3,6 +3,7 @@ const std = @import("std");
 const IndexReader = @import("IndexReader.zig");
 const Index = @import("Index.zig");
 const filefmt = @import("filefmt.zig");
+const index_manifest = @import("index_manifest.zig");
 const SegmentInfo = @import("segment.zig").SegmentInfo;
 const Scheduler = @import("utils/Scheduler.zig");
 
@@ -178,7 +179,7 @@ fn addManifestToSnapshot(writer: anytype, index_reader: *const IndexReader, allo
     defer manifest_data.deinit();
 
     const msgpack_writer = manifest_data.writer();
-    try filefmt.encodeManifestData(segment_infos.items, msgpack_writer);
+    try index_manifest.encodeManifestData(segment_infos.items, msgpack_writer, allocator);
 
     // Add to tar
     try writer.writeFileBytes(filefmt.manifest_file_name, manifest_data.items, .{});

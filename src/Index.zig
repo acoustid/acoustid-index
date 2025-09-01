@@ -35,6 +35,7 @@ const SegmentMerger = @import("segment_merger.zig").SegmentMerger;
 const TieredMergePolicy = @import("segment_merge_policy.zig").TieredMergePolicy;
 
 const filefmt = @import("filefmt.zig");
+const index_manifest = @import("index_manifest.zig");
 
 const metrics = @import("metrics.zig");
 const Self = @This();
@@ -231,7 +232,7 @@ fn updateManifestFile(self: *Self, segments: *FileSegmentList) !void {
         infos[i] = node.value.info;
     }
 
-    try filefmt.writeManifestFile(self.dir, infos);
+    try index_manifest.writeManifestFile(self.dir, infos, self.allocator);
 }
 
 fn maybeMergeFileSegments(self: *Self) !bool {
@@ -285,7 +286,7 @@ fn maybeMergeMemorySegments(self: *Self) !bool {
 }
 
 pub fn open(self: *Self, create: bool) !void {
-    const manifest = filefmt.readManifestFile(self.dir, self.allocator) catch |err| {
+    const manifest = index_manifest.readManifestFile(self.dir, self.allocator) catch |err| {
         if (err == error.FileNotFound) {
             if (create) {
                 try self.updateManifestFile(self.file_segments.segments.value);
@@ -296,7 +297,6 @@ pub fn open(self: *Self, create: bool) !void {
         }
         return err;
     };
-    errdefer self.allocator.free(manifest);
 
     try self.load(manifest);
 }

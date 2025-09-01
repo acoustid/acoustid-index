@@ -288,6 +288,21 @@ pub fn writeSegmentFile(dir: std.fs.Dir, reader: anytype) !void {
     });
 }
 
+pub fn atomicBackup(dir: std.fs.Dir, comptime src: []const u8, comptime suffix: []const u8) !void {
+    const dest = src ++ suffix;
+    const tmp_dest = dest ++ ".tmp";
+    std.posix.linkat(dir.fd, src, dir.fd, tmp_dest, 0) catch |err| switch (err) {
+        error.FileNotFound => return, // File not found, nothing to backup
+        error.PathAlreadyExists => {
+            // Found existing file, delete it
+            try std.posix.unlinkat(dir.fd, tmp_dest, 0);
+            try std.posix.linkat(dir.fd, src, dir.fd, tmp_dest, 0);
+        },
+        else => return err,
+    };
+    try std.posix.renameat(dir.fd, tmp_dest, dir.fd, dest);
+}
+
 pub fn readSegmentFile(dir: fs.Dir, info: SegmentInfo, segment: *FileSegment) !void {
     var file_name_buf: [max_file_name_size]u8 = undefined;
     const file_name = buildSegmentFileName(&file_name_buf, info);
@@ -469,58 +484,6 @@ test "writeFile/readFile" {
     }
 }
 
-const manifest_header_magic_v1: u32 = 0x49445831; // "IDX1" in big endian
-
-const ManifestFileHeader = struct {
-    magic: u32 = manifest_header_magic_v1,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .field_index } };
-    }
-};
-
-pub fn encodeManifestData(segments: []const SegmentInfo, writer: anytype) !void {
-    try msgpack.encode(ManifestFileHeader{}, writer);
-    try msgpack.encode(segments, writer);
-}
-
-pub fn writeManifestFile(dir: std.fs.Dir, segments: []const SegmentInfo) !void {
-    log.info("writing manifest file {s}", .{manifest_file_name});
-
-    var file = try dir.atomicFile(manifest_file_name, .{});
-    defer file.deinit();
-
-    var buffered_writer = std.io.bufferedWriter(file.file.writer());
-    const writer = buffered_writer.writer();
-
-    try encodeManifestData(segments, writer);
-    try buffered_writer.flush();
-
-    try file.file.sync();
-    try file.finish();
-
-    log.info("wrote index file {s} (segments = {})", .{
-        manifest_file_name,
-        segments.len,
-    });
-}
-
-pub fn readManifestFile(dir: std.fs.Dir, allocator: std.mem.Allocator) ![]SegmentInfo {
-    log.info("reading manifest file {s}", .{manifest_file_name});
-
-    var file = try dir.openFile(manifest_file_name, .{});
-    defer file.close();
-
-    var buffered_reader = std.io.bufferedReader(file.reader());
-    const reader = buffered_reader.reader();
-
-    const header = try msgpack.decodeLeaky(ManifestFileHeader, null, reader);
-    if (header.magic != manifest_header_magic_v1) {
-        return error.InvalidManifestFile;
-    }
-
-    return try msgpack.decodeLeaky([]SegmentInfo, allocator, reader);
-}
 
 test "parseSegmentFileName" {
     // Valid cases
@@ -579,20 +542,92 @@ test "isManifestFileName" {
     try testing.expect(!isManifestFileName("dir/manifest"));
 }
 
-test "readIndexFile/writeIndexFile" {
+test "atomicBackup file not found" {
     var tmp = testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const segments = [_]SegmentInfo{
-        .{ .version = 1, .merges = 0 },
-        .{ .version = 2, .merges = 1 },
-        .{ .version = 4, .merges = 0 },
+    // Backup non-existent file should succeed without error
+    try atomicBackup(tmp.dir, "nonexistent", ".backup");
+
+    // Backup file should not be created
+    _ = tmp.dir.openFile("nonexistent.backup", .{}) catch |err| switch (err) {
+        error.FileNotFound => return, // Expected
+        else => return err,
     };
-
-    try writeManifestFile(tmp.dir, &segments);
-
-    const segments2 = try readManifestFile(tmp.dir, std.testing.allocator);
-    defer std.testing.allocator.free(segments2);
-
-    try testing.expectEqualSlices(SegmentInfo, &segments, segments2);
 }
+
+test "atomicBackup creates backup" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const original_content = "test content";
+
+    // Create original file
+    {
+        var file = try tmp.dir.createFile("original", .{});
+        defer file.close();
+        try file.writeAll(original_content);
+    }
+
+    // Create backup
+    try atomicBackup(tmp.dir, "original", ".backup");
+
+    // Verify backup exists and has correct content
+    {
+        var backup_file = try tmp.dir.openFile("original.backup", .{});
+        defer backup_file.close();
+        
+        const backup_content = try backup_file.readToEndAlloc(testing.allocator, 1024);
+        defer testing.allocator.free(backup_content);
+        
+        try testing.expectEqualStrings(original_content, backup_content);
+    }
+
+    // Original file should still exist
+    {
+        var original_file = try tmp.dir.openFile("original", .{});
+        defer original_file.close();
+        
+        const content = try original_file.readToEndAlloc(testing.allocator, 1024);
+        defer testing.allocator.free(content);
+        
+        try testing.expectEqualStrings(original_content, content);
+    }
+}
+
+test "atomicBackup overwrites existing backup" {
+    var tmp = testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const original_content = "new content";
+    const old_backup_content = "old backup content";
+
+    // Create original file
+    {
+        var file = try tmp.dir.createFile("original", .{});
+        defer file.close();
+        try file.writeAll(original_content);
+    }
+
+    // Create old backup file
+    {
+        var backup_file = try tmp.dir.createFile("original.backup", .{});
+        defer backup_file.close();
+        try backup_file.writeAll(old_backup_content);
+    }
+
+    // Create new backup (should overwrite old one)
+    try atomicBackup(tmp.dir, "original", ".backup");
+
+    // Verify backup has new content (from original file)
+    {
+        var backup_file = try tmp.dir.openFile("original.backup", .{});
+        defer backup_file.close();
+        
+        const backup_content = try backup_file.readToEndAlloc(testing.allocator, 1024);
+        defer testing.allocator.free(backup_content);
+        
+        try testing.expectEqualStrings(original_content, backup_content);
+    }
+}
+
