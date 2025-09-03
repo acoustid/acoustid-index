@@ -21,8 +21,8 @@
             .hash = "msgpack-0.3.0-ZOu9PO3MAQDvMwnQWWG6_tskPegFXF7gV9OA7EyMwEai",
         },
         .nats = .{
-            .url = "git+https://github.com/lalinsky/nats.zig#3bcc42e6d5e9938f9faa377551756c7a154be312",
-            .hash = "nats-0.0.0-JvIiUMwTBADf2A8GRS1AQYOp_RIWDMH0iCsDAv8MYJl8",
+            .url = "git+https://github.com/lalinsky/nats.zig#ab3ce62d6ad2fceb34f7e5413a3bffefd44e1144",
+            .hash = "nats-0.0.0-JvIiULyNBAAis2MG7akSG6rkSVxVURgzcyWWAQLRng7I",
         },
     },
     .paths = .{

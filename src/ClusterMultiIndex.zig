@@ -64,7 +64,11 @@ pub fn update(
     index_name: []const u8,
     request: api.UpdateRequest,
 ) !api.UpdateResponse {
-    return self.local_indexes.update(allocator, index_name, request);
+    // Publish to NATS - local application will happen via consumer
+    try self.publishUpdate(allocator, index_name, request);
+    
+    // Return a placeholder response - proper version will come from consumer processing
+    return api.UpdateResponse{ .version = 1 };
 }
 
 pub fn getIndexInfo(
@@ -134,4 +138,12 @@ fn deleteStream(self: *Self, index_name: []const u8) !void {
     const stream_name = try getStreamName(arena.allocator(), index_name);
     
     try self.js.deleteStream(stream_name);
+}
+
+fn publishUpdate(self: *Self, allocator: std.mem.Allocator, index_name: []const u8, request: api.UpdateRequest) !void {
+    _ = self;
+    _ = allocator;
+    _ = index_name;
+    _ = request;
+    // TODO: Implement NATS publish with sequence return
 }
