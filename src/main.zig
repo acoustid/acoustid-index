@@ -133,6 +133,9 @@ pub fn main() !void {
 
     var cluster = ClusterMultiIndex.init(allocator, &nc, &indexes);
     defer cluster.deinit();
+    
+    // Start consumer thread
+    try cluster.start();
 
     try server.run(ClusterMultiIndex, allocator, &cluster, address, port, threads);
 }

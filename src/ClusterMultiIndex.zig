@@ -40,6 +40,10 @@ nats_connection: *nats.Connection,
 js: nats.JetStream,
 local_indexes: *MultiIndex,
 
+// Consumer thread management
+consumer_thread: ?std.Thread = null,
+stopping: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+
 pub fn init(allocator: std.mem.Allocator, nats_connection: *nats.Connection, local_indexes: *MultiIndex) Self {
     const js = nats_connection.jetstream(.{});
     return .{
@@ -51,7 +55,28 @@ pub fn init(allocator: std.mem.Allocator, nats_connection: *nats.Connection, loc
 }
 
 pub fn deinit(self: *Self) void {
-    _ = self;
+    // Ensure thread is stopped
+    self.stop();
+}
+
+pub fn start(self: *Self) !void {
+    if (self.consumer_thread != null) {
+        return; // Already started
+    }
+    
+    // Start consumer thread
+    self.consumer_thread = try std.Thread.spawn(.{}, consumerThreadFn, .{self});
+}
+
+pub fn stop(self: *Self) void {
+    // Signal stop
+    self.stopping.store(true, .monotonic);
+    
+    // Wait for thread to finish
+    if (self.consumer_thread) |thread| {
+        thread.join();
+        self.consumer_thread = null;
+    }
 }
 
 pub fn createIndex(
@@ -186,4 +211,12 @@ fn publishOperation(self: *Self, allocator: std.mem.Allocator, index_name: []con
     defer result.deinit();
     
     return result.value.seq;
+}
+
+fn consumerThreadFn(self: *Self) void {
+    // TODO: Implement consumer logic
+    // For now, just sleep and check for stop signal
+    while (!self.stopping.load(.monotonic)) {
+        std.time.sleep(std.time.ns_per_s); // Sleep for 1 second
+    }
 }
