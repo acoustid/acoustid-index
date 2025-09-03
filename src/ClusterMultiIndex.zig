@@ -207,6 +207,8 @@ fn getSubject(allocator: std.mem.Allocator, index_name: []const u8) ![]const u8 
 }
 
 fn createStream(self: *Self, allocator: std.mem.Allocator, index_name: []const u8) !void {
+    const log = std.log.scoped(.cluster);
+    
     const stream_name = try getStreamName(allocator, index_name);
     defer allocator.free(stream_name);
     
@@ -223,7 +225,15 @@ fn createStream(self: *Self, allocator: std.mem.Allocator, index_name: []const u
         .num_replicas = 1, // Start with 1 replica for simplicity
     };
     
-    _ = try self.js.addStream(stream_config);
+    const result = self.js.addStream(stream_config) catch |err| switch (err) {
+        // Stream already exists - this is OK, just continue
+        error.JetStreamError => {
+            log.info("Stream '{s}' already exists, continuing", .{stream_name});
+            return;
+        },
+        else => return err,
+    };
+    result.deinit(); // Clean up the result
 }
 
 fn deleteStream(self: *Self, index_name: []const u8) !void {
@@ -313,7 +323,7 @@ fn startConsumingIndex(self: *Self, index_name: []const u8) !void {
     // Store subscription for cleanup - need owned copy for callback too
     const index_name_owned = try self.allocator.dupe(u8, index_name);
     
-    // Create the subscription with callback using owned copy
+    // Create the subscription with callback using owned copy  
     const subscription = try self.js.subscribe(stream_name, consumer_config, messageHandler, .{ self, index_name_owned });
     
     try self.subscriptions.put(index_name_owned, subscription);
