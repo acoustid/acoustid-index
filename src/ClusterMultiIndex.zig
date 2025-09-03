@@ -9,12 +9,15 @@ const Self = @This();
 
 allocator: std.mem.Allocator,
 nats_connection: *nats.Connection,
+js: nats.JetStream,
 local_indexes: *MultiIndex,
 
 pub fn init(allocator: std.mem.Allocator, nats_connection: *nats.Connection, local_indexes: *MultiIndex) Self {
+    const js = nats_connection.jetstream(.{});
     return .{
         .allocator = allocator,
         .nats_connection = nats_connection,
+        .js = js,
         .local_indexes = local_indexes,
     };
 }
