@@ -137,7 +137,10 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
     // Publish delete operation to NATS (will be handled by consumer)
     _ = try self.publishOperation(arena.allocator(), name, Operation{ .delete = DeleteIndexOp{} });
     
-    // Delete NATS stream after publishing delete operation
+    // Stop consumer subscription for this index
+    try self.stopConsumingIndex(name);
+    
+    // Delete NATS stream after stopping consumer
     try self.deleteStream(name);
 }
 
@@ -418,4 +421,25 @@ fn discoverAndStartConsumers(self: *Self) !void {
     }
     
     log.info("Stream discovery completed", .{});
+}
+
+fn stopConsumingIndex(self: *Self, index_name: []const u8) !void {
+    const log = std.log.scoped(.consumer);
+    
+    self.queues_mutex.lock();
+    defer self.queues_mutex.unlock();
+    
+    // Stop and clean up subscription
+    if (self.subscriptions.fetchRemove(index_name)) |entry| {
+        const subscription = entry.value;
+        log.info("Stopping consumer for index '{s}'", .{index_name});
+        subscription.deinit();
+        self.allocator.free(entry.key); // Free the owned key
+    }
+    
+    // Remove and clean up message queue
+    if (self.queues.fetchRemove(index_name)) |entry| {
+        entry.value.deinit();
+        self.allocator.free(entry.key); // Free the owned key
+    }
 }
