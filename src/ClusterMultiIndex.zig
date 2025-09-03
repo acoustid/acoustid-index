@@ -122,8 +122,8 @@ pub fn createIndex(
     // Start consuming from this stream
     try self.startConsumingIndex(index_name);
     
-    // Publish create operation to NATS (will be handled by consumer)
-    const seq = try self.publishOperation(allocator, index_name, Operation{ .create = CreateIndexOp{} });
+    // Publish create operation to NATS - ensure it's the first message (expected seq 0)
+    const seq = try self.publishOperationWithExpectedSeq(allocator, index_name, Operation{ .create = CreateIndexOp{} }, 0);
     
     // Return response with NATS sequence as version
     return api.CreateIndexResponse{ .version = seq };
@@ -246,6 +246,10 @@ fn deleteStream(self: *Self, index_name: []const u8) !void {
 }
 
 fn publishOperation(self: *Self, allocator: std.mem.Allocator, index_name: []const u8, operation: Operation) !u64 {
+    return self.publishOperationWithExpectedSeq(allocator, index_name, operation, null);
+}
+
+fn publishOperationWithExpectedSeq(self: *Self, allocator: std.mem.Allocator, index_name: []const u8, operation: Operation, expected_last_seq: ?u64) !u64 {
     const subject = try getSubject(allocator, index_name);
     defer allocator.free(subject);
     
@@ -254,8 +258,10 @@ fn publishOperation(self: *Self, allocator: std.mem.Allocator, index_name: []con
     defer buf.deinit();
     try msgpack.encode(operation, buf.writer());
     
-    // Publish to NATS JetStream
-    const result = try self.js.publish(subject, buf.items, .{});
+    // Publish to NATS JetStream with optional sequence check
+    const result = try self.js.publish(subject, buf.items, .{
+        .expected_last_seq = expected_last_seq,
+    });
     defer result.deinit();
     
     return result.value.seq;
