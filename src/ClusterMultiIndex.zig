@@ -1,5 +1,6 @@
 const std = @import("std");
 const nats = @import("nats");
+const msgpack = @import("msgpack");
 
 const MultiIndex = @import("MultiIndex.zig");
 const Index = @import("Index.zig");
@@ -65,10 +66,10 @@ pub fn update(
     request: api.UpdateRequest,
 ) !api.UpdateResponse {
     // Publish to NATS - local application will happen via consumer
-    try self.publishUpdate(allocator, index_name, request);
+    const seq = try self.publishUpdate(allocator, index_name, request);
     
-    // Return a placeholder response - proper version will come from consumer processing
-    return api.UpdateResponse{ .version = 1 };
+    // Return response with the NATS sequence as version
+    return api.UpdateResponse{ .version = seq };
 }
 
 pub fn getIndexInfo(
@@ -140,10 +141,18 @@ fn deleteStream(self: *Self, index_name: []const u8) !void {
     try self.js.deleteStream(stream_name);
 }
 
-fn publishUpdate(self: *Self, allocator: std.mem.Allocator, index_name: []const u8, request: api.UpdateRequest) !void {
-    _ = self;
-    _ = allocator;
-    _ = index_name;
-    _ = request;
-    // TODO: Implement NATS publish with sequence return
+fn publishUpdate(self: *Self, allocator: std.mem.Allocator, index_name: []const u8, request: api.UpdateRequest) !u64 {
+    const subject = try getSubject(allocator, index_name);
+    defer allocator.free(subject);
+    
+    // Encode the update request as msgpack to byte array
+    var buf = std.ArrayList(u8).init(allocator);
+    defer buf.deinit();
+    try msgpack.encode(request, buf.writer());
+    
+    // Publish to NATS JetStream
+    const result = try self.js.publish(subject, buf.items, .{});
+    defer result.deinit();
+    
+    return result.value.seq;
 }
