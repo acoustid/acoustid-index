@@ -8,6 +8,9 @@ const api = @import("api.zig");
 
 const Self = @This();
 
+// Message queue type
+const MessageQueue = std.fifo.LinearFifo(*nats.JetStreamMessage, .Dynamic);
+
 // Operation types for NATS messages
 const CreateIndexOp = struct {
     // Empty for now - just indicates index should be created
@@ -40,9 +43,15 @@ nats_connection: *nats.Connection,
 js: nats.JetStream,
 local_indexes: *MultiIndex,
 
-// Consumer thread management
-consumer_thread: ?std.Thread = null,
+// Message processing infrastructure
+processor_thread: ?std.Thread = null,
 stopping: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+
+// Per-index message queues and subscriptions
+queues: std.StringHashMap(MessageQueue),
+queues_mutex: std.Thread.Mutex = .{},
+processor_cond: std.Thread.Condition = .{},
+subscriptions: std.StringHashMap(*nats.Subscription),
 
 pub fn init(allocator: std.mem.Allocator, nats_connection: *nats.Connection, local_indexes: *MultiIndex) Self {
     const js = nats_connection.jetstream(.{});
@@ -51,31 +60,47 @@ pub fn init(allocator: std.mem.Allocator, nats_connection: *nats.Connection, loc
         .nats_connection = nats_connection,
         .js = js,
         .local_indexes = local_indexes,
+        .queues = std.StringHashMap(MessageQueue).init(allocator),
+        .subscriptions = std.StringHashMap(*nats.Subscription).init(allocator),
     };
 }
 
 pub fn deinit(self: *Self) void {
     // Ensure thread is stopped
     self.stop();
+    
+    // Clean up queues and subscriptions
+    var queue_it = self.queues.iterator();
+    while (queue_it.next()) |entry| {
+        entry.value_ptr.deinit();
+    }
+    self.queues.deinit();
+    self.subscriptions.deinit();
 }
 
 pub fn start(self: *Self) !void {
-    if (self.consumer_thread != null) {
+    if (self.processor_thread != null) {
         return; // Already started
     }
     
-    // Start consumer thread
-    self.consumer_thread = try std.Thread.spawn(.{}, consumerThreadFn, .{self});
+    // Start message processor thread  
+    self.processor_thread = try std.Thread.spawn(.{}, processorThreadFn, .{self});
+    
+    // For now, start consuming from hardcoded "test" index
+    try self.startConsumingIndex("test");
 }
 
 pub fn stop(self: *Self) void {
     // Signal stop
     self.stopping.store(true, .monotonic);
     
+    // Wake up processor thread
+    self.processor_cond.signal();
+    
     // Wait for thread to finish
-    if (self.consumer_thread) |thread| {
+    if (self.processor_thread) |thread| {
         thread.join();
-        self.consumer_thread = null;
+        self.processor_thread = null;
     }
 }
 
@@ -213,10 +238,109 @@ fn publishOperation(self: *Self, allocator: std.mem.Allocator, index_name: []con
     return result.value.seq;
 }
 
-fn consumerThreadFn(self: *Self) void {
-    // TODO: Implement consumer logic
-    // For now, just sleep and check for stop signal
+fn processorThreadFn(self: *Self) void {
+    const log = std.log.scoped(.processor);
+    log.info("Message processor thread started", .{});
+    
     while (!self.stopping.load(.monotonic)) {
-        std.time.sleep(std.time.ns_per_s); // Sleep for 1 second
+        // Lock queues and wait for messages
+        self.queues_mutex.lock();
+        defer self.queues_mutex.unlock();
+        
+        // Process all queued messages
+        var has_messages = false;
+        var queue_it = self.queues.iterator();
+        while (queue_it.next()) |entry| {
+            const index_name = entry.key_ptr.*;
+            const queue = entry.value_ptr;
+            
+            while (queue.readItem()) |msg| {
+                has_messages = true;
+                self.processMessage(index_name, msg) catch |err| {
+                    log.err("Failed to process message for index '{s}': {}", .{ index_name, err });
+                };
+            }
+        }
+        
+        // If no messages, wait for signal
+        if (!has_messages and !self.stopping.load(.monotonic)) {
+            self.processor_cond.wait(&self.queues_mutex);
+        }
+    }
+    
+    log.info("Message processor thread stopped", .{});
+}
+
+fn startConsumingIndex(self: *Self, index_name: []const u8) !void {
+    const log = std.log.scoped(.consumer);
+    
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
+    
+    const subject = try getSubject(arena.allocator(), index_name);
+    
+    // Create queue for this index
+    self.queues_mutex.lock();
+    defer self.queues_mutex.unlock();
+    
+    const queue = MessageQueue.init(self.allocator);
+    try self.queues.put(try self.allocator.dupe(u8, index_name), queue);
+    
+    // Subscribe with callback (this is a placeholder - need to implement with proper NATS API)
+    log.info("Started consuming index '{s}' on subject '{s}'", .{ index_name, subject });
+}
+
+fn messageCallback(self: *Self, index_name: []const u8, msg: *nats.JetStreamMessage) void {
+    // Queue the message
+    self.queues_mutex.lock();
+    defer self.queues_mutex.unlock();
+    
+    if (self.queues.getPtr(index_name)) |queue| {
+        queue.writeItem(msg) catch {
+            // Queue full - could log warning or implement backpressure
+        };
+        self.processor_cond.signal();
+    }
+}
+
+fn processMessage(self: *Self, index_name: []const u8, msg: *nats.JetStreamMessage) !void {
+    const log = std.log.scoped(.processor);
+    
+    // Decode the operation
+    const operation = msgpack.decodeFromSliceLeaky(Operation, self.allocator, msg.msg.data) catch |err| {
+        log.err("Failed to decode operation for index '{s}': {}", .{ index_name, err });
+        try msg.nak();
+        return err;
+    };
+    defer if (@hasDecl(Operation, "deinit")) operation.deinit();
+    
+    // Process the operation
+    self.processOperation(index_name, operation) catch |err| {
+        log.err("Failed to process operation for index '{s}': {}", .{ index_name, err });
+        try msg.nak();
+        return err;
+    };
+    
+    // Acknowledge successful processing
+    try msg.ack();
+    log.debug("Processed operation for index '{s}' at sequence {?}", .{ index_name, msg.metadata.sequence.stream });
+}
+
+fn processOperation(self: *Self, index_name: []const u8, operation: Operation) !void {
+    const log = std.log.scoped(.consumer);
+    
+    switch (operation) {
+        .create => {
+            log.info("Creating index '{s}' locally", .{index_name});
+            _ = try self.local_indexes.createIndex(self.allocator, index_name);
+        },
+        .delete => {
+            log.info("Deleting index '{s}' locally", .{index_name});
+            try self.local_indexes.deleteIndex(index_name);
+        },
+        .update => |request| {
+            log.debug("Applying update to index '{s}' locally", .{index_name});
+            _ = try self.local_indexes.update(self.allocator, index_name, request);
+        },
     }
 }
