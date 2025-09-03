@@ -8,6 +8,33 @@ const api = @import("api.zig");
 
 const Self = @This();
 
+// Operation types for NATS messages
+const CreateIndexOp = struct {
+    // Empty for now - just indicates index should be created
+    
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+const DeleteIndexOp = struct {
+    // Empty for now - just indicates index should be deleted
+    
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+const Operation = union(enum) {
+    create: CreateIndexOp,
+    delete: DeleteIndexOp,
+    update: api.UpdateRequest,
+    
+    pub fn msgpackFormat() msgpack.UnionFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
 allocator: std.mem.Allocator,
 nats_connection: *nats.Connection,
 js: nats.JetStream,
@@ -36,17 +63,21 @@ pub fn createIndex(
     try self.createStream(allocator, index_name);
     
     // Publish create operation to NATS (will be handled by consumer)
-    // TODO: Publish create index message
+    const seq = try self.publishOperation(allocator, index_name, Operation{ .create = CreateIndexOp{} });
     
-    // For now, return a dummy response - this will be proper once consumers are working
-    return api.CreateIndexResponse{ .version = 1 };
+    // Return response with NATS sequence as version
+    return api.CreateIndexResponse{ .version = seq };
 }
 
 pub fn deleteIndex(self: *Self, name: []const u8) !void {
-    // Publish delete operation to NATS (will be handled by consumer)
-    // TODO: Publish delete index message
+    // Use arena allocator for temporary allocation
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
     
-    // Delete NATS stream
+    // Publish delete operation to NATS (will be handled by consumer)
+    _ = try self.publishOperation(arena.allocator(), name, Operation{ .delete = DeleteIndexOp{} });
+    
+    // Delete NATS stream after publishing delete operation
     try self.deleteStream(name);
 }
 
@@ -66,7 +97,7 @@ pub fn update(
     request: api.UpdateRequest,
 ) !api.UpdateResponse {
     // Publish to NATS - local application will happen via consumer
-    const seq = try self.publishUpdate(allocator, index_name, request);
+    const seq = try self.publishOperation(allocator, index_name, Operation{ .update = request });
     
     // Return response with the NATS sequence as version
     return api.UpdateResponse{ .version = seq };
@@ -141,14 +172,14 @@ fn deleteStream(self: *Self, index_name: []const u8) !void {
     try self.js.deleteStream(stream_name);
 }
 
-fn publishUpdate(self: *Self, allocator: std.mem.Allocator, index_name: []const u8, request: api.UpdateRequest) !u64 {
+fn publishOperation(self: *Self, allocator: std.mem.Allocator, index_name: []const u8, operation: Operation) !u64 {
     const subject = try getSubject(allocator, index_name);
     defer allocator.free(subject);
     
-    // Encode the update request as msgpack to byte array
+    // Encode the operation as msgpack to byte array
     var buf = std.ArrayList(u8).init(allocator);
     defer buf.deinit();
-    try msgpack.encode(request, buf.writer());
+    try msgpack.encode(operation, buf.writer());
     
     // Publish to NATS JetStream
     const result = try self.js.publish(subject, buf.items, .{});
