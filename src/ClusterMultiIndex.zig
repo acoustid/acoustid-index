@@ -1,6 +1,7 @@
 const std = @import("std");
 const nats = @import("nats");
 const msgpack = @import("msgpack");
+const inbox = @import("nats").inbox;
 
 const MultiIndex = @import("MultiIndex.zig");
 const Index = @import("Index.zig");
@@ -51,7 +52,7 @@ stopping: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 queues: std.StringHashMap(MessageQueue),
 queues_mutex: std.Thread.Mutex = .{},
 processor_cond: std.Thread.Condition = .{},
-subscriptions: std.StringHashMap(*nats.Subscription),
+subscriptions: std.StringHashMap(*nats.JetStreamSubscription),
 
 pub fn init(allocator: std.mem.Allocator, nats_connection: *nats.Connection, local_indexes: *MultiIndex) Self {
     const js = nats_connection.jetstream(.{});
@@ -61,7 +62,7 @@ pub fn init(allocator: std.mem.Allocator, nats_connection: *nats.Connection, loc
         .js = js,
         .local_indexes = local_indexes,
         .queues = std.StringHashMap(MessageQueue).init(allocator),
-        .subscriptions = std.StringHashMap(*nats.Subscription).init(allocator),
+        .subscriptions = std.StringHashMap(*nats.JetStreamSubscription).init(allocator),
     };
 }
 
@@ -93,6 +94,12 @@ pub fn start(self: *Self) !void {
 pub fn stop(self: *Self) void {
     // Signal stop
     self.stopping.store(true, .monotonic);
+    
+    // Stop all subscriptions
+    var sub_it = self.subscriptions.iterator();
+    while (sub_it.next()) |entry| {
+        entry.value_ptr.*.deinit();
+    }
     
     // Wake up processor thread
     self.processor_cond.signal();
@@ -277,7 +284,10 @@ fn startConsumingIndex(self: *Self, index_name: []const u8) !void {
     var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
     
-    const subject = try getSubject(arena.allocator(), index_name);
+    const stream_name = try getStreamName(arena.allocator(), index_name);
+    
+    // Create unique deliver subject for this consumer  
+    const deliver_subject = try inbox.newInbox(arena.allocator());
     
     // Create queue for this index
     self.queues_mutex.lock();
@@ -286,11 +296,25 @@ fn startConsumingIndex(self: *Self, index_name: []const u8) !void {
     const queue = MessageQueue.init(self.allocator);
     try self.queues.put(try self.allocator.dupe(u8, index_name), queue);
     
-    // Subscribe with callback (this is a placeholder - need to implement with proper NATS API)
-    log.info("Started consuming index '{s}' on subject '{s}'", .{ index_name, subject });
+    // Create consumer config for push subscription
+    const consumer_config = nats.ConsumerConfig{
+        .durable_name = try std.fmt.allocPrint(arena.allocator(), "fpindex-{s}", .{index_name}),
+        .deliver_policy = .all,
+        .ack_policy = .explicit,
+        .deliver_subject = deliver_subject,
+    };
+    
+    // Create the subscription with callback
+    const subscription = try self.js.subscribe(stream_name, consumer_config, messageHandler, .{ self, index_name });
+    
+    // Store subscription for cleanup
+    const index_name_owned = try self.allocator.dupe(u8, index_name);
+    try self.subscriptions.put(index_name_owned, subscription);
+    
+    log.info("Started consuming index '{s}' on stream '{s}' -> deliver '{s}'", .{ index_name, stream_name, deliver_subject });
 }
 
-fn messageCallback(self: *Self, index_name: []const u8, msg: *nats.JetStreamMessage) void {
+fn messageHandler(msg: *nats.JetStreamMessage, self: *Self, index_name: []const u8) void {
     // Queue the message
     self.queues_mutex.lock();
     defer self.queues_mutex.unlock();
@@ -298,8 +322,14 @@ fn messageCallback(self: *Self, index_name: []const u8, msg: *nats.JetStreamMess
     if (self.queues.getPtr(index_name)) |queue| {
         queue.writeItem(msg) catch {
             // Queue full - could log warning or implement backpressure
+            std.log.warn("Queue full for index '{s}', dropping message", .{index_name});
+            msg.deinit(); // Clean up message if we can't queue it
+            return;
         };
         self.processor_cond.signal();
+    } else {
+        std.log.warn("No queue found for index '{s}', dropping message", .{index_name});
+        msg.deinit(); // Clean up message if no queue
     }
 }
 
