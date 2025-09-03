@@ -116,13 +116,31 @@ pub fn createIndex(
     allocator: std.mem.Allocator,
     index_name: []const u8,
 ) !api.CreateIndexResponse {
+    const stream_name = try getStreamName(allocator, index_name);
+    defer allocator.free(stream_name);
+    
+    // Check if stream already exists for idempotent behavior
+    if (self.js.getStreamInfo(stream_name)) |existing_stream| {
+        defer existing_stream.deinit();
+        // Stream exists, this is idempotent PUT - return existing version
+        return api.CreateIndexResponse{ .version = existing_stream.value.state.last_seq };
+    } else |err| switch (err) {
+        // Stream doesn't exist, continue with creation
+        error.JetStreamError => {},
+        else => return err,
+    }
+    
     // Create NATS stream
     try self.createStream(allocator, index_name);
     
-    // Start consuming from this stream
-    try self.startConsumingIndex(index_name);
+    // Start consuming from this stream (ignore if already consuming)
+    self.startConsumingIndex(index_name) catch |err| switch (err) {
+        // Consumer already exists - this is OK, we're already consuming
+        error.JetStreamError => {},
+        else => return err,
+    };
     
-    // Publish create operation to NATS - ensure it's the first message (expected seq 0)
+    // Publish create operation as first message 
     const seq = try self.publishOperationWithExpectedSeq(allocator, index_name, Operation{ .create = CreateIndexOp{} }, 0);
     
     // Return response with NATS sequence as version
