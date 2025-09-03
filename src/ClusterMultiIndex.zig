@@ -87,8 +87,8 @@ pub fn start(self: *Self) !void {
     // Start message processor thread  
     self.processor_thread = try std.Thread.spawn(.{}, processorThreadFn, .{self});
     
-    // TODO: Discover existing streams and start consuming from them
-    // For now, we'll start consuming when indexes are created
+    // Discover existing streams and start consuming from them
+    try self.discoverAndStartConsumers();
 }
 
 pub fn stop(self: *Self) void {
@@ -377,4 +377,45 @@ fn processOperation(self: *Self, index_name: []const u8, operation: Operation) !
             _ = try self.local_indexes.update(self.allocator, index_name, request);
         },
     }
+}
+
+fn discoverAndStartConsumers(self: *Self) !void {
+    const log = std.log.scoped(.cluster);
+    
+    // Use arena allocator for temporary allocations
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
+    
+    // Get list of all streams
+    const streams_result = try self.js.listStreamNames();
+    defer streams_result.deinit();
+    
+    const stream_prefix = "fpindex-updates-";
+    
+    // Filter streams that match our pattern and start consumers
+    for (streams_result.value) |stream_name| {
+        if (std.mem.startsWith(u8, stream_name, stream_prefix)) {
+            // Extract index name from stream name
+            const index_name = stream_name[stream_prefix.len..];
+            
+            // Check if this index exists locally
+            self.local_indexes.checkIndexExists(index_name) catch |err| switch (err) {
+                error.IndexNotFound => {
+                    log.info("Found NATS stream for index '{s}' but index doesn't exist locally, skipping", .{index_name});
+                    continue;
+                },
+                else => return err,
+            };
+            
+            // Start consuming from this stream
+            log.info("Discovered existing index '{s}', starting consumer", .{index_name});
+            self.startConsumingIndex(index_name) catch |err| {
+                log.err("Failed to start consumer for index '{s}': {}", .{ index_name, err });
+                // Don't fail completely - continue with other streams
+                continue;
+            };
+        }
+    }
+    
+    log.info("Stream discovery completed", .{});
 }
