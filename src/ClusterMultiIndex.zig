@@ -87,8 +87,8 @@ pub fn start(self: *Self) !void {
     // Start message processor thread  
     self.processor_thread = try std.Thread.spawn(.{}, processorThreadFn, .{self});
     
-    // For now, start consuming from hardcoded "test" index
-    try self.startConsumingIndex("test");
+    // TODO: Discover existing streams and start consuming from them
+    // For now, we'll start consuming when indexes are created
 }
 
 pub fn stop(self: *Self) void {
@@ -118,6 +118,9 @@ pub fn createIndex(
 ) !api.CreateIndexResponse {
     // Create NATS stream
     try self.createStream(allocator, index_name);
+    
+    // Start consuming from this stream
+    try self.startConsumingIndex(index_name);
     
     // Publish create operation to NATS (will be handled by consumer)
     const seq = try self.publishOperation(allocator, index_name, Operation{ .create = CreateIndexOp{} });
@@ -304,11 +307,12 @@ fn startConsumingIndex(self: *Self, index_name: []const u8) !void {
         .deliver_subject = deliver_subject,
     };
     
-    // Create the subscription with callback
-    const subscription = try self.js.subscribe(stream_name, consumer_config, messageHandler, .{ self, index_name });
-    
-    // Store subscription for cleanup
+    // Store subscription for cleanup - need owned copy for callback too
     const index_name_owned = try self.allocator.dupe(u8, index_name);
+    
+    // Create the subscription with callback using owned copy
+    const subscription = try self.js.subscribe(stream_name, consumer_config, messageHandler, .{ self, index_name_owned });
+    
     try self.subscriptions.put(index_name_owned, subscription);
     
     log.info("Started consuming index '{s}' on stream '{s}' -> deliver '{s}'", .{ index_name, stream_name, deliver_subject });
