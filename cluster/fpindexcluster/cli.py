@@ -7,6 +7,7 @@ import signal
 import sys
 import socket
 from urllib.parse import urlparse, urlunparse
+from yarl import URL
 
 import nats
 
@@ -111,6 +112,7 @@ def main():
     parser.add_argument(
         "--fpindex-url",
         metavar="URL",
+        type=URL,
         default="http://localhost:6081",
         help="Base URL for fpindex instance",
     )

@@ -35,6 +35,26 @@ DEFAULT_INDEX_STATUS_UPDATE = IndexStatusUpdate(
 )
 
 
+class Insert(msgspec.Struct):
+    """Insert operation - add fingerprint to index."""
+
+    id: int  # u32
+    hashes: list[int]  # []u32
+
+
+class Delete(msgspec.Struct):
+    """Delete operation - remove fingerprint from index."""
+
+    id: int  # u32
+
+
+class Change(msgspec.Struct, omit_defaults=True):
+    """Change operation - union of insert or delete."""
+
+    insert: Insert | None = None
+    delete: Delete | None = None
+
+
 class CreateIndexOperation(msgspec.Struct, tag="create_index"):
     """Operation to create a new index - used as stream filler to ensure sequence=1 exists."""
 
@@ -47,7 +67,26 @@ class DeleteIndexOperation(msgspec.Struct, tag="delete_index"):
     pass
 
 
-Operation = Union[CreateIndexOperation, DeleteIndexOperation]
+class UpdateOperation(msgspec.Struct, tag="update"):
+    """Operation to update fingerprints in an index."""
+
+    changes: list[Change]
+    metadata: dict[str, str] | None = None
+
+
+class UpdateRequest(msgspec.Struct, omit_defaults=True):
+    """Request to update fingerprints in an index."""
+
+    changes: list[Change]
+    metadata: dict[str, str] | None = None
+    expected_version: int | None = None  # ?u64
+
+
+class UpdateResponse(msgspec.Struct):
+    version: int
+
+
+Operation = Union[CreateIndexOperation, DeleteIndexOperation, UpdateOperation]
 
 
 class BootstrapQuery(msgspec.Struct):
