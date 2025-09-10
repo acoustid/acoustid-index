@@ -7,15 +7,14 @@ const MultiIndex = @import("MultiIndex.zig");
 const Index = @import("Index.zig");
 const api = @import("api.zig");
 
-const Self = @This();
+const log = std.log.scoped(.fpindex);
 
-// Message queue type
-const MessageQueue = std.fifo.LinearFifo(*nats.JetStreamMessage, .Dynamic);
+const Self = @This();
 
 // Operation types for NATS messages
 const CreateIndexOp = struct {
     // Empty for now - just indicates index should be created
-    
+
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
     }
@@ -23,91 +22,58 @@ const CreateIndexOp = struct {
 
 const DeleteIndexOp = struct {
     // Empty for now - just indicates index should be deleted
-    
+
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
     }
 };
 
 const Operation = union(enum) {
-    create: CreateIndexOp,
-    delete: DeleteIndexOp,
+    create_index: CreateIndexOp,
+    delete_index: DeleteIndexOp,
     update: api.UpdateRequest,
-    
+
     pub fn msgpackFormat() msgpack.UnionFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
     }
 };
 
+const STATUS_STREAM_NAME = "fpindex-status";
+const STATUS_SUBJECT_PREFIX = "fpindex.status.";
+const STATUS_SUBJECT_WILDCARD = STATUS_SUBJECT_PREFIX ++ "*";
+
+const UPDATES_STREAM_NAME_PREFIX = "fpindex-updates-";
+const UPDATES_SUBJECT_PREFIX = "fpindex.updates.";
+const UPDATES_SUBJECT_WILDCARD = UPDATES_SUBJECT_PREFIX ++ "*";
+
 allocator: std.mem.Allocator,
-nats_connection: *nats.Connection,
+indexes: *MultiIndex,
 js: nats.JetStream,
-local_indexes: *MultiIndex,
 
-// Message processing infrastructure
-processor_thread: ?std.Thread = null,
-stopping: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+status_sub: ?*nats.JetStreamSubscription = null,
 
-// Per-index message queues and subscriptions
-queues: std.StringHashMap(MessageQueue),
-queues_mutex: std.Thread.Mutex = .{},
-processor_cond: std.Thread.Condition = .{},
-subscriptions: std.StringHashMap(*nats.JetStreamSubscription),
-
-pub fn init(allocator: std.mem.Allocator, nats_connection: *nats.Connection, local_indexes: *MultiIndex) Self {
-    const js = nats_connection.jetstream(.{});
+pub fn init(allocator: std.mem.Allocator, nc: *nats.Connection, indexes: *MultiIndex) Self {
+    const js = nc.jetstream(.{});
     return .{
         .allocator = allocator,
-        .nats_connection = nats_connection,
+        .indexes = indexes,
         .js = js,
-        .local_indexes = local_indexes,
-        .queues = std.StringHashMap(MessageQueue).init(allocator),
-        .subscriptions = std.StringHashMap(*nats.JetStreamSubscription).init(allocator),
     };
 }
 
 pub fn deinit(self: *Self) void {
-    // Ensure thread is stopped
     self.stop();
-    
-    // Clean up queues and subscriptions
-    var queue_it = self.queues.iterator();
-    while (queue_it.next()) |entry| {
-        entry.value_ptr.deinit();
-    }
-    self.queues.deinit();
-    self.subscriptions.deinit();
 }
 
 pub fn start(self: *Self) !void {
-    if (self.processor_thread != null) {
-        return; // Already started
-    }
-    
-    // Start message processor thread  
-    self.processor_thread = try std.Thread.spawn(.{}, processorThreadFn, .{self});
-    
-    // Discover existing streams and start consuming from them
-    try self.discoverAndStartConsumers();
+    try self.createStatusStream();
+    try self.subscribeToStatusStream();
 }
 
 pub fn stop(self: *Self) void {
-    // Signal stop
-    self.stopping.store(true, .monotonic);
-    
-    // Stop all subscriptions
-    var sub_it = self.subscriptions.iterator();
-    while (sub_it.next()) |entry| {
-        entry.value_ptr.*.deinit();
-    }
-    
-    // Wake up processor thread
-    self.processor_cond.signal();
-    
-    // Wait for thread to finish
-    if (self.processor_thread) |thread| {
-        thread.join();
-        self.processor_thread = null;
+    if (self.status_sub) |sub| {
+        sub.deinit();
+        self.status_sub = null;
     }
 }
 
@@ -116,48 +82,31 @@ pub fn createIndex(
     allocator: std.mem.Allocator,
     index_name: []const u8,
 ) !api.CreateIndexResponse {
-    const stream_name = try getStreamName(allocator, index_name);
-    defer allocator.free(stream_name);
-    
-    // Check if stream already exists for idempotent behavior
-    if (self.js.getStreamInfo(stream_name)) |existing_stream| {
-        defer existing_stream.deinit();
-        // Stream exists, this is idempotent PUT - return existing version
-        return api.CreateIndexResponse{ .version = existing_stream.value.state.last_seq };
-    } else |err| switch (err) {
-        // Stream doesn't exist, continue with creation
-        error.JetStreamError => {},
-        else => return err,
+    _ = allocator;
+
+    var stream_info = try self.createStream(index_name);
+    defer stream_info.deinit();
+
+    var last_seq = stream_info.value.state.last_seq;
+    if (last_seq == 0) {
+        const op = Operation{ .create_index = CreateIndexOp{} };
+        last_seq = try self.publishOperation(index_name, op, last_seq); // TODO catch unexpected seq
     }
-    
-    // Create NATS stream
-    try self.createStream(allocator, index_name);
-    
-    // Start consuming from this stream (ignore if already consuming)
-    self.startConsumingIndex(index_name) catch |err| switch (err) {
-        // Consumer already exists - this is OK, we're already consuming
-        error.JetStreamError => {},
-        else => return err,
-    };
-    
-    // Publish create operation as first message 
-    const seq = try self.publishOperationWithExpectedSeq(allocator, index_name, Operation{ .create = CreateIndexOp{} }, 0);
-    
-    // Return response with NATS sequence as version
-    return api.CreateIndexResponse{ .version = seq };
+
+    return api.CreateIndexResponse{ .version = last_seq };
 }
 
 pub fn deleteIndex(self: *Self, name: []const u8) !void {
     // Use arena allocator for temporary allocation
     var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
-    
+
     // Publish delete operation to NATS (will be handled by consumer)
-    _ = try self.publishOperation(arena.allocator(), name, Operation{ .delete = DeleteIndexOp{} });
-    
+    _ = try self.publishOperation(name, Operation{ .delete_index = DeleteIndexOp{} }, null);
+
     // Stop consumer subscription for this index
-    try self.stopConsumingIndex(name);
-    
+    try self.stopIndexUpdater(name);
+
     // Delete NATS stream after stopping consumer
     try self.deleteStream(name);
 }
@@ -168,7 +117,7 @@ pub fn search(
     index_name: []const u8,
     request: api.SearchRequest,
 ) !api.SearchResponse {
-    return self.local_indexes.search(allocator, index_name, request);
+    return self.indexes.search(allocator, index_name, request);
 }
 
 pub fn update(
@@ -177,9 +126,11 @@ pub fn update(
     index_name: []const u8,
     request: api.UpdateRequest,
 ) !api.UpdateResponse {
+    _ = allocator;
+
     // Publish to NATS - local application will happen via consumer
-    const seq = try self.publishOperation(allocator, index_name, Operation{ .update = request });
-    
+    const seq = try self.publishOperation(index_name, Operation{ .update = request }, null);
+
     // Return response with the NATS sequence as version
     return api.UpdateResponse{ .version = seq };
 }
@@ -189,14 +140,14 @@ pub fn getIndexInfo(
     allocator: std.mem.Allocator,
     index_name: []const u8,
 ) !api.GetIndexInfoResponse {
-    return self.local_indexes.getIndexInfo(allocator, index_name);
+    return self.indexes.getIndexInfo(allocator, index_name);
 }
 
 pub fn checkIndexExists(
     self: *Self,
     index_name: []const u8,
 ) !void {
-    return self.local_indexes.checkIndexExists(index_name);
+    return self.indexes.checkIndexExists(index_name);
 }
 
 pub fn getFingerprintInfo(
@@ -205,7 +156,7 @@ pub fn getFingerprintInfo(
     index_name: []const u8,
     fingerprint_id: u32,
 ) !api.GetFingerprintInfoResponse {
-    return self.local_indexes.getFingerprintInfo(allocator, index_name, fingerprint_id);
+    return self.indexes.getFingerprintInfo(allocator, index_name, fingerprint_id);
 }
 
 pub fn checkFingerprintExists(
@@ -213,267 +164,121 @@ pub fn checkFingerprintExists(
     index_name: []const u8,
     fingerprint_id: u32,
 ) !void {
-    return self.local_indexes.checkFingerprintExists(index_name, fingerprint_id);
+    return self.indexes.checkFingerprintExists(index_name, fingerprint_id);
 }
 
-fn getStreamName(allocator: std.mem.Allocator, index_name: []const u8) ![]const u8 {
+fn getUpdatesStreamName(allocator: std.mem.Allocator, index_name: []const u8) ![]const u8 {
     return std.fmt.allocPrint(allocator, "fpindex-updates-{s}", .{index_name});
 }
 
-fn getSubject(allocator: std.mem.Allocator, index_name: []const u8) ![]const u8 {
+fn getUpdatesSubject(allocator: std.mem.Allocator, index_name: []const u8) ![]const u8 {
     return std.fmt.allocPrint(allocator, "fpindex.updates.{s}", .{index_name});
 }
 
-fn createStream(self: *Self, allocator: std.mem.Allocator, index_name: []const u8) !void {
-    const log = std.log.scoped(.cluster);
-    
-    const stream_name = try getStreamName(allocator, index_name);
-    defer allocator.free(stream_name);
-    
-    const subject = try getSubject(allocator, index_name);
-    defer allocator.free(subject);
-    
+fn createStream(self: *Self, index_name: []const u8) !nats.Result(nats.StreamInfo) {
+    const stream_name = try getUpdatesStreamName(self.allocator, index_name);
+    defer self.allocator.free(stream_name);
+
+    const subject = try getUpdatesSubject(self.allocator, index_name);
+    defer self.allocator.free(subject);
+
     const stream_config = nats.StreamConfig{
         .name = stream_name,
         .subjects = &[_][]const u8{subject},
         .retention = .limits,
         .max_msgs = 0, // Keep all messages
-        .max_age = 0,  // Keep all messages
+        .max_age = 0, // Keep all messages
         .storage = .file,
         .num_replicas = 1, // Start with 1 replica for simplicity
     };
-    
-    const result = self.js.addStream(stream_config) catch |err| switch (err) {
-        // Stream already exists - this is OK, just continue
-        error.JetStreamError => {
-            log.info("Stream '{s}' already exists, continuing", .{stream_name});
-            return;
-        },
-        else => return err,
+
+    log.debug("Creating stream '{s}'", .{stream_name});
+
+    const result = self.js.addStream(stream_config) catch |err| {
+        log.info("Failed to create stream '{s}': {}", .{ stream_name, err });
+        return err;
     };
-    result.deinit(); // Clean up the result
+
+    log.info("Created stream '{s}': {any}", .{ stream_name, result.value });
+
+    return result;
 }
 
 fn deleteStream(self: *Self, index_name: []const u8) !void {
-    var arena = std.heap.ArenaAllocator.init(self.allocator);
-    defer arena.deinit();
-    
-    const stream_name = try getStreamName(arena.allocator(), index_name);
-    
+    const stream_name = try getUpdatesStreamName(self.allocator, index_name);
+    defer self.allocator.free(stream_name);
+
+    log.debug("Deleting stream '{s}'", .{stream_name});
+
     try self.js.deleteStream(stream_name);
+
+    log.info("Deleted stream '{s}'", .{stream_name});
 }
 
-fn publishOperation(self: *Self, allocator: std.mem.Allocator, index_name: []const u8, operation: Operation) !u64 {
-    return self.publishOperationWithExpectedSeq(allocator, index_name, operation, null);
-}
+fn publishOperation(self: *Self, index_name: []const u8, operation: Operation, expected_last_seq: ?u64) !u64 {
+    const subject = try getUpdatesSubject(self.allocator, index_name);
+    defer self.allocator.free(subject);
 
-fn publishOperationWithExpectedSeq(self: *Self, allocator: std.mem.Allocator, index_name: []const u8, operation: Operation, expected_last_seq: ?u64) !u64 {
-    const subject = try getSubject(allocator, index_name);
-    defer allocator.free(subject);
-    
     // Encode the operation as msgpack to byte array
-    var buf = std.ArrayList(u8).init(allocator);
+    var buf = std.ArrayList(u8).init(self.allocator);
     defer buf.deinit();
     try msgpack.encode(operation, buf.writer());
-    
+
     // Publish to NATS JetStream with optional sequence check
     const result = try self.js.publish(subject, buf.items, .{
         .expected_last_seq = expected_last_seq,
     });
     defer result.deinit();
-    
+
     return result.value.seq;
 }
 
-fn processorThreadFn(self: *Self) void {
-    const log = std.log.scoped(.processor);
-    log.info("Message processor thread started", .{});
-    
-    while (!self.stopping.load(.monotonic)) {
-        // Lock queues and wait for messages
-        self.queues_mutex.lock();
-        defer self.queues_mutex.unlock();
-        
-        // Process all queued messages
-        var has_messages = false;
-        var queue_it = self.queues.iterator();
-        while (queue_it.next()) |entry| {
-            const index_name = entry.key_ptr.*;
-            const queue = entry.value_ptr;
-            
-            while (queue.readItem()) |msg| {
-                has_messages = true;
-                self.processMessage(index_name, msg) catch |err| {
-                    log.err("Failed to process message for index '{s}': {}", .{ index_name, err });
-                };
-            }
-        }
-        
-        // If no messages, wait for signal
-        if (!has_messages and !self.stopping.load(.monotonic)) {
-            self.processor_cond.wait(&self.queues_mutex);
-        }
-    }
-    
-    log.info("Message processor thread stopped", .{});
+fn startIndexUpdater(self: *Self, index_name: []const u8) !void {
+    _ = self;
+    _ = index_name;
 }
 
-fn startConsumingIndex(self: *Self, index_name: []const u8) !void {
-    const log = std.log.scoped(.consumer);
-    
-    var arena = std.heap.ArenaAllocator.init(self.allocator);
-    defer arena.deinit();
-    
-    const stream_name = try getStreamName(arena.allocator(), index_name);
-    
-    // Create unique deliver subject for this consumer  
-    const deliver_subject = try inbox.newInbox(arena.allocator());
-    
-    // Create queue for this index
-    self.queues_mutex.lock();
-    defer self.queues_mutex.unlock();
-    
-    const queue = MessageQueue.init(self.allocator);
-    try self.queues.put(try self.allocator.dupe(u8, index_name), queue);
-    
-    // Create consumer config for push subscription
-    const consumer_config = nats.ConsumerConfig{
-        .durable_name = try std.fmt.allocPrint(arena.allocator(), "fpindex-{s}", .{index_name}),
-        .deliver_policy = .all,
-        .ack_policy = .explicit,
-        .deliver_subject = deliver_subject,
+fn stopIndexUpdater(self: *Self, index_name: []const u8) !void {
+    _ = self;
+    _ = index_name;
+}
+
+fn createStatusStream(self: *Self) !void {
+    const stream_config = nats.StreamConfig{
+        .name = STATUS_STREAM_NAME,
+        .subjects = &[_][]const u8{STATUS_SUBJECT_WILDCARD},
+        .max_msgs_per_subject = 3, // allow short history
+        .allow_direct = true, // allow direct get
+        .storage = .file,
     };
-    
-    // Store subscription for cleanup - need owned copy for callback too
-    const index_name_owned = try self.allocator.dupe(u8, index_name);
-    
-    // Create the subscription with callback using owned copy  
-    const subscription = try self.js.subscribe(stream_name, consumer_config, messageHandler, .{ self, index_name_owned });
-    
-    try self.subscriptions.put(index_name_owned, subscription);
-    
-    log.info("Started consuming index '{s}' on stream '{s}' -> deliver '{s}'", .{ index_name, stream_name, deliver_subject });
-}
 
-fn messageHandler(msg: *nats.JetStreamMessage, self: *Self, index_name: []const u8) void {
-    // Queue the message
-    self.queues_mutex.lock();
-    defer self.queues_mutex.unlock();
-    
-    if (self.queues.getPtr(index_name)) |queue| {
-        queue.writeItem(msg) catch {
-            // Queue full - could log warning or implement backpressure
-            std.log.warn("Queue full for index '{s}', dropping message", .{index_name});
-            msg.deinit(); // Clean up message if we can't queue it
-            return;
-        };
-        self.processor_cond.signal();
-    } else {
-        std.log.warn("No queue found for index '{s}', dropping message", .{index_name});
-        msg.deinit(); // Clean up message if no queue
-    }
-}
-
-fn processMessage(self: *Self, index_name: []const u8, msg: *nats.JetStreamMessage) !void {
-    const log = std.log.scoped(.processor);
-    
-    // Decode the operation
-    const operation = msgpack.decodeFromSliceLeaky(Operation, self.allocator, msg.msg.data) catch |err| {
-        log.err("Failed to decode operation for index '{s}': {}", .{ index_name, err });
-        try msg.nak();
+    const stream_info = self.js.addStream(stream_config) catch |err| {
+        log.err("Failed to create status stream: {}", .{err});
         return err;
     };
-    defer if (@hasDecl(Operation, "deinit")) operation.deinit();
-    
-    // Process the operation
-    self.processOperation(index_name, operation) catch |err| {
-        log.err("Failed to process operation for index '{s}': {}", .{ index_name, err });
+    defer stream_info.deinit();
+}
+
+fn handleStatusUpdate(self: *Self, msg: *nats.JetStreamMessage) !void {
+    _ = self;
+    log.info("Received status update '{s}'", .{msg.msg.subject});
+}
+
+fn onStatusUpdate(msg: *nats.JetStreamMessage, self: *Self) !void {
+    defer msg.deinit();
+    self.handleStatusUpdate(msg) catch |err| {
         try msg.nak();
-        return err;
+        log.err("Failed to handle status update: {}", .{err});
+        return;
     };
-    
-    // Acknowledge successful processing
     try msg.ack();
-    log.debug("Processed operation for index '{s}' at sequence {?}", .{ index_name, msg.metadata.sequence.stream });
 }
 
-fn processOperation(self: *Self, index_name: []const u8, operation: Operation) !void {
-    const log = std.log.scoped(.consumer);
-    
-    switch (operation) {
-        .create => {
-            log.info("Creating index '{s}' locally", .{index_name});
-            _ = try self.local_indexes.createIndex(self.allocator, index_name);
-        },
-        .delete => {
-            log.info("Deleting index '{s}' locally", .{index_name});
-            try self.local_indexes.deleteIndex(index_name);
-        },
-        .update => |request| {
-            log.debug("Applying update to index '{s}' locally", .{index_name});
-            _ = try self.local_indexes.update(self.allocator, index_name, request);
-        },
-    }
-}
-
-fn discoverAndStartConsumers(self: *Self) !void {
-    const log = std.log.scoped(.cluster);
-    
-    // Use arena allocator for temporary allocations
-    var arena = std.heap.ArenaAllocator.init(self.allocator);
-    defer arena.deinit();
-    
-    // Get list of all streams
-    const streams_result = try self.js.listStreamNames();
-    defer streams_result.deinit();
-    
-    const stream_prefix = "fpindex-updates-";
-    
-    // Filter streams that match our pattern and start consumers
-    for (streams_result.value) |stream_name| {
-        if (std.mem.startsWith(u8, stream_name, stream_prefix)) {
-            // Extract index name from stream name
-            const index_name = stream_name[stream_prefix.len..];
-            
-            // Check if this index exists locally
-            self.local_indexes.checkIndexExists(index_name) catch |err| switch (err) {
-                error.IndexNotFound => {
-                    log.info("Found NATS stream for index '{s}' but index doesn't exist locally, skipping", .{index_name});
-                    continue;
-                },
-                else => return err,
-            };
-            
-            // Start consuming from this stream
-            log.info("Discovered existing index '{s}', starting consumer", .{index_name});
-            self.startConsumingIndex(index_name) catch |err| {
-                log.err("Failed to start consumer for index '{s}': {}", .{ index_name, err });
-                // Don't fail completely - continue with other streams
-                continue;
-            };
-        }
-    }
-    
-    log.info("Stream discovery completed", .{});
-}
-
-fn stopConsumingIndex(self: *Self, index_name: []const u8) !void {
-    const log = std.log.scoped(.consumer);
-    
-    self.queues_mutex.lock();
-    defer self.queues_mutex.unlock();
-    
-    // Stop and clean up subscription
-    if (self.subscriptions.fetchRemove(index_name)) |entry| {
-        const subscription = entry.value;
-        log.info("Stopping consumer for index '{s}'", .{index_name});
-        subscription.deinit();
-        self.allocator.free(entry.key); // Free the owned key
-    }
-    
-    // Remove and clean up message queue
-    if (self.queues.fetchRemove(index_name)) |entry| {
-        entry.value.deinit();
-        self.allocator.free(entry.key); // Free the owned key
-    }
+fn subscribeToStatusStream(self: *Self) !void {
+    const consumer_config = nats.ConsumerConfig{
+        .name = null,
+        .deliver_group = null,
+        .deliver_policy = .all,
+    };
+    self.status_sub = try self.js.subscribe(STATUS_STREAM_NAME, consumer_config, onStatusUpdate, .{self});
 }
