@@ -180,54 +180,53 @@ fn loadExistingIndexes(self: *Self) !void {
     self.lock.lock();
     defer self.lock.unlock();
 
-    // Iterate over existing index directories
-    var iter = self.local_indexes.dir.iterate();
-    while (try iter.next()) |entry| {
-        if (entry.kind != .directory) continue;
-        // TODO: We should validate the name, but isValidName is private
-        // For now, assume all directory names are valid indexes
+    // Get list of existing indexes from MultiIndex
+    const index_list = try self.local_indexes.listIndexes(self.allocator, .{});
+    defer self.allocator.free(index_list);
 
-        // Try to read redirect file
-        var index_dir = self.local_indexes.dir.openDir(entry.name, .{}) catch continue;
-        defer index_dir.close();
-
-        const redirect = index_redirect.readRedirectFile(index_dir, self.allocator) catch continue;
-        defer self.allocator.free(redirect.name);
-
-        if (redirect.deleted) continue;
-
-        // Try to get the index
-        const index = self.local_indexes.getIndex(entry.name) catch continue;
+    for (index_list) |info| {
+        // Get the index to access its metadata
+        const index = self.local_indexes.getIndex(info.name) catch |err| {
+            log.warn("failed to get index {s} during startup: {}", .{ info.name, err });
+            continue;
+        };
         defer self.local_indexes.releaseIndex(index);
 
-        var reader = index.acquireReader() catch continue;
+        var reader = index.acquireReader() catch |err| {
+            log.warn("failed to acquire reader for index {s} during startup: {}", .{ info.name, err });
+            continue;
+        };
         defer index.releaseReader(&reader);
 
-        var metadata = reader.getMetadata(self.allocator) catch continue;
+        var metadata = reader.getMetadata(self.allocator) catch |err| {
+            log.warn("failed to get metadata for index {s} during startup: {}", .{ info.name, err });
+            continue;
+        };
         defer metadata.deinit();
 
-        // Extract last applied sequence and generation from metadata
+        // Extract last applied sequence from cluster metadata
         const last_seq = if (metadata.get("cluster.last_applied_seq")) |seq_str|
             std.fmt.parseInt(u64, seq_str, 10) catch 0
         else
             0;
 
+        // Use generation from cluster metadata if available, otherwise use redirect version
         const generation = if (metadata.get("cluster.generation")) |gen_str|
-            std.fmt.parseInt(u32, gen_str, 10) catch @as(u32, @intCast(redirect.version))
+            std.fmt.parseInt(u64, gen_str, 10) catch info.generation
         else
-            @as(u32, @intCast(redirect.version));
+            info.generation;
 
         // Store in our status map
-        const status_entry = try self.index_status.getOrPut(self.allocator, entry.name);
+        const status_entry = try self.index_status.getOrPut(self.allocator, info.name);
         if (!status_entry.found_existing) {
-            status_entry.key_ptr.* = try self.allocator.dupe(u8, entry.name);
+            status_entry.key_ptr.* = try self.allocator.dupe(u8, info.name);
         }
         status_entry.value_ptr.* = IndexStatus{
             .generation = generation,
             .last_applied_seq = last_seq,
         };
 
-        log.info("loaded existing index {s} (generation={}, last_seq={})", .{ entry.name, generation, last_seq });
+        log.info("loaded existing index {s} (generation={}, last_seq={})", .{ info.name, generation, last_seq });
     }
 }
 

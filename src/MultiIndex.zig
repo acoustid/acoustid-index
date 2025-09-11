@@ -15,6 +15,16 @@ const Self = @This();
 
 const DELETE_TIMEOUT_MS = 5000; // 5 seconds timeout for deletion
 
+pub const IndexInfo = struct {
+    name: []const u8,
+    generation: u32,
+    deleted: bool,
+};
+
+pub const ListOptions = struct {
+    include_deleted: bool = false,
+};
+
 const OptionalIndex = struct {
     value: Index = undefined,
     has_value: bool = false,
@@ -70,7 +80,7 @@ index_options: Index.Options,
 indexes: IndexRefHashMap = .{},
 cleanup_task: ?*Scheduler.Task = null,
 
-fn isValidName(name: []const u8) bool {
+pub fn isValidName(name: []const u8) bool {
     for (name, 0..) |c, i| {
         if (i == 0) {
             switch (c) {
@@ -691,6 +701,39 @@ pub fn checkFingerprintExists(
     if (info == null) {
         return error.FingerprintNotFound;
     }
+}
+
+pub fn listIndexes(self: *Self, allocator: std.mem.Allocator, options: ListOptions) ![]IndexInfo {
+    self.lock.lock();
+    defer self.lock.unlock();
+
+    var result = std.ArrayList(IndexInfo).init(allocator);
+    defer result.deinit();
+
+    var iter = self.indexes.iterator();
+    while (iter.next()) |entry| {
+        const name = entry.key_ptr.*;
+        const index_ref = entry.value_ptr.*;
+        
+        // Check if index is deleted
+        const deleted = !index_ref.index.has_value;
+        
+        // Skip deleted indexes if not requested
+        if (deleted and !options.include_deleted) {
+            continue;
+        }
+        
+        // Get generation from redirect
+        const generation = @as(u32, @intCast(index_ref.redirect.version));
+        
+        try result.append(IndexInfo{
+            .name = name,
+            .generation = generation,
+            .deleted = deleted,
+        });
+    }
+
+    return result.toOwnedSlice();
 }
 
 const TestContext = struct {
