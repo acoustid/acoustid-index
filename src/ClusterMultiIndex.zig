@@ -473,7 +473,7 @@ fn updateIndexMetadata(self: *Self, index_name: []const u8, sequence: u64, gener
     // Apply metadata update
     _ = index.update(&[_]Change{}, metadata, null) catch |err| {
         log.warn("failed to update metadata for index {s}: {}", .{ index_name, err });
-        metadata.deinit();
+        return err;
     };
 }
 
