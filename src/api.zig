@@ -22,7 +22,7 @@ pub const SearchRequest = struct {
 };
 
 pub const UpdateRequest = struct {
-    changes: []Change,
+    changes: []const Change,
     metadata: ?Metadata = null,
     expected_version: ?u64 = null,
 

@@ -427,14 +427,13 @@ fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, 
     }
 
     // Decode the update operation
-    const update_op_parsed = try msgpack.decodeFromSlice(UpdateOp, self.allocator, msg.msg.data);
-    defer update_op_parsed.deinit();
-    const update_op = update_op_parsed.value;
+    const update_op = try msgpack.decodeFromSlice(UpdateOp, self.allocator, msg.msg.data);
+    defer update_op.deinit();
 
     // Apply the update to local index
     const update_request = api.UpdateRequest{
-        .changes = @constCast(update_op.changes),
-        .metadata = update_op.metadata,
+        .changes = update_op.value.changes,
+        .metadata = update_op.value.metadata,
         .expected_version = null, // Version control handled at NATS level
     };
 
