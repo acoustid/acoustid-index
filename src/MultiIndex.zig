@@ -163,7 +163,7 @@ fn openExistingIndex(self: *Self, path: []const u8) !*IndexRef {
     return ref;
 }
 
-fn createNewIndex(self: *Self, original_name: []const u8) !*IndexRef {
+fn createNewIndex(self: *Self, original_name: []const u8, custom_version: ?u64) !*IndexRef {
     const entry = try self.indexes.getOrPut(self.allocator, original_name);
 
     const found_existing = entry.found_existing;
@@ -190,10 +190,21 @@ fn createNewIndex(self: *Self, original_name: []const u8) !*IndexRef {
     }
     errdefer if (!found_existing) self.allocator.destroy(ref);
 
-    if (!found_existing) {
-        ref.redirect = IndexRedirect.init(name);
+    if (custom_version) |version| {
+        if (found_existing) {
+            // Re-creating deleted index - verify version is greater
+            if (version <= ref.redirect.version) {
+                return error.VersionTooLow;
+            }
+        }
+        ref.redirect = IndexRedirect.init(name, version);
     } else {
-        ref.redirect = ref.redirect.nextVersion();
+        // Original behavior for backward compatibility
+        if (!found_existing) {
+            ref.redirect = IndexRedirect.init(name, null);
+        } else {
+            ref.redirect = ref.redirect.nextVersion();
+        }
     }
     errdefer ref.redirect.deleted = true;
 
@@ -461,7 +472,7 @@ fn borrowIndex(index_ref: *IndexRef) *Index {
     return &index_ref.index.value;
 }
 
-pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool) !*Index {
+pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool, custom_version: ?u64) !*Index {
     if (!isValidName(name)) {
         return error.InvalidIndexName;
     }
@@ -484,12 +495,12 @@ pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool) !*Index {
         return error.IndexNotFound;
     }
 
-    const index_ref = try self.createNewIndex(name);
+    const index_ref = try self.createNewIndex(name, custom_version);
     return borrowIndex(index_ref);
 }
 
 pub fn getIndex(self: *Self, name: []const u8) !*Index {
-    return self.getOrCreateIndex(name, false);
+    return self.getOrCreateIndex(name, false, null);
 }
 
 pub fn deleteIndex(self: *Self, name: []const u8) !void {
@@ -652,7 +663,7 @@ pub fn createIndex(
 ) !api.CreateIndexResponse {
     _ = allocator; // Response doesn't need allocation
 
-    const index = try self.getOrCreateIndex(index_name, true);
+    const index = try self.getOrCreateIndex(index_name, true, null);
     defer self.releaseIndex(index);
 
     var index_reader = try index.acquireReader();

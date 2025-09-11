@@ -33,12 +33,6 @@ stream_name: []const u8 = "fpindex-ops",
 consumer_thread: ?std.Thread = null,
 should_stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
-/// Message types for operations
-pub const OpType = enum(u8) {
-    create = 1,
-    delete = 2,
-};
-
 /// Status of an index in the cluster
 const IndexStatus = struct {
     generation: u64,
@@ -46,12 +40,16 @@ const IndexStatus = struct {
 };
 
 /// Metadata operation (create/delete)
-pub const MetaOp = struct {
-    op: u8, // 1 = create, 2 = delete
-    index_name: []const u8,
-    generation: u64 = 0, // set for delete (required), 0 for create (auto-generated)
+pub const MetaOp = union(enum) {
+    create: struct {
+        index_name: []const u8,
+    },
+    delete: struct {
+        index_name: []const u8,
+        generation: u64,
+    },
 
-    pub fn msgpackFormat() msgpack.StructFormat {
+    pub fn msgpackFormat() msgpack.UnionFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
     }
 };
@@ -130,12 +128,12 @@ pub fn stop(self: *Self) void {
     }
 }
 
-fn getLastMetaOp(self: *Self, index_name: []const u8) !MetaOp {
+fn getStatus(self: *Self, index_name: []const u8) !?u64 {
     const subject = try std.fmt.allocPrint(self.allocator, "fpindex.{s}.meta", .{index_name});
     defer self.allocator.free(subject);
 
     const msg = self.js.getMsg(self.stream_name, .{ .last_by_subj = subject, .direct = true }) catch |err| switch (err) {
-        error.MessageNotFound => return .{ .index_name = index_name, .op = 2 },
+        error.MessageNotFound => return null, // deleted or never existed
         else => return err,
     };
     defer msg.deinit();
@@ -143,18 +141,29 @@ fn getLastMetaOp(self: *Self, index_name: []const u8) !MetaOp {
     var result = try msgpack.decodeFromSlice(MetaOp, self.allocator, msg.data);
     defer result.deinit();
 
-    var meta_op = result.value;
+    const meta_op = result.value;
 
-    // Use the original index_name, since the caller owns that and we can free our copy
-    std.debug.assert(std.mem.eql(u8, meta_op.index_name, index_name));
-    meta_op.index_name = index_name;
-
-    // For create operations (op == 1), set generation to message sequence if not already set
-    if (meta_op.op == 1) {
-        meta_op.generation = msg.seq;
+    switch (meta_op) {
+        .create => return msg.seq, // generation from NATS sequence
+        .delete => return null, // deleted
     }
+}
 
-    return meta_op;
+fn getLastVersion(self: *Self, index_name: []const u8, generation: u64) !u64 {
+    // Get the last sequence number for this index's updates
+    const update_subject = try std.fmt.allocPrint(self.allocator, "fpindex.{s}.{d}", .{ index_name, generation });
+    defer self.allocator.free(update_subject);
+
+    const last_update_msg = self.js.getMsg(self.stream_name, .{ .last_by_subj = update_subject, .direct = true }) catch |err| switch (err) {
+        error.MessageNotFound => {
+            // No updates yet, return the generation (creation sequence)
+            return generation;
+        },
+        else => return err,
+    };
+    defer last_update_msg.deinit();
+
+    return last_update_msg.seq;
 }
 
 fn ensureStream(self: *Self) !void {
@@ -312,21 +321,16 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
     self.lock.lock();
     defer self.lock.unlock();
 
-    switch (meta_op.op) {
-        1 => { // create
-            const generation = @as(u32, @intCast(msg.metadata.sequence.stream));
+    switch (meta_op) {
+        .create => { // create
+            const generation = @as(u64, @intCast(msg.metadata.sequence.stream));
 
-            // Note: We create the index with standard API, not with custom redirect
-            // TODO: Ideally we want IndexRedirect.version = generation for debugging
-
-            // Create the index locally using standard API
-            _ = self.local_indexes.createIndex(self.allocator, index_name) catch |err| {
+            // Create the index locally with the NATS generation as the version
+            const index = self.local_indexes.getOrCreateIndex(index_name, true, generation) catch |err| {
                 log.warn("failed to create local index {s}: {}", .{ index_name, err });
                 return;
             };
-
-            // TODO: We need to update the IndexRedirect version after creation to match NATS generation
-            // For now, this creates with version 1, but ideally we want version = generation
+            self.local_indexes.releaseIndex(index);
 
             // Store generation and sequence tracking
             const status_entry = try self.index_status.getOrPut(self.allocator, index_name);
@@ -343,9 +347,9 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
 
             log.info("created index {s} with generation {}", .{ index_name, generation });
         },
-        2 => { // delete
+        .delete => |delete_op| { // delete
             if (self.index_status.get(index_name)) |status| {
-                const delete_gen = meta_op.generation;
+                const delete_gen = delete_op.generation;
                 if (status.generation == delete_gen) {
                     // Delete local index
                     self.local_indexes.deleteIndex(index_name) catch |err| {
@@ -360,9 +364,6 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
                     log.info("deleted index {s}", .{index_name});
                 }
             }
-        },
-        else => {
-            log.warn("unknown operation type: {}", .{meta_op.op});
         },
     }
 }
@@ -453,11 +454,9 @@ pub fn update(
 ) !api.UpdateResponse {
 
     // First check if index exists and get current generation
-    const status = try self.getLastMetaOp(index_name);
-    if (status.op == 2) {
+    const generation = try self.getStatus(index_name) orelse {
         return error.IndexNotFound;
-    }
-    const generation = status.generation;
+    };
 
     // Prepare update operation
     const update_op = UpdateOp{
@@ -516,10 +515,9 @@ pub fn createIndex(
     _ = allocator;
 
     // First check if index exists and get current generation
-    const status = try self.getLastMetaOp(index_name);
-    if (status.op == 1) { // create
-        // FIXME version should be the last seq from fpindex.{idx}.{gen}
-        return api.CreateIndexResponse{ .version = status.generation };
+    if (try self.getStatus(index_name)) |generation| {
+        const version = try self.getLastVersion(index_name, generation);
+        return api.CreateIndexResponse{ .version = version };
     }
 
     // Check current status
@@ -528,8 +526,9 @@ pub fn createIndex(
 
     // Publish create operation
     const meta_op = MetaOp{
-        .op = 1, // create
-        .index_name = index_name,
+        .create = .{
+            .index_name = index_name,
+        },
     };
 
     var data = std.ArrayList(u8).init(self.allocator);
@@ -545,16 +544,16 @@ pub fn createIndex(
 
 pub fn deleteIndex(self: *Self, index_name: []const u8) !void {
     // Get current status and generation
-    const status = try self.getLastMetaOp(index_name);
-    if (status.op == 2) { // delete
+    const generation = try self.getStatus(index_name) orelse {
         return; // Already deleted
-    }
+    };
 
     // Publish delete operation
     const meta_op = MetaOp{
-        .op = 2, // delete
-        .index_name = index_name,
-        .generation = status.generation,
+        .delete = .{
+            .index_name = index_name,
+            .generation = generation,
+        },
     };
 
     var data = std.ArrayList(u8).init(self.allocator);
