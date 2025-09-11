@@ -131,7 +131,7 @@ pub fn main() !void {
 
     try nc.connect(url);
 
-    var cluster = ClusterMultiIndex.init(allocator, &nc, &indexes);
+    var cluster = try ClusterMultiIndex.init(allocator, &nc, &indexes);
     defer cluster.deinit();
     
     // Start consumer thread

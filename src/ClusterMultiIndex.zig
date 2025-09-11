@@ -463,12 +463,12 @@ fn updateIndexMetadata(self: *Self, index_name: []const u8, sequence: u64, gener
 
     // Create metadata update
     var metadata = Metadata.initOwned(self.allocator);
-    errdefer metadata.deinit();
+    defer metadata.deinit();
 
-    try metadata.set("cluster.last_applied_seq", try std.fmt.allocPrint(self.allocator, "{}", .{sequence}));
-
+    var buf: [32]u8 = undefined;
+    try metadata.set("cluster.last_applied_seq", try std.fmt.bufPrint(&buf, "{d}", .{sequence}));
     if (generation) |gen| {
-        try metadata.set("cluster.generation", try std.fmt.allocPrint(self.allocator, "{}", .{gen}));
+        try metadata.set("cluster.generation", try std.fmt.bufPrint(&buf, "{d}", .{gen}));
     }
 
     // Apply metadata update
