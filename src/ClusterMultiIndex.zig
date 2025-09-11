@@ -491,19 +491,17 @@ pub fn getIndexInfo(
 ) !api.GetIndexInfoResponse {
     const response = try self.local_indexes.getIndexInfo(allocator, index_name);
 
-    // Override version with last applied sequence for clustered version
-    self.lock.lock();
-    defer self.lock.unlock();
+    // Use cluster metadata from the index for consistent version info
+    const version = if (response.metadata.get("cluster.last_applied_seq")) |seq_str|
+        std.fmt.parseInt(u64, seq_str, 10) catch response.version
+    else
+        response.version;
 
-    if (self.index_status.get(index_name)) |status| {
-        return api.GetIndexInfoResponse{
-            .version = status.last_applied_seq,
-            .metadata = response.metadata,
-            .stats = response.stats,
-        };
-    }
-
-    return response;
+    return api.GetIndexInfoResponse{
+        .version = version,
+        .metadata = response.metadata,
+        .stats = response.stats,
+    };
 }
 
 pub fn checkIndexExists(self: *Self, index_name: []const u8) !void {
