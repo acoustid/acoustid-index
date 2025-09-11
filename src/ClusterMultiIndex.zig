@@ -12,6 +12,8 @@ const IndexRedirect = index_redirect.IndexRedirect;
 
 const Self = @This();
 
+const META_INDEX_NAME = "_meta";
+
 // Core state
 allocator: std.mem.Allocator,
 nc: *nats.Connection,
@@ -64,19 +66,55 @@ pub const UpdateOp = struct {
     }
 };
 
-pub fn init(allocator: std.mem.Allocator, nc: *nats.Connection, local_indexes: *MultiIndex) Self {
+pub fn init(allocator: std.mem.Allocator, nc: *nats.Connection, local_indexes: *MultiIndex) !Self {
+    const replica_id = try loadOrCreateReplicaId(allocator, local_indexes);
     return .{
         .allocator = allocator,
         .nc = nc,
         .local_indexes = local_indexes,
-        .replica_id = generateReplicaId(allocator),
+        .replica_id = replica_id,
     };
 }
 
-fn generateReplicaId(allocator: std.mem.Allocator) []const u8 {
+fn loadOrCreateReplicaId(allocator: std.mem.Allocator, local_indexes: *MultiIndex) ![]const u8 {
+    // Get or create the _meta index (local only, not replicated)
+    const index = local_indexes.getOrCreateIndex(META_INDEX_NAME, true, null) catch |err| {
+        log.warn("failed to get/create _meta index: {}", .{err});
+        return err;
+    };
+    defer local_indexes.releaseIndex(index);
+
+    // Try to read existing replica_id from metadata
+    var reader = try index.acquireReader();
+    defer index.releaseReader(&reader);
+
+    var metadata = try reader.getMetadata(allocator);
+    defer metadata.deinit();
+
+    if (metadata.get("cluster.replica_id")) |existing_id| {
+        // Found existing replica_id, use it
+        log.info("loaded existing replica_id: {s}", .{existing_id});
+        return try allocator.dupe(u8, existing_id);
+    }
+
+    // No existing replica_id, generate a new one
     var buf: [16]u8 = undefined;
     std.crypto.random.bytes(&buf);
-    return std.fmt.allocPrint(allocator, "{}", .{std.fmt.fmtSliceHexLower(&buf)}) catch unreachable;
+    const new_id = try std.fmt.allocPrint(allocator, "{}", .{std.fmt.fmtSliceHexLower(&buf)});
+    errdefer allocator.free(new_id);
+
+    // Store the new replica_id in metadata
+    var new_metadata = Metadata.initOwned(allocator);
+    defer new_metadata.deinit();
+    try new_metadata.set("cluster.replica_id", new_id);
+
+    _ = index.update(&[_]Change{}, new_metadata, null) catch |err| {
+        log.warn("failed to store replica_id in _meta index: {}", .{err});
+        return err;
+    };
+
+    log.info("generated new replica_id: {s}", .{new_id});
+    return try allocator.dupe(u8, new_id);
 }
 
 pub fn deinit(self: *Self) void {
@@ -194,6 +232,11 @@ fn loadExistingIndexes(self: *Self) !void {
     defer self.allocator.free(index_list);
 
     for (index_list) |info| {
+        // Skip system indexes
+        if (std.mem.eql(u8, info.name, META_INDEX_NAME)) {
+            continue;
+        }
+
         // Get the index to access its metadata
         const index = self.local_indexes.getIndex(info.name) catch |err| {
             log.warn("failed to get index {s} during startup: {}", .{ info.name, err });

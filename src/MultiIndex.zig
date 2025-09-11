@@ -461,7 +461,7 @@ pub fn releaseIndex(self: *Self, index: *Index) void {
     const can_delete = index_ref.decRef();
     // the last ref should be held by the internal map and that's only released in deleteIndex
     std.debug.assert(!can_delete);
-    
+
     // Notify any waiting deleteIndex operations
     index_ref.reference_released.broadcast();
 }
@@ -473,10 +473,6 @@ fn borrowIndex(index_ref: *IndexRef) *Index {
 }
 
 pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool, custom_version: ?u64) !*Index {
-    if (!isValidName(name)) {
-        return error.InvalidIndexName;
-    }
-
     self.lock.lock();
     defer self.lock.unlock();
 
@@ -504,6 +500,9 @@ pub fn getIndex(self: *Self, name: []const u8) !*Index {
 }
 
 pub fn deleteIndex(self: *Self, name: []const u8) !void {
+    if (!isValidName(name)) {
+        return error.InvalidIndexName;
+    }
     if (!isValidName(name)) {
         return error.InvalidIndexName;
     }
@@ -566,6 +565,9 @@ pub fn search(
     index_name: []const u8,
     request: api.SearchRequest,
 ) !api.SearchResponse {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
     const index = try self.getIndex(index_name);
     defer self.releaseIndex(index);
 
@@ -608,6 +610,9 @@ pub fn update(
     index_name: []const u8,
     request: api.UpdateRequest,
 ) !api.UpdateResponse {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
     _ = allocator; // Response doesn't need allocation
 
     const index = try self.getIndex(index_name);
@@ -629,6 +634,9 @@ pub fn getIndexInfo(
     allocator: std.mem.Allocator,
     index_name: []const u8,
 ) !api.GetIndexInfoResponse {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
     const index = try self.getIndex(index_name);
     defer self.releaseIndex(index);
 
@@ -651,6 +659,9 @@ pub fn checkIndexExists(
     self: *Self,
     index_name: []const u8,
 ) !void {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
     const index = try self.getIndex(index_name);
     defer self.releaseIndex(index);
     // Just checking existence, no need to return anything
@@ -661,6 +672,9 @@ pub fn createIndex(
     allocator: std.mem.Allocator,
     index_name: []const u8,
 ) !api.CreateIndexResponse {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
     _ = allocator; // Response doesn't need allocation
 
     const index = try self.getOrCreateIndex(index_name, true, null);
@@ -680,6 +694,9 @@ pub fn getFingerprintInfo(
     index_name: []const u8,
     fingerprint_id: u32,
 ) !api.GetFingerprintInfoResponse {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
     _ = allocator; // Response doesn't need allocation
 
     const index = try self.getIndex(index_name);
@@ -702,6 +719,9 @@ pub fn checkFingerprintExists(
     index_name: []const u8,
     fingerprint_id: u32,
 ) !void {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
     const index = try self.getIndex(index_name);
     defer self.releaseIndex(index);
 
@@ -725,18 +745,18 @@ pub fn listIndexes(self: *Self, allocator: std.mem.Allocator, options: ListOptio
     while (iter.next()) |entry| {
         const name = entry.key_ptr.*;
         const index_ref = entry.value_ptr.*;
-        
+
         // Check if index is deleted
         const deleted = !index_ref.index.has_value;
-        
+
         // Skip deleted indexes if not requested
         if (deleted and !options.include_deleted) {
             continue;
         }
-        
+
         // Get generation from redirect
         const generation = @as(u32, @intCast(index_ref.redirect.version));
-        
+
         try result.append(IndexInfo{
             .name = name,
             .generation = generation,
