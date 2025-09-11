@@ -71,6 +71,7 @@ indexes: IndexRefHashMap = .{},
 cleanup_task: ?*Scheduler.Task = null,
 
 fn isValidName(name: []const u8) bool {
+    if (name.len == 0) return false;
     for (name, 0..) |c, i| {
         if (i == 0) {
             switch (c) {
@@ -88,6 +89,7 @@ fn isValidName(name: []const u8) bool {
 }
 
 test "isValidName" {
+    try std.testing.expect(!isValidName(""));
     try std.testing.expect(isValidName("a"));
     try std.testing.expect(isValidName("a1"));
     try std.testing.expect(isValidName("a1-b"));
