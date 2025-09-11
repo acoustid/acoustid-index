@@ -416,7 +416,7 @@ fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, 
     defer self.lock.unlock();
 
     // Check if index exists and validate generation
-    const status = self.index_status.get(index_name) orelse {
+    var status = self.index_status.getPtr(index_name) orelse {
         log.warn("update for non-existent index {s}", .{index_name});
         return;
     };
@@ -427,13 +427,17 @@ fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, 
     }
 
     // Decode the update operation
-    const update_op = try msgpack.decodeFromSlice(UpdateOp, self.allocator, msg.msg.data);
+    var update_op = try msgpack.decodeFromSlice(UpdateOp, self.allocator, msg.msg.data);
     defer update_op.deinit();
+
+    // Inject sequence tracking metadata field
+    var metadata = update_op.value.metadata orelse Metadata.initOwned(update_op.arena.allocator());
+    try injectIndexMetadata(&metadata, msg.metadata.sequence.stream, null);
 
     // Apply the update to local index
     const update_request = api.UpdateRequest{
         .changes = update_op.value.changes,
-        .metadata = update_op.value.metadata,
+        .metadata = metadata,
         .expected_version = null, // Version control handled at NATS level
     };
 
@@ -442,17 +446,18 @@ fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, 
         return;
     };
 
-    // Update sequence tracking
-    const status_entry = try self.index_status.getOrPut(self.allocator, index_name);
-    if (!status_entry.found_existing) {
-        status_entry.key_ptr.* = try self.allocator.dupe(u8, index_name);
-    }
-    status_entry.value_ptr.last_applied_seq = msg.metadata.sequence.stream;
-
-    // Update metadata with new sequence
-    try self.updateIndexMetadata(index_name, msg.metadata.sequence.stream, null);
+    // Update local sequence tracking
+    status.last_applied_seq = msg.metadata.sequence.stream;
 
     log.debug("applied update to index {s} (seq={})", .{ index_name, msg.metadata.sequence.stream });
+}
+
+fn injectIndexMetadata(metadata: *Metadata, sequence: u64, generation: ?u64) !void {
+    var buf: [32]u8 = undefined;
+    try metadata.set("cluster.last_applied_seq", try std.fmt.bufPrint(&buf, "{d}", .{sequence}));
+    if (generation) |gen| {
+        try metadata.set("cluster.generation", try std.fmt.bufPrint(&buf, "{d}", .{gen}));
+    }
 }
 
 fn updateIndexMetadata(self: *Self, index_name: []const u8, sequence: u64, generation: ?u64) !void {
@@ -464,11 +469,7 @@ fn updateIndexMetadata(self: *Self, index_name: []const u8, sequence: u64, gener
     var metadata = Metadata.initOwned(self.allocator);
     defer metadata.deinit();
 
-    var buf: [32]u8 = undefined;
-    try metadata.set("cluster.last_applied_seq", try std.fmt.bufPrint(&buf, "{d}", .{sequence}));
-    if (generation) |gen| {
-        try metadata.set("cluster.generation", try std.fmt.bufPrint(&buf, "{d}", .{gen}));
-    }
+    try injectIndexMetadata(&metadata, sequence, generation);
 
     // Apply metadata update
     _ = index.update(&[_]Change{}, metadata, null) catch |err| {
