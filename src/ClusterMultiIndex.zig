@@ -520,7 +520,10 @@ pub fn update(
         publish_opts.expected_last_subject_seq = expected_version;
     }
 
-    const result = try self.js.publish(update_subject, data.items, publish_opts);
+    const result = self.js.publish(update_subject, data.items, publish_opts) catch |err| switch (err) {
+        nats.JetStreamError.StreamWrongLastSequence => return error.VersionMismatch,
+        else => return err,
+    };
     defer result.deinit();
 
     return api.UpdateResponse{ .version = result.value.seq };
