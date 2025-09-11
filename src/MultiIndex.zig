@@ -503,9 +503,6 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
     if (!isValidName(name)) {
         return error.InvalidIndexName;
     }
-    if (!isValidName(name)) {
-        return error.InvalidIndexName;
-    }
 
     self.lock.lock();
     defer self.lock.unlock();
