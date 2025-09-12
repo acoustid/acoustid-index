@@ -374,7 +374,7 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
             errdefer self.allocator.free(owned_index_name);
 
             // Create the index locally with the NATS generation as the version
-            _ = self.local_indexes.createIndexInternal(self.allocator, index_name, .{ .custom_version = generation }) catch |err| {
+            _ = self.local_indexes.createIndexInternal(self.allocator, index_name, .{ .generation = generation }) catch |err| {
                 log.warn("failed to create local index {s}: {}", .{ index_name, err });
                 return err;
             };
@@ -395,7 +395,7 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
         },
         .delete => |delete_op| { // delete
             // Delete local index with version validation and custom version from NATS sequence
-            self.local_indexes.deleteIndexInternal(index_name, .{ .expected_version = delete_op.generation, .custom_version = generation }) catch |err| {
+            self.local_indexes.deleteIndexInternal(index_name, .{ .expected_generation = delete_op.generation, .generation = generation }) catch |err| {
                 log.warn("failed to delete local index {s}: {}", .{ index_name, err });
                 return err;
             };

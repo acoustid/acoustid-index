@@ -26,8 +26,8 @@ pub const ListOptions = struct {
 };
 
 pub const IndexOptions = struct {
-    custom_version: ?u64 = null,
-    expected_version: ?u64 = null,
+    generation: ?u64 = null,
+    expected_generation: ?u64 = null,
 };
 
 const OptionalIndex = struct {
@@ -170,7 +170,7 @@ fn openExistingIndex(self: *Self, path: []const u8) !*IndexRef {
     return ref;
 }
 
-fn createNewIndex(self: *Self, original_name: []const u8, custom_version: ?u64) !*IndexRef {
+fn createNewIndex(self: *Self, original_name: []const u8, generation: ?u64) !*IndexRef {
     const entry = try self.indexes.getOrPut(self.allocator, original_name);
 
     const found_existing = entry.found_existing;
@@ -197,7 +197,7 @@ fn createNewIndex(self: *Self, original_name: []const u8, custom_version: ?u64) 
     }
     errdefer if (!found_existing) self.allocator.destroy(ref);
 
-    if (custom_version) |version| {
+    if (generation) |version| {
         if (found_existing) {
             // Re-creating deleted index - verify version is greater
             if (version <= ref.redirect.version) {
@@ -479,7 +479,7 @@ fn borrowIndex(index_ref: *IndexRef) *Index {
     return &index_ref.index.value;
 }
 
-pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool, custom_version: ?u64) !*Index {
+pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool, generation: ?u64) !*Index {
     self.lock.lock();
     defer self.lock.unlock();
 
@@ -498,7 +498,7 @@ pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool, custom_vers
         return error.IndexNotFound;
     }
 
-    const index_ref = try self.createNewIndex(name, custom_version);
+    const index_ref = try self.createNewIndex(name, generation);
     return borrowIndex(index_ref);
 }
 
@@ -517,10 +517,10 @@ pub fn deleteIndexInternal(self: *Self, name: []const u8, options: IndexOptions)
     const index_ref = self.indexes.get(name) orelse return;
     if (!index_ref.index.has_value) return;
 
-    // Validate expected version if provided
-    if (options.expected_version) |expected_version| {
-        if (index_ref.redirect.version != expected_version) {
-            return error.VersionMismatch;
+    // Validate expected generation if provided
+    if (options.expected_generation) |expected_generation| {
+        if (index_ref.redirect.version != expected_generation) {
+            return error.IndexGenerationMismatch;
         }
     }
 
@@ -558,18 +558,18 @@ pub fn deleteIndexInternal(self: *Self, name: []const u8, options: IndexOptions)
     log.info("deleting index {s}", .{name});
 
     // Update redirect with new version and mark as deleted
-    if (options.custom_version) |custom_version| {
-        if (custom_version <= index_ref.redirect.version) {
+    if (options.generation) |generation| {
+        if (generation <= index_ref.redirect.version) {
             return error.VersionTooLow;
         }
-        index_ref.redirect.version = custom_version;
+        index_ref.redirect.version = generation;
     } else {
         index_ref.redirect.version += 1;
     }
     index_ref.redirect.deleted = true;
     errdefer {
         index_ref.redirect.deleted = false;
-        if (options.custom_version == null) {
+        if (options.generation == null) {
             index_ref.redirect.version -= 1;
         }
     }
@@ -706,7 +706,7 @@ pub fn createIndexInternal(
     }
     _ = allocator; // Response doesn't need allocation
 
-    const index = try self.getOrCreateIndex(index_name, true, options.custom_version);
+    const index = try self.getOrCreateIndex(index_name, true, options.generation);
     defer self.releaseIndex(index);
 
     var index_reader = try index.acquireReader();
