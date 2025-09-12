@@ -361,43 +361,43 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
     defer meta_op_parsed.deinit();
     const meta_op = meta_op_parsed.value;
 
+    const generation = msg.metadata.sequence.stream;
+
     self.lock.lock();
     defer self.lock.unlock();
 
     switch (meta_op) {
         .create => { // create
-            const generation = msg.metadata.sequence.stream;
+            try self.index_status.ensureUnusedCapacity(self.allocator, 1);
+
+            const owned_index_name = try self.allocator.dupe(u8, index_name);
+            errdefer self.allocator.free(owned_index_name);
 
             // Create the index locally with the NATS generation as the version
             _ = self.local_indexes.createIndexInternal(self.allocator, index_name, .{ .custom_version = generation }) catch |err| {
                 log.warn("failed to create local index {s}: {}", .{ index_name, err });
-                return;
+                return err;
             };
 
             // Store generation and sequence tracking
-            const status_entry = try self.index_status.getOrPut(self.allocator, index_name);
-            if (!status_entry.found_existing) {
-                status_entry.key_ptr.* = try self.allocator.dupe(u8, index_name);
-            }
-            status_entry.value_ptr.* = IndexStatus{
+            self.index_status.putAssumeCapacityNoClobber(owned_index_name, .{
                 .generation = generation,
                 .last_applied_seq = msg.metadata.sequence.stream,
-            };
+            });
 
             // Update metadata in the index
-            try self.updateIndexMetadata(index_name, msg.metadata.sequence.stream, generation);
+            self.updateIndexMetadata(index_name, msg.metadata.sequence.stream, generation) catch |err| {
+                log.warn("failed to update index metadata for {s}: {}", .{ index_name, err });
+                // this is not critical, we can ignore it
+            };
 
             log.info("created index {s} with generation {}", .{ index_name, generation });
         },
         .delete => |delete_op| { // delete
             // Delete local index with version validation and custom version from NATS sequence
-            const delete_version = msg.metadata.sequence.stream;
-            self.local_indexes.deleteIndexInternal(index_name, .{ 
-                .expected_version = delete_op.generation,
-                .custom_version = delete_version 
-            }) catch |err| {
+            self.local_indexes.deleteIndexInternal(index_name, .{ .expected_version = delete_op.generation, .custom_version = generation }) catch |err| {
                 log.warn("failed to delete local index {s}: {}", .{ index_name, err });
-                return;
+                return err;
             };
 
             // Remove from status map
@@ -405,7 +405,7 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
                 self.allocator.free(entry.key);
             }
 
-            log.info("deleted index {s} with version {}", .{ index_name, delete_version });
+            log.info("deleted index {s} with generation {}", .{ index_name, generation });
         },
     }
 }
