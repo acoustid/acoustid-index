@@ -35,7 +35,6 @@ stream_name: []const u8 = "fpindex-ops",
 consumer_thread: ?std.Thread = null,
 should_stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
-
 /// Metadata operation (create/delete)
 pub const MetaOp = union(enum) {
     create: struct {
@@ -226,51 +225,30 @@ fn loadExistingIndexes(self: *Self) !void {
         }
 
         var last_seq: u64 = undefined;
-        var generation: u64 = undefined;
-
         if (info.deleted) {
-            // For deleted indexes, use generation as last_applied_seq
-            generation = info.generation;
-            last_seq = generation;
-
-            // Update last_applied_seq
-            self.last_applied_seq = @max(self.last_applied_seq, last_seq);
-
-            log.info("loaded deleted index {s} (generation={}, last_seq={})", .{ info.name, generation, last_seq });
+            // Use generation as last_seq as that's when it has been deleted
+            last_seq = info.generation;
+            log.info("loaded deleted index {s} (generation={}, last_seq={})", .{ info.name, info.generation, last_seq });
         } else {
-            // For active indexes, try to read metadata
+            // For active indexes, try to get the actual last applied sequence
             const index = self.local_indexes.getIndex(info.name) catch |err| {
                 log.warn("failed to get index {s} during startup: {}", .{ info.name, err });
-                continue;
+                return err;
             };
             defer self.local_indexes.releaseIndex(index);
 
             var reader = index.acquireReader() catch |err| {
                 log.warn("failed to acquire reader for index {s} during startup: {}", .{ info.name, err });
-                continue;
+                return err;
             };
             defer index.releaseReader(&reader);
 
-            var metadata = reader.getMetadata(self.allocator) catch |err| {
-                log.warn("failed to get metadata for index {s} during startup: {}", .{ info.name, err });
-                continue;
-            };
-            defer metadata.deinit();
-
-            // Use generation from cluster metadata if available, otherwise use redirect version
-            generation = if (metadata.get("cluster.generation")) |gen_str|
-                std.fmt.parseInt(u64, gen_str, 10) catch info.generation
-            else
-                info.generation;
-
-            // Use the actual index version (which is now the NATS sequence)
             last_seq = reader.getVersion();
-
-            // Update last_applied_seq
-            self.last_applied_seq = @max(self.last_applied_seq, last_seq);
-
-            log.info("loaded active index {s} (generation={}, last_seq={})", .{ info.name, generation, last_seq });
+            log.info("loaded active index {s} (generation={}, last_seq={})", .{ info.name, info.generation, last_seq });
         }
+
+        // Update last_applied_seq
+        self.last_applied_seq = @max(self.last_applied_seq, last_seq);
     }
 
     log.info("last_applied_seq across all indexes: {}", .{self.last_applied_seq});
@@ -430,8 +408,6 @@ fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, 
 
     log.debug("applied update to index {s} (seq={})", .{ index_name, msg.metadata.sequence.stream });
 }
-
-
 
 // Interface methods for server.zig compatibility
 
