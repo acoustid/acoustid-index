@@ -25,6 +25,10 @@ pub const ListOptions = struct {
     include_deleted: bool = false,
 };
 
+pub const IndexOptions = struct {
+    custom_version: ?u64 = null,
+};
+
 const OptionalIndex = struct {
     value: Index = undefined,
     has_value: bool = false,
@@ -501,7 +505,7 @@ pub fn getIndex(self: *Self, name: []const u8) !*Index {
     return self.getOrCreateIndex(name, false, null);
 }
 
-pub fn deleteIndex(self: *Self, name: []const u8) !void {
+pub fn deleteIndexInternal(self: *Self, name: []const u8, options: IndexOptions) !void {
     if (!isValidName(name)) {
         return error.InvalidIndexName;
     }
@@ -545,9 +549,22 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
 
     log.info("deleting index {s}", .{name});
 
-    // Mark redirect as deleted
+    // Update redirect with new version and mark as deleted
+    if (options.custom_version) |custom_version| {
+        if (custom_version <= index_ref.redirect.version) {
+            return error.VersionTooLow;
+        }
+        index_ref.redirect.version = custom_version;
+    } else {
+        index_ref.redirect.version += 1;
+    }
     index_ref.redirect.deleted = true;
-    errdefer index_ref.redirect.deleted = false;
+    errdefer {
+        index_ref.redirect.deleted = false;
+        if (options.custom_version == null) {
+            index_ref.redirect.version -= 1;
+        }
+    }
 
     index_redirect.writeRedirectFile(index_ref.index_dir, index_ref.redirect, self.allocator) catch |err| {
         log.err("failed to mark redirect as deleted for index {s}: {}", .{ name, err });
@@ -556,6 +573,10 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
 
     // Close the index
     index_ref.index.clear();
+}
+
+pub fn deleteIndex(self: *Self, name: []const u8) !void {
+    return self.deleteIndexInternal(name, .{});
 }
 
 pub fn search(
@@ -666,17 +687,18 @@ pub fn checkIndexExists(
     // Just checking existence, no need to return anything
 }
 
-pub fn createIndex(
+pub fn createIndexInternal(
     self: *Self,
     allocator: std.mem.Allocator,
     index_name: []const u8,
+    options: IndexOptions,
 ) !api.CreateIndexResponse {
     if (!isValidName(index_name)) {
         return error.InvalidIndexName;
     }
     _ = allocator; // Response doesn't need allocation
 
-    const index = try self.getOrCreateIndex(index_name, true, null);
+    const index = try self.getOrCreateIndex(index_name, true, options.custom_version);
     defer self.releaseIndex(index);
 
     var index_reader = try index.acquireReader();
@@ -685,6 +707,14 @@ pub fn createIndex(
     return api.CreateIndexResponse{
         .version = index_reader.getVersion(),
     };
+}
+
+pub fn createIndex(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+) !api.CreateIndexResponse {
+    return self.createIndexInternal(allocator, index_name, .{});
 }
 
 pub fn getFingerprintInfo(

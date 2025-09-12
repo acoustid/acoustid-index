@@ -366,14 +366,13 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
 
     switch (meta_op) {
         .create => { // create
-            const generation = @as(u64, @intCast(msg.metadata.sequence.stream));
+            const generation = msg.metadata.sequence.stream;
 
             // Create the index locally with the NATS generation as the version
-            const index = self.local_indexes.getOrCreateIndex(index_name, true, generation) catch |err| {
+            _ = self.local_indexes.createIndexInternal(self.allocator, index_name, .{ .custom_version = generation }) catch |err| {
                 log.warn("failed to create local index {s}: {}", .{ index_name, err });
                 return;
             };
-            self.local_indexes.releaseIndex(index);
 
             // Store generation and sequence tracking
             const status_entry = try self.index_status.getOrPut(self.allocator, index_name);
@@ -394,8 +393,9 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
             if (self.index_status.get(index_name)) |status| {
                 const delete_gen = delete_op.generation;
                 if (status.generation == delete_gen) {
-                    // Delete local index
-                    self.local_indexes.deleteIndex(index_name) catch |err| {
+                    // Delete local index with custom version from NATS sequence
+                    const delete_version = msg.metadata.sequence.stream;
+                    self.local_indexes.deleteIndexInternal(index_name, .{ .custom_version = delete_version }) catch |err| {
                         log.warn("failed to delete local index {s}: {}", .{ index_name, err });
                     };
 
@@ -404,7 +404,7 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
                         self.allocator.free(entry.key);
                     }
 
-                    log.info("deleted index {s}", .{index_name});
+                    log.info("deleted index {s} with version {}", .{ index_name, delete_version });
                 }
             }
         },
