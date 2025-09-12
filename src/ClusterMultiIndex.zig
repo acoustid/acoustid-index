@@ -22,6 +22,7 @@ replica_id: []const u8,
 
 // State tracking
 index_status: std.StringHashMapUnmanaged(IndexStatus) = .{}, // index_name -> status
+last_applied_seq: u64 = 0, // Last applied sequence across all indexes
 lock: std.Thread.Mutex = .{},
 
 // NATS JetStream
@@ -227,8 +228,8 @@ fn loadExistingIndexes(self: *Self) !void {
     self.lock.lock();
     defer self.lock.unlock();
 
-    // Get list of existing indexes from MultiIndex
-    const index_list = try self.local_indexes.listIndexes(self.allocator, .{});
+    // Get list of existing indexes from MultiIndex (including deleted ones)
+    const index_list = try self.local_indexes.listIndexes(self.allocator, .{ .include_deleted = true });
     defer self.allocator.free(index_list);
 
     for (index_list) |info| {
@@ -237,49 +238,68 @@ fn loadExistingIndexes(self: *Self) !void {
             continue;
         }
 
-        // Get the index to access its metadata
-        const index = self.local_indexes.getIndex(info.name) catch |err| {
-            log.warn("failed to get index {s} during startup: {}", .{ info.name, err });
-            continue;
-        };
-        defer self.local_indexes.releaseIndex(index);
+        var last_seq: u64 = undefined;
+        var generation: u64 = undefined;
 
-        var reader = index.acquireReader() catch |err| {
-            log.warn("failed to acquire reader for index {s} during startup: {}", .{ info.name, err });
-            continue;
-        };
-        defer index.releaseReader(&reader);
+        if (info.deleted) {
+            // For deleted indexes, use generation as last_applied_seq
+            generation = info.generation;
+            last_seq = generation;
 
-        var metadata = reader.getMetadata(self.allocator) catch |err| {
-            log.warn("failed to get metadata for index {s} during startup: {}", .{ info.name, err });
-            continue;
-        };
-        defer metadata.deinit();
+            // Update last_applied_seq
+            self.last_applied_seq = @max(self.last_applied_seq, last_seq);
 
-        // Extract last applied sequence from cluster metadata
-        const last_seq = if (metadata.get("cluster.last_applied_seq")) |seq_str|
-            std.fmt.parseInt(u64, seq_str, 10) catch 0
-        else
-            0;
+            log.info("loaded deleted index {s} (generation={}, last_seq={})", .{ info.name, generation, last_seq });
+        } else {
+            // For active indexes, try to read metadata
+            const index = self.local_indexes.getIndex(info.name) catch |err| {
+                log.warn("failed to get index {s} during startup: {}", .{ info.name, err });
+                continue;
+            };
+            defer self.local_indexes.releaseIndex(index);
 
-        // Use generation from cluster metadata if available, otherwise use redirect version
-        const generation = if (metadata.get("cluster.generation")) |gen_str|
-            std.fmt.parseInt(u64, gen_str, 10) catch info.generation
-        else
-            info.generation;
+            var reader = index.acquireReader() catch |err| {
+                log.warn("failed to acquire reader for index {s} during startup: {}", .{ info.name, err });
+                continue;
+            };
+            defer index.releaseReader(&reader);
 
-        // Store in our status map
-        const status_entry = try self.index_status.getOrPut(self.allocator, info.name);
-        if (!status_entry.found_existing) {
-            status_entry.key_ptr.* = try self.allocator.dupe(u8, info.name);
+            var metadata = reader.getMetadata(self.allocator) catch |err| {
+                log.warn("failed to get metadata for index {s} during startup: {}", .{ info.name, err });
+                continue;
+            };
+            defer metadata.deinit();
+
+            // Use generation from cluster metadata if available, otherwise use redirect version
+            generation = if (metadata.get("cluster.generation")) |gen_str|
+                std.fmt.parseInt(u64, gen_str, 10) catch info.generation
+            else
+                info.generation;
+
+            // Extract last applied sequence from cluster metadata, fallback to generation
+            last_seq = if (metadata.get("cluster.last_applied_seq")) |seq_str| blk: {
+                const parsed = std.fmt.parseInt(u64, seq_str, 10) catch 0;
+                break :blk if (parsed > 0) parsed else generation;
+            } else generation;
+
+            // Update last_applied_seq
+            self.last_applied_seq = @max(self.last_applied_seq, last_seq);
+
+            // Store active index in our status map
+            const status_entry = try self.index_status.getOrPut(self.allocator, info.name);
+            if (!status_entry.found_existing) {
+                status_entry.key_ptr.* = try self.allocator.dupe(u8, info.name);
+            }
+            status_entry.value_ptr.* = IndexStatus{
+                .generation = generation,
+                .last_applied_seq = last_seq,
+            };
+
+            log.info("loaded active index {s} (generation={}, last_seq={})", .{ info.name, generation, last_seq });
         }
-        status_entry.value_ptr.* = IndexStatus{
-            .generation = generation,
-            .last_applied_seq = last_seq,
-        };
-
-        log.info("loaded existing index {s} (generation={}, last_seq={})", .{ info.name, generation, last_seq });
     }
+
+    log.info("last_applied_seq across all indexes: {}", .{self.last_applied_seq});
 }
 
 fn createMainConsumer(self: *Self) !void {
@@ -323,6 +343,12 @@ fn processMessages(self: *Self) !void {
 fn processMessage(self: *Self, msg: *nats.JetStreamMessage) !void {
     const subject = msg.msg.subject;
 
+    // Early skip check: if message sequence is <= our global last_applied_seq, skip it
+    if (msg.metadata.sequence.stream <= self.last_applied_seq) {
+        log.debug("skipping already globally applied message (seq={}, last_applied={})", .{ msg.metadata.sequence.stream, self.last_applied_seq });
+        return;
+    }
+
     // Parse subject: fpindex.{index}.{type}
     if (!std.mem.startsWith(u8, subject, "fpindex.")) return;
 
@@ -330,19 +356,6 @@ fn processMessage(self: *Self, msg: *nats.JetStreamMessage) !void {
     var parts = std.mem.splitSequence(u8, parts_str, ".");
     const index_name = parts.next() orelse return;
     const operation_type = parts.next() orelse return;
-
-    // Check if we should skip this message
-    {
-        self.lock.lock();
-        defer self.lock.unlock();
-
-        const status = self.index_status.get(index_name) orelse IndexStatus{ .generation = 0, .last_applied_seq = 0 };
-        const last_applied = status.last_applied_seq;
-        if (msg.metadata.sequence.stream <= last_applied) {
-            log.debug("skipping already applied message for {s} (seq={}, last_applied={})", .{ index_name, msg.metadata.sequence.stream, last_applied });
-            return;
-        }
-    }
 
     if (std.mem.eql(u8, operation_type, "meta")) {
         try self.processMetaOperation(index_name, msg);
@@ -401,6 +414,10 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
             };
 
             log.info("created index {s} with generation {}", .{ index_name, generation });
+
+            // Update global last_applied_seq
+            std.debug.assert(msg.metadata.sequence.stream > self.last_applied_seq);
+            self.last_applied_seq = msg.metadata.sequence.stream;
         },
         .delete => |delete_op| { // delete
             // Delete local index with version validation and custom version from NATS sequence
@@ -418,6 +435,10 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
             }
 
             log.info("deleted index {s} with generation {}", .{ index_name, generation });
+
+            // Update global last_applied_seq
+            std.debug.assert(msg.metadata.sequence.stream > self.last_applied_seq);
+            self.last_applied_seq = msg.metadata.sequence.stream;
         },
     }
 }
@@ -458,7 +479,12 @@ fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, 
     };
 
     // Update local sequence tracking
+    std.debug.assert(msg.metadata.sequence.stream > status.last_applied_seq);
     status.last_applied_seq = msg.metadata.sequence.stream;
+
+    // Update global last_applied_seq
+    std.debug.assert(msg.metadata.sequence.stream > self.last_applied_seq);
+    self.last_applied_seq = msg.metadata.sequence.stream;
 
     log.debug("applied update to index {s} (seq={})", .{ index_name, msg.metadata.sequence.stream });
 }
