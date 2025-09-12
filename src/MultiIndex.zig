@@ -185,7 +185,7 @@ fn createNewIndex(self: *Self, original_name: []const u8) !*IndexRef {
     if (!found_existing) {
         ref.redirect = IndexRedirect.init(name);
     } else {
-        ref.redirect = ref.redirect.nextVersion();
+        ref.redirect = ref.redirect.nextGeneration();
     }
     errdefer ref.redirect.deleted = true;
 
@@ -528,8 +528,8 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
 
     log.info("deleting index {s}", .{name});
 
-    // Mark redirect as deleted
-    index_ref.redirect.deleted = true;
+    // Mark redirect as deleted with incremented generation
+    index_ref.redirect = index_ref.redirect.nextGenerationDeleted();
     errdefer index_ref.redirect.deleted = false;
 
     index_redirect.writeRedirectFile(index_ref.index_dir, index_ref.redirect, self.allocator) catch |err| {

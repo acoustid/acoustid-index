@@ -6,7 +6,7 @@ const filefmt = @import("filefmt.zig");
 
 pub const IndexRedirect = struct {
     name: []const u8, // Logical index name (e.g., "foo.bar")
-    version: u64, // Always incremented, even across delete/recreate
+    generation: u64, // Always incremented, even across delete/recreate
     deleted: bool = false, // Deletion flag
 
     pub fn msgpackFormat() msgpack.StructFormat {
@@ -16,28 +16,36 @@ pub const IndexRedirect = struct {
     pub fn msgpackFieldKey(field: std.meta.FieldEnum(@This())) u8 {
         return switch (field) {
             .name => 1,
-            .version => 2,
+            .generation => 2,
             .deleted => 3,
         };
     }
 
     pub fn getDataDir(self: IndexRedirect, allocator: std.mem.Allocator) ![]u8 {
-        return std.fmt.allocPrint(allocator, "data.{}", .{self.version});
+        return std.fmt.allocPrint(allocator, "data.{}", .{self.generation});
     }
 
     pub fn init(index_name: []const u8) IndexRedirect {
         return .{
             .name = index_name,
-            .version = 1,
+            .generation = 1,
             .deleted = false,
         };
     }
 
-    pub fn nextVersion(self: IndexRedirect) IndexRedirect {
+    pub fn nextGeneration(self: IndexRedirect) IndexRedirect {
         return .{
             .name = self.name,
-            .version = self.version + 1,
+            .generation = self.generation + 1,
             .deleted = false,
+        };
+    }
+
+    pub fn nextGenerationDeleted(self: IndexRedirect) IndexRedirect {
+        return .{
+            .name = self.name,
+            .generation = self.generation + 1,
+            .deleted = true,
         };
     }
 };
@@ -136,7 +144,7 @@ pub fn writeRedirectFile(index_dir: std.fs.Dir, redirect: IndexRedirect, allocat
     // Final rename to replace existing file
     try file.finish();
 
-    log.info("wrote index redirect: {s} (version={}, deleted={})", .{ redirect.name, redirect.version, redirect.deleted });
+    log.info("wrote index redirect: {s} (generation={}, deleted={})", .{ redirect.name, redirect.generation, redirect.deleted });
 }
 
 const testing = std.testing;
@@ -144,20 +152,28 @@ const testing = std.testing;
 test "IndexRedirect init" {
     const redirect = IndexRedirect.init("test.index");
     try testing.expectEqualStrings("test.index", redirect.name);
-    try testing.expectEqual(1, redirect.version);
+    try testing.expectEqual(1, redirect.generation);
     try testing.expectEqual(false, redirect.deleted);
 }
 
-test "IndexRedirect nextVersion" {
+test "IndexRedirect nextGeneration" {
     const redirect = IndexRedirect.init("test.index");
-    const next = redirect.nextVersion();
+    const next = redirect.nextGeneration();
     try testing.expectEqualStrings("test.index", next.name);
-    try testing.expectEqual(2, next.version);
+    try testing.expectEqual(2, next.generation);
     try testing.expectEqual(false, next.deleted);
 }
 
+test "IndexRedirect nextGenerationDeleted" {
+    const redirect = IndexRedirect.init("test.index");
+    const next = redirect.nextGenerationDeleted();
+    try testing.expectEqualStrings("test.index", next.name);
+    try testing.expectEqual(2, next.generation);
+    try testing.expectEqual(true, next.deleted);
+}
+
 test "IndexRedirect getDataDir" {
-    const redirect = IndexRedirect{ .name = "test", .version = 42, .deleted = false };
+    const redirect = IndexRedirect{ .name = "test", .generation = 42, .deleted = false };
     const data_dir = try redirect.getDataDir(testing.allocator);
     defer testing.allocator.free(data_dir);
     try testing.expectEqualStrings("data.42", data_dir);
@@ -169,7 +185,7 @@ test "writeRedirectFile/readRedirectFile" {
 
     const original_redirect = IndexRedirect{
         .name = "test.index",
-        .version = 123,
+        .generation = 123,
         .deleted = false,
     };
 
@@ -179,7 +195,7 @@ test "writeRedirectFile/readRedirectFile" {
     defer testing.allocator.free(read_redirect.name);
 
     try testing.expectEqualStrings(original_redirect.name, read_redirect.name);
-    try testing.expectEqual(original_redirect.version, read_redirect.version);
+    try testing.expectEqual(original_redirect.generation, read_redirect.generation);
     try testing.expectEqual(original_redirect.deleted, read_redirect.deleted);
 }
 
@@ -189,13 +205,13 @@ test "writeRedirectFile creates backup" {
 
     const redirect1 = IndexRedirect{
         .name = "test.index",
-        .version = 1,
+        .generation = 1,
         .deleted = false,
     };
 
     const redirect2 = IndexRedirect{
         .name = "test.index", 
-        .version = 2,
+        .generation = 2,
         .deleted = false,
     };
 
@@ -208,10 +224,10 @@ test "writeRedirectFile creates backup" {
     // Current file should have version 2
     const current_redirect = try readRedirectFile(tmp.dir, testing.allocator);
     defer testing.allocator.free(current_redirect.name);
-    try testing.expectEqual(2, current_redirect.version);
+    try testing.expectEqual(2, current_redirect.generation);
 
     // Backup should contain version 1
     const backup_redirect = try readRedirectFileBackup(tmp.dir, testing.allocator);
     defer testing.allocator.free(backup_redirect.name);
-    try testing.expectEqual(1, backup_redirect.version);
+    try testing.expectEqual(1, backup_redirect.generation);
 }
