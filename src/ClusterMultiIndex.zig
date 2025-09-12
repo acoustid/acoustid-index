@@ -263,11 +263,8 @@ fn loadExistingIndexes(self: *Self) !void {
             else
                 info.generation;
 
-            // Extract last applied sequence from cluster metadata, fallback to generation
-            last_seq = if (metadata.get("cluster.last_applied_seq")) |seq_str| blk: {
-                const parsed = std.fmt.parseInt(u64, seq_str, 10) catch 0;
-                break :blk if (parsed > 0) parsed else generation;
-            } else generation;
+            // Use the actual index version (which is now the NATS sequence)
+            last_seq = reader.getVersion();
 
             // Update last_applied_seq
             self.last_applied_seq = @max(self.last_applied_seq, last_seq);
@@ -367,9 +364,15 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
                 return err;
             };
 
-            // Update metadata in the index
-            self.updateIndexMetadata(index_name, msg.metadata.sequence.stream, generation) catch |err| {
-                log.warn("failed to update index metadata for {s}: {}", .{ index_name, err });
+            // Make an empty commit to set the initial version to NATS sequence
+            _ = self.local_indexes.updateInternal(self.allocator, index_name, .{
+                .changes = &[_]Change{},
+                .metadata = null,
+                .expected_version = null,
+            }, .{
+                .version = msg.metadata.sequence.stream,
+            }) catch |err| {
+                log.warn("failed to set initial version for {s}: {}", .{ index_name, err });
                 // this is not critical, we can ignore it
             };
 
@@ -406,19 +409,16 @@ fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, 
     var update_op = try msgpack.decodeFromSlice(UpdateOp, self.allocator, msg.msg.data);
     defer update_op.deinit();
 
-    // Inject sequence tracking metadata field
-    var metadata = update_op.value.metadata orelse Metadata.initOwned(update_op.arena.allocator());
-    try injectIndexMetadata(&metadata, msg.metadata.sequence.stream, null);
-
     // Apply the update to local index
     const update_request = api.UpdateRequest{
         .changes = update_op.value.changes,
-        .metadata = metadata,
+        .metadata = update_op.value.metadata,
         .expected_version = null, // Version control handled at NATS level
     };
 
     _ = self.local_indexes.updateInternal(self.allocator, index_name, update_request, .{
         .expect_generation = generation,
+        .version = msg.metadata.sequence.stream,
     }) catch |err| {
         log.err("failed to apply update to index {s}: {}", .{ index_name, err });
         return;
@@ -431,31 +431,7 @@ fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, 
     log.debug("applied update to index {s} (seq={})", .{ index_name, msg.metadata.sequence.stream });
 }
 
-fn injectIndexMetadata(metadata: *Metadata, sequence: u64, generation: ?u64) !void {
-    var buf: [32]u8 = undefined;
-    try metadata.set("cluster.last_applied_seq", try std.fmt.bufPrint(&buf, "{d}", .{sequence}));
-    if (generation) |gen| {
-        try metadata.set("cluster.generation", try std.fmt.bufPrint(&buf, "{d}", .{gen}));
-    }
-}
 
-fn updateIndexMetadata(self: *Self, index_name: []const u8, sequence: u64, generation: ?u64) !void {
-    // Get the index
-    const index = self.local_indexes.getIndex(index_name) catch return;
-    defer self.local_indexes.releaseIndex(index);
-
-    // Create metadata update
-    var metadata = Metadata.initOwned(self.allocator);
-    defer metadata.deinit();
-
-    try injectIndexMetadata(&metadata, sequence, generation);
-
-    // Apply metadata update
-    _ = index.update(&[_]Change{}, metadata, .{}) catch |err| {
-        log.warn("failed to update metadata for index {s}: {}", .{ index_name, err });
-        return err;
-    };
-}
 
 // Interface methods for server.zig compatibility
 
@@ -513,19 +489,7 @@ pub fn getIndexInfo(
     allocator: std.mem.Allocator,
     index_name: []const u8,
 ) !api.GetIndexInfoResponse {
-    const response = try self.local_indexes.getIndexInfo(allocator, index_name);
-
-    // Use cluster metadata from the index for consistent version info
-    const version = if (response.metadata.get("cluster.last_applied_seq")) |seq_str|
-        std.fmt.parseInt(u64, seq_str, 10) catch response.version
-    else
-        response.version;
-
-    return api.GetIndexInfoResponse{
-        .version = version,
-        .metadata = response.metadata,
-        .stats = response.stats,
-    };
+    return try self.local_indexes.getIndexInfo(allocator, index_name);
 }
 
 pub fn checkIndexExists(self: *Self, index_name: []const u8) !void {
