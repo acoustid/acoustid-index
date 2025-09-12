@@ -21,7 +21,6 @@ local_indexes: *MultiIndex,
 replica_id: []const u8,
 
 // State tracking
-index_status: std.StringHashMapUnmanaged(IndexStatus) = .{}, // index_name -> status
 last_applied_seq: u64 = 0, // Last applied sequence across all indexes
 lock: std.Thread.Mutex = .{},
 
@@ -36,11 +35,6 @@ stream_name: []const u8 = "fpindex-ops",
 consumer_thread: ?std.Thread = null,
 should_stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
-/// Status of an index in the cluster
-const IndexStatus = struct {
-    generation: u64,
-    last_applied_seq: u64,
-};
 
 /// Metadata operation (create/delete)
 pub const MetaOp = union(enum) {
@@ -123,13 +117,6 @@ pub fn deinit(self: *Self) void {
 
     self.lock.lock();
     defer self.lock.unlock();
-
-    // Free map contents
-    var status_iter = self.index_status.iterator();
-    while (status_iter.next()) |entry| {
-        self.allocator.free(entry.key_ptr.*);
-    }
-    self.index_status.deinit(self.allocator);
 
     self.allocator.free(self.replica_id);
 }
@@ -285,16 +272,6 @@ fn loadExistingIndexes(self: *Self) !void {
             // Update last_applied_seq
             self.last_applied_seq = @max(self.last_applied_seq, last_seq);
 
-            // Store active index in our status map
-            const status_entry = try self.index_status.getOrPut(self.allocator, info.name);
-            if (!status_entry.found_existing) {
-                status_entry.key_ptr.* = try self.allocator.dupe(u8, info.name);
-            }
-            status_entry.value_ptr.* = IndexStatus{
-                .generation = generation,
-                .last_applied_seq = last_seq,
-            };
-
             log.info("loaded active index {s} (generation={}, last_seq={})", .{ info.name, generation, last_seq });
         }
     }
@@ -381,17 +358,6 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
 
     switch (meta_op) {
         .create => { // create
-            // Check if index already exists in cluster state
-            if (self.index_status.contains(index_name)) {
-                log.warn("index {s} already exists in cluster state", .{index_name});
-                return error.IndexAlreadyExists;
-            }
-
-            try self.index_status.ensureUnusedCapacity(self.allocator, 1);
-
-            const owned_index_name = try self.allocator.dupe(u8, index_name);
-            errdefer self.allocator.free(owned_index_name);
-
             // Create the index locally with the NATS generation as the version
             _ = self.local_indexes.createIndexInternal(index_name, .{
                 .generation = generation,
@@ -400,12 +366,6 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
                 log.warn("failed to create local index {s}: {}", .{ index_name, err });
                 return err;
             };
-
-            // Store generation and sequence tracking
-            self.index_status.putAssumeCapacityNoClobber(owned_index_name, .{
-                .generation = generation,
-                .last_applied_seq = msg.metadata.sequence.stream,
-            });
 
             // Update metadata in the index
             self.updateIndexMetadata(index_name, msg.metadata.sequence.stream, generation) catch |err| {
@@ -422,17 +382,12 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
         .delete => |delete_op| { // delete
             // Delete local index with version validation and custom version from NATS sequence
             self.local_indexes.deleteIndexInternal(index_name, .{
-                .expected_generation = delete_op.generation,
+                .expect_generation = delete_op.generation,
                 .generation = generation,
             }) catch |err| {
                 log.warn("failed to delete local index {s}: {}", .{ index_name, err });
                 return err;
             };
-
-            // Remove from status map
-            if (self.index_status.fetchRemove(index_name)) |entry| {
-                self.allocator.free(entry.key);
-            }
 
             log.info("deleted index {s} with generation {}", .{ index_name, generation });
 
@@ -446,17 +401,6 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
 fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, msg: *nats.JetStreamMessage) !void {
     self.lock.lock();
     defer self.lock.unlock();
-
-    // Check if index exists and validate generation
-    var status = self.index_status.getPtr(index_name) orelse {
-        log.warn("update for non-existent index {s}", .{index_name});
-        return;
-    };
-
-    if (generation != status.generation) {
-        log.warn("update for index {s} with wrong generation {} (expected {})", .{ index_name, generation, status.generation });
-        return;
-    }
 
     // Decode the update operation
     var update_op = try msgpack.decodeFromSlice(UpdateOp, self.allocator, msg.msg.data);
@@ -473,14 +417,12 @@ fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, 
         .expected_version = null, // Version control handled at NATS level
     };
 
-    _ = self.local_indexes.update(self.allocator, index_name, update_request) catch |err| {
+    _ = self.local_indexes.updateInternal(self.allocator, index_name, update_request, .{
+        .expect_generation = generation,
+    }) catch |err| {
         log.err("failed to apply update to index {s}: {}", .{ index_name, err });
         return;
     };
-
-    // Update local sequence tracking
-    std.debug.assert(msg.metadata.sequence.stream > status.last_applied_seq);
-    status.last_applied_seq = msg.metadata.sequence.stream;
 
     // Update global last_applied_seq
     std.debug.assert(msg.metadata.sequence.stream > self.last_applied_seq);

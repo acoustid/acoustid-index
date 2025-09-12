@@ -27,7 +27,7 @@ pub const ListOptions = struct {
 
 pub const IndexOptions = struct {
     generation: ?u64 = null,
-    expected_generation: ?u64 = null,
+    expect_generation: ?u64 = null,
     expect_does_not_exist: bool = false,
 };
 
@@ -493,6 +493,12 @@ pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool, options: In
             if (options.expect_does_not_exist) {
                 return error.IndexAlreadyExists;
             }
+            // Validate expected generation if provided
+            if (options.expect_generation) |expect_generation| {
+                if (index_ref.redirect.version != expect_generation) {
+                    return error.IndexGenerationMismatch;
+                }
+            }
             return borrowIndex(index_ref);
         }
         // Index is deleted (has_value == false) - fall through to handle recreation if create=true
@@ -522,8 +528,8 @@ pub fn deleteIndexInternal(self: *Self, name: []const u8, options: IndexOptions)
     if (!index_ref.index.has_value) return;
 
     // Validate expected generation if provided
-    if (options.expected_generation) |expected_generation| {
-        if (index_ref.redirect.version != expected_generation) {
+    if (options.expect_generation) |expect_generation| {
+        if (index_ref.redirect.version != expect_generation) {
             return error.IndexGenerationMismatch;
         }
     }
@@ -636,18 +642,19 @@ pub fn search(
     return api.SearchResponse{ .results = response_results };
 }
 
-pub fn update(
+pub fn updateInternal(
     self: *Self,
     allocator: std.mem.Allocator,
     index_name: []const u8,
     request: api.UpdateRequest,
+    options: IndexOptions,
 ) !api.UpdateResponse {
     if (!isValidName(index_name)) {
         return error.InvalidIndexName;
     }
     _ = allocator; // Response doesn't need allocation
 
-    const index = try self.getIndex(index_name);
+    const index = try self.getOrCreateIndex(index_name, false, options);
     defer self.releaseIndex(index);
 
     metrics.update(request.changes.len);
@@ -659,6 +666,15 @@ pub fn update(
     );
 
     return api.UpdateResponse{ .version = new_version };
+}
+
+pub fn update(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+    request: api.UpdateRequest,
+) !api.UpdateResponse {
+    return self.updateInternal(allocator, index_name, request, .{});
 }
 
 pub fn getIndexInfo(
