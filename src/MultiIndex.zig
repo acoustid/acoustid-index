@@ -28,6 +28,7 @@ pub const ListOptions = struct {
 pub const IndexOptions = struct {
     generation: ?u64 = null,
     expected_generation: ?u64 = null,
+    expect_does_not_exist: bool = false,
 };
 
 const OptionalIndex = struct {
@@ -479,7 +480,7 @@ fn borrowIndex(index_ref: *IndexRef) *Index {
     return &index_ref.index.value;
 }
 
-pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool, generation: ?u64) !*Index {
+pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool, options: IndexOptions) !*Index {
     self.lock.lock();
     defer self.lock.unlock();
 
@@ -488,6 +489,9 @@ pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool, generation:
             // Index exists and is active
             if (index_ref.being_deleted) {
                 return error.IndexBeingDeleted;
+            }
+            if (options.expect_does_not_exist) {
+                return error.IndexAlreadyExists;
             }
             return borrowIndex(index_ref);
         }
@@ -498,12 +502,12 @@ pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool, generation:
         return error.IndexNotFound;
     }
 
-    const index_ref = try self.createNewIndex(name, generation);
+    const index_ref = try self.createNewIndex(name, options.generation);
     return borrowIndex(index_ref);
 }
 
 pub fn getIndex(self: *Self, name: []const u8) !*Index {
-    return self.getOrCreateIndex(name, false, null);
+    return self.getOrCreateIndex(name, false, .{});
 }
 
 pub fn deleteIndexInternal(self: *Self, name: []const u8, options: IndexOptions) !void {
@@ -704,7 +708,7 @@ pub fn createIndexInternal(
         return error.InvalidIndexName;
     }
 
-    const index = try self.getOrCreateIndex(index_name, true, options.generation);
+    const index = try self.getOrCreateIndex(index_name, true, options);
     defer self.releaseIndex(index);
 
     var index_reader = try index.acquireReader();

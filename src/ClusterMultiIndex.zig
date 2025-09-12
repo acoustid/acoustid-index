@@ -78,7 +78,7 @@ pub fn init(allocator: std.mem.Allocator, nc: *nats.Connection, local_indexes: *
 
 fn loadOrCreateReplicaId(allocator: std.mem.Allocator, local_indexes: *MultiIndex) ![]const u8 {
     // Get or create the _meta index (local only, not replicated)
-    const index = local_indexes.getOrCreateIndex(META_INDEX_NAME, true, null) catch |err| {
+    const index = local_indexes.getOrCreateIndex(META_INDEX_NAME, true, .{}) catch |err| {
         log.warn("failed to get/create _meta index: {}", .{err});
         return err;
     };
@@ -368,13 +368,22 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
 
     switch (meta_op) {
         .create => { // create
+            // Check if index already exists in cluster state
+            if (self.index_status.contains(index_name)) {
+                log.warn("index {s} already exists in cluster state", .{index_name});
+                return error.IndexAlreadyExists;
+            }
+
             try self.index_status.ensureUnusedCapacity(self.allocator, 1);
 
             const owned_index_name = try self.allocator.dupe(u8, index_name);
             errdefer self.allocator.free(owned_index_name);
 
             // Create the index locally with the NATS generation as the version
-            _ = self.local_indexes.createIndexInternal(index_name, .{ .generation = generation }) catch |err| {
+            _ = self.local_indexes.createIndexInternal(index_name, .{
+                .generation = generation,
+                .expect_does_not_exist = true,
+            }) catch |err| {
                 log.warn("failed to create local index {s}: {}", .{ index_name, err });
                 return err;
             };
@@ -395,7 +404,10 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
         },
         .delete => |delete_op| { // delete
             // Delete local index with version validation and custom version from NATS sequence
-            self.local_indexes.deleteIndexInternal(index_name, .{ .expected_generation = delete_op.generation, .generation = generation }) catch |err| {
+            self.local_indexes.deleteIndexInternal(index_name, .{
+                .expected_generation = delete_op.generation,
+                .generation = generation,
+            }) catch |err| {
                 log.warn("failed to delete local index {s}: {}", .{ index_name, err });
                 return err;
             };
