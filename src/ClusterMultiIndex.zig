@@ -244,6 +244,11 @@ fn loadExistingIndexes(self: *Self) !void {
             defer index.releaseReader(&reader);
 
             last_seq = reader.getVersion();
+            if (last_seq == 0) {
+                // It can be 0 only if the initial empty commit during index creation failed,
+                // however generation represents the same message sequence.
+                last_seq = info.generation;
+            }
             log.info("loaded active index {s} (generation={}, last_seq={})", .{ info.name, info.generation, last_seq });
         }
 
