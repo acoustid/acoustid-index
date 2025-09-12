@@ -390,23 +390,22 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
             log.info("created index {s} with generation {}", .{ index_name, generation });
         },
         .delete => |delete_op| { // delete
-            if (self.index_status.get(index_name)) |status| {
-                const delete_gen = delete_op.generation;
-                if (status.generation == delete_gen) {
-                    // Delete local index with custom version from NATS sequence
-                    const delete_version = msg.metadata.sequence.stream;
-                    self.local_indexes.deleteIndexInternal(index_name, .{ .custom_version = delete_version }) catch |err| {
-                        log.warn("failed to delete local index {s}: {}", .{ index_name, err });
-                    };
+            // Delete local index with version validation and custom version from NATS sequence
+            const delete_version = msg.metadata.sequence.stream;
+            self.local_indexes.deleteIndexInternal(index_name, .{ 
+                .expected_version = delete_op.generation,
+                .custom_version = delete_version 
+            }) catch |err| {
+                log.warn("failed to delete local index {s}: {}", .{ index_name, err });
+                return;
+            };
 
-                    // Remove from status map
-                    if (self.index_status.fetchRemove(index_name)) |entry| {
-                        self.allocator.free(entry.key);
-                    }
-
-                    log.info("deleted index {s} with version {}", .{ index_name, delete_version });
-                }
+            // Remove from status map
+            if (self.index_status.fetchRemove(index_name)) |entry| {
+                self.allocator.free(entry.key);
             }
+
+            log.info("deleted index {s} with version {}", .{ index_name, delete_version });
         },
     }
 }

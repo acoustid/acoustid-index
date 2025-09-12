@@ -27,6 +27,7 @@ pub const ListOptions = struct {
 
 pub const IndexOptions = struct {
     custom_version: ?u64 = null,
+    expected_version: ?u64 = null,
 };
 
 const OptionalIndex = struct {
@@ -515,6 +516,13 @@ pub fn deleteIndexInternal(self: *Self, name: []const u8, options: IndexOptions)
 
     const index_ref = self.indexes.get(name) orelse return;
     if (!index_ref.index.has_value) return;
+
+    // Validate expected version if provided
+    if (options.expected_version) |expected_version| {
+        if (index_ref.redirect.version != expected_version) {
+            return error.VersionMismatch;
+        }
+    }
 
     // Mark as being deleted to prevent new references
     if (index_ref.being_deleted) {
