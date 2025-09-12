@@ -29,6 +29,7 @@ pub const IndexOptions = struct {
     generation: ?u64 = null,
     expect_generation: ?u64 = null,
     expect_does_not_exist: bool = false,
+    version: ?u64 = null,
 };
 
 const OptionalIndex = struct {
@@ -662,7 +663,10 @@ pub fn updateInternal(
     const new_version = try index.update(
         request.changes,
         request.metadata,
-        request.expected_version,
+        .{
+            .expected_last_version = request.expected_version,
+            .version = options.version,
+        },
     );
 
     return api.UpdateResponse{ .version = new_version };
@@ -918,4 +922,31 @@ test "update" {
 
     const result = try ctx.indexes.update(std.testing.allocator, "foo", .{ .changes = &changes });
     try std.testing.expectEqual(1, result.version);
+}
+
+test "update with custom version" {
+    var ctx: TestContext = .{};
+    try ctx.setup();
+    defer ctx.teardown();
+
+    const Change = @import("change.zig").Change;
+
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    try std.testing.expectEqual(0, info.version);
+
+    var changes = [_]Change{
+        .{ .insert = .{ .id = 1, .hashes = &[_]u32{ 1, 2, 3 } } },
+    };
+
+    // Test with custom version
+    const result1 = try ctx.indexes.updateInternal(std.testing.allocator, "foo", .{ .changes = &changes }, .{ .version = 100 });
+    try std.testing.expectEqual(100, result1.version);
+
+    // Test with another custom version
+    const result2 = try ctx.indexes.updateInternal(std.testing.allocator, "foo", .{ .changes = &changes }, .{ .version = 200 });
+    try std.testing.expectEqual(200, result2.version);
+
+    // Test that monotonicity is enforced
+    const result_error = ctx.indexes.updateInternal(std.testing.allocator, "foo", .{ .changes = &changes }, .{ .version = 150 });
+    try std.testing.expectError(error.VersionNotMonotonic, result_error);
 }

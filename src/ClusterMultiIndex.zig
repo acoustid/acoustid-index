@@ -103,7 +103,7 @@ fn loadOrCreateReplicaId(allocator: std.mem.Allocator, local_indexes: *MultiInde
     defer new_metadata.deinit();
     try new_metadata.set("cluster.replica_id", new_id);
 
-    _ = index.update(&[_]Change{}, new_metadata, null) catch |err| {
+    _ = index.update(&[_]Change{}, new_metadata, .{}) catch |err| {
         log.warn("failed to store replica_id in _meta index: {}", .{err});
         return err;
     };
@@ -451,7 +451,7 @@ fn updateIndexMetadata(self: *Self, index_name: []const u8, sequence: u64, gener
     try injectIndexMetadata(&metadata, sequence, generation);
 
     // Apply metadata update
-    _ = index.update(&[_]Change{}, metadata, null) catch |err| {
+    _ = index.update(&[_]Change{}, metadata, .{}) catch |err| {
         log.warn("failed to update metadata for index {s}: {}", .{ index_name, err });
         return err;
     };
