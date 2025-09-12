@@ -92,13 +92,11 @@ fn loadOrCreateReplicaId(allocator: std.mem.Allocator, local_indexes: *MultiInde
     }
 
     // No existing replica_id, generate a new one
-    var buf: [16]u8 = undefined;
-    std.crypto.random.bytes(&buf);
-    const new_id = try std.fmt.allocPrint(allocator, "{}", .{std.fmt.fmtSliceHexLower(&buf)});
+    const new_id = try nats.nuid.nextString(allocator);
     errdefer allocator.free(new_id);
 
     // Store the new replica_id in metadata
-    var new_metadata = Metadata.initOwned(allocator);
+    var new_metadata = Metadata.initBorrowed(allocator);
     defer new_metadata.deinit();
     try new_metadata.set("cluster.replica_id", new_id);
 
@@ -108,7 +106,7 @@ fn loadOrCreateReplicaId(allocator: std.mem.Allocator, local_indexes: *MultiInde
     };
 
     log.info("generated new replica_id: {s}", .{new_id});
-    return try allocator.dupe(u8, new_id);
+    return new_id;
 }
 
 pub fn deinit(self: *Self) void {
