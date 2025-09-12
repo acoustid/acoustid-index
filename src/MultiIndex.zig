@@ -697,14 +697,12 @@ pub fn checkIndexExists(
 
 pub fn createIndexInternal(
     self: *Self,
-    allocator: std.mem.Allocator,
     index_name: []const u8,
     options: IndexOptions,
 ) !api.CreateIndexResponse {
     if (!isValidName(index_name)) {
         return error.InvalidIndexName;
     }
-    _ = allocator; // Response doesn't need allocation
 
     const index = try self.getOrCreateIndex(index_name, true, options.generation);
     defer self.releaseIndex(index);
@@ -722,7 +720,8 @@ pub fn createIndex(
     allocator: std.mem.Allocator,
     index_name: []const u8,
 ) !api.CreateIndexResponse {
-    return self.createIndexInternal(allocator, index_name, .{});
+    _ = allocator; // Keep parameter for API compatibility but don't use it
+    return self.createIndexInternal(index_name, .{});
 }
 
 pub fn getFingerprintInfo(

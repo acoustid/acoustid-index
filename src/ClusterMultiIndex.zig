@@ -374,7 +374,7 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
             errdefer self.allocator.free(owned_index_name);
 
             // Create the index locally with the NATS generation as the version
-            _ = self.local_indexes.createIndexInternal(self.allocator, index_name, .{ .generation = generation }) catch |err| {
+            _ = self.local_indexes.createIndexInternal(index_name, .{ .generation = generation }) catch |err| {
                 log.warn("failed to create local index {s}: {}", .{ index_name, err });
                 return err;
             };
