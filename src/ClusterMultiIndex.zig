@@ -12,6 +12,24 @@ const IndexRedirect = index_redirect.IndexRedirect;
 
 const Self = @This();
 
+fn isValidIndexName(name: []const u8) bool {
+    if (name.len == 0) return false;
+    for (name, 0..) |c, i| {
+        if (i == 0) {
+            switch (c) {
+                '0'...'9', 'A'...'Z', 'a'...'z' => {},
+                else => return false,
+            }
+        } else {
+            switch (c) {
+                '0'...'9', 'A'...'Z', 'a'...'z', '-', '_' => {},
+                else => return false,
+            }
+        }
+    }
+    return true;
+}
+
 const META_INDEX_NAME = "_meta";
 
 // Core state
@@ -22,18 +40,22 @@ replica_id: []const u8,
 
 // State tracking
 last_applied_seq: u64 = 0, // Last applied sequence across all indexes
-lock: std.Thread.Mutex = .{},
+mutex: std.Thread.Mutex = .{},
 
 // NATS JetStream
 js: nats.JetStream = undefined,
-main_consumer: ?*nats.PullSubscription = null,
+meta_subscription: ?*nats.JetStreamSubscription = null,
+index_updaters: std.StringHashMap(IndexUpdater),
 
 // Stream configuration
 stream_name: []const u8 = "fpindex-ops",
 
-// Consumer thread
-consumer_thread: ?std.Thread = null,
-should_stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+/// Index updater for handling per-index update messages
+pub const IndexUpdater = struct {
+    subscription: *nats.JetStreamSubscription,
+    last_applied_seq: u64,
+    mutex: std.Thread.Mutex = .{},
+};
 
 /// Metadata operation (create/delete)
 pub const MetaOp = union(enum) {
@@ -67,6 +89,7 @@ pub fn init(allocator: std.mem.Allocator, nc: *nats.Connection, local_indexes: *
         .nc = nc,
         .local_indexes = local_indexes,
         .replica_id = replica_id,
+        .index_updaters = std.StringHashMap(IndexUpdater).init(allocator),
     };
 }
 
@@ -110,11 +133,11 @@ fn loadOrCreateReplicaId(allocator: std.mem.Allocator, local_indexes: *MultiInde
 }
 
 pub fn deinit(self: *Self) void {
-    self.stop();
+    self.mutex.lock();
+    defer self.mutex.unlock();
 
-    self.lock.lock();
-    defer self.lock.unlock();
-
+    self.stopInternal();
+    self.index_updaters.deinit();
     self.allocator.free(self.replica_id);
 }
 
@@ -128,27 +151,33 @@ pub fn start(self: *Self) !void {
     // Load existing indexes and their last applied sequences
     try self.loadExistingIndexes();
 
-    // Create main consumer
-    try self.createMainConsumer();
+    // Create meta consumer for index create/delete operations
+    try self.createMetaConsumer();
 
-    // Start consumer thread
-    self.consumer_thread = try std.Thread.spawn(.{}, consumerLoop, .{self});
+    // Start updaters for existing indexes
+    try self.startExistingIndexUpdaters();
 }
 
 pub fn stop(self: *Self) void {
-    if (self.should_stop.load(.acquire)) return;
+    self.mutex.lock();
+    defer self.mutex.unlock();
+    self.stopInternal();
+}
 
-    self.should_stop.store(true, .release);
-
-    if (self.consumer_thread) |thread| {
-        thread.join();
-        self.consumer_thread = null;
+fn stopInternal(self: *Self) void {
+    // Stop meta subscription
+    if (self.meta_subscription) |sub| {
+        sub.deinit();
+        self.meta_subscription = null;
     }
 
-    if (self.main_consumer) |consumer| {
-        consumer.deinit();
-        self.main_consumer = null;
+    // Stop all index updaters and remove from hashmap
+    var iter = self.index_updaters.iterator();
+    while (iter.next()) |entry| {
+        entry.value_ptr.subscription.deinit();
+        self.allocator.free(entry.key_ptr.*);
     }
+    self.index_updaters.clearRetainingCapacity();
 }
 
 fn getStatus(self: *Self, index_name: []const u8) !?u64 {
@@ -209,8 +238,8 @@ fn ensureStream(self: *Self) !void {
 }
 
 fn loadExistingIndexes(self: *Self) !void {
-    self.lock.lock();
-    defer self.lock.unlock();
+    self.mutex.lock();
+    defer self.mutex.unlock();
 
     // Get list of existing indexes from MultiIndex (including deleted ones)
     const index_list = try self.local_indexes.listIndexes(self.allocator, .{ .include_deleted = true });
@@ -257,71 +286,162 @@ fn loadExistingIndexes(self: *Self) !void {
     log.info("last_applied_seq across all indexes: {}", .{self.last_applied_seq});
 }
 
-fn createMainConsumer(self: *Self) !void {
-    const consumer_name = try std.fmt.allocPrint(self.allocator, "replica-{s}", .{self.replica_id});
+fn createMetaConsumer(self: *Self) !void {
+    const consumer_name = try std.fmt.allocPrint(self.allocator, "replica-{s}-meta", .{self.replica_id});
     defer self.allocator.free(consumer_name);
 
     const consumer_config = nats.ConsumerConfig{
         .durable_name = consumer_name,
         .ack_policy = .explicit,
         .deliver_policy = .all,
-        .filter_subject = "fpindex.>",
+        .filter_subject = "fpindex.*.meta",
+        .max_ack_pending = 1,
+        .ack_wait = 60 * std.time.ns_per_s,
     };
 
-    self.main_consumer = try self.js.pullSubscribe(self.stream_name, consumer_config);
+    self.meta_subscription = try self.js.subscribe(self.stream_name, consumer_config, handleMetaMessage, .{self});
 }
 
-fn consumerLoop(self: *Self) void {
-    while (!self.should_stop.load(.acquire)) {
-        self.processMessages() catch |err| {
-            log.err("consumer loop error: {}", .{err});
-            std.time.sleep(std.time.ns_per_s); // Wait before retry
+fn startExistingIndexUpdaters(self: *Self) !void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
+    const index_list = try self.local_indexes.listIndexes(self.allocator, .{});
+    defer self.allocator.free(index_list);
+
+    for (index_list) |info| {
+        // Skip system indexes and deleted indexes
+        if (std.mem.eql(u8, info.name, META_INDEX_NAME) or info.deleted) {
+            continue;
+        }
+
+        // Get the current version for the index
+        const index = self.local_indexes.getIndex(info.name) catch |err| {
+            log.warn("failed to get index {s} during startup: {}", .{ info.name, err });
+            continue;
         };
+        defer self.local_indexes.releaseIndex(index);
+
+        var reader = index.acquireReader() catch |err| {
+            log.warn("failed to acquire reader for index {s} during startup: {}", .{ info.name, err });
+            continue;
+        };
+        defer index.releaseReader(&reader);
+
+        const last_seq = reader.getVersion();
+        const final_seq = if (last_seq == 0) info.generation else last_seq;
+
+        try self.startIndexUpdater(info.name, info.generation, final_seq);
     }
 }
 
-fn processMessages(self: *Self) !void {
-    const consumer = self.main_consumer orelse return;
+fn startIndexUpdater(self: *Self, index_name: []const u8, generation: u64, last_seq: u64) !void {
+    // Caller must hold self.lock
 
-    var batch = try consumer.fetch(10, 1000);
-    defer batch.deinit();
+    const consumer_name = try std.fmt.allocPrint(self.allocator, "replica-{s}-{s}", .{ self.replica_id, index_name });
+    defer self.allocator.free(consumer_name);
 
-    for (batch.messages) |msg| {
-        defer msg.ack() catch |err| {
-            log.err("failed to ack message: {}", .{err});
+    const filter_subject = try std.fmt.allocPrint(self.allocator, "fpindex.{s}.{d}", .{ index_name, generation });
+    defer self.allocator.free(filter_subject);
+
+    const consumer_config = nats.ConsumerConfig{
+        .durable_name = consumer_name,
+        .ack_policy = .explicit,
+        .deliver_policy = .by_start_sequence,
+        .opt_start_seq = last_seq + 1,
+        .filter_subject = filter_subject,
+        .max_ack_pending = 1,
+        .ack_wait = 60 * std.time.ns_per_s,
+    };
+
+    const subscription = try self.js.subscribe(self.stream_name, consumer_config, handleUpdateMessage, .{self});
+
+    const result = try self.index_updaters.getOrPut(index_name);
+    if (result.found_existing) {
+        // Clean up old subscription
+        result.value_ptr.subscription.deinit();
+    } else {
+        // New entry - need to allocate key
+        result.key_ptr.* = try self.allocator.dupe(u8, index_name);
+    }
+
+    // Set the new value
+    result.value_ptr.* = IndexUpdater{
+        .subscription = subscription,
+        .last_applied_seq = last_seq,
+        .mutex = .{},
+    };
+
+    log.info("started updater for index {s} (generation={}, start_seq={})", .{ index_name, generation, last_seq + 1 });
+}
+
+fn getIndexUpdater(self: *Self, index_name: []const u8) ?*IndexUpdater {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
+    return self.index_updaters.getPtr(index_name);
+}
+
+fn stopIndexUpdater(self: *Self, index_name: []const u8) !void {
+    // Caller must hold self.lock
+
+    if (self.index_updaters.fetchRemove(index_name)) |entry| {
+        entry.value.subscription.deinit();
+
+        // Delete the NATS consumer
+        const consumer_name = try std.fmt.allocPrint(self.allocator, "replica-{s}-{s}", .{ self.replica_id, index_name });
+        defer self.allocator.free(consumer_name);
+
+        self.js.deleteConsumer(self.stream_name, consumer_name) catch |err| {
+            log.debug("failed to delete consumer {s}: {}", .{ consumer_name, err });
         };
 
-        try self.processMessage(msg);
+        self.allocator.free(entry.key);
     }
 }
 
-fn processMessage(self: *Self, msg: *nats.JetStreamMessage) !void {
-    const subject = msg.msg.subject;
-
-    // Early skip check: if message sequence is <= our global last_applied_seq, skip it
-    if (msg.metadata.sequence.stream <= self.last_applied_seq) {
-        log.debug("skipping already globally applied message (seq={}, last_applied={})", .{ msg.metadata.sequence.stream, self.last_applied_seq });
-        return;
-    }
-
-    // Parse subject: fpindex.{index}.{type}
-    if (!std.mem.startsWith(u8, subject, "fpindex.")) return;
-
-    const parts_str = subject[8..]; // Remove "fpindex."
+fn handleMetaMessage(js_msg: *nats.JetStreamMessage, self: *Self) void {
+    // Parse subject to get index name
+    if (!std.mem.startsWith(u8, js_msg.msg.subject, "fpindex.")) return;
+    const parts_str = js_msg.msg.subject[8..];
     var parts = std.mem.splitSequence(u8, parts_str, ".");
     const index_name = parts.next() orelse return;
-    const operation_type = parts.next() orelse return;
 
-    if (std.mem.eql(u8, operation_type, "meta")) {
-        try self.processMetaOperation(index_name, msg);
-    } else {
-        // Parse generation from operation_type (should be a number)
-        const generation = std.fmt.parseInt(u64, operation_type, 10) catch {
-            log.warn("invalid generation in subject {s}", .{subject});
-            return;
-        };
-        try self.processUpdateOperation(index_name, generation, msg);
-    }
+    self.processMetaOperation(index_name, js_msg) catch |err| {
+        log.err("failed to process meta operation for {s}: {}", .{ index_name, err });
+        // Don't ACK on error - message will be redelivered
+        return;
+    };
+
+    // ACK only on successful processing
+    js_msg.ack() catch |err| {
+        log.err("failed to ack meta message: {}", .{err});
+    };
+}
+
+fn handleUpdateMessage(js_msg: *nats.JetStreamMessage, self: *Self) void {
+    // Parse subject: fpindex.{index}.{generation}
+    if (!std.mem.startsWith(u8, js_msg.msg.subject, "fpindex.")) return;
+    const parts_str = js_msg.msg.subject[8..];
+    var parts = std.mem.splitSequence(u8, parts_str, ".");
+    const index_name = parts.next() orelse return;
+    const generation_str = parts.next() orelse return;
+
+    const generation = std.fmt.parseInt(u64, generation_str, 10) catch {
+        log.warn("invalid generation in subject {s}", .{js_msg.msg.subject});
+        return;
+    };
+
+    self.processUpdateOperation(index_name, generation, js_msg) catch |err| {
+        log.err("failed to process update for {s}: {}", .{ index_name, err });
+        // Don't ACK on error - message will be redelivered
+        return;
+    };
+
+    // ACK only on successful processing
+    js_msg.ack() catch |err| {
+        log.err("failed to ack update message: {}", .{err});
+    };
 }
 
 fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStreamMessage) !void {
@@ -331,8 +451,8 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
 
     const generation = msg.metadata.sequence.stream;
 
-    self.lock.lock();
-    defer self.lock.unlock();
+    self.mutex.lock();
+    defer self.mutex.unlock();
 
     switch (meta_op) {
         .create => { // create
@@ -359,11 +479,21 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
 
             log.info("created index {s} with generation {}", .{ index_name, generation });
 
+            // Start updater for the new index
+            self.startIndexUpdater(index_name, generation, generation) catch |err| {
+                log.err("failed to start updater for new index {s}: {}", .{ index_name, err });
+            };
+
             // Update global last_applied_seq
             std.debug.assert(msg.metadata.sequence.stream > self.last_applied_seq);
             self.last_applied_seq = msg.metadata.sequence.stream;
         },
         .delete => |delete_op| { // delete
+            // Stop updater for the index
+            self.stopIndexUpdater(index_name) catch |err| {
+                log.err("failed to stop updater for index {s}: {}", .{ index_name, err });
+            };
+
             // Delete local index with version validation and custom version from NATS sequence
             self.local_indexes.deleteIndexInternal(index_name, .{
                 .expect_generation = delete_op.generation,
@@ -383,8 +513,13 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
 }
 
 fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, msg: *nats.JetStreamMessage) !void {
-    self.lock.lock();
-    defer self.lock.unlock();
+    const updater = self.getIndexUpdater(index_name) orelse {
+        log.warn("no updater found for index {s}", .{index_name});
+        return;
+    };
+
+    updater.mutex.lock();
+    defer updater.mutex.unlock();
 
     // Decode the update operation
     var update_op = try msgpack.decodeFromSlice(UpdateOp, self.allocator, msg.msg.data);
@@ -405,9 +540,9 @@ fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, 
         return;
     };
 
-    // Update global last_applied_seq
-    std.debug.assert(msg.metadata.sequence.stream > self.last_applied_seq);
-    self.last_applied_seq = msg.metadata.sequence.stream;
+    // Update per-index last_applied_seq
+    std.debug.assert(msg.metadata.sequence.stream > updater.last_applied_seq);
+    updater.last_applied_seq = msg.metadata.sequence.stream;
 
     log.debug("applied update to index {s} (seq={})", .{ index_name, msg.metadata.sequence.stream });
 }
@@ -429,6 +564,9 @@ pub fn update(
     index_name: []const u8,
     request: api.UpdateRequest,
 ) !api.UpdateResponse {
+    if (!isValidIndexName(index_name)) {
+        return error.InvalidIndexName;
+    }
 
     // First check if index exists and get current generation
     const generation = try self.getStatus(index_name) orelse {
@@ -482,6 +620,10 @@ pub fn createIndex(
 ) !api.CreateIndexResponse {
     _ = allocator;
 
+    if (!isValidIndexName(index_name)) {
+        return error.InvalidIndexName;
+    }
+
     // First check if index exists and get current generation
     if (try self.getStatus(index_name)) |generation| {
         const version = try self.getLastVersion(index_name, generation);
@@ -511,6 +653,10 @@ pub fn createIndex(
 }
 
 pub fn deleteIndex(self: *Self, index_name: []const u8) !void {
+    if (!isValidIndexName(index_name)) {
+        return error.InvalidIndexName;
+    }
+
     // Get current status and generation
     const generation = try self.getStatus(index_name) orelse {
         return; // Already deleted
