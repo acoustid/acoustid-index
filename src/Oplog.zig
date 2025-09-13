@@ -10,6 +10,11 @@ const Transaction = @import("change.zig").Transaction;
 
 const Self = @This();
 
+pub const WriteOptions = struct {
+    expected_last_version: ?u64 = null,
+    version: ?u64 = null,
+};
+
 pub const FileInfo = struct {
     id: u64 = 0,
 
@@ -84,7 +89,7 @@ pub fn open(self: *Self, first_commit_id: u64, receiver: anytype, ctx: anytype) 
     defer oplog_it.deinit();
     while (try oplog_it.next()) |txn| {
         max_commit_id = @max(max_commit_id, txn.id);
-        _ = try receiver(ctx, txn.changes, txn.metadata, txn.id, null);
+        _ = try receiver(ctx, txn.changes, txn.metadata, txn.id);
     }
     self.last_commit_id = max_commit_id;
 }
@@ -207,19 +212,25 @@ pub fn truncate(self: *Self, commit_id: u64) !void {
     try self.truncateNoLock(commit_id);
 }
 
-pub fn write(self: *Self, changes: []const Change, metadata: ?Metadata, expected_version: ?u64) !u64 {
+pub fn write(self: *Self, changes: []const Change, metadata: ?Metadata, options: WriteOptions) !u64 {
     self.write_lock.lock();
     defer self.write_lock.unlock();
 
     // Validate expected version if provided
-    if (expected_version) |expected| {
+    if (options.expected_last_version) |expected| {
         const current_version = self.last_commit_id;
         if (current_version != expected) {
             return error.VersionMismatch;
         }
     }
 
-    const commit_id = self.last_commit_id + 1;
+    const commit_id = if (options.version) |custom_version| blk: {
+        // Validate custom version is greater than current last_commit_id
+        if (custom_version <= self.last_commit_id) {
+            return error.VersionNotMonotonic;
+        }
+        break :blk custom_version;
+    } else self.last_commit_id + 1;
 
     const file = try self.getFile(commit_id);
     var counting_writer = std.io.countingWriter(file.writer());
@@ -256,12 +267,11 @@ test "write entries" {
     defer oplog.deinit();
 
     const Updater = struct {
-        pub fn receive(self: *@This(), changes: []const Change, metadata: ?Metadata, commit_id: u64, expected_version: ?u64) !void {
+        pub fn receive(self: *@This(), changes: []const Change, metadata: ?Metadata, commit_id: u64) !void {
             _ = self;
             _ = changes;
             _ = metadata;
             _ = commit_id;
-            _ = expected_version;
         }
     };
 
@@ -274,7 +284,7 @@ test "write entries" {
         .hashes = &[_]u32{ 1, 2, 3 },
     } }};
 
-    _ = try oplog.write(&changes, null, null);
+    _ = try oplog.write(&changes, null, .{});
 
     var file = try tmp_dir.dir.openFile("oplog/0000000000000001.xlog", .{});
     defer file.close();
@@ -381,22 +391,55 @@ test "write with expected version validation" {
     } }};
 
     // First write should succeed (no expected version)
-    const version1 = try oplog.write(&changes, null, null);
+    const version1 = try oplog.write(&changes, null, .{});
     try std.testing.expectEqual(1, version1);
     try std.testing.expectEqual(1, oplog.last_commit_id);
 
     // Second write with correct expected version should succeed
-    const version2 = try oplog.write(&changes, null, 1);
+    const version2 = try oplog.write(&changes, null, .{ .expected_last_version = 1 });
     try std.testing.expectEqual(2, version2);
     try std.testing.expectEqual(2, oplog.last_commit_id);
 
     // Write with wrong expected version should fail
-    const result = oplog.write(&changes, null, 1);
+    const result = oplog.write(&changes, null, .{ .expected_last_version = 1 });
     try std.testing.expectError(error.VersionMismatch, result);
     try std.testing.expectEqual(2, oplog.last_commit_id); // Should remain unchanged
 
     // Write with correct expected version should succeed after failed attempt
-    const version3 = try oplog.write(&changes, null, 2);
+    const version3 = try oplog.write(&changes, null, .{ .expected_last_version = 2 });
     try std.testing.expectEqual(3, version3);
     try std.testing.expectEqual(3, oplog.last_commit_id);
+}
+
+test "write with custom version" {
+    var tmp_dir = std.testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    var oplog = try Self.init(std.testing.allocator, tmp_dir.dir);
+    defer oplog.deinit();
+
+    const changes = [_]Change{.{ .insert = .{
+        .id = 1,
+        .hashes = &[_]u32{ 1, 2, 3 },
+    } }};
+
+    // Write with custom version should use the provided version
+    const version1 = try oplog.write(&changes, null, .{ .version = 100 });
+    try std.testing.expectEqual(100, version1);
+    try std.testing.expectEqual(100, oplog.last_commit_id);
+
+    // Next custom version must be higher
+    const version2 = try oplog.write(&changes, null, .{ .version = 200 });
+    try std.testing.expectEqual(200, version2);
+    try std.testing.expectEqual(200, oplog.last_commit_id);
+
+    // Custom version that's not monotonic should fail
+    const result = oplog.write(&changes, null, .{ .version = 150 });
+    try std.testing.expectError(error.VersionNotMonotonic, result);
+    try std.testing.expectEqual(200, oplog.last_commit_id); // Should remain unchanged
+
+    // Mix custom and auto-increment
+    const version3 = try oplog.write(&changes, null, .{});
+    try std.testing.expectEqual(201, version3);
+    try std.testing.expectEqual(201, oplog.last_commit_id);
 }

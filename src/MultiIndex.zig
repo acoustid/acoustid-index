@@ -10,10 +10,28 @@ const Deadline = @import("utils/Deadline.zig");
 const metrics = @import("metrics.zig");
 const index_redirect = @import("index_redirect.zig");
 const IndexRedirect = index_redirect.IndexRedirect;
+const snapshot = @import("snapshot.zig");
 
 const Self = @This();
 
 const DELETE_TIMEOUT_MS = 5000; // 5 seconds timeout for deletion
+
+pub const IndexInfo = struct {
+    name: []const u8,
+    generation: u64,
+    deleted: bool,
+};
+
+pub const ListOptions = struct {
+    include_deleted: bool = false,
+};
+
+pub const IndexOptions = struct {
+    generation: ?u64 = null,
+    expect_generation: ?u64 = null,
+    expect_does_not_exist: bool = false,
+    version: ?u64 = null,
+};
 
 const OptionalIndex = struct {
     value: Index = undefined,
@@ -155,7 +173,7 @@ fn openExistingIndex(self: *Self, path: []const u8) !*IndexRef {
     return ref;
 }
 
-fn createNewIndex(self: *Self, original_name: []const u8) !*IndexRef {
+fn createNewIndex(self: *Self, original_name: []const u8, generation: ?u64) !*IndexRef {
     const entry = try self.indexes.getOrPut(self.allocator, original_name);
 
     const found_existing = entry.found_existing;
@@ -182,10 +200,21 @@ fn createNewIndex(self: *Self, original_name: []const u8) !*IndexRef {
     }
     errdefer if (!found_existing) self.allocator.destroy(ref);
 
-    if (!found_existing) {
-        ref.redirect = IndexRedirect.init(name);
+    if (generation) |version| {
+        if (found_existing) {
+            // Re-creating deleted index - verify version is greater
+            if (version <= ref.redirect.version) {
+                return error.VersionTooLow;
+            }
+        }
+        ref.redirect = IndexRedirect.init(name, version);
     } else {
-        ref.redirect = ref.redirect.nextVersion();
+        // Original behavior for backward compatibility
+        if (!found_existing) {
+            ref.redirect = IndexRedirect.init(name, null);
+        } else {
+            ref.redirect = ref.redirect.nextVersion();
+        }
     }
     errdefer ref.redirect.deleted = true;
 
@@ -442,7 +471,7 @@ pub fn releaseIndex(self: *Self, index: *Index) void {
     const can_delete = index_ref.decRef();
     // the last ref should be held by the internal map and that's only released in deleteIndex
     std.debug.assert(!can_delete);
-    
+
     // Notify any waiting deleteIndex operations
     index_ref.reference_released.broadcast();
 }
@@ -453,11 +482,7 @@ fn borrowIndex(index_ref: *IndexRef) *Index {
     return &index_ref.index.value;
 }
 
-pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool) !*Index {
-    if (!isValidName(name)) {
-        return error.InvalidIndexName;
-    }
-
+pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool, options: IndexOptions) !*Index {
     self.lock.lock();
     defer self.lock.unlock();
 
@@ -466,6 +491,15 @@ pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool) !*Index {
             // Index exists and is active
             if (index_ref.being_deleted) {
                 return error.IndexBeingDeleted;
+            }
+            if (options.expect_does_not_exist) {
+                return error.IndexAlreadyExists;
+            }
+            // Validate expected generation if provided
+            if (options.expect_generation) |expect_generation| {
+                if (index_ref.redirect.version != expect_generation) {
+                    return error.IndexGenerationMismatch;
+                }
             }
             return borrowIndex(index_ref);
         }
@@ -476,15 +510,15 @@ pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool) !*Index {
         return error.IndexNotFound;
     }
 
-    const index_ref = try self.createNewIndex(name);
+    const index_ref = try self.createNewIndex(name, options.generation);
     return borrowIndex(index_ref);
 }
 
 pub fn getIndex(self: *Self, name: []const u8) !*Index {
-    return self.getOrCreateIndex(name, false);
+    return self.getOrCreateIndex(name, false, .{});
 }
 
-pub fn deleteIndex(self: *Self, name: []const u8) !void {
+pub fn deleteIndexInternal(self: *Self, name: []const u8, options: IndexOptions) !void {
     if (!isValidName(name)) {
         return error.InvalidIndexName;
     }
@@ -494,6 +528,13 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
 
     const index_ref = self.indexes.get(name) orelse return;
     if (!index_ref.index.has_value) return;
+
+    // Validate expected generation if provided
+    if (options.expect_generation) |expect_generation| {
+        if (index_ref.redirect.version != expect_generation) {
+            return error.IndexGenerationMismatch;
+        }
+    }
 
     // Mark as being deleted to prevent new references
     if (index_ref.being_deleted) {
@@ -528,9 +569,22 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
 
     log.info("deleting index {s}", .{name});
 
-    // Mark redirect as deleted
+    // Update redirect with new version and mark as deleted
+    if (options.generation) |generation| {
+        if (generation <= index_ref.redirect.version) {
+            return error.VersionTooLow;
+        }
+        index_ref.redirect.version = generation;
+    } else {
+        index_ref.redirect.version += 1;
+    }
     index_ref.redirect.deleted = true;
-    errdefer index_ref.redirect.deleted = false;
+    errdefer {
+        index_ref.redirect.deleted = false;
+        if (options.generation == null) {
+            index_ref.redirect.version -= 1;
+        }
+    }
 
     index_redirect.writeRedirectFile(index_ref.index_dir, index_ref.redirect, self.allocator) catch |err| {
         log.err("failed to mark redirect as deleted for index {s}: {}", .{ name, err });
@@ -541,12 +595,19 @@ pub fn deleteIndex(self: *Self, name: []const u8) !void {
     index_ref.index.clear();
 }
 
+pub fn deleteIndex(self: *Self, name: []const u8) !void {
+    return self.deleteIndexInternal(name, .{});
+}
+
 pub fn search(
     self: *Self,
     allocator: std.mem.Allocator,
     index_name: []const u8,
     request: api.SearchRequest,
 ) !api.SearchResponse {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
     const index = try self.getIndex(index_name);
     defer self.releaseIndex(index);
 
@@ -583,15 +644,19 @@ pub fn search(
     return api.SearchResponse{ .results = response_results };
 }
 
-pub fn update(
+pub fn updateInternal(
     self: *Self,
     allocator: std.mem.Allocator,
     index_name: []const u8,
     request: api.UpdateRequest,
+    options: IndexOptions,
 ) !api.UpdateResponse {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
     _ = allocator; // Response doesn't need allocation
 
-    const index = try self.getIndex(index_name);
+    const index = try self.getOrCreateIndex(index_name, false, options);
     defer self.releaseIndex(index);
 
     metrics.update(request.changes.len);
@@ -599,10 +664,22 @@ pub fn update(
     const new_version = try index.update(
         request.changes,
         request.metadata,
-        request.expected_version,
+        .{
+            .expected_last_version = request.expected_version,
+            .version = options.version,
+        },
     );
 
     return api.UpdateResponse{ .version = new_version };
+}
+
+pub fn update(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+    request: api.UpdateRequest,
+) !api.UpdateResponse {
+    return self.updateInternal(allocator, index_name, request, .{});
 }
 
 pub fn getIndexInfo(
@@ -610,6 +687,9 @@ pub fn getIndexInfo(
     allocator: std.mem.Allocator,
     index_name: []const u8,
 ) !api.GetIndexInfoResponse {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
     const index = try self.getIndex(index_name);
     defer self.releaseIndex(index);
 
@@ -632,19 +712,24 @@ pub fn checkIndexExists(
     self: *Self,
     index_name: []const u8,
 ) !void {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
     const index = try self.getIndex(index_name);
     defer self.releaseIndex(index);
     // Just checking existence, no need to return anything
 }
 
-pub fn createIndex(
+pub fn createIndexInternal(
     self: *Self,
-    allocator: std.mem.Allocator,
     index_name: []const u8,
+    options: IndexOptions,
 ) !api.CreateIndexResponse {
-    _ = allocator; // Response doesn't need allocation
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
 
-    const index = try self.getOrCreateIndex(index_name, true);
+    const index = try self.getOrCreateIndex(index_name, true, options);
     defer self.releaseIndex(index);
 
     var index_reader = try index.acquireReader();
@@ -655,12 +740,24 @@ pub fn createIndex(
     };
 }
 
+pub fn createIndex(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+) !api.CreateIndexResponse {
+    _ = allocator; // Keep parameter for API compatibility but don't use it
+    return self.createIndexInternal(index_name, .{});
+}
+
 pub fn getFingerprintInfo(
     self: *Self,
     allocator: std.mem.Allocator,
     index_name: []const u8,
     fingerprint_id: u32,
 ) !api.GetFingerprintInfoResponse {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
     _ = allocator; // Response doesn't need allocation
 
     const index = try self.getIndex(index_name);
@@ -683,6 +780,9 @@ pub fn checkFingerprintExists(
     index_name: []const u8,
     fingerprint_id: u32,
 ) !void {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
     const index = try self.getIndex(index_name);
     defer self.releaseIndex(index);
 
@@ -693,6 +793,55 @@ pub fn checkFingerprintExists(
     if (info == null) {
         return error.FingerprintNotFound;
     }
+}
+
+pub fn listIndexes(self: *Self, allocator: std.mem.Allocator, options: ListOptions) ![]IndexInfo {
+    self.lock.lock();
+    defer self.lock.unlock();
+
+    var result = std.ArrayList(IndexInfo).init(allocator);
+    defer result.deinit();
+
+    var iter = self.indexes.iterator();
+    while (iter.next()) |entry| {
+        const name = entry.key_ptr.*;
+        const index_ref = entry.value_ptr.*;
+
+        // Check if index is deleted
+        const deleted = !index_ref.index.has_value;
+
+        // Skip deleted indexes if not requested
+        if (deleted and !options.include_deleted) {
+            continue;
+        }
+
+        // Get generation from redirect
+        const generation = index_ref.redirect.version;
+
+        try result.append(IndexInfo{
+            .name = name,
+            .generation = generation,
+            .deleted = deleted,
+        });
+    }
+
+    return result.toOwnedSlice();
+}
+
+pub fn exportSnapshot(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+    writer: anytype,
+) !void {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
+
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+
+    try snapshot.buildSnapshot(writer, index, allocator);
 }
 
 const TestContext = struct {
@@ -790,4 +939,31 @@ test "update" {
 
     const result = try ctx.indexes.update(std.testing.allocator, "foo", .{ .changes = &changes });
     try std.testing.expectEqual(1, result.version);
+}
+
+test "update with custom version" {
+    var ctx: TestContext = .{};
+    try ctx.setup();
+    defer ctx.teardown();
+
+    const Change = @import("change.zig").Change;
+
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    try std.testing.expectEqual(0, info.version);
+
+    var changes = [_]Change{
+        .{ .insert = .{ .id = 1, .hashes = &[_]u32{ 1, 2, 3 } } },
+    };
+
+    // Test with custom version
+    const result1 = try ctx.indexes.updateInternal(std.testing.allocator, "foo", .{ .changes = &changes }, .{ .version = 100 });
+    try std.testing.expectEqual(100, result1.version);
+
+    // Test with another custom version
+    const result2 = try ctx.indexes.updateInternal(std.testing.allocator, "foo", .{ .changes = &changes }, .{ .version = 200 });
+    try std.testing.expectEqual(200, result2.version);
+
+    // Test that monotonicity is enforced
+    const result_error = ctx.indexes.updateInternal(std.testing.allocator, "foo", .{ .changes = &changes }, .{ .version = 150 });
+    try std.testing.expectError(error.VersionNotMonotonic, result_error);
 }
