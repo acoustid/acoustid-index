@@ -10,6 +10,7 @@ const Deadline = @import("utils/Deadline.zig");
 const metrics = @import("metrics.zig");
 const index_redirect = @import("index_redirect.zig");
 const IndexRedirect = index_redirect.IndexRedirect;
+const snapshot = @import("snapshot.zig");
 
 const Self = @This();
 
@@ -825,6 +826,22 @@ pub fn listIndexes(self: *Self, allocator: std.mem.Allocator, options: ListOptio
     }
 
     return result.toOwnedSlice();
+}
+
+pub fn exportSnapshot(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+    writer: anytype,
+) !void {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
+
+    const index = try self.getIndex(index_name);
+    defer self.releaseIndex(index);
+
+    try snapshot.buildSnapshot(writer, index, allocator);
 }
 
 const TestContext = struct {

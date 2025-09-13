@@ -552,3 +552,12 @@ pub fn checkFingerprintExists(
 ) !void {
     return self.local_indexes.checkFingerprintExists(index_name, fingerprint_id);
 }
+
+pub fn exportSnapshot(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+    writer: anytype,
+) !void {
+    return self.local_indexes.exportSnapshot(allocator, index_name, writer);
+}

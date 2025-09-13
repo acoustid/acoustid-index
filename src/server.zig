@@ -144,10 +144,8 @@ pub fn run(comptime T: type, allocator: std.mem.Allocator, indexes: *T, address:
     router.put("/:index", HandlerWrapper(T, handlePutIndex).wrapper, .{});
     router.delete("/:index", HandlerWrapper(T, handleDeleteIndex).wrapper, .{});
 
-    // Snapshot endpoint - only available for types that support direct index access
-    if (@hasDecl(T, "getIndex") and @hasDecl(T, "releaseIndex")) {
-        router.get("/:index/_snapshot", HandlerWrapper(T, handleSnapshot).wrapper, .{});
-    }
+    // Snapshot endpoint
+    router.get("/:index/_snapshot", HandlerWrapper(T, handleSnapshotExport).wrapper, .{});
 
     log.info("listening on {s}:{d}", .{ address, port });
     try server.listen();
@@ -536,24 +534,19 @@ fn handleHealth(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *h
     try res.writer().writeAll("OK\n");
 }
 
-// Snapshot handler - only used for types that support direct index access (like MultiIndex)
-// Route is conditionally registered based on @hasDecl checks
-fn handleSnapshot(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+// Snapshot handler
+fn handleSnapshotExport(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = try getIndexName(req, res, true) orelse return;
-
-    const index = ctx.indexes.getIndex(index_name) catch |err| {
-        log.warn("error during getIndex: {}", .{err});
-        if (try writeIndexErrorAs404(req, res, err, true)) return;
-        return err;
-    };
-    defer ctx.indexes.releaseIndex(index);
 
     // Set response headers for tar download
     res.header("content-type", "application/x-tar");
     res.header("content-disposition", "attachment; filename=\"index_snapshot.tar\"");
 
-    // Build snapshot using the dedicated module
-    try snapshot.buildSnapshot(res.writer().any(), index, req.arena);
+    // Export snapshot using the exportSnapshot method
+    ctx.indexes.exportSnapshot(req.arena, index_name, res.writer().any()) catch |err| {
+        if (try writeIndexErrorAs404(req, res, err, true)) return;
+        return err;
+    };
 }
 
 fn handleMetrics(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
