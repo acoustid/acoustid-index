@@ -18,7 +18,7 @@ const DELETE_TIMEOUT_MS = 5000; // 5 seconds timeout for deletion
 
 pub const IndexInfo = struct {
     name: []const u8,
-    generation: u32,
+    generation: u64,
     deleted: bool,
 };
 
@@ -816,7 +816,7 @@ pub fn listIndexes(self: *Self, allocator: std.mem.Allocator, options: ListOptio
         }
 
         // Get generation from redirect
-        const generation = @as(u32, @intCast(index_ref.redirect.version));
+        const generation = index_ref.redirect.version;
 
         try result.append(IndexInfo{
             .name = name,
