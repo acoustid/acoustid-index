@@ -1,39 +1,418 @@
 const std = @import("std");
+const log = std.log.scoped(.cluster_multi_index);
 const nats = @import("nats");
+const msgpack = @import("msgpack");
 
 const MultiIndex = @import("MultiIndex.zig");
-const Index = @import("Index.zig");
 const api = @import("api.zig");
+const Change = @import("change.zig").Change;
+const Metadata = @import("Metadata.zig");
+const index_redirect = @import("index_redirect.zig");
+const IndexRedirect = index_redirect.IndexRedirect;
 
 const Self = @This();
 
-allocator: std.mem.Allocator,
-nats_connection: *nats.Connection,
-local_indexes: *MultiIndex,
+const META_INDEX_NAME = "_meta";
 
-pub fn init(allocator: std.mem.Allocator, nats_connection: *nats.Connection, local_indexes: *MultiIndex) Self {
+// Core state
+allocator: std.mem.Allocator,
+nc: *nats.Connection,
+local_indexes: *MultiIndex,
+replica_id: []const u8,
+
+// State tracking
+last_applied_seq: u64 = 0, // Last applied sequence across all indexes
+lock: std.Thread.Mutex = .{},
+
+// NATS JetStream
+js: nats.JetStream = undefined,
+main_consumer: ?*nats.PullSubscription = null,
+
+// Stream configuration
+stream_name: []const u8 = "fpindex-ops",
+
+// Consumer thread
+consumer_thread: ?std.Thread = null,
+should_stop: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+
+/// Metadata operation (create/delete)
+pub const MetaOp = union(enum) {
+    create: struct {
+        index_name: []const u8,
+    },
+    delete: struct {
+        index_name: []const u8,
+        generation: u64,
+    },
+
+    pub fn msgpackFormat() msgpack.UnionFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+/// Update operation
+pub const UpdateOp = struct {
+    changes: []const Change,
+    metadata: ?Metadata = null,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+pub fn init(allocator: std.mem.Allocator, nc: *nats.Connection, local_indexes: *MultiIndex) !Self {
+    const replica_id = try loadOrCreateReplicaId(allocator, local_indexes);
     return .{
         .allocator = allocator,
-        .nats_connection = nats_connection,
+        .nc = nc,
         .local_indexes = local_indexes,
+        .replica_id = replica_id,
     };
 }
 
+fn loadOrCreateReplicaId(allocator: std.mem.Allocator, local_indexes: *MultiIndex) ![]const u8 {
+    // Get or create the _meta index (local only, not replicated)
+    const index = local_indexes.getOrCreateIndex(META_INDEX_NAME, true, .{}) catch |err| {
+        log.warn("failed to get/create _meta index: {}", .{err});
+        return err;
+    };
+    defer local_indexes.releaseIndex(index);
+
+    // Try to read existing replica_id from metadata
+    var reader = try index.acquireReader();
+    defer index.releaseReader(&reader);
+
+    var metadata = try reader.getMetadata(allocator);
+    defer metadata.deinit();
+
+    if (metadata.get("cluster.replica_id")) |existing_id| {
+        // Found existing replica_id, use it
+        log.info("loaded existing replica_id: {s}", .{existing_id});
+        return try allocator.dupe(u8, existing_id);
+    }
+
+    // No existing replica_id, generate a new one
+    const new_id = try nats.nuid.nextString(allocator);
+    errdefer allocator.free(new_id);
+
+    // Store the new replica_id in metadata
+    var new_metadata = Metadata.initBorrowed(allocator);
+    defer new_metadata.deinit();
+    try new_metadata.set("cluster.replica_id", new_id);
+
+    _ = index.update(&[_]Change{}, new_metadata, .{}) catch |err| {
+        log.warn("failed to store replica_id in _meta index: {}", .{err});
+        return err;
+    };
+
+    log.info("generated new replica_id: {s}", .{new_id});
+    return new_id;
+}
+
 pub fn deinit(self: *Self) void {
-    _ = self;
+    self.stop();
+
+    self.lock.lock();
+    defer self.lock.unlock();
+
+    self.allocator.free(self.replica_id);
 }
 
-pub fn createIndex(
-    self: *Self,
-    allocator: std.mem.Allocator,
-    index_name: []const u8,
-) !api.CreateIndexResponse {
-    return self.local_indexes.createIndex(allocator, index_name);
+pub fn start(self: *Self) !void {
+    // Initialize JetStream
+    self.js = nats.JetStream.init(self.nc, .{});
+
+    // Ensure stream exists
+    try self.ensureStream();
+
+    // Load existing indexes and their last applied sequences
+    try self.loadExistingIndexes();
+
+    // Create main consumer
+    try self.createMainConsumer();
+
+    // Start consumer thread
+    self.consumer_thread = try std.Thread.spawn(.{}, consumerLoop, .{self});
 }
 
-pub fn deleteIndex(self: *Self, name: []const u8) !void {
-    return self.local_indexes.deleteIndex(name);
+pub fn stop(self: *Self) void {
+    if (self.should_stop.load(.acquire)) return;
+
+    self.should_stop.store(true, .release);
+
+    if (self.consumer_thread) |thread| {
+        thread.join();
+        self.consumer_thread = null;
+    }
+
+    if (self.main_consumer) |consumer| {
+        consumer.deinit();
+        self.main_consumer = null;
+    }
 }
+
+fn getStatus(self: *Self, index_name: []const u8) !?u64 {
+    const subject = try std.fmt.allocPrint(self.allocator, "fpindex.{s}.meta", .{index_name});
+    defer self.allocator.free(subject);
+
+    const msg = self.js.getMsg(self.stream_name, .{ .last_by_subj = subject, .direct = true }) catch |err| switch (err) {
+        error.MessageNotFound => return null, // deleted or never existed
+        else => return err,
+    };
+    defer msg.deinit();
+
+    var result = try msgpack.decodeFromSlice(MetaOp, self.allocator, msg.data);
+    defer result.deinit();
+
+    const meta_op = result.value;
+
+    switch (meta_op) {
+        .create => return msg.seq, // generation from NATS sequence
+        .delete => return null, // deleted
+    }
+}
+
+fn getLastVersion(self: *Self, index_name: []const u8, generation: u64) !u64 {
+    // Get the last sequence number for this index's updates
+    const update_subject = try std.fmt.allocPrint(self.allocator, "fpindex.{s}.{d}", .{ index_name, generation });
+    defer self.allocator.free(update_subject);
+
+    const last_update_msg = self.js.getMsg(self.stream_name, .{ .last_by_subj = update_subject, .direct = true }) catch |err| switch (err) {
+        error.MessageNotFound => {
+            // No updates yet, return the generation (creation sequence)
+            return generation;
+        },
+        else => return err,
+    };
+    defer last_update_msg.deinit();
+
+    return last_update_msg.seq;
+}
+
+fn ensureStream(self: *Self) !void {
+    const stream_config = nats.StreamConfig{
+        .name = self.stream_name,
+        .subjects = &[_][]const u8{"fpindex.>"},
+        .retention = .limits,
+        .storage = .file,
+        .num_replicas = 1,
+        .allow_direct = true,
+        .allow_rollup_hdrs = true,
+        .discard = .new,
+    };
+
+    var stream_info = self.js.addStream(stream_config) catch |err| switch (err) {
+        error.StreamNameExist => return, // Already exists, ignore
+        else => return err,
+    };
+    defer stream_info.deinit();
+}
+
+fn loadExistingIndexes(self: *Self) !void {
+    self.lock.lock();
+    defer self.lock.unlock();
+
+    // Get list of existing indexes from MultiIndex (including deleted ones)
+    const index_list = try self.local_indexes.listIndexes(self.allocator, .{ .include_deleted = true });
+    defer self.allocator.free(index_list);
+
+    for (index_list) |info| {
+        // Skip system indexes
+        if (std.mem.eql(u8, info.name, META_INDEX_NAME)) {
+            continue;
+        }
+
+        var last_seq: u64 = undefined;
+        if (info.deleted) {
+            // Use generation as last_seq as that's when it has been deleted
+            last_seq = info.generation;
+            log.info("loaded deleted index {s} (generation={}, last_seq={})", .{ info.name, info.generation, last_seq });
+        } else {
+            // For active indexes, try to get the actual last applied sequence
+            const index = self.local_indexes.getIndex(info.name) catch |err| {
+                log.warn("failed to get index {s} during startup: {}", .{ info.name, err });
+                return err;
+            };
+            defer self.local_indexes.releaseIndex(index);
+
+            var reader = index.acquireReader() catch |err| {
+                log.warn("failed to acquire reader for index {s} during startup: {}", .{ info.name, err });
+                return err;
+            };
+            defer index.releaseReader(&reader);
+
+            last_seq = reader.getVersion();
+            if (last_seq == 0) {
+                // It can be 0 only if the initial empty commit during index creation failed,
+                // however generation represents the same message sequence.
+                last_seq = info.generation;
+            }
+            log.info("loaded active index {s} (generation={}, last_seq={})", .{ info.name, info.generation, last_seq });
+        }
+
+        // Update last_applied_seq
+        self.last_applied_seq = @max(self.last_applied_seq, last_seq);
+    }
+
+    log.info("last_applied_seq across all indexes: {}", .{self.last_applied_seq});
+}
+
+fn createMainConsumer(self: *Self) !void {
+    const consumer_name = try std.fmt.allocPrint(self.allocator, "replica-{s}", .{self.replica_id});
+    defer self.allocator.free(consumer_name);
+
+    const consumer_config = nats.ConsumerConfig{
+        .durable_name = consumer_name,
+        .ack_policy = .explicit,
+        .deliver_policy = .all,
+        .filter_subject = "fpindex.>",
+    };
+
+    self.main_consumer = try self.js.pullSubscribe(self.stream_name, consumer_config);
+}
+
+fn consumerLoop(self: *Self) void {
+    while (!self.should_stop.load(.acquire)) {
+        self.processMessages() catch |err| {
+            log.err("consumer loop error: {}", .{err});
+            std.time.sleep(std.time.ns_per_s); // Wait before retry
+        };
+    }
+}
+
+fn processMessages(self: *Self) !void {
+    const consumer = self.main_consumer orelse return;
+
+    var batch = try consumer.fetch(10, 1000);
+    defer batch.deinit();
+
+    for (batch.messages) |msg| {
+        defer msg.ack() catch |err| {
+            log.err("failed to ack message: {}", .{err});
+        };
+
+        try self.processMessage(msg);
+    }
+}
+
+fn processMessage(self: *Self, msg: *nats.JetStreamMessage) !void {
+    const subject = msg.msg.subject;
+
+    // Early skip check: if message sequence is <= our global last_applied_seq, skip it
+    if (msg.metadata.sequence.stream <= self.last_applied_seq) {
+        log.debug("skipping already globally applied message (seq={}, last_applied={})", .{ msg.metadata.sequence.stream, self.last_applied_seq });
+        return;
+    }
+
+    // Parse subject: fpindex.{index}.{type}
+    if (!std.mem.startsWith(u8, subject, "fpindex.")) return;
+
+    const parts_str = subject[8..]; // Remove "fpindex."
+    var parts = std.mem.splitSequence(u8, parts_str, ".");
+    const index_name = parts.next() orelse return;
+    const operation_type = parts.next() orelse return;
+
+    if (std.mem.eql(u8, operation_type, "meta")) {
+        try self.processMetaOperation(index_name, msg);
+    } else {
+        // Parse generation from operation_type (should be a number)
+        const generation = std.fmt.parseInt(u64, operation_type, 10) catch {
+            log.warn("invalid generation in subject {s}", .{subject});
+            return;
+        };
+        try self.processUpdateOperation(index_name, generation, msg);
+    }
+}
+
+fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStreamMessage) !void {
+    const meta_op_parsed = try msgpack.decodeFromSlice(MetaOp, self.allocator, msg.msg.data);
+    defer meta_op_parsed.deinit();
+    const meta_op = meta_op_parsed.value;
+
+    const generation = msg.metadata.sequence.stream;
+
+    self.lock.lock();
+    defer self.lock.unlock();
+
+    switch (meta_op) {
+        .create => { // create
+            // Create the index locally with the NATS generation as the version
+            _ = self.local_indexes.createIndexInternal(index_name, .{
+                .generation = generation,
+                .expect_does_not_exist = true,
+            }) catch |err| {
+                log.warn("failed to create local index {s}: {}", .{ index_name, err });
+                return err;
+            };
+
+            // Make an empty commit to set the initial version to NATS sequence
+            _ = self.local_indexes.updateInternal(self.allocator, index_name, .{
+                .changes = &[_]Change{},
+                .metadata = null,
+                .expected_version = null,
+            }, .{
+                .version = msg.metadata.sequence.stream,
+            }) catch |err| {
+                log.warn("failed to set initial version for {s}: {}", .{ index_name, err });
+                // this is not critical, we can ignore it
+            };
+
+            log.info("created index {s} with generation {}", .{ index_name, generation });
+
+            // Update global last_applied_seq
+            std.debug.assert(msg.metadata.sequence.stream > self.last_applied_seq);
+            self.last_applied_seq = msg.metadata.sequence.stream;
+        },
+        .delete => |delete_op| { // delete
+            // Delete local index with version validation and custom version from NATS sequence
+            self.local_indexes.deleteIndexInternal(index_name, .{
+                .expect_generation = delete_op.generation,
+                .generation = generation,
+            }) catch |err| {
+                log.warn("failed to delete local index {s}: {}", .{ index_name, err });
+                return err;
+            };
+
+            log.info("deleted index {s} with generation {}", .{ index_name, generation });
+
+            // Update global last_applied_seq
+            std.debug.assert(msg.metadata.sequence.stream > self.last_applied_seq);
+            self.last_applied_seq = msg.metadata.sequence.stream;
+        },
+    }
+}
+
+fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, msg: *nats.JetStreamMessage) !void {
+    self.lock.lock();
+    defer self.lock.unlock();
+
+    // Decode the update operation
+    var update_op = try msgpack.decodeFromSlice(UpdateOp, self.allocator, msg.msg.data);
+    defer update_op.deinit();
+
+    // Apply the update to local index
+    const update_request = api.UpdateRequest{
+        .changes = update_op.value.changes,
+        .metadata = update_op.value.metadata,
+        .expected_version = null, // Version control handled at NATS level
+    };
+
+    _ = self.local_indexes.updateInternal(self.allocator, index_name, update_request, .{
+        .expect_generation = generation,
+        .version = msg.metadata.sequence.stream,
+    }) catch |err| {
+        log.err("failed to apply update to index {s}: {}", .{ index_name, err });
+        return;
+    };
+
+    // Update global last_applied_seq
+    std.debug.assert(msg.metadata.sequence.stream > self.last_applied_seq);
+    self.last_applied_seq = msg.metadata.sequence.stream;
+
+    log.debug("applied update to index {s} (seq={})", .{ index_name, msg.metadata.sequence.stream });
+}
+
+// Interface methods for server.zig compatibility
 
 pub fn search(
     self: *Self,
@@ -46,11 +425,42 @@ pub fn search(
 
 pub fn update(
     self: *Self,
-    allocator: std.mem.Allocator,
+    _: std.mem.Allocator, // Not used in cluster mode
     index_name: []const u8,
     request: api.UpdateRequest,
 ) !api.UpdateResponse {
-    return self.local_indexes.update(allocator, index_name, request);
+
+    // First check if index exists and get current generation
+    const generation = try self.getStatus(index_name) orelse {
+        return error.IndexNotFound;
+    };
+
+    // Prepare update operation
+    const update_op = UpdateOp{
+        .changes = request.changes,
+        .metadata = request.metadata,
+    };
+
+    var data = std.ArrayList(u8).init(self.allocator);
+    defer data.deinit();
+
+    try msgpack.encode(update_op, data.writer());
+
+    const update_subject = try std.fmt.allocPrint(self.allocator, "fpindex.{s}.{d}", .{ index_name, generation });
+    defer self.allocator.free(update_subject);
+
+    var publish_opts = nats.PublishOptions{};
+    if (request.expected_version) |expected_version| {
+        publish_opts.expected_last_subject_seq = expected_version;
+    }
+
+    const result = self.js.publish(update_subject, data.items, publish_opts) catch |err| switch (err) {
+        nats.JetStreamError.StreamWrongLastSequence => return error.VersionMismatch,
+        else => return err,
+    };
+    defer result.deinit();
+
+    return api.UpdateResponse{ .version = result.value.seq };
 }
 
 pub fn getIndexInfo(
@@ -58,14 +468,72 @@ pub fn getIndexInfo(
     allocator: std.mem.Allocator,
     index_name: []const u8,
 ) !api.GetIndexInfoResponse {
-    return self.local_indexes.getIndexInfo(allocator, index_name);
+    return try self.local_indexes.getIndexInfo(allocator, index_name);
 }
 
-pub fn checkIndexExists(
-    self: *Self,
-    index_name: []const u8,
-) !void {
+pub fn checkIndexExists(self: *Self, index_name: []const u8) !void {
     return self.local_indexes.checkIndexExists(index_name);
+}
+
+pub fn createIndex(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+) !api.CreateIndexResponse {
+    _ = allocator;
+
+    // First check if index exists and get current generation
+    if (try self.getStatus(index_name)) |generation| {
+        const version = try self.getLastVersion(index_name, generation);
+        return api.CreateIndexResponse{ .version = version };
+    }
+
+    // Check current status
+    const subject = try std.fmt.allocPrint(self.allocator, "fpindex.{s}.meta", .{index_name});
+    defer self.allocator.free(subject);
+
+    // Publish create operation
+    const meta_op = MetaOp{
+        .create = .{
+            .index_name = index_name,
+        },
+    };
+
+    var data = std.ArrayList(u8).init(self.allocator);
+    defer data.deinit();
+
+    try msgpack.encode(meta_op, data.writer());
+
+    const result = try self.js.publish(subject, data.items, .{});
+    defer result.deinit();
+
+    return api.CreateIndexResponse{ .version = result.value.seq };
+}
+
+pub fn deleteIndex(self: *Self, index_name: []const u8) !void {
+    // Get current status and generation
+    const generation = try self.getStatus(index_name) orelse {
+        return; // Already deleted
+    };
+
+    // Publish delete operation
+    const meta_op = MetaOp{
+        .delete = .{
+            .index_name = index_name,
+            .generation = generation,
+        },
+    };
+
+    var data = std.ArrayList(u8).init(self.allocator);
+    defer data.deinit();
+
+    try msgpack.encode(meta_op, data.writer());
+
+    const subject = try std.fmt.allocPrint(self.allocator, "fpindex.{s}.meta", .{index_name});
+    defer self.allocator.free(subject);
+
+    const result = try self.js.publish(subject, data.items, .{});
+    defer result.deinit();
 }
 
 pub fn getFingerprintInfo(
@@ -83,4 +551,13 @@ pub fn checkFingerprintExists(
     fingerprint_id: u32,
 ) !void {
     return self.local_indexes.checkFingerprintExists(index_name, fingerprint_id);
+}
+
+pub fn exportSnapshot(
+    self: *Self,
+    allocator: std.mem.Allocator,
+    index_name: []const u8,
+    writer: anytype,
+) !void {
+    return self.local_indexes.exportSnapshot(allocator, index_name, writer);
 }

@@ -25,10 +25,10 @@ pub const IndexRedirect = struct {
         return std.fmt.allocPrint(allocator, "data.{}", .{self.version});
     }
 
-    pub fn init(index_name: []const u8) IndexRedirect {
+    pub fn init(index_name: []const u8, version: ?u64) IndexRedirect {
         return .{
             .name = index_name,
-            .version = 1,
+            .version = version orelse 1,
             .deleted = false,
         };
     }
@@ -142,14 +142,21 @@ pub fn writeRedirectFile(index_dir: std.fs.Dir, redirect: IndexRedirect, allocat
 const testing = std.testing;
 
 test "IndexRedirect init" {
-    const redirect = IndexRedirect.init("test.index");
+    const redirect = IndexRedirect.init("test.index", null);
     try testing.expectEqualStrings("test.index", redirect.name);
     try testing.expectEqual(1, redirect.version);
     try testing.expectEqual(false, redirect.deleted);
 }
 
+test "IndexRedirect init with custom version" {
+    const redirect = IndexRedirect.init("test.index", 42);
+    try testing.expectEqualStrings("test.index", redirect.name);
+    try testing.expectEqual(42, redirect.version);
+    try testing.expectEqual(false, redirect.deleted);
+}
+
 test "IndexRedirect nextVersion" {
-    const redirect = IndexRedirect.init("test.index");
+    const redirect = IndexRedirect.init("test.index", null);
     const next = redirect.nextVersion();
     try testing.expectEqualStrings("test.index", next.name);
     try testing.expectEqual(2, next.version);

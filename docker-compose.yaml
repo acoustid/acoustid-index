@@ -1,7 +1,7 @@
 services:
   # NATS server
   nats:
-    image: nats:2.10-alpine
+    image: nats:latest
     ports:
       - "4222:4222"   # NATS client connections
       - "8222:8222"   # NATS monitoring
