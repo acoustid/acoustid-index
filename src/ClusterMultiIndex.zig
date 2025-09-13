@@ -353,7 +353,7 @@ fn startExistingIndexUpdaters(self: *Self) !void {
 }
 
 fn startIndexUpdater(self: *Self, index_name: []const u8, generation: u64, last_seq: u64) !void {
-    // Caller must hold self.lock
+    // Caller must hold self.mutex
 
     const consumer_name = try std.fmt.allocPrint(self.allocator, "replica-{s}-{s}", .{ self.replica_id, index_name });
     defer self.allocator.free(consumer_name);
@@ -412,7 +412,7 @@ fn releaseIndexUpdater(self: *Self, updater: *IndexUpdater) void {
 }
 
 fn stopIndexUpdater(self: *Self, index_name: []const u8) !void {
-    // Caller must hold self.lock
+    // Caller must hold self.mutex
 
     if (self.index_updaters.fetchRemove(index_name)) |entry| {
         const updater = entry.value;
