@@ -44,7 +44,7 @@ local_indexes: *MultiIndex,
 replica_id: []const u8,
 
 // State tracking
-last_applied_seq: u64 = 0, // Last applied sequence across all indexes
+last_applied_meta_seq: u64 = 0, // Last applied meta operation sequence
 mutex: std.Thread.Mutex = .{},
 
 // NATS JetStream
@@ -294,11 +294,13 @@ fn loadExistingIndexes(self: *Self) !void {
             log.info("loaded active index {s} (generation={}, last_seq={})", .{ info.name, info.generation, last_seq });
         }
 
-        // Update last_applied_seq
-        self.last_applied_seq = @max(self.last_applied_seq, last_seq);
+        // Update last_applied_meta_seq by checking the generation (which is the meta sequence)
+        // For active indexes, the generation represents when they were created
+        // For deleted indexes, the generation represents when they were deleted
+        self.last_applied_meta_seq = @max(self.last_applied_meta_seq, info.generation);
     }
 
-    log.info("last_applied_seq across all indexes: {}", .{self.last_applied_seq});
+    log.info("last_applied_meta_seq: {}", .{self.last_applied_meta_seq});
 }
 
 fn createMetaConsumer(self: *Self) !void {
@@ -485,6 +487,12 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
     self.mutex.lock();
     defer self.mutex.unlock();
 
+    // Skip if already processed
+    if (generation <= self.last_applied_meta_seq) {
+        log.debug("skipping already processed meta operation for index {s} (seq={}, last_applied_meta={})", .{ index_name, generation, self.last_applied_meta_seq });
+        return;
+    }
+
     switch (meta_op) {
         .create => { // create
             // Create the index locally with the NATS generation as the version
@@ -515,9 +523,9 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
                 log.err("failed to start updater for new index {s}: {}", .{ index_name, err });
             };
 
-            // Update global last_applied_seq
-            std.debug.assert(msg.metadata.sequence.stream > self.last_applied_seq);
-            self.last_applied_seq = msg.metadata.sequence.stream;
+            // Update meta seq
+            std.debug.assert(msg.metadata.sequence.stream > self.last_applied_meta_seq);
+            self.last_applied_meta_seq = msg.metadata.sequence.stream;
         },
         .delete => |delete_op| { // delete
             // Stop updater for the index
@@ -536,9 +544,9 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
 
             log.info("deleted index {s} with generation {}", .{ index_name, generation });
 
-            // Update global last_applied_seq
-            std.debug.assert(msg.metadata.sequence.stream > self.last_applied_seq);
-            self.last_applied_seq = msg.metadata.sequence.stream;
+            // Update meta seq
+            std.debug.assert(msg.metadata.sequence.stream > self.last_applied_meta_seq);
+            self.last_applied_meta_seq = msg.metadata.sequence.stream;
         },
     }
 }
@@ -549,6 +557,12 @@ fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, 
         return;
     };
     defer self.releaseIndexUpdater(updater);
+
+    // Skip if already processed
+    if (msg.metadata.sequence.stream <= updater.last_applied_seq) {
+        log.debug("skipping already processed update for index {s} (seq={}, last_applied={})", .{ index_name, msg.metadata.sequence.stream, updater.last_applied_seq });
+        return;
+    }
 
     // Decode the update operation
     var update_op = try msgpack.decodeFromSlice(UpdateOp, self.allocator, msg.msg.data);
