@@ -32,6 +32,11 @@ fn isValidIndexName(name: []const u8) bool {
 
 const META_INDEX_NAME = "_meta";
 
+const IndexStatus = struct {
+    is_active: bool,
+    generation: u64,
+};
+
 // Core state
 allocator: std.mem.Allocator,
 nc: *nats.Connection,
@@ -67,10 +72,11 @@ pub const IndexUpdater = struct {
 pub const MetaOp = union(enum) {
     create: struct {
         index_name: []const u8,
+        previous_generation: u64 = 0,
     },
     delete: struct {
         index_name: []const u8,
-        generation: u64,
+        previous_generation: u64,
     },
 
     pub fn msgpackFormat() msgpack.UnionFormat {
@@ -188,12 +194,12 @@ fn stopInternal(self: *Self) void {
     self.index_updaters.clearRetainingCapacity();
 }
 
-fn getStatus(self: *Self, index_name: []const u8) !?u64 {
+fn getStatus(self: *Self, index_name: []const u8) !IndexStatus {
     const subject = try std.fmt.allocPrint(self.allocator, "fpindex.{s}.meta", .{index_name});
     defer self.allocator.free(subject);
 
     const msg = self.js.getMsg(self.stream_name, .{ .last_by_subj = subject, .direct = true }) catch |err| switch (err) {
-        error.MessageNotFound => return null, // deleted or never existed
+        error.MessageNotFound => return IndexStatus{ .is_active = false, .generation = 0 },
         else => return err,
     };
     defer msg.deinit();
@@ -204,8 +210,8 @@ fn getStatus(self: *Self, index_name: []const u8) !?u64 {
     const meta_op = result.value;
 
     switch (meta_op) {
-        .create => return msg.seq, // generation from NATS sequence
-        .delete => return null, // deleted
+        .create => return IndexStatus{ .is_active = true, .generation = msg.seq },
+        .delete => return IndexStatus{ .is_active = false, .generation = msg.seq },
     }
 }
 
@@ -236,6 +242,7 @@ fn ensureStream(self: *Self) !void {
         .allow_direct = true,
         .allow_rollup_hdrs = true,
         .discard = .new,
+        .duplicate_window = 10 * std.time.ns_per_s,
     };
 
     var stream_info = self.js.addStream(stream_config) catch |err| switch (err) {
@@ -520,7 +527,7 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
 
             // Delete local index with version validation and custom version from NATS sequence
             self.local_indexes.deleteIndexInternal(index_name, .{
-                .expect_generation = delete_op.generation,
+                .expect_generation = delete_op.previous_generation,
                 .generation = generation,
             }) catch |err| {
                 log.warn("failed to delete local index {s}: {}", .{ index_name, err });
@@ -591,9 +598,11 @@ pub fn update(
     }
 
     // First check if index exists and get current generation
-    const generation = try self.getStatus(index_name) orelse {
+    const status = try self.getStatus(index_name);
+    if (!status.is_active) {
         return error.IndexNotFound;
-    };
+    }
+    const generation = status.generation;
 
     // Prepare update operation
     const update_op = UpdateOp{
@@ -647,8 +656,9 @@ pub fn createIndex(
     }
 
     // First check if index exists and get current generation
-    if (try self.getStatus(index_name)) |generation| {
-        const version = try self.getLastVersion(index_name, generation);
+    const status = try self.getStatus(index_name);
+    if (status.is_active) {
+        const version = try self.getLastVersion(index_name, status.generation);
         return api.CreateIndexResponse{ .version = version };
     }
 
@@ -660,6 +670,7 @@ pub fn createIndex(
     const meta_op = MetaOp{
         .create = .{
             .index_name = index_name,
+            .previous_generation = status.generation,
         },
     };
 
@@ -668,7 +679,10 @@ pub fn createIndex(
 
     try msgpack.encode(meta_op, data.writer());
 
-    const result = try self.js.publish(subject, data.items, .{});
+    const msg_id = try std.fmt.allocPrint(self.allocator, "create-{s}-{d}", .{ index_name, status.generation });
+    defer self.allocator.free(msg_id);
+
+    const result = try self.js.publish(subject, data.items, .{ .msg_id = msg_id });
     defer result.deinit();
 
     return api.CreateIndexResponse{ .version = result.value.seq };
@@ -680,15 +694,17 @@ pub fn deleteIndex(self: *Self, index_name: []const u8) !void {
     }
 
     // Get current status and generation
-    const generation = try self.getStatus(index_name) orelse {
+    const status = try self.getStatus(index_name);
+    if (!status.is_active) {
         return; // Already deleted
-    };
+    }
+    const generation = status.generation;
 
     // Publish delete operation
     const meta_op = MetaOp{
         .delete = .{
             .index_name = index_name,
-            .generation = generation,
+            .previous_generation = generation,
         },
     };
 
@@ -700,7 +716,10 @@ pub fn deleteIndex(self: *Self, index_name: []const u8) !void {
     const subject = try std.fmt.allocPrint(self.allocator, "fpindex.{s}.meta", .{index_name});
     defer self.allocator.free(subject);
 
-    const result = try self.js.publish(subject, data.items, .{});
+    const msg_id = try std.fmt.allocPrint(self.allocator, "delete-{s}-{d}", .{ index_name, generation });
+    defer self.allocator.free(msg_id);
+
+    const result = try self.js.publish(subject, data.items, .{ .msg_id = msg_id });
     defer result.deinit();
 }
 
