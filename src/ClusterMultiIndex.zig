@@ -45,7 +45,7 @@ mutex: std.Thread.Mutex = .{},
 // NATS JetStream
 js: nats.JetStream = undefined,
 meta_subscription: ?*nats.JetStreamSubscription = null,
-index_updaters: std.StringHashMap(IndexUpdater),
+index_updaters: std.StringHashMap(*IndexUpdater),
 
 // Stream configuration
 stream_name: []const u8 = "fpindex-ops",
@@ -55,6 +55,12 @@ pub const IndexUpdater = struct {
     subscription: *nats.JetStreamSubscription,
     last_applied_seq: u64,
     mutex: std.Thread.Mutex = .{},
+
+    pub fn deinit(self: *IndexUpdater) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        self.subscription.deinit();
+    }
 };
 
 /// Metadata operation (create/delete)
@@ -89,7 +95,7 @@ pub fn init(allocator: std.mem.Allocator, nc: *nats.Connection, local_indexes: *
         .nc = nc,
         .local_indexes = local_indexes,
         .replica_id = replica_id,
-        .index_updaters = std.StringHashMap(IndexUpdater).init(allocator),
+        .index_updaters = std.StringHashMap(*IndexUpdater).init(allocator),
     };
 }
 
@@ -174,7 +180,9 @@ fn stopInternal(self: *Self) void {
     // Stop all index updaters and remove from hashmap
     var iter = self.index_updaters.iterator();
     while (iter.next()) |entry| {
-        entry.value_ptr.subscription.deinit();
+        const updater = entry.value_ptr.*;
+        updater.deinit();
+        self.allocator.destroy(updater);
         self.allocator.free(entry.key_ptr.*);
     }
     self.index_updaters.clearRetainingCapacity();
@@ -358,19 +366,22 @@ fn startIndexUpdater(self: *Self, index_name: []const u8, generation: u64, last_
 
     const result = try self.index_updaters.getOrPut(index_name);
     if (result.found_existing) {
-        // Clean up old subscription
-        result.value_ptr.subscription.deinit();
+        // Clean up old updater
+        result.value_ptr.*.deinit();
+        self.allocator.destroy(result.value_ptr.*);
     } else {
         // New entry - need to allocate key
         result.key_ptr.* = try self.allocator.dupe(u8, index_name);
     }
 
-    // Set the new value
-    result.value_ptr.* = IndexUpdater{
+    // Allocate and set the new value
+    const updater = try self.allocator.create(IndexUpdater);
+    updater.* = IndexUpdater{
         .subscription = subscription,
         .last_applied_seq = last_seq,
         .mutex = .{},
     };
+    result.value_ptr.* = updater;
 
     log.info("started updater for index {s} (generation={}, start_seq={})", .{ index_name, generation, last_seq + 1 });
 }
@@ -379,14 +390,26 @@ fn getIndexUpdater(self: *Self, index_name: []const u8) ?*IndexUpdater {
     self.mutex.lock();
     defer self.mutex.unlock();
 
-    return self.index_updaters.getPtr(index_name);
+    if (self.index_updaters.get(index_name)) |updater| {
+        updater.mutex.lock();
+        return updater;
+    }
+    return null;
+}
+
+fn releaseIndexUpdater(self: *Self, updater: *IndexUpdater) void {
+    _ = self; // unused
+    updater.mutex.unlock();
 }
 
 fn stopIndexUpdater(self: *Self, index_name: []const u8) !void {
     // Caller must hold self.lock
 
     if (self.index_updaters.fetchRemove(index_name)) |entry| {
-        entry.value.subscription.deinit();
+        const updater = entry.value;
+
+        // This will wait for any ongoing operations and clean up
+        updater.deinit();
 
         // Delete the NATS consumer
         const consumer_name = try std.fmt.allocPrint(self.allocator, "replica-{s}-{s}", .{ self.replica_id, index_name });
@@ -396,6 +419,7 @@ fn stopIndexUpdater(self: *Self, index_name: []const u8) !void {
             log.debug("failed to delete consumer {s}: {}", .{ consumer_name, err });
         };
 
+        self.allocator.destroy(updater);
         self.allocator.free(entry.key);
     }
 }
@@ -517,9 +541,7 @@ fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, 
         log.warn("no updater found for index {s}", .{index_name});
         return;
     };
-
-    updater.mutex.lock();
-    defer updater.mutex.unlock();
+    defer self.releaseIndexUpdater(updater);
 
     // Decode the update operation
     var update_op = try msgpack.decodeFromSlice(UpdateOp, self.allocator, msg.msg.data);
