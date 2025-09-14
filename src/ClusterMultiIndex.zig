@@ -397,16 +397,16 @@ fn createMetaConsumer(self: *Self) !void {
     const consumer_name = try std.fmt.allocPrint(self.allocator, "replica-{s}-meta", .{self.replica_id});
     defer self.allocator.free(consumer_name);
 
-    const consumer_config = nats.ConsumerConfig{
-        .durable_name = consumer_name,
-        .ack_policy = .explicit,
-        .deliver_policy = .all,
-        .filter_subject = META_SUBJECT_PREFIX ++ "*",
-        .max_ack_pending = 1,
-        .ack_wait = 60 * std.time.ns_per_s,
-    };
-
-    self.meta_subscription = try self.js.subscribe(META_STREAM_NAME, consumer_config, handleMetaMessage, .{self});
+    self.meta_subscription = try self.js.subscribe(META_SUBJECT_PREFIX ++ "*", handleMetaMessage, .{self}, .{
+        .stream = META_STREAM_NAME,
+        .durable = consumer_name,
+        .manual_ack = true,
+        .config = .{
+            .deliver_policy = .all,
+            .max_ack_pending = 1,
+            .ack_wait = 60 * std.time.ns_per_s,
+        },
+    });
 }
 
 fn startExistingIndexUpdaters(self: *Self) !void {
@@ -451,17 +451,17 @@ fn startIndexUpdater(self: *Self, index_name: []const u8, generation: u64, last_
     const filter_subject = try std.fmt.allocPrint(self.allocator, UPDATES_SUBJECT_PREFIX ++ "{s}.{d}", .{ index_name, generation });
     defer self.allocator.free(filter_subject);
 
-    const consumer_config = nats.ConsumerConfig{
-        .durable_name = consumer_name,
-        .ack_policy = .explicit,
-        .deliver_policy = .by_start_sequence,
-        .opt_start_seq = last_seq + 1,
-        .filter_subject = filter_subject,
-        .max_ack_pending = 1,
-        .ack_wait = 60 * std.time.ns_per_s,
-    };
-
-    const subscription = try self.js.subscribe(UPDATES_STREAM_NAME, consumer_config, handleUpdateMessage, .{self});
+    const subscription = try self.js.subscribe(filter_subject, handleUpdateMessage, .{self}, .{
+        .stream = UPDATES_STREAM_NAME,
+        .durable = consumer_name,
+        .manual_ack = true,
+        .config = .{
+            .deliver_policy = .by_start_sequence,
+            .opt_start_seq = last_seq + 1,
+            .max_ack_pending = 1,
+            .ack_wait = 60 * std.time.ns_per_s,
+        },
+    });
 
     const result = try self.index_updaters.getOrPut(index_name);
     if (result.found_existing) {
