@@ -507,6 +507,8 @@ fn stopIndexUpdater(self: *Self, index_name: []const u8) !void {
 }
 
 fn handleMetaMessage(js_msg: *nats.JetStreamMessage, self: *Self) void {
+    defer js_msg.deinit();
+
     if (self.stopping.load(.acquire)) {
         log.debug("ignoring meta message '{s}' while stopping", .{js_msg.msg.subject});
         return;
@@ -535,6 +537,8 @@ fn handleMetaMessage(js_msg: *nats.JetStreamMessage, self: *Self) void {
 }
 
 fn handleUpdateMessage(js_msg: *nats.JetStreamMessage, self: *Self) void {
+    defer js_msg.deinit();
+
     if (self.stopping.load(.acquire)) {
         log.debug("ignoring update message '{s}' while stopping", .{js_msg.msg.subject});
         return;
