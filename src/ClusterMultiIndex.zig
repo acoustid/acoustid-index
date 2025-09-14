@@ -465,6 +465,10 @@ fn handleMetaMessage(js_msg: *nats.JetStreamMessage, self: *Self) void {
     const parts_str = js_msg.msg.subject[META_SUBJECT_PREFIX.len..];
     var parts = std.mem.splitSequence(u8, parts_str, ".");
     const index_name = parts.next() orelse return;
+    if (parts.next() != null) {
+        log.warn("unexpected subject format: {s}", .{js_msg.msg.subject});
+        return;
+    }
 
     self.processMetaOperation(index_name, js_msg) catch |err| {
         log.err("failed to process meta operation for {s}: {}", .{ index_name, err });
@@ -490,6 +494,10 @@ fn handleUpdateMessage(js_msg: *nats.JetStreamMessage, self: *Self) void {
         log.warn("invalid generation in subject {s}", .{js_msg.msg.subject});
         return;
     };
+    if (parts.next() != null) {
+        log.warn("unexpected subject format: {s}", .{js_msg.msg.subject});
+        return;
+    }
 
     self.processUpdateOperation(index_name, generation, js_msg) catch |err| {
         log.err("failed to process update for {s}: {}", .{ index_name, err });
