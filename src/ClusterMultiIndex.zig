@@ -66,11 +66,14 @@ pub const IndexUpdater = struct {
     mutex: std.Thread.Mutex = .{},
 
     pub fn destroy(self: *IndexUpdater, allocator: std.mem.Allocator) void {
+        // Clean up subscription first - no synchronization needed
         self.subscription.deinit();
-
+        
+        // Brief critical section to ensure no concurrent access
         self.mutex.lock();
-        // we never unlock it, it's going to be destroyed this way
-
+        self.mutex.unlock();
+        
+        // Now safe to free the struct
         allocator.destroy(self);
     }
 };
