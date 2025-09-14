@@ -48,6 +48,7 @@ allocator: std.mem.Allocator,
 nc: *nats.Connection,
 local_indexes: *MultiIndex,
 replica_id: []const u8,
+stopping: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
 // State tracking
 last_applied_meta_seq: u64 = 0, // Last applied meta operation sequence
@@ -58,17 +59,22 @@ js: nats.JetStream = undefined,
 meta_subscription: ?*nats.JetStreamSubscription = null,
 index_updaters: std.StringHashMap(*IndexUpdater),
 
-
 /// Index updater for handling per-index update messages
 pub const IndexUpdater = struct {
     subscription: *nats.JetStreamSubscription,
     last_applied_seq: u64,
     mutex: std.Thread.Mutex = .{},
 
-    pub fn deinit(self: *IndexUpdater) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    pub fn destroy(self: *IndexUpdater, allocator: std.mem.Allocator) void {
+        // Clean up subscription first - no synchronization needed
         self.subscription.deinit();
+        
+        // Brief critical section to ensure no concurrent access
+        self.mutex.lock();
+        self.mutex.unlock();
+        
+        // Now safe to free the struct
+        allocator.destroy(self);
     }
 };
 
@@ -150,12 +156,26 @@ fn loadOrCreateReplicaId(allocator: std.mem.Allocator, local_indexes: *MultiInde
 }
 
 pub fn deinit(self: *Self) void {
+    self.stop();
+
     self.mutex.lock();
     defer self.mutex.unlock();
 
-    self.stopInternal();
+    if (self.meta_subscription) |sub| {
+        sub.deinit();
+    }
+    self.meta_subscription = undefined;
+
+    var iter = self.index_updaters.iterator();
+    while (iter.next()) |entry| {
+        entry.value_ptr.*.destroy(self.allocator);
+        self.allocator.free(entry.key_ptr.*);
+    }
     self.index_updaters.deinit();
+    self.index_updaters = undefined;
+
     self.allocator.free(self.replica_id);
+    self.replica_id = undefined;
 }
 
 pub fn start(self: *Self) !void {
@@ -176,27 +196,71 @@ pub fn start(self: *Self) !void {
 }
 
 pub fn stop(self: *Self) void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
-    self.stopInternal();
+    // Mark as stopping
+    self.stopping.store(true, .release);
+
+    // Drain subscriptions
+    self.drainMetaSubscription();
+    self.drainUpdateSubscriptions();
+
+    // Try to wait for them to finish, best effort
+    self.waitForMetaSubscriptionDrained(30 * std.time.ms_per_s);
+    self.waitForUpdateSubscriptionsDrained(30 * std.time.ms_per_s);
 }
 
-fn stopInternal(self: *Self) void {
-    // Stop meta subscription
-    if (self.meta_subscription) |sub| {
-        sub.deinit();
-        self.meta_subscription = null;
-    }
+fn drainMetaSubscription(self: *Self) void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
 
-    // Stop all index updaters and remove from hashmap
+    if (self.meta_subscription) |sub| {
+        sub.subscription.drain();
+    }
+}
+
+fn drainUpdateSubscriptions(self: *Self) void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
     var iter = self.index_updaters.iterator();
     while (iter.next()) |entry| {
         const updater = entry.value_ptr.*;
-        updater.deinit();
-        self.allocator.destroy(updater);
-        self.allocator.free(entry.key_ptr.*);
+        updater.subscription.subscription.drain();
     }
-    self.index_updaters.clearRetainingCapacity();
+}
+
+fn waitForMetaSubscriptionDrained(self: *Self, timeout_ms: u64) void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
+    if (self.meta_subscription) |js_sub| {
+        const sub = js_sub.subscription;
+
+        self.mutex.unlock();
+        defer self.mutex.lock();
+
+        sub.waitForDrainCompletion(timeout_ms) catch |err| {
+            log.warn("failed to wait for meta subscription drain completion: {}", .{err});
+            return;
+        };
+    }
+}
+
+fn waitForUpdateSubscriptionsDrained(self: *Self, timeout_ms: u64) void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+
+    var iter = self.index_updaters.iterator();
+    while (iter.next()) |entry| {
+        const sub = entry.value_ptr.*.subscription.subscription;
+
+        self.mutex.unlock();
+        defer self.mutex.lock();
+
+        sub.waitForDrainCompletion(timeout_ms) catch |err| {
+            log.warn("failed to wait for update subscription drain completion: {}", .{err});
+            continue;
+        };
+    }
 }
 
 fn getStatus(self: *Self, index_name: []const u8) !IndexStatus {
@@ -401,9 +465,7 @@ fn startIndexUpdater(self: *Self, index_name: []const u8, generation: u64, last_
 
     const result = try self.index_updaters.getOrPut(index_name);
     if (result.found_existing) {
-        // Clean up old updater
-        result.value_ptr.*.deinit();
-        self.allocator.destroy(result.value_ptr.*);
+        std.debug.panic("startIndexUpdater called for existing index: {s}", .{index_name});
     } else {
         // New entry - need to allocate key
         result.key_ptr.* = try self.allocator.dupe(u8, index_name);
@@ -441,25 +503,19 @@ fn stopIndexUpdater(self: *Self, index_name: []const u8) !void {
     // Caller must hold self.mutex
 
     if (self.index_updaters.fetchRemove(index_name)) |entry| {
-        const updater = entry.value;
-
-        // This will wait for any ongoing operations and clean up
-        updater.deinit();
-
-        // Delete the NATS consumer
-        const consumer_name = try std.fmt.allocPrint(self.allocator, "replica-{s}-{s}", .{ self.replica_id, index_name });
-        defer self.allocator.free(consumer_name);
-
-        self.js.deleteConsumer(UPDATES_STREAM_NAME, consumer_name) catch |err| {
-            log.debug("failed to delete consumer {s}: {}", .{ consumer_name, err });
-        };
-
-        self.allocator.destroy(updater);
+        entry.value.destroy(self.allocator);
         self.allocator.free(entry.key);
     }
 }
 
 fn handleMetaMessage(js_msg: *nats.JetStreamMessage, self: *Self) void {
+    defer js_msg.deinit();
+
+    if (self.stopping.load(.acquire)) {
+        log.debug("ignoring meta message '{s}' while stopping", .{js_msg.msg.subject});
+        return;
+    }
+
     // Parse subject to get index name
     if (!std.mem.startsWith(u8, js_msg.msg.subject, META_SUBJECT_PREFIX)) return;
     const parts_str = js_msg.msg.subject[META_SUBJECT_PREFIX.len..];
@@ -483,6 +539,13 @@ fn handleMetaMessage(js_msg: *nats.JetStreamMessage, self: *Self) void {
 }
 
 fn handleUpdateMessage(js_msg: *nats.JetStreamMessage, self: *Self) void {
+    defer js_msg.deinit();
+
+    if (self.stopping.load(.acquire)) {
+        log.debug("ignoring update message '{s}' while stopping", .{js_msg.msg.subject});
+        return;
+    }
+
     // Parse subject: fpindex.u.{index}.{generation}
     if (!std.mem.startsWith(u8, js_msg.msg.subject, UPDATES_SUBJECT_PREFIX)) return;
     const parts_str = js_msg.msg.subject[UPDATES_SUBJECT_PREFIX.len..];
