@@ -465,8 +465,7 @@ fn startIndexUpdater(self: *Self, index_name: []const u8, generation: u64, last_
 
     const result = try self.index_updaters.getOrPut(index_name);
     if (result.found_existing) {
-        // This should not really happen
-        result.value_ptr.*.destroy(self.allocator);
+        std.debug.panic("startIndexUpdater called for existing index: {s}", .{index_name});
     } else {
         // New entry - need to allocate key
         result.key_ptr.* = try self.allocator.dupe(u8, index_name);
