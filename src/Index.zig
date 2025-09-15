@@ -35,6 +35,7 @@ const SegmentMerger = @import("segment_merger.zig").SegmentMerger;
 const TieredMergePolicy = @import("segment_merge_policy.zig").TieredMergePolicy;
 
 const filefmt = @import("filefmt.zig");
+const index_manifest = @import("index_manifest.zig");
 
 const metrics = @import("metrics.zig");
 const Self = @This();
@@ -67,9 +68,9 @@ segments_lock: std.Thread.RwLock = .{},
 memory_segments: SegmentListManager(MemorySegment),
 file_segments: SegmentListManager(FileSegment),
 
-checkpoint_task: ?Scheduler.Task = null,
-file_segment_merge_task: ?Scheduler.Task = null,
-memory_segment_merge_task: ?Scheduler.Task = null,
+checkpoint_task: ?*Scheduler.Task = null,
+file_segment_merge_task: ?*Scheduler.Task = null,
+memory_segment_merge_task: ?*Scheduler.Task = null,
 
 fn getFileSegmentSize(segment: SharedPtr(FileSegment)) usize {
     return segment.value.getSize();
@@ -79,8 +80,8 @@ fn getMemorySegmentSize(segment: SharedPtr(MemorySegment)) usize {
     return segment.value.getSize();
 }
 
-pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, parent_dir: std.fs.Dir, path: []const u8, options: Options) !Self {
-    var dir = try parent_dir.makeOpenPath(path, .{ .iterate = true });
+pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, parent_dir: std.fs.Dir, name: []const u8, data_path: []const u8, options: Options) !Self {
+    var dir = try parent_dir.makeOpenPath(data_path, .{ .iterate = true });
     errdefer dir.close();
 
     var oplog = try Oplog.init(allocator, dir);
@@ -116,7 +117,7 @@ pub fn init(allocator: std.mem.Allocator, scheduler: *Scheduler, parent_dir: std
         .allocator = allocator,
         .scheduler = scheduler,
         .dir = dir,
-        .name = path,
+        .name = name,
         .oplog = oplog,
         .segments_lock = .{},
         .memory_segments = memory_segments,
@@ -231,7 +232,7 @@ fn updateManifestFile(self: *Self, segments: *FileSegmentList) !void {
         infos[i] = node.value.info;
     }
 
-    try filefmt.writeManifestFile(self.dir, infos);
+    try index_manifest.writeManifestFile(self.dir, infos, self.allocator);
 }
 
 fn maybeMergeFileSegments(self: *Self) !bool {
@@ -285,7 +286,7 @@ fn maybeMergeMemorySegments(self: *Self) !bool {
 }
 
 pub fn open(self: *Self, create: bool) !void {
-    const manifest = filefmt.readManifestFile(self.dir, self.allocator) catch |err| {
+    const manifest = index_manifest.readManifestFile(self.dir, self.allocator) catch |err| {
         if (err == error.FileNotFound) {
             if (create) {
                 try self.updateManifestFile(self.file_segments.segments.value);
@@ -296,7 +297,6 @@ pub fn open(self: *Self, create: bool) !void {
         }
         return err;
     };
-    errdefer self.allocator.free(manifest);
 
     try self.load(manifest);
 }
@@ -356,7 +356,7 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
     @memset(results, error.NotLoaded);
 
     // Allocate local array for tasks
-    var tasks = std.ArrayListUnmanaged(Scheduler.Task){};
+    var tasks = std.ArrayListUnmanaged(*Scheduler.Task){};
     defer {
         for (tasks.items) |task| {
             self.scheduler.destroyTask(task);
@@ -381,7 +381,7 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
             .concurrency_semaphore = &concurrency_semaphore,
         };
 
-        const task = self.scheduler.createTask(.high, loadSegmentTask, .{load_context}) catch |err| {
+        const task = self.scheduler.createTask(loadSegmentTask, .{load_context}) catch |err| {
             // If task creation fails, release the semaphore and stop creating more tasks
             concurrency_semaphore.post();
             task_creation_error = err;
@@ -422,11 +422,11 @@ fn loadParallel(self: *Self, manifest: []SegmentInfo) !void {
 }
 
 fn completeLoading(self: *Self, last_commit_id: u64) !void {
-    self.memory_segment_merge_task = try self.scheduler.createTask(.high, memorySegmentMergeTask, .{self});
-    self.checkpoint_task = try self.scheduler.createTask(.medium, checkpointTask, .{self});
-    self.file_segment_merge_task = try self.scheduler.createTask(.low, fileSegmentMergeTask, .{self});
+    self.memory_segment_merge_task = try self.scheduler.createTask(memorySegmentMergeTask, .{self});
+    self.checkpoint_task = try self.scheduler.createTask(checkpointTask, .{self});
+    self.file_segment_merge_task = try self.scheduler.createTask(fileSegmentMergeTask, .{self});
 
-    try self.oplog.open(last_commit_id + 1, updateInternal, self);
+    try self.oplog.open(last_commit_id + 1, replayTransactionFromOplog, self);
 
     log.info("index loaded", .{});
 }
@@ -460,11 +460,11 @@ fn maybeScheduleCheckpoint(self: *Self) void {
     }
 }
 
-pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata, expected_version: ?u64) !u64 {
-    return try self.updateInternal(changes, metadata, null, expected_version);
+pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata, options: Oplog.WriteOptions) !u64 {
+    return try self.updateInternal(changes, metadata, null, options);
 }
 
-fn updateInternal(self: *Self, changes: []const Change, metadata: ?Metadata, commit_id: ?u64, expected_version: ?u64) !u64 {
+fn updateInternal(self: *Self, changes: []const Change, metadata: ?Metadata, replay_commit_id: ?u64, write_options: Oplog.WriteOptions) !u64 {
     var target = try MemorySegmentList.createSegment(self.allocator, .{});
     defer MemorySegmentList.destroySegment(self.allocator, &target);
 
@@ -473,7 +473,7 @@ fn updateInternal(self: *Self, changes: []const Change, metadata: ?Metadata, com
     var upd = try self.memory_segments.beginUpdate(self.allocator);
     defer self.memory_segments.cleanupAfterUpdate(self.allocator, &upd);
 
-    const version = commit_id orelse try self.oplog.write(changes, metadata, expected_version);
+    const version = replay_commit_id orelse try self.oplog.write(changes, metadata, write_options);
     target.value.info.version = version;
 
     defer self.updateDocsMetrics();
@@ -489,6 +489,10 @@ fn updateInternal(self: *Self, changes: []const Change, metadata: ?Metadata, com
     self.maybeScheduleCheckpoint();
 
     return version;
+}
+
+fn replayTransactionFromOplog(self: *Self, changes: []const Change, metadata: ?Metadata, commit_id: u64) !u64 {
+    return try self.updateInternal(changes, metadata, commit_id, .{});
 }
 
 pub fn acquireReader(self: *Self) !IndexReader {

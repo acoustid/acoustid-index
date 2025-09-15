@@ -2,6 +2,7 @@ const std = @import("std");
 const httpz = @import("httpz");
 const json = std.json;
 const log = std.log.scoped(.server);
+const assert = std.debug.assert;
 
 const msgpack = @import("msgpack");
 
@@ -14,35 +15,61 @@ const Change = @import("change.zig").Change;
 const Deadline = @import("utils/Deadline.zig");
 const snapshot = @import("snapshot.zig");
 const Metadata = @import("Metadata.zig");
+const api = @import("api.zig");
 
 const metrics = @import("metrics.zig");
 
-const Context = struct {
-    indexes: *MultiIndex,
+fn Context(comptime T: type) type {
+    return struct {
+        indexes: *T,
 
-    pub fn notFound(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-        return handleNotFound(ctx, req, res);
-    }
+        const Self = @This();
 
-    pub fn uncaughtError(ctx: *Context, req: *httpz.Request, res: *httpz.Response, err: anyerror) void {
-        return handleError(ctx, req, res, err);
+        pub fn notFound(ctx: *Self, req: *httpz.Request, res: *httpz.Response) !void {
+            return handleNotFound(T, ctx, req, res);
+        }
+
+        pub fn uncaughtError(ctx: *Self, req: *httpz.Request, res: *httpz.Response, err: anyerror) void {
+            return handleError(T, ctx, req, res, err);
+        }
+    };
+}
+
+fn Server(comptime T: type) type {
+    return httpz.Server(*Context(T));
+}
+
+// Interface for server shutdown
+const ServerStopper = struct {
+    ptr: *anyopaque,
+    stopFn: *const fn (*anyopaque) void,
+
+    pub fn stop(self: ServerStopper) void {
+        self.stopFn(self.ptr);
     }
 };
 
-const Server = httpz.Server(*Context);
-
-var global_server: ?*Server = null;
+var global_server: ?ServerStopper = null;
 
 fn shutdown(_: c_int) callconv(.C) void {
     if (global_server) |server| {
         log.info("stopping", .{});
-        global_server = null;
         server.stop();
+        global_server = null;
     }
 }
 
-fn installSignalHandlers(server: *Server) void {
-    global_server = server;
+fn installSignalHandlers(comptime T: type, server: *Server(T)) void {
+    const ServerType = Server(T);
+    global_server = .{
+        .ptr = server,
+        .stopFn = struct {
+            fn stop(ptr: *anyopaque) void {
+                const s: *ServerType = @ptrCast(@alignCast(ptr));
+                s.stop();
+            }
+        }.stop,
+    };
 
     std.posix.sigaction(std.posix.SIG.INT, &.{
         .handler = .{ .handler = shutdown },
@@ -57,8 +84,19 @@ fn installSignalHandlers(server: *Server) void {
     }, null);
 }
 
-pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const u8, port: u16, threads: u16) !void {
-    var ctx = Context{ .indexes = indexes };
+// Generic wrapper generator - creates a struct with the wrapper function
+fn HandlerWrapper(comptime T: type, comptime handler_fn: anytype) type {
+    const ContextType = Context(T);
+    return struct {
+        pub fn wrapper(context: *ContextType, req: *httpz.Request, res: *httpz.Response) !void {
+            return handler_fn(T, context, req, res);
+        }
+    };
+}
+
+pub fn run(comptime T: type, allocator: std.mem.Allocator, indexes: *T, address: []const u8, port: u16, threads: u16) !void {
+    const ContextType = Context(T);
+    var ctx = ContextType{ .indexes = indexes };
 
     const config = httpz.Config{
         .address = address,
@@ -75,75 +113,43 @@ pub fn run(allocator: std.mem.Allocator, indexes: *MultiIndex, address: []const 
         },
     };
 
-    var server = try Server.init(allocator, config, &ctx);
+    const ServerType = Server(T);
+    var server = try ServerType.init(allocator, config, &ctx);
     defer server.deinit();
 
-    installSignalHandlers(&server);
+    installSignalHandlers(T, &server);
 
     var router = try server.router(.{});
 
     // Monitoring API
-    router.get("/_metrics", handleMetrics, .{});
-    router.get("/_health", handleHealth, .{});
-    router.get("/:index/_health", handleIndexHealth, .{});
+    router.get("/_metrics", HandlerWrapper(T, handleMetrics).wrapper, .{});
+    router.get("/_health", HandlerWrapper(T, handleHealth).wrapper, .{});
+    router.get("/:index/_health", HandlerWrapper(T, handleIndexHealth).wrapper, .{});
 
     // Search API
-    router.post("/:index/_search", handleSearch, .{});
+    router.post("/:index/_search", HandlerWrapper(T, handleSearch).wrapper, .{});
 
     // Bulk API
-    router.post("/:index/_update", handleUpdate, .{});
+    router.post("/:index/_update", HandlerWrapper(T, handleUpdate).wrapper, .{});
 
     // Fingerprint API
-    router.head("/:index/:id", handleHeadFingerprint, .{});
-    router.get("/:index/:id", handleGetFingerprint, .{});
-    router.put("/:index/:id", handlePutFingerprint, .{});
-    router.delete("/:index/:id", handleDeleteFingerprint, .{});
+    router.head("/:index/:id", HandlerWrapper(T, handleHeadFingerprint).wrapper, .{});
+    router.get("/:index/:id", HandlerWrapper(T, handleGetFingerprint).wrapper, .{});
+    router.put("/:index/:id", HandlerWrapper(T, handlePutFingerprint).wrapper, .{});
+    router.delete("/:index/:id", HandlerWrapper(T, handleDeleteFingerprint).wrapper, .{});
 
     // Index API
-    router.head("/:index", handleHeadIndex, .{});
-    router.get("/:index", handleGetIndex, .{});
-    router.put("/:index", handlePutIndex, .{});
-    router.delete("/:index", handleDeleteIndex, .{});
-    router.get("/:index/_segments", handleGetSegments, .{});
-    router.get("/:index/_snapshot", handleSnapshot, .{});
+    router.head("/:index", HandlerWrapper(T, handleHeadIndex).wrapper, .{});
+    router.get("/:index", HandlerWrapper(T, handleGetIndex).wrapper, .{});
+    router.put("/:index", HandlerWrapper(T, handlePutIndex).wrapper, .{});
+    router.delete("/:index", HandlerWrapper(T, handleDeleteIndex).wrapper, .{});
+
+    // Snapshot endpoint
+    router.get("/:index/_snapshot", HandlerWrapper(T, handleSnapshotExport).wrapper, .{});
 
     log.info("listening on {s}:{d}", .{ address, port });
     try server.listen();
 }
-
-const default_search_timeout = 500;
-const max_search_timeout = 10000;
-
-const default_search_limit = 40;
-const min_search_limit = 1;
-const max_search_limit = 100;
-
-const SearchRequestJSON = struct {
-    query: []u32,
-    timeout: u32 = default_search_timeout,
-    limit: u32 = default_search_limit,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
-
-const SearchResultJSON = struct {
-    id: u32,
-    score: u32,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
-
-const SearchResultsJSON = struct {
-    results: []SearchResultJSON,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
 
 fn getId(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?u32 {
     const id_str = req.param("id") orelse {
@@ -166,7 +172,7 @@ fn getId(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?u32 {
     };
 }
 
-fn getIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response, send_body: bool) !?*Index {
+fn getIndexName(req: *httpz.Request, res: *httpz.Response, send_body: bool) !?[]const u8 {
     const index_name = req.param("index") orelse {
         log.warn("missing index parameter", .{});
         if (send_body) {
@@ -176,23 +182,7 @@ fn getIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response, send_body:
         }
         return null;
     };
-    const index = ctx.indexes.getIndex(index_name) catch |err| {
-        log.warn("error during getIndex: {}", .{err});
-        if (err == error.IndexNotFound) {
-            if (send_body) {
-                try writeErrorResponse(404, err, req, res);
-            } else {
-                res.status = 404;
-            }
-            return null;
-        }
-        return err;
-    };
-    return index;
-}
-
-fn releaseIndex(ctx: *Context, index: *Index) void {
-    ctx.indexes.releaseIndex(index);
+    return index_name;
 }
 
 const ContentType = enum {
@@ -253,11 +243,11 @@ const ErrorResponse = struct {
     }
 };
 
-fn handleNotFound(_: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn handleNotFound(comptime T: type, _: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     try writeErrorResponse(404, error.NotFound, req, res);
 }
 
-fn handleError(_: *Context, req: *httpz.Request, res: *httpz.Response, err: anyerror) void {
+fn handleError(comptime T: type, _: *Context(T), req: *httpz.Request, res: *httpz.Response, err: anyerror) void {
     switch (err) {
         error.IndexNotReady => {
             writeErrorResponse(503, err, req, res) catch {
@@ -278,6 +268,18 @@ fn handleError(_: *Context, req: *httpz.Request, res: *httpz.Response, err: anye
 fn writeErrorResponse(status: u16, err: anyerror, req: *httpz.Request, res: *httpz.Response) !void {
     res.status = status;
     try writeResponse(ErrorResponse{ .@"error" = @errorName(err) }, req, res);
+}
+
+fn writeIndexErrorAs404(req: *httpz.Request, res: *httpz.Response, err: anyerror, send_body: bool) !bool {
+    if (err == error.IndexBeingDeleted or err == error.IndexNotFound or err == error.InvalidIndexName) {
+        if (send_body) {
+            try writeErrorResponse(404, err, req, res);
+        } else {
+            res.status = 404;
+        }
+        return true;
+    }
+    return false;
 }
 
 fn getRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !?T {
@@ -312,112 +314,69 @@ fn getRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !
     unreachable;
 }
 
-fn handleSearch(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn handleSearch(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     const start_time = std.time.milliTimestamp();
     defer metrics.searchDuration(std.time.milliTimestamp() - start_time);
 
-    const body = try getRequestBody(SearchRequestJSON, req, res) orelse return;
+    const index_name = try getIndexName(req, res, true) orelse return;
+    const body = try getRequestBody(api.SearchRequest, req, res) orelse return;
 
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
-
-    const limit = @max(@min(body.limit, max_search_limit), min_search_limit);
-
-    var timeout = body.timeout;
-    if (timeout > max_search_timeout) {
-        timeout = max_search_timeout;
-    }
-    const deadline = Deadline.init(timeout);
-
-    metrics.search();
-
-    var collector = SearchResults.init(req.arena, .{
-        .max_results = limit,
-        .min_score = @intCast((body.query.len + 19) / 20),
-        .min_score_pct = 10,
-    });
-
-    try index.search(body.query, &collector, deadline);
-
-    const results = collector.getResults();
-
-    if (results.len == 0) {
-        metrics.searchMiss();
-    } else {
-        metrics.searchHit();
-    }
-
-    var results_json = SearchResultsJSON{
-        .results = try req.arena.alloc(SearchResultJSON, results.len),
+    const response = ctx.indexes.search(req.arena, index_name, body) catch |err| {
+        if (try writeIndexErrorAs404(req, res, err, true)) return;
+        return err;
     };
-    for (results, 0..) |r, i| {
-        results_json.results[i] = SearchResultJSON{ .id = r.id, .score = r.score };
-    }
-    return writeResponse(results_json, req, res);
+    comptime assert(@TypeOf(response) == api.SearchResponse);
+
+    return writeResponse(response, req, res);
 }
 
-const UpdateRequestJSON = struct {
-    changes: []Change,
-    metadata: ?Metadata = null,
-    expected_version: ?u64 = null,
+fn handleUpdate(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index_name = try getIndexName(req, res, true) orelse return;
+    const body = try getRequestBody(api.UpdateRequest, req, res) orelse return;
 
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
-
-fn handleUpdate(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const body = try getRequestBody(UpdateRequestJSON, req, res) orelse return;
-
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
-
-    metrics.update(body.changes.len);
-
-    const new_version = index.update(body.changes, body.metadata, body.expected_version) catch |err| {
+    const response = ctx.indexes.update(req.arena, index_name, body) catch |err| {
         if (err == error.VersionMismatch) {
             return writeErrorResponse(409, err, req, res);
         }
+        if (try writeIndexErrorAs404(req, res, err, true)) return;
+        return err;
+    };
+    comptime assert(@TypeOf(response) == api.UpdateResponse);
+
+    return writeResponse(response, req, res);
+}
+
+fn handleHeadFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index_name = try getIndexName(req, res, false) orelse return;
+    const id = try getId(req, res, false) orelse return;
+
+    ctx.indexes.checkFingerprintExists(index_name, id) catch |err| {
+        if (err == error.FingerprintNotFound) {
+            res.status = 404;
+            return;
+        }
+        if (try writeIndexErrorAs404(req, res, err, false)) return;
         return err;
     };
 
-    return writeResponse(UpdateResponse{ .version = new_version }, req, res);
+    res.status = 200;
 }
 
-fn handleHeadFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, false) orelse return;
-    defer releaseIndex(ctx, index);
-
-    var index_reader = try index.acquireReader();
-    defer index.releaseReader(&index_reader);
-
-    const id = try getId(req, res, false) orelse return;
-    const info = try index_reader.getDocInfo(id);
-
-    res.status = if (info == null) 404 else 200;
-}
-
-const GetFingerprintResponse = struct {
-    version: u64,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
-
-fn handleGetFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
-
-    var index_reader = try index.acquireReader();
-    defer index.releaseReader(&index_reader);
-
+fn handleGetFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index_name = try getIndexName(req, res, true) orelse return;
     const id = try getId(req, res, true) orelse return;
-    const info = try index_reader.getDocInfo(id) orelse {
-        return writeErrorResponse(404, error.FingerprintNotFound, req, res);
-    };
 
-    return writeResponse(GetFingerprintResponse{ .version = info.version }, req, res);
+    const response = ctx.indexes.getFingerprintInfo(req.arena, index_name, id) catch |err| {
+        if (err == error.FingerprintNotFound) {
+            try writeErrorResponse(404, err, req, res);
+            return;
+        }
+        if (try writeIndexErrorAs404(req, res, err, true)) return;
+        return err;
+    };
+    comptime assert(@TypeOf(response) == api.GetFingerprintInfoResponse);
+
+    return writeResponse(response, req, res);
 }
 
 const PutFingerprintRequest = struct {
@@ -428,229 +387,164 @@ const PutFingerprintRequest = struct {
     }
 };
 
-fn handlePutFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn handlePutFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index_name = try getIndexName(req, res, true) orelse return;
+    const id = try getId(req, res, true) orelse return;
     const body = try getRequestBody(PutFingerprintRequest, req, res) orelse return;
 
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
-
-    const id = try getId(req, res, true) orelse return;
-    const change: Change = .{ .insert = .{
+    var changes: [1]Change = .{.{ .insert = .{
         .id = id,
         .hashes = body.hashes,
-    } };
+    } }};
 
-    metrics.update(1);
-
-    _ = try index.update(&[_]Change{change}, null, null);
-
-    return writeResponse(EmptyResponse{}, req, res);
-}
-
-fn handleDeleteFingerprint(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
-
-    const id = try getId(req, res, true) orelse return;
-    const change: Change = .{ .delete = .{
-        .id = id,
-    } };
-
-    metrics.update(1);
-
-    _ = try index.update(&[_]Change{change}, null, null);
-
-    return writeResponse(EmptyResponse{}, req, res);
-}
-
-const GetIndexResponse = struct {
-    version: u64,
-    metadata: Metadata,
-    stats: IndexReader.Stats,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
-
-fn handleGetIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
-
-    var index_reader = try index.acquireReader();
-    defer index.releaseReader(&index_reader);
-
-    const response = GetIndexResponse{
-        .version = index_reader.getVersion(),
-        .metadata = try index_reader.getMetadata(req.arena),
-        .stats = index_reader.getStats(),
+    const update_request = api.UpdateRequest{
+        .changes = &changes,
+        .metadata = null,
+        .expected_version = null,
     };
+
+    const response = ctx.indexes.update(req.arena, index_name, update_request) catch |err| {
+        if (err == error.VersionMismatch) {
+            return writeErrorResponse(409, err, req, res);
+        }
+        if (try writeIndexErrorAs404(req, res, err, true)) return;
+        return err;
+    };
+    comptime assert(@TypeOf(response) == api.UpdateResponse);
+
+    return writeResponse(EmptyResponse{}, req, res);
+}
+
+fn handleDeleteFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index_name = try getIndexName(req, res, true) orelse return;
+    const id = try getId(req, res, true) orelse return;
+
+    var changes: [1]Change = .{.{ .delete = .{
+        .id = id,
+    } }};
+
+    const update_request = api.UpdateRequest{
+        .changes = &changes,
+        .metadata = null,
+        .expected_version = null,
+    };
+
+    const response = ctx.indexes.update(req.arena, index_name, update_request) catch |err| {
+        if (err == error.VersionMismatch) {
+            return writeErrorResponse(409, err, req, res);
+        }
+        if (try writeIndexErrorAs404(req, res, err, true)) return;
+        return err;
+    };
+    comptime assert(@TypeOf(response) == api.UpdateResponse);
+
+    return writeResponse(EmptyResponse{}, req, res);
+}
+
+fn handleGetIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index_name = try getIndexName(req, res, true) orelse return;
+
+    const response = ctx.indexes.getIndexInfo(req.arena, index_name) catch |err| {
+        if (try writeIndexErrorAs404(req, res, err, true)) return;
+        return err;
+    };
+    comptime assert(@TypeOf(response) == api.GetIndexInfoResponse);
+
     return writeResponse(response, req, res);
 }
 
 const EmptyResponse = struct {};
 
-const UpdateResponse = struct {
-    version: u64,
 
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
+fn handlePutIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index_name = try getIndexName(req, res, true) orelse return;
 
-const CreateIndexRequest = struct {
-    restore: ?MultiIndex.CreateIndexOptions.RestoreOptions = null,
-    
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
-
-const CreateIndexResponse = struct {
-    version: u64,
-
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
-
-fn handlePutIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_name = req.param("index") orelse return;
-
-    // Parse request body for restoration options
-    var create_options = MultiIndex.CreateIndexOptions{};
-    
-    if (req.body()) |_| {
-        if (getRequestBody(CreateIndexRequest, req, res)) |maybe_request_data| {
-            if (maybe_request_data) |request_data| {
-                create_options.restore = request_data.restore;
-                // Only fail if exists when restore options are provided
-                create_options.fail_if_exists = (request_data.restore != null);
-            }
-        } else |_| {
-            // Error already written to response
+    const response = ctx.indexes.createIndex(req.arena, index_name) catch |err| {
+        if (err == error.InvalidIndexName) {
+            try writeErrorResponse(400, err, req, res);
             return;
         }
-    }
-
-    const index = ctx.indexes.createIndex(index_name, create_options) catch |err| {
-        switch (err) {
-            error.IndexAlreadyExists => {
-                try writeErrorResponse(409, err, req, res);
-                return;
-            },
-            error.IndexNotReady => {
-                // Return 202 Accepted for async restoration
-                res.status = 202;
-                return writeResponse(EmptyResponse{}, req, res);
-            },
-            else => return err,
+        if (err == error.IndexBeingDeleted) {
+            try writeErrorResponse(409, err, req, res);
+            return;
         }
+        return err;
     };
-    defer ctx.indexes.releaseIndex(index);
-    
-    var index_reader = try index.acquireReader();
-    defer index.releaseReader(&index_reader);
-    
-    const response = CreateIndexResponse{
-        .version = index_reader.getVersion(),
-    };
+    comptime assert(@TypeOf(response) == api.CreateIndexResponse);
 
     return writeResponse(response, req, res);
 }
 
-fn handleDeleteIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index_name = req.param("index") orelse return;
+fn handleDeleteIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index_name = try getIndexName(req, res, true) orelse return;
 
-    try ctx.indexes.deleteIndex(index_name);
+    ctx.indexes.deleteIndex(index_name) catch |err| {
+        if (err == error.InvalidIndexName) {
+            try writeErrorResponse(400, err, req, res);
+            return;
+        }
+        if (err == error.IndexNotFound) {
+            try writeErrorResponse(404, err, req, res);
+            return;
+        }
+        if (err == error.DeleteTimeout or err == error.IndexAlreadyBeingDeleted) {
+            try writeErrorResponse(409, err, req, res);
+            return;
+        }
+        return err;
+    };
 
     return writeResponse(EmptyResponse{}, req, res);
 }
 
-fn handleHeadIndex(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, false) orelse return;
-    defer releaseIndex(ctx, index);
+fn handleHeadIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index_name = try getIndexName(req, res, false) orelse return;
+
+    ctx.indexes.checkIndexExists(index_name) catch |err| {
+        if (try writeIndexErrorAs404(req, res, err, false)) return;
+        return err;
+    };
+
+    res.status = 200;
 }
 
-fn handleIndexHealth(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, false) orelse return;
-    defer releaseIndex(ctx, index);
+fn handleIndexHealth(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index_name = try getIndexName(req, res, false) orelse return;
+
+    ctx.indexes.checkIndexExists(index_name) catch |err| {
+        if (err == error.IndexBeingDeleted or err == error.IndexNotFound or err == error.InvalidIndexName) {
+            res.status = 404;
+            return;
+        }
+        return err;
+    };
 
     try res.writer().writeAll("OK\n");
 }
 
-const MEMORY_SEGMENT = "memory";
-const FILE_SEGMENT = "file";
-
-pub const GetSegmentResponse = struct {
-    kind: []const u8,
-    version: u64,
-    merges: u64,
-    min_doc_id: u32,
-    max_doc_id: u32,
-};
-
-pub const GetSegmentsResponse = struct {
-    segments: []GetSegmentResponse,
-};
-
-fn handleGetSegments(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
-
-    var reader = try index.acquireReader();
-    defer index.releaseReader(&reader);
-
-    const num_segments = reader.file_segments.value.count() + reader.memory_segments.value.count();
-    const segments = try req.arena.alloc(GetSegmentResponse, num_segments);
-
-    var i: usize = 0;
-
-    for (reader.file_segments.value.nodes.items) |segment| {
-        segments[i] = .{
-            .kind = FILE_SEGMENT,
-            .version = segment.value.info.version,
-            .merges = segment.value.info.merges,
-            .min_doc_id = segment.value.min_doc_id,
-            .max_doc_id = segment.value.max_doc_id,
-        };
-        i += 1;
-    }
-
-    for (reader.memory_segments.value.nodes.items) |segment| {
-        segments[i] = .{
-            .kind = MEMORY_SEGMENT,
-            .version = segment.value.info.version,
-            .merges = segment.value.info.merges,
-            .min_doc_id = segment.value.min_doc_id,
-            .max_doc_id = segment.value.max_doc_id,
-        };
-        i += 1;
-    }
-
-    return writeResponse(GetSegmentsResponse{ .segments = segments }, req, res);
-}
-
-fn handleHealth(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn handleHealth(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     _ = ctx;
     _ = req;
 
     try res.writer().writeAll("OK\n");
 }
 
-fn handleSnapshot(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
-    const index = try getIndex(ctx, req, res, true) orelse return;
-    defer releaseIndex(ctx, index);
+// Snapshot handler
+fn handleSnapshotExport(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
+    const index_name = try getIndexName(req, res, true) orelse return;
 
     // Set response headers for tar download
     res.header("content-type", "application/x-tar");
     res.header("content-disposition", "attachment; filename=\"index_snapshot.tar\"");
 
-    // Build snapshot using the dedicated module
-    try snapshot.buildSnapshot(res.writer().any(), index, req.arena);
+    // Export snapshot using the exportSnapshot method
+    ctx.indexes.exportSnapshot(req.arena, index_name, res.writer().any()) catch |err| {
+        if (try writeIndexErrorAs404(req, res, err, true)) return;
+        return err;
+    };
 }
 
-fn handleMetrics(ctx: *Context, req: *httpz.Request, res: *httpz.Response) !void {
+fn handleMetrics(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     _ = ctx;
     _ = req;
 

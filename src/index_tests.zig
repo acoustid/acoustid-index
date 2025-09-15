@@ -25,7 +25,7 @@ test "index does not exist" {
     var scheduler = Scheduler.init(std.testing.allocator);
     defer scheduler.deinit();
 
-    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", "idx", .{});
     defer index.deinit();
 
     const result = index.open(false);
@@ -39,7 +39,7 @@ test "index create, update and search" {
     var scheduler = Scheduler.init(std.testing.allocator);
     defer scheduler.deinit();
 
-    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", "idx", .{});
     defer index.deinit();
 
     try index.open(true);
@@ -49,7 +49,7 @@ test "index create, update and search" {
     _ = try index.update(&[_]Change{.{ .insert = .{
         .id = 1,
         .hashes = generateRandomHashes(&hashes, 1),
-    } }}, null, null);
+    } }}, null, .{});
 
     {
         var collector = SearchResults.init(std.testing.allocator, .{});
@@ -82,7 +82,7 @@ test "index create, update, reopen and search" {
     var hashes: [100]u32 = undefined;
 
     {
-        var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
+        var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", "idx", .{});
         defer index.deinit();
 
         try index.open(true);
@@ -90,11 +90,11 @@ test "index create, update, reopen and search" {
         _ = try index.update(&[_]Change{.{ .insert = .{
             .id = 1,
             .hashes = generateRandomHashes(&hashes, 1),
-        } }}, null, null);
+        } }}, null, .{});
     }
 
     {
-        var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
+        var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", "idx", .{});
         defer index.deinit();
 
         try index.open(false);
@@ -116,7 +116,7 @@ test "index many updates and inserts" {
     defer scheduler.deinit();
     try scheduler.start(2);
 
-    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", "idx", .{
         .min_segment_size = 50_000,
         .max_segment_size = 75_000_000,
     });
@@ -130,7 +130,7 @@ test "index many updates and inserts" {
         _ = try index.update(&[_]Change{.{ .insert = .{
             .id = @as(u32, @intCast(i % 20)) + 1,
             .hashes = generateRandomHashes(&hashes, i),
-        } }}, null, null);
+        } }}, null, .{});
     }
 
     // Test 2: Batch inserts with larger scale
@@ -156,7 +156,7 @@ test "index many updates and inserts" {
         } });
 
         if (batch.items.len == batch_size or i == total_count) {
-            _ = try index.update(batch.items, null, null);
+            _ = try index.update(batch.items, null, .{});
 
             // Clean up allocated hashes
             for (batch.items) |change| {
@@ -216,7 +216,7 @@ test "index, multiple fingerprints with the same hashes" {
     var scheduler = Scheduler.init(std.testing.allocator);
     defer scheduler.deinit();
 
-    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", .{});
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "idx", "idx", .{});
     defer index.deinit();
 
     try index.open(true);
@@ -226,12 +226,12 @@ test "index, multiple fingerprints with the same hashes" {
     _ = try index.update(&[_]Change{.{ .insert = .{
         .id = 1,
         .hashes = generateRandomHashes(&hashes, 1),
-    } }}, null, null);
+    } }}, null, .{});
 
     _ = try index.update(&[_]Change{.{ .insert = .{
         .id = 2,
         .hashes = generateRandomHashes(&hashes, 1),
-    } }}, null, null);
+    } }}, null, .{});
 
     var collector = SearchResults.init(std.testing.allocator, .{});
     defer collector.deinit();

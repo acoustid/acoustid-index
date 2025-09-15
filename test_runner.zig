@@ -28,12 +28,12 @@ const LogCapture = struct {
         args: anytype,
     ) void {
         _ = level; // Suppress unused parameter warning
-        
+
         const scope_prefix = "(" ++ switch (scope) {
             std.log.default_log_scope => @tagName(scope),
             else => @tagName(scope),
         } ++ "): ";
-        
+
         if (self.captured_log_buffer) |buf| {
             // Capture to buffer during test execution
             buf.writer().print(scope_prefix ++ format ++ "\n", args) catch return;
@@ -43,11 +43,11 @@ const LogCapture = struct {
             stderr.print(scope_prefix ++ format ++ "\n", args) catch return;
         }
     }
-    
+
     pub fn startCapture(self: *@This(), buffer: *std.ArrayList(u8)) void {
         self.captured_log_buffer = buffer;
     }
-    
+
     pub fn stopCapture(self: *@This()) void {
         self.captured_log_buffer = null;
     }
@@ -99,7 +99,6 @@ pub fn main() !void {
     var log_buffer = std.ArrayList(u8).init(allocator);
     defer log_buffer.deinit();
 
-
     for (builtin.test_functions) |t| {
         if (isSetup(t)) {
             t.func() catch |err| {
@@ -129,12 +128,12 @@ pub fn main() !void {
         // Clear log buffer and start capturing logs for this test
         log_buffer.clearRetainingCapacity();
         log_capture.startCapture(&log_buffer);
-        
+
         current_test = friendly_name;
         std.testing.allocator_instance = .{};
         const result = t.func();
         current_test = null;
-        
+
         // Stop capturing logs
         log_capture.stopCapture();
 
@@ -156,14 +155,14 @@ pub fn main() !void {
             else => {
                 status = .fail;
                 fail += 1;
-                
+
                 printer.status(.fail, "\n{s}\n\"{s}\" - {s}\n", .{ BORDER, friendly_name, @errorName(err) });
-                
+
                 // Print captured logs for failed tests
                 if (log_buffer.items.len > 0) {
                     printer.fmt("Test output:\n{s}", .{log_buffer.items});
                 }
-                
+
                 printer.fmt("{s}\n", .{BORDER});
                 if (@errorReturnTrace()) |trace| {
                     std.debug.dumpStackTrace(trace.*);
