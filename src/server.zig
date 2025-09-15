@@ -124,7 +124,9 @@ pub fn run(comptime T: type, allocator: std.mem.Allocator, indexes: *T, address:
     // Monitoring API
     router.get("/_metrics", HandlerWrapper(T, handleMetrics).wrapper, .{});
     router.get("/_health", HandlerWrapper(T, handleHealth).wrapper, .{});
+    router.head("/_health", HandlerWrapper(T, handleHealth).wrapper, .{});
     router.get("/:index/_health", HandlerWrapper(T, handleIndexHealth).wrapper, .{});
+    router.head("/:index/_health", HandlerWrapper(T, handleIndexHealth).wrapper, .{});
 
     // Search API
     router.post("/:index/_search", HandlerWrapper(T, handleSearch).wrapper, .{});
@@ -524,13 +526,24 @@ fn handleIndexHealth(comptime T: type, ctx: *Context(T), req: *httpz.Request, re
         return err;
     };
 
+    // For HEAD requests, just return without writing body
+    if (req.method == .HEAD) {
+        return;
+    }
+
+    // For GET requests, write the body
     try res.writer().writeAll("OK\n");
 }
 
 fn handleHealth(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     _ = ctx;
-    _ = req;
 
+    // For HEAD requests, just return without writing body
+    if (req.method == .HEAD) {
+        return;
+    }
+
+    // For GET requests, write the body
     try res.writer().writeAll("OK\n");
 }
 
