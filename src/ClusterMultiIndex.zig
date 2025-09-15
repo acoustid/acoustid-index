@@ -356,11 +356,8 @@ fn loadExistingIndexes(self: *Self) !void {
             continue;
         }
 
-        var last_seq: u64 = undefined;
         if (info.deleted) {
-            // Use generation as last_seq as that's when it has been deleted
-            last_seq = info.generation;
-            log.info("loaded deleted index {s} (generation={}, last_seq={})", .{ info.name, info.generation, last_seq });
+            log.info("loaded deleted index {s} (generation={})", .{ info.name, info.generation });
         } else {
             // For active indexes, try to get the actual last applied sequence
             const index = self.local_indexes.getIndex(info.name) catch |err| {
@@ -375,12 +372,7 @@ fn loadExistingIndexes(self: *Self) !void {
             };
             defer index.releaseReader(&reader);
 
-            last_seq = reader.getVersion();
-            if (last_seq == 0) {
-                // It can be 0 only if the initial empty commit during index creation failed,
-                // however generation represents the same message sequence.
-                last_seq = info.generation;
-            }
+            const last_seq = reader.getVersion();
             log.info("loaded active index {s} (generation={}, last_seq={})", .{ info.name, info.generation, last_seq });
         }
 
@@ -436,7 +428,7 @@ fn startExistingIndexUpdaters(self: *Self) !void {
         defer index.releaseReader(&reader);
 
         const last_seq = reader.getVersion();
-        const final_seq = if (last_seq == 0) info.generation else last_seq;
+        const final_seq = last_seq;
 
         try self.startIndexUpdater(info.name, info.generation, final_seq);
     }
@@ -601,17 +593,6 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
                 return err;
             };
 
-            // Make an empty commit to set the initial version to first_seq from updates stream
-            _ = self.local_indexes.updateInternal(self.allocator, index_name, .{
-                .changes = &[_]Change{},
-                .metadata = null,
-                .expected_version = null,
-            }, .{
-                .version = create_op.first_seq,
-            }) catch |err| {
-                log.warn("failed to set initial version for {s}: {}", .{ index_name, err });
-                // this is not critical, we can ignore it
-            };
 
             log.info("created index {s} with generation {}", .{ index_name, generation });
 

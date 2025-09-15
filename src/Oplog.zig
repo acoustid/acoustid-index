@@ -227,6 +227,7 @@ pub fn write(self: *Self, changes: []const Change, metadata: ?Metadata, options:
     const commit_id = if (options.version) |custom_version| blk: {
         // Validate custom version is greater than current last_commit_id
         if (custom_version <= self.last_commit_id) {
+            log.warn("Custom version {} is not greater than current last_commit_id {}", .{ custom_version, self.last_commit_id });
             return error.VersionNotMonotonic;
         }
         break :blk custom_version;

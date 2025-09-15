@@ -1,0 +1,184 @@
+services:
+  # Single non-clustered fpindex node for simple testing
+  fpindex:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    network_mode: host
+    volumes:
+      - ./zig-out/bin/fpindex:/usr/bin/fpindex:ro
+      - fpindex-data:/var/lib/acoustid-index
+    command:
+      - fpindex
+      - --dir
+      - /var/lib/acoustid-index
+      - --port
+      - "6081"
+      - --log-level
+      - debug
+      - --parallel-loading-threshold
+      - "2"
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --quiet
+        - --tries=1
+        - --spider
+        - http://127.0.0.1:6081/_health
+      interval: 1s
+      timeout: 1s
+      retries: 10
+
+  # NATS server for cluster coordination
+  nats:
+    image: nats:alpine
+    network_mode: host
+    command:
+      ["--jetstream", "--store_dir=/data", "--port=14222", "--http_port=18222"]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:18222/healthz",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # First fpindex cluster node
+  fpindex-cluster-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    network_mode: host
+    volumes:
+      - ./zig-out/bin/fpindex:/usr/bin/fpindex:ro
+      - fpindex-cluster-1-data:/var/lib/acoustid-index
+    command:
+      [
+        "fpindex",
+        "--dir",
+        "/var/lib/acoustid-index",
+        "--port",
+        "16081",
+        "--log-level",
+        "debug",
+        "--parallel-loading-threshold",
+        "2",
+        "--cluster",
+        "--nats-url",
+        "nats://localhost:14222",
+      ]
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:16081/_health",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Second fpindex cluster node
+  fpindex-cluster-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    network_mode: host
+    volumes:
+      - ./zig-out/bin/fpindex:/usr/bin/fpindex:ro
+      - fpindex-cluster-2-data:/var/lib/acoustid-index
+    command:
+      [
+        "fpindex",
+        "--dir",
+        "/var/lib/acoustid-index",
+        "--port",
+        "16082",
+        "--log-level",
+        "debug",
+        "--parallel-loading-threshold",
+        "2",
+        "--cluster",
+        "--nats-url",
+        "nats://localhost:14222",
+      ]
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:16082/_health",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Third fpindex cluster node
+  fpindex-cluster-3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+    network_mode: host
+    volumes:
+      - ./zig-out/bin/fpindex:/usr/bin/fpindex:ro
+      - fpindex-cluster-3-data:/var/lib/acoustid-index
+    command:
+      [
+        "fpindex",
+        "--dir",
+        "/var/lib/acoustid-index",
+        "--port",
+        "16083",
+        "--log-level",
+        "debug",
+        "--parallel-loading-threshold",
+        "2",
+        "--cluster",
+        "--nats-url",
+        "nats://localhost:14222",
+      ]
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:16083/_health",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  fpindex-data:
+  fpindex-cluster-1-data:
+  fpindex-cluster-2-data:
+  fpindex-cluster-3-data:

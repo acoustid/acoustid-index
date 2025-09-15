@@ -80,7 +80,7 @@ def test_insert_many(client, index_name, create_index):
             assert req.status_code == 200, req.content
             batch = []
     if batch:
-        ent.post(f'/{index_name}/_update', json={
+        req = client.post(f'/{index_name}/_update', json={
             'changes': batch,
         })
         assert req.status_code == 200, req.content
@@ -273,7 +273,7 @@ def test_persistence_after_soft_restart(server, client, index_name, create_index
             assert json.loads(req.content)['version'] > 0
 
     server.restart()
-    server.wait_for_ready(index_name, timeout=10.0)
+    server.wait_for_healthy(timeout=10)
 
     # verify we can find it
     req = client.post(f'/{index_name}/_search', json={
@@ -307,7 +307,7 @@ def test_persistence_after_hard_restart(server, client, index_name, create_index
     assert json.loads(req.content)['version'] > 0
 
     server.restart(kill=True)
-    server.wait_for_ready(index_name, timeout=10.0)
+    server.wait_for_healthy(timeout=10)
 
     # verify we can find it
     req = client.post(f'/{index_name}/_search', json={
