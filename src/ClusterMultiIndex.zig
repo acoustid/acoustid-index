@@ -372,7 +372,7 @@ fn startIndexUpdater(self: *Self, index_name: []const u8, generation: u64, last_
 
     const result = try self.index_updaters.getOrPut(index_name);
     if (result.found_existing) {
-        std.debug.panic("startIndexUpdater called for existing index: {s}", .{index_name});
+        unreachable; // startIndexUpdater should never be called for existing index
     } else {
         // New entry - need to allocate key
         result.key_ptr.* = try self.allocator.dupe(u8, index_name);
@@ -519,7 +519,6 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
             // Create the index locally with the NATS generation as the version
             _ = self.local_indexes.createIndexInternal(index_name, .{
                 .generation = generation,
-                .expect_does_not_exist = false,
             }) catch |err| {
                 log.warn("failed to create local index {s}: {}", .{ index_name, err });
                 return err;
