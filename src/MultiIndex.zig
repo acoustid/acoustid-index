@@ -795,6 +795,19 @@ pub fn checkFingerprintExists(
     }
 }
 
+pub fn getLocalIndexInfo(self: *Self, name: []const u8) ?IndexInfo {
+    self.lock.lock();
+    defer self.lock.unlock();
+
+    const index_ref = self.indexes.get(name) orelse return null;
+
+    return IndexInfo{
+        .name = name,
+        .generation = index_ref.redirect.version,
+        .deleted = !index_ref.index.has_value,
+    };
+}
+
 pub fn listIndexes(self: *Self, allocator: std.mem.Allocator, options: ListOptions) ![]IndexInfo {
     self.lock.lock();
     defer self.lock.unlock();
