@@ -56,7 +56,6 @@ const OptionalIndex = struct {
         }
         return null;
     }
-}
 };
 
 pub const IndexRef = struct {
@@ -67,7 +66,7 @@ pub const IndexRef = struct {
     delete_files: bool = false,
     being_deleted: bool = false,
     state: IndexState = .ready,
-    restore_task: ?Scheduler.Task = null,
+    restore_task: ?*Scheduler.Task = null,
     reference_released: std.Thread.Condition = .{},
 
     pub fn incRef(self: *IndexRef) void {
