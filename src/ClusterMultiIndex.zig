@@ -291,8 +291,8 @@ fn getLastVersion(self: *Self, index_name: []const u8, generation: u64) !u64 {
 
     const last_update_msg = self.js.getMsg(UPDATES_STREAM_NAME, .{ .last_by_subj = update_subject, .direct = true }) catch |err| switch (err) {
         error.MessageNotFound => {
-            // No updates yet, return the generation (creation sequence)
-            return generation;
+            // No updates yet for this subject: version is 0 (consumers start from seq 1).
+            return 0;
         },
         else => return err,
     };
@@ -791,7 +791,8 @@ pub fn createIndex(
     const result = try self.js.publish(subject, data.items, .{ .msg_id = msg_id });
     defer result.deinit();
 
-    return api.CreateIndexResponse{ .version = result.value.seq };
+    // New index has no updates yet; advertise version 0 so clients can gate with expected_last_sequence=0.
+    return api.CreateIndexResponse{ .version = 0 };
 }
 
 pub fn deleteIndex(self: *Self, index_name: []const u8) !void {
