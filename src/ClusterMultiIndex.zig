@@ -51,7 +51,6 @@ replica_id: []const u8,
 stopping: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
 // State tracking
-last_applied_meta_seq: u64 = 0, // Last applied meta operation sequence
 mutex: std.Thread.Mutex = .{},
 
 // NATS JetStream
@@ -185,14 +184,8 @@ pub fn start(self: *Self) !void {
     // Ensure stream exists
     try self.ensureStream();
 
-    // Load existing indexes and their last applied sequences
-    try self.loadExistingIndexes();
-
     // Create meta consumer for index create/delete operations
     try self.createMetaConsumer();
-
-    // Start updaters for existing indexes
-    try self.startExistingIndexUpdaters();
 }
 
 pub fn stop(self: *Self) void {
@@ -342,97 +335,19 @@ fn ensureStream(self: *Self) !void {
     defer if (updates_stream_info) |*info| info.deinit();
 }
 
-fn loadExistingIndexes(self: *Self) !void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
-
-    // Get list of existing indexes from MultiIndex (including deleted ones)
-    const index_list = try self.local_indexes.listIndexes(self.allocator, .{ .include_deleted = true });
-    defer self.allocator.free(index_list);
-
-    for (index_list) |info| {
-        // Skip system indexes
-        if (std.mem.eql(u8, info.name, META_INDEX_NAME)) {
-            continue;
-        }
-
-        if (info.deleted) {
-            log.info("loaded deleted index {s} (generation={})", .{ info.name, info.generation });
-        } else {
-            // For active indexes, try to get the actual last applied sequence
-            const index = self.local_indexes.getIndex(info.name) catch |err| {
-                log.warn("failed to get index {s} during startup: {}", .{ info.name, err });
-                return err;
-            };
-            defer self.local_indexes.releaseIndex(index);
-
-            var reader = index.acquireReader() catch |err| {
-                log.warn("failed to acquire reader for index {s} during startup: {}", .{ info.name, err });
-                return err;
-            };
-            defer index.releaseReader(&reader);
-
-            const last_seq = reader.getVersion();
-            log.info("loaded active index {s} (generation={}, last_seq={})", .{ info.name, info.generation, last_seq });
-        }
-
-        // Update last_applied_meta_seq by checking the generation (which is the meta sequence)
-        // For active indexes, the generation represents when they were created
-        // For deleted indexes, the generation represents when they were deleted
-        self.last_applied_meta_seq = @max(self.last_applied_meta_seq, info.generation);
-    }
-
-    log.info("last_applied_meta_seq: {}", .{self.last_applied_meta_seq});
-}
 
 fn createMetaConsumer(self: *Self) !void {
-    const consumer_name = try std.fmt.allocPrint(self.allocator, "replica-{s}-meta", .{self.replica_id});
-    defer self.allocator.free(consumer_name);
-
     self.meta_subscription = try self.js.subscribe(META_SUBJECT_PREFIX ++ "*", handleMetaMessage, .{self}, .{
         .stream = META_STREAM_NAME,
-        .durable = consumer_name,
         .manual_ack = true,
         .config = .{
-            .deliver_policy = .all,
+            .deliver_policy = .last_per_subject,
             .max_ack_pending = 1,
             .ack_wait = 60 * std.time.ns_per_s,
         },
     });
 }
 
-fn startExistingIndexUpdaters(self: *Self) !void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
-
-    const index_list = try self.local_indexes.listIndexes(self.allocator, .{});
-    defer self.allocator.free(index_list);
-
-    for (index_list) |info| {
-        // Skip system indexes and deleted indexes
-        if (std.mem.eql(u8, info.name, META_INDEX_NAME) or info.deleted) {
-            continue;
-        }
-
-        // Get the current version for the index
-        const index = self.local_indexes.getIndex(info.name) catch |err| {
-            log.warn("failed to get index {s} during startup: {}", .{ info.name, err });
-            continue;
-        };
-        defer self.local_indexes.releaseIndex(index);
-
-        var reader = index.acquireReader() catch |err| {
-            log.warn("failed to acquire reader for index {s} during startup: {}", .{ info.name, err });
-            continue;
-        };
-        defer index.releaseReader(&reader);
-
-        const last_seq = reader.getVersion();
-        const final_seq = last_seq;
-
-        try self.startIndexUpdater(info.name, info.generation, final_seq);
-    }
-}
 
 fn startIndexUpdater(self: *Self, index_name: []const u8, generation: u64, last_seq: u64) !void {
     // Caller must hold self.mutex
@@ -576,23 +491,39 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
     self.mutex.lock();
     defer self.mutex.unlock();
 
-    // Skip if already processed
-    if (generation <= self.last_applied_meta_seq) {
-        log.debug("skipping already processed meta operation for index {s} (seq={}, last_applied_meta={})", .{ index_name, generation, self.last_applied_meta_seq });
-        return;
-    }
+    // Check current local state
+    const local_info = self.local_indexes.getLocalIndexInfo(index_name);
 
     switch (meta_op) {
         .create => |create_op| { // create
+            if (local_info) |info| {
+                if (!info.deleted and info.generation == generation) {
+                    // Index already exists with correct generation, ensure updater is running
+                    log.debug("index {s} already exists with generation {}, ensuring updater is running", .{ index_name, generation });
+
+                    // Check if updater is already running
+                    if (self.getIndexUpdater(index_name)) |existing_updater| {
+                        self.releaseIndexUpdater(existing_updater);
+                        log.debug("updater for index {s} already running", .{index_name});
+                        return;
+                    } else {
+                        // Start updater for existing index
+                        self.startIndexUpdater(index_name, generation, create_op.first_seq) catch |err| {
+                            log.err("failed to start updater for existing index {s}: {}", .{ index_name, err });
+                        };
+                    }
+                    return;
+                }
+            }
+
             // Create the index locally with the NATS generation as the version
             _ = self.local_indexes.createIndexInternal(index_name, .{
                 .generation = generation,
-                .expect_does_not_exist = true,
+                .expect_does_not_exist = false,
             }) catch |err| {
                 log.warn("failed to create local index {s}: {}", .{ index_name, err });
                 return err;
             };
-
 
             log.info("created index {s} with generation {}", .{ index_name, generation });
 
@@ -600,12 +531,24 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
             self.startIndexUpdater(index_name, generation, create_op.first_seq) catch |err| {
                 log.err("failed to start updater for new index {s}: {}", .{ index_name, err });
             };
-
-            // Update meta seq
-            std.debug.assert(msg.metadata.sequence.stream > self.last_applied_meta_seq);
-            self.last_applied_meta_seq = msg.metadata.sequence.stream;
         },
         .delete => |delete_op| { // delete
+            if (local_info) |info| {
+                if (info.deleted) {
+                    // Index already deleted (regardless of generation)
+                    if (info.generation == generation) {
+                        log.debug("index {s} already deleted with generation {}", .{ index_name, generation });
+                    } else {
+                        log.debug("index {s} already deleted (local generation {}, NATS generation {})", .{ index_name, info.generation, generation });
+                    }
+                    return;
+                }
+            } else {
+                // Index doesn't exist locally at all
+                log.debug("index {s} doesn't exist locally, nothing to delete", .{index_name});
+                return;
+            }
+
             // Stop updater for the index
             self.stopIndexUpdater(index_name) catch |err| {
                 log.err("failed to stop updater for index {s}: {}", .{ index_name, err });
@@ -621,10 +564,6 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
             };
 
             log.info("deleted index {s} with generation {}", .{ index_name, generation });
-
-            // Update meta seq
-            std.debug.assert(msg.metadata.sequence.stream > self.last_applied_meta_seq);
-            self.last_applied_meta_seq = msg.metadata.sequence.stream;
         },
     }
 }
