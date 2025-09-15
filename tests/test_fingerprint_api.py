@@ -80,7 +80,7 @@ def test_insert_many(client, index_name, create_index):
             assert req.status_code == 200, req.content
             batch = []
     if batch:
-        ent.post(f'/{index_name}/_update', json={
+        req = client.post(f'/{index_name}/_update', json={
             'changes': batch,
         })
         assert req.status_code == 200, req.content
