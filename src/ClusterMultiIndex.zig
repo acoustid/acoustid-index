@@ -370,22 +370,19 @@ fn startIndexUpdater(self: *Self, index_name: []const u8, generation: u64, last_
         },
     });
 
-    const result = try self.index_updaters.getOrPut(index_name);
-    if (result.found_existing) {
-        unreachable; // startIndexUpdater should never be called for existing index
-    } else {
-        // New entry - need to allocate key
-        result.key_ptr.* = try self.allocator.dupe(u8, index_name);
-    }
+    const index_name_copy = try self.allocator.dupe(u8, index_name);
+    errdefer self.allocator.free(index_name_copy);
 
     // Allocate and set the new value
     const updater = try self.allocator.create(IndexUpdater);
+    errdefer self.allocator.destroy(updater);
     updater.* = IndexUpdater{
         .subscription = subscription,
         .last_applied_seq = last_seq,
         .mutex = .{},
     };
-    result.value_ptr.* = updater;
+
+    try self.index_updaters.putNoClobber(index_name_copy, updater);
 
     log.info("started updater for index {s} (generation={}, start_seq={})", .{ index_name, generation, last_seq + 1 });
 }
