@@ -470,17 +470,10 @@ fn handleMetaMessage(js_msg: *nats.JetStreamMessage, self: *Self) !void {
     }
 
     // Parse subject to get index name
-    const meta_subject_prefix = try std.fmt.allocPrint(self.allocator, "{s}.m.", .{self.prefix});
-    defer self.allocator.free(meta_subject_prefix);
-
-    if (!std.mem.startsWith(u8, js_msg.msg.subject, meta_subject_prefix)) return;
-    const parts_str = js_msg.msg.subject[meta_subject_prefix.len..];
-    var parts = std.mem.splitSequence(u8, parts_str, ".");
-    const index_name = parts.next() orelse return;
-    if (parts.next() != null) {
-        log.warn("unexpected subject format: {s}", .{js_msg.msg.subject});
+    const index_name = self.parseMetaSubject(js_msg.msg.subject) orelse {
+        log.warn("invalid meta subject format: {s}", .{js_msg.msg.subject});
         return;
-    }
+    };
 
     self.processMetaOperation(index_name, js_msg) catch |err| {
         log.err("failed to process meta operation for {s}: {}", .{ index_name, err });
@@ -494,6 +487,36 @@ fn handleMetaMessage(js_msg: *nats.JetStreamMessage, self: *Self) !void {
     };
 }
 
+fn parseMetaSubject(self: *Self, subject: []const u8) ?[]const u8 {
+    // Parse subject: {prefix}.m.{index}
+    if (!std.mem.startsWith(u8, subject, self.prefix)) return null;
+    var remainder = subject[self.prefix.len..];
+    if (!std.mem.startsWith(u8, remainder, ".m.")) return null;
+    const parts_str = remainder[3..]; // Skip ".m."
+
+    var parts = std.mem.splitSequence(u8, parts_str, ".");
+    const index_name = parts.next() orelse return null;
+    if (parts.next() != null) return null; // Should be exactly 1 part
+
+    return index_name;
+}
+
+fn parseUpdatesSubject(self: *Self, subject: []const u8) ?struct { index_name: []const u8, generation: u64 } {
+    // Parse subject: {prefix}.u.{index}.{generation}
+    if (!std.mem.startsWith(u8, subject, self.prefix)) return null;
+    var remainder = subject[self.prefix.len..];
+    if (!std.mem.startsWith(u8, remainder, ".u.")) return null;
+    const parts_str = remainder[3..]; // Skip ".u."
+
+    var parts = std.mem.splitSequence(u8, parts_str, ".");
+    const index_name = parts.next() orelse return null;
+    const generation_str = parts.next() orelse return null;
+    if (parts.next() != null) return null; // Should be exactly 2 parts
+
+    const generation = std.fmt.parseInt(u64, generation_str, 10) catch return null;
+    return .{ .index_name = index_name, .generation = generation };
+}
+
 fn handleUpdateMessage(js_msg: *nats.JetStreamMessage, self: *Self) !void {
     defer js_msg.deinit();
 
@@ -503,23 +526,12 @@ fn handleUpdateMessage(js_msg: *nats.JetStreamMessage, self: *Self) !void {
     }
 
     // Parse subject: {prefix}.u.{index}.{generation}
-    const updates_subject_prefix = try std.fmt.allocPrint(self.allocator, "{s}.u.", .{self.prefix});
-    defer self.allocator.free(updates_subject_prefix);
-
-    if (!std.mem.startsWith(u8, js_msg.msg.subject, updates_subject_prefix)) return;
-    const parts_str = js_msg.msg.subject[updates_subject_prefix.len..];
-    var parts = std.mem.splitSequence(u8, parts_str, ".");
-    const index_name = parts.next() orelse return;
-    const generation_str = parts.next() orelse return;
-
-    const generation = std.fmt.parseInt(u64, generation_str, 10) catch {
-        log.warn("invalid generation in subject {s}", .{js_msg.msg.subject});
+    const parsed = self.parseUpdatesSubject(js_msg.msg.subject) orelse {
+        log.warn("invalid updates subject format: {s}", .{js_msg.msg.subject});
         return;
     };
-    if (parts.next() != null) {
-        log.warn("unexpected subject format: {s}", .{js_msg.msg.subject});
-        return;
-    }
+    const index_name = parsed.index_name;
+    const generation = parsed.generation;
 
     self.processUpdateOperation(index_name, generation, js_msg) catch |err| {
         log.err("failed to process update for {s}: {}", .{ index_name, err });
