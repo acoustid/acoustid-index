@@ -417,13 +417,13 @@ fn startIndexUpdater(self: *Self, index_name: []const u8, generation: u64, last_
 
     // Allocate and set the new value
     const updater = try self.allocator.create(IndexUpdater);
-    errdefer self.allocator.destroy(updater);
     updater.* = IndexUpdater{
         .subscription = subscription,
         .last_applied_seq = last_seq,
         .generation = generation,
         .mutex = .{},
     };
+    errdefer updater.destroy(self.allocator);
 
     try self.index_updaters.putNoClobber(index_name_copy, updater);
 
