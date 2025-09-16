@@ -85,6 +85,11 @@ pub const IndexRef = struct {
 
     pub fn deinit(self: *IndexRef) void {
         self.index.clear();
+        if (self.load_context) |_| {
+            // Note: load_context should be null by the time we reach deinit
+            // but this is a safety fallback
+            std.debug.panic("IndexRef.deinit called with active load_context - this is a bug", .{});
+        }
         self.index_dir.close();
     }
 
@@ -337,9 +342,6 @@ pub fn deinit(self: *Self) void {
     var iter = self.indexes.iterator();
     while (iter.next()) |entry| {
         const ref = entry.value_ptr.*;
-        if (ref.load_context) |*ctx| {
-            ctx.deinit(self.allocator);
-        }
         ref.deinit();
         self.allocator.destroy(ref);
         self.allocator.free(entry.key_ptr.*);
@@ -1034,9 +1036,8 @@ fn startIndexRestore(
     ref.redirect.version = generation;
     ref.redirect.deleted = false;
 
-    // Schedule restore task
-    const task = try self.scheduler.createTask(restoreIndexTask, .{ self, ref });
-    self.scheduler.scheduleTask(task);
+    // Schedule restore task (fire-and-forget)
+    try self.scheduler.runOnce(restoreIndexTask, .{ self, ref });
 }
 
 pub fn waitForIndexReady(
@@ -1228,7 +1229,7 @@ test "createIndex with restore_from" {
 
     // Wait for it to fail (with short timeout)
     const wait_result = ctx.indexes.waitForIndexReady("test_restore", 1000);
-    try std.testing.expectError(error.LoadFailed, wait_result);
+    try std.testing.expectError(error.UnknownHostName, wait_result);
 
     // After failure, should be in failed state
     const result2 = ctx.indexes.getIndex("test_restore");
@@ -1243,4 +1244,8 @@ test "createIndex with restore_from" {
     // Should be restoring again
     const result3 = ctx.indexes.getIndex("test_restore");
     try std.testing.expectError(error.IndexRestoring, result3);
+
+    // Wait for second restore to fail before teardown
+    const wait_result2 = ctx.indexes.waitForIndexReady("test_restore", 1000);
+    try std.testing.expectError(error.UnknownHostName, wait_result2);
 }
