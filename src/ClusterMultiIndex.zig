@@ -352,7 +352,7 @@ fn createMetaConsumer(self: *Self) !void {
 fn startIndexUpdater(self: *Self, index_name: []const u8, generation: u64, last_seq: u64) !void {
     // Caller must hold self.mutex
 
-    const consumer_name = try std.fmt.allocPrint(self.allocator, "replica-{s}-{s}", .{ self.replica_id, index_name });
+    const consumer_name = try std.fmt.allocPrint(self.allocator, "{s}-{s}-g{d}", .{ self.replica_id, index_name, generation });
     defer self.allocator.free(consumer_name);
 
     const filter_subject = try std.fmt.allocPrint(self.allocator, UPDATES_SUBJECT_PREFIX ++ "{s}.{d}", .{ index_name, generation });
