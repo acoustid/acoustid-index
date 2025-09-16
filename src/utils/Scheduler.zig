@@ -11,6 +11,8 @@ pub const Task = struct {
     deinitFn: *const fn (ctx: *anyopaque, allocator: std.mem.Allocator) void,
     interval_ns: ?u64 = null,
     next_run_time_ns: u64,
+    /// When true, task is automatically destroyed after first execution.
+    /// One-shot tasks must not be referenced after scheduling via runOnce().
     one_shot: bool = false,
 };
 
@@ -109,6 +111,9 @@ pub fn createRepeatingTask(self: *Self, interval_ms: u32, comptime func: anytype
     return task;
 }
 
+/// Schedules a fire-and-forget task that automatically destroys itself after execution.
+/// The task pointer must not be accessed after calling this function, as it will be
+/// freed automatically when the task completes.
 pub fn runOnce(self: *Self, comptime func: anytype, args: anytype) !void {
     const task = try self.createTask(func, args);
     task.one_shot = true;
@@ -252,6 +257,16 @@ fn getTaskToRun(self: *Self) ?*Task {
     return null;
 }
 
+fn calculateNextRunTime(self: *Self, task: *Task, has_manual_reschedule: bool) u64 {
+    if (has_manual_reschedule) {
+        // Manual reschedule already set next_run_time_ns
+        return task.next_run_time_ns;
+    }
+    // Use interval for repeating tasks
+    const interval = task.interval_ns.?;
+    return self.timer.read() + interval;
+}
+
 fn markAsDone(self: *Self, task: *Task) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
@@ -262,6 +277,7 @@ fn markAsDone(self: *Self, task: *Task) void {
     if (task.one_shot) {
         // Auto-destroy one-shot tasks
         task.running = false;
+        task.done.set(); // Signal completion before cleanup
         task.deinitFn(task.ctx, self.allocator);
         self.allocator.destroy(task);
         std.debug.assert(self.num_tasks > 0);
@@ -274,9 +290,7 @@ fn markAsDone(self: *Self, task: *Task) void {
         if (is_repeating) {
             // If no manual absolute time was set during execution, use interval
             if (!has_manual_reschedule) {
-                const interval = task.interval_ns.?;
-                const current_time_ns = self.timer.read();
-                task.next_run_time_ns = current_time_ns + interval;
+                task.next_run_time_ns = self.calculateNextRunTime(task, has_manual_reschedule);
             }
         }
 
