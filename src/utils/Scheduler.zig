@@ -220,6 +220,13 @@ fn enqueue(self: *Self, task: *Task) void {
         // Fallback: mark as not scheduled and signal done
         task.scheduled = false;
         task.done.set();
+        // If one-shot, free immediately to avoid leaks and num_tasks imbalance.
+        if (task.one_shot) {
+            task.deinitFn(task.ctx, self.allocator);
+            self.allocator.destroy(task);
+            std.debug.assert(self.num_tasks > 0);
+            self.num_tasks -= 1;
+        }
         return;
     };
 
@@ -257,12 +264,9 @@ fn getTaskToRun(self: *Self) ?*Task {
     return null;
 }
 
-fn calculateNextRunTime(self: *Self, task: *Task, has_manual_reschedule: bool) u64 {
-    if (has_manual_reschedule) {
-        // Manual reschedule already set next_run_time_ns
-        return task.next_run_time_ns;
-    }
-    // Use interval for repeating tasks
+/// Calculate next run time for repeating tasks using fixed-delay scheduling
+/// (interval from now rather than from original deadline)
+fn nextRunAfterInterval(self: *Self, task: *Task) u64 {
     const interval = task.interval_ns.?;
     return self.timer.read() + interval;
 }
@@ -290,7 +294,7 @@ fn markAsDone(self: *Self, task: *Task) void {
         if (is_repeating) {
             // If no manual absolute time was set during execution, use interval
             if (!has_manual_reschedule) {
-                task.next_run_time_ns = self.calculateNextRunTime(task, has_manual_reschedule);
+                task.next_run_time_ns = self.nextRunAfterInterval(task);
             }
         }
 
@@ -489,9 +493,14 @@ test "Scheduler: runOnce auto-destroys task" {
     try scheduler.runOnce(Counter.incr, .{&counter});
     try scheduler.runOnce(Counter.incr, .{&counter});
 
-    // Start scheduler and wait for completion
+    // Start scheduler and wait for completion with polling
     try scheduler.start(2);
-    std.time.sleep(100 * std.time.ns_per_ms);
+    var waited_ns: u64 = 0;
+    while (waited_ns < 500 * std.time.ns_per_ms and
+           (counter.count != 3 or scheduler.num_tasks != initial_tasks)) {
+        std.time.sleep(10 * std.time.ns_per_ms);
+        waited_ns += 10 * std.time.ns_per_ms;
+    }
     scheduler.stop();
 
     // Verify all tasks executed and were auto-destroyed
