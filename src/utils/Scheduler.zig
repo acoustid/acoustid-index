@@ -212,7 +212,7 @@ fn getNextDeadline(self: *Self) ?u64 {
     return if (self.queue.peek()) |task| task.next_run_time_ns else null;
 }
 
-fn enqueue(self: *Self, task: *Task) bool {
+fn enqueue(self: *Self, task: *Task) void {
     task.scheduled = true;
 
     // Treat immediate tasks as "scheduled now"
