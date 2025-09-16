@@ -511,32 +511,55 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
 
     switch (meta_op) {
         .create => |create_op| { // create
-            if (local_info) |info| {
-                if (!info.deleted and info.generation == generation) {
-                    // Index already exists with correct generation, ensure updater is running
-                    log.debug("index {s} already exists with generation {}, ensuring updater is running", .{ index_name, generation });
-
-                    // Start updater for existing index (idempotent)
-                    self.startIndexUpdater(index_name, generation, create_op.first_seq) catch |err| {
-                        log.err("failed to start updater for existing index {s}: {}", .{ index_name, err });
-                    };
-                    return;
-                }
-            }
-
-            // Create the index locally with the NATS generation as the version
-            _ = self.local_indexes.createIndex(index_name, .{
+            // Try to create the index with the NATS generation
+            const create_result = self.local_indexes.createIndex(index_name, .{
                 .generation = generation,
-            }) catch |err| {
-                log.warn("failed to create local index {s}: {}", .{ index_name, err });
-                return err;
+            }) catch |err| switch (err) {
+                error.OlderIndexAlreadyExists => {
+                    // Reconcile: local index has older generation, delete and recreate
+                    log.info("reconciling index {s}: local index is older, deleting and recreating", .{index_name});
+
+                    // Stop any existing updater for this index
+                    self.stopIndexUpdater(index_name) catch |stop_err| {
+                        log.err("failed to stop updater for index {s}: {}", .{ index_name, stop_err });
+                    };
+
+                    // Delete the local index to advance redirect.version
+                    self.local_indexes.deleteIndex(index_name, .{}) catch |delete_err| {
+                        log.warn("failed to delete local index {s} for reconciliation: {}", .{ index_name, delete_err });
+                        return delete_err;
+                    };
+
+                    log.debug("deleted local index {s} for reconciliation", .{index_name});
+
+                    // Now create the index with the correct generation
+                    const reconcile_result = self.local_indexes.createIndex(index_name, .{
+                        .generation = generation,
+                    }) catch |create_err| {
+                        log.warn("failed to create local index {s} after reconciliation: {}", .{ index_name, create_err });
+                        return create_err;
+                    };
+
+                    std.debug.assert(reconcile_result.generation == generation);
+                    log.info("created index {s} with generation {} after reconciliation", .{ index_name, generation });
+                },
+                error.NewerIndexAlreadyExists => {
+                    // Local index is newer, this shouldn't happen - fail and let message be redelivered
+                    log.err("local index {s} is newer than NATS generation {}, failing", .{ index_name, generation });
+                    return err;
+                },
+                else => {
+                    log.warn("failed to create local index {s}: {}", .{ index_name, err });
+                    return err;
+                },
             };
 
-            log.info("created index {s} with generation {}", .{ index_name, generation });
+            // Assert that the result has the expected generation
+            std.debug.assert(create_result.generation == generation);
 
-            // Start updater for the new index
+            // Start updater for the index (idempotent)
             self.startIndexUpdater(index_name, generation, create_op.first_seq) catch |err| {
-                log.err("failed to start updater for new index {s}: {}", .{ index_name, err });
+                log.err("failed to start updater for index {s}: {}", .{ index_name, err });
             };
         },
         .delete => { // delete

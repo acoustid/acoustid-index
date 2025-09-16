@@ -596,15 +596,10 @@ pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexReques
             return error.VersionTooLow;
         }
         index_ref.redirect.version = generation;
-    } else {
-        index_ref.redirect.version += 1;
     }
     index_ref.redirect.deleted = true;
     errdefer {
         index_ref.redirect.deleted = false;
-        if (request.generation == null) {
-            index_ref.redirect.version -= 1;
-        }
     }
 
     index_redirect.writeRedirectFile(index_ref.index_dir, index_ref.redirect, self.allocator) catch |err| {
