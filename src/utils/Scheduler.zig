@@ -11,6 +11,9 @@ pub const Task = struct {
     deinitFn: *const fn (ctx: *anyopaque, allocator: std.mem.Allocator) void,
     interval_ns: ?u64 = null,
     next_run_time_ns: u64,
+    /// When true, task is automatically destroyed after first execution.
+    /// One-shot tasks must not be referenced after scheduling via runOnce().
+    one_shot: bool = false,
 };
 
 const TaskQueue = std.PriorityQueue(*Task, void, compareTasksByDeadline);
@@ -20,11 +23,11 @@ fn compareTasksByDeadline(context: void, a: *Task, b: *Task) std.math.Order {
     // Both tasks should have next_run_time_ns set (immediate tasks get current time)
     const a_time = a.next_run_time_ns;
     const b_time = b.next_run_time_ns;
-    
+
     // Primary ordering by timestamp
     const time_order = std.math.order(a_time, b_time);
     if (time_order != .eq) return time_order;
-    
+
     // Secondary ordering by pointer address for absolute order
     return std.math.order(@intFromPtr(a), @intFromPtr(b));
 }
@@ -65,6 +68,8 @@ pub fn deinit(self: *Self) void {
 pub fn createTask(self: *Self, comptime func: anytype, args: anytype) !*Task {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
+
+    try self.queue.ensureUnusedCapacity(1);
 
     const task = try self.allocator.create(Task);
     errdefer self.allocator.destroy(task);
@@ -108,6 +113,14 @@ pub fn createRepeatingTask(self: *Self, interval_ms: u32, comptime func: anytype
     return task;
 }
 
+/// Schedules a fire-and-forget task that automatically destroys itself after execution.
+/// The task pointer must not be accessed after calling this function, as it will be
+/// freed automatically when the task completes.
+pub fn runOnce(self: *Self, comptime func: anytype, args: anytype) !void {
+    const task = try self.createTask(func, args);
+    task.one_shot = true;
+    self.scheduleTask(task);
+}
 
 fn removeFromQueue(self: *Self, task: *Task) void {
     if (std.mem.indexOfScalar(*Task, self.queue.items, task)) |index| {
@@ -129,6 +142,9 @@ fn dequeue(self: *Self, task: *Task) void {
 }
 
 pub fn destroyTask(self: *Self, task: *Task) void {
+    // one-shot tasks are never given to the user
+    std.debug.assert(!task.one_shot);
+
     self.dequeue(task);
 
     task.done.wait();
@@ -150,7 +166,6 @@ pub fn scheduleTask(self: *Self, task: *Task) void {
         self.enqueue(task);
     }
 }
-
 
 pub fn scheduleTaskAfter(self: *Self, task: *Task, delay_ms: u32) void {
     self.queue_mutex.lock();
@@ -180,12 +195,12 @@ pub fn cancelRepeatingTask(self: *Self, task: *Task) void {
     defer self.queue_mutex.unlock();
 
     task.interval_ns = null;
-    
+
     // If queued and not running, unschedule immediately
     if (task.scheduled and !task.running) {
         self.removeFromQueue(task);
     }
-    
+
     // Clear any pending reschedules and complete if nothing pending
     task.reschedule = 0;
     if (!task.running) {
@@ -199,23 +214,20 @@ fn getNextDeadline(self: *Self) ?u64 {
 
 fn enqueue(self: *Self, task: *Task) void {
     task.scheduled = true;
-    
+
     // Treat immediate tasks as "scheduled now"
     if (task.next_run_time_ns == 0) {
         task.next_run_time_ns = self.timer.read();
     }
-    
+
     self.queue.add(task) catch |err| {
+        // This can't really happen, because for every task we create, we make sure we have capacity
         log.err("failed to add task to queue: {}", .{err});
-        // Fallback: mark as not scheduled and signal done
-        task.scheduled = false;
-        task.done.set();
-        return;
+        unreachable;
     };
-    
+
     self.queue_not_empty.signal();
 }
-
 
 fn getTaskToRun(self: *Self) ?*Task {
     self.queue_mutex.lock();
@@ -223,7 +235,7 @@ fn getTaskToRun(self: *Self) ?*Task {
 
     while (!self.stopping) {
         const current_time_ns = self.timer.read();
-        
+
         // O(1) peek at next task + O(log n) removal if ready
         if (self.queue.peek()) |task| {
             const task_time_ns = task.next_run_time_ns;
@@ -232,17 +244,17 @@ fn getTaskToRun(self: *Self) ?*Task {
                 removed_task.scheduled = false;
                 removed_task.running = true;
                 removed_task.done.reset();
-                
+
                 return removed_task;
             }
         }
-        
+
         // Calculate timeout using next deadline (O(1) peek)
         const timeout_ns: u64 = if (self.getNextDeadline()) |deadline| blk: {
             // If deadline has passed, use 0 timeout; otherwise use remaining time
             break :blk if (current_time_ns >= deadline) 0 else deadline - current_time_ns;
         } else std.time.ns_per_min;
-            
+
         self.queue_not_empty.timedWait(&self.queue_mutex, timeout_ns) catch {};
     }
     return null;
@@ -252,28 +264,30 @@ fn markAsDone(self: *Self, task: *Task) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
-    const has_manual_reschedule = task.reschedule > 0;
-    const is_repeating = task.interval_ns != null;
-    
-    if (has_manual_reschedule or is_repeating) {
-        if (has_manual_reschedule) {
-            task.reschedule -= 1;
+    task.running = false;
+    task.done.set();
+
+    // Auto-destroy one-shot tasks
+    if (task.one_shot) {
+        task.deinitFn(task.ctx, self.allocator);
+        self.allocator.destroy(task);
+        std.debug.assert(self.num_tasks > 0);
+        self.num_tasks -= 1;
+        return;
+    }
+
+    // Reschedule repeated tasks
+    if (task.interval_ns) |interval_ns| {
+        if (task.reschedule == 0) {
+            task.next_run_time_ns = self.timer.read() + interval_ns;
+            task.reschedule += 1;
         }
-        
-        if (is_repeating) {
-            // If no manual absolute time was set during execution, use interval
-            if (!has_manual_reschedule) {
-                const interval = task.interval_ns.?;
-                const current_time_ns = self.timer.read();
-                task.next_run_time_ns = current_time_ns + interval;
-            }
-        }
-        
-        task.running = false;
+    }
+
+    // If the task was requested to be rescheduld (either internally or externally), enqueue is again
+    if (task.reschedule > 0) {
+        task.reschedule -= 1;
         self.enqueue(task);
-    } else {
-        task.running = false;
-        task.done.set();
     }
 }
 
@@ -426,7 +440,7 @@ test "Scheduler: multiple repeating tasks with different intervals" {
 
     const fast_task = try scheduler.createRepeatingTask(50, Counter.incrFast, .{&counter});
     defer scheduler.destroyTask(fast_task);
-    
+
     const slow_task = try scheduler.createRepeatingTask(150, Counter.incrSlow, .{&counter});
     defer scheduler.destroyTask(slow_task);
 
@@ -442,4 +456,40 @@ test "Scheduler: multiple repeating tasks with different intervals" {
     try std.testing.expect(counter.fast_count >= 6);
     try std.testing.expect(counter.slow_count >= 2);
     try std.testing.expect(counter.fast_count > counter.slow_count);
+}
+
+test "Scheduler: runOnce auto-destroys task" {
+    var scheduler = Self.init(std.testing.allocator);
+    defer scheduler.deinit();
+
+    const Counter = struct {
+        count: usize = 0,
+
+        fn incr(self: *@This()) void {
+            self.count += 1;
+        }
+    };
+    var counter: Counter = .{};
+
+    const initial_tasks = scheduler.num_tasks;
+
+    // Schedule multiple one-shot tasks
+    try scheduler.runOnce(Counter.incr, .{&counter});
+    try scheduler.runOnce(Counter.incr, .{&counter});
+    try scheduler.runOnce(Counter.incr, .{&counter});
+
+    // Start scheduler and wait for completion with polling
+    try scheduler.start(2);
+    var waited_ns: u64 = 0;
+    while (waited_ns < 500 * std.time.ns_per_ms and
+        (counter.count != 3 or scheduler.num_tasks != initial_tasks))
+    {
+        std.time.sleep(10 * std.time.ns_per_ms);
+        waited_ns += 10 * std.time.ns_per_ms;
+    }
+    scheduler.stop();
+
+    // Verify all tasks executed and were auto-destroyed
+    try std.testing.expect(counter.count == 3);
+    try std.testing.expect(scheduler.num_tasks == initial_tasks);
 }
