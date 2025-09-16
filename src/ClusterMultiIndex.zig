@@ -411,19 +411,20 @@ fn startIndexUpdater(self: *Self, index_name: []const u8, generation: u64, last_
             .ack_wait = 60 * std.time.ns_per_s,
         },
     });
+    errdefer subscription.deinit();
 
     const index_name_copy = try self.allocator.dupe(u8, index_name);
     errdefer self.allocator.free(index_name_copy);
 
     // Allocate and set the new value
     const updater = try self.allocator.create(IndexUpdater);
+    errdefer self.allocator.destroy(updater);
     updater.* = IndexUpdater{
         .subscription = subscription,
         .last_applied_seq = last_seq,
         .generation = generation,
         .mutex = .{},
     };
-    errdefer updater.destroy(self.allocator);
 
     try self.index_updaters.putNoClobber(index_name_copy, updater);
 
@@ -556,6 +557,7 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
                     // Stop any existing updater for this index
                     self.stopIndexUpdater(index_name) catch |stop_err| {
                         log.err("failed to stop updater for index {s}: {}", .{ index_name, stop_err });
+                        return stop_err;
                     };
 
                     // Delete the local index to advance redirect.version
@@ -592,15 +594,17 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
             // Assert that the result has the expected generation
             std.debug.assert(create_result.generation == generation);
 
-            // Start updater for the index (idempotent)
+            // Start updater for the index (idempotent) — fail to trigger redelivery/retry
             self.startIndexUpdater(index_name, generation, create_op.first_seq) catch |err| {
                 log.err("failed to start updater for index {s}: {}", .{ index_name, err });
+                return err;
             };
         },
         .delete => { // delete
             // Stop updater for the index
             self.stopIndexUpdater(index_name) catch |err| {
                 log.err("failed to stop updater for index {s}: {}", .{ index_name, err });
+                return err;
             };
 
             // Delete local index
@@ -647,7 +651,7 @@ fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, 
         .version = msg.metadata.sequence.stream,
     }) catch |err| {
         log.err("failed to apply update to local index {s}: {}", .{ index_name, err });
-        return;
+        return err;
     };
 
     // Update per-index last_applied_seq
