@@ -514,7 +514,7 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
             }
 
             // Create the index locally with the NATS generation as the version
-            _ = self.local_indexes.createIndexInternal(index_name, .{
+            _ = self.local_indexes.createIndex(index_name, .{
                 .generation = generation,
             }) catch |err| {
                 log.warn("failed to create local index {s}: {}", .{ index_name, err });
@@ -528,7 +528,7 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
                 log.err("failed to start updater for new index {s}: {}", .{ index_name, err });
             };
         },
-        .delete => |delete_op| { // delete
+        .delete => { // delete
             if (local_info) |info| {
                 if (info.deleted) {
                     // Index already deleted (regardless of generation)
@@ -551,8 +551,7 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
             };
 
             // Delete local index with version validation and custom version from NATS sequence
-            self.local_indexes.deleteIndexInternal(index_name, .{
-                .expect_generation = delete_op.previous_generation,
+            self.local_indexes.deleteIndex(index_name, .{
                 .generation = generation,
             }) catch |err| {
                 log.warn("failed to delete local index {s}: {}", .{ index_name, err });
@@ -673,11 +672,9 @@ pub fn checkIndexExists(self: *Self, index_name: []const u8) !void {
 
 pub fn createIndex(
     self: *Self,
-    allocator: std.mem.Allocator,
     index_name: []const u8,
+    request: api.CreateIndexRequest,
 ) !api.CreateIndexResponse {
-    _ = allocator;
-
     if (!isValidIndexName(index_name)) {
         return error.InvalidIndexName;
     }
@@ -685,6 +682,9 @@ pub fn createIndex(
     // First check if index exists and get current generation
     const status = try self.getStatus(index_name);
     if (status.is_active) {
+        if (request.expect_does_not_exist) {
+            return error.IndexAlreadyExists;
+        }
         const version = try self.getLastVersion(index_name, status.generation);
         return api.CreateIndexResponse{ .version = version };
     }
@@ -730,7 +730,7 @@ pub fn createIndex(
     return api.CreateIndexResponse{ .version = 0 };
 }
 
-pub fn deleteIndex(self: *Self, index_name: []const u8) !void {
+pub fn deleteIndex(self: *Self, index_name: []const u8, request: api.DeleteIndexRequest) !void {
     if (!isValidIndexName(index_name)) {
         return error.InvalidIndexName;
     }
@@ -738,6 +738,9 @@ pub fn deleteIndex(self: *Self, index_name: []const u8) !void {
     // Get current status and generation
     const status = try self.getStatus(index_name);
     if (!status.is_active) {
+        if (request.expect_exists) {
+            return error.IndexNotFound;
+        }
         return; // Already deleted
     }
     const generation = status.generation;

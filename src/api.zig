@@ -31,6 +31,24 @@ pub const UpdateRequest = struct {
     }
 };
 
+pub const CreateIndexRequest = struct {
+    expect_does_not_exist: bool = false,
+    generation: ?u64 = null,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+pub const DeleteIndexRequest = struct {
+    expect_exists: bool = false,
+    generation: ?u64 = null,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
 // Response models
 pub const SearchResult = struct {
     id: u32,
