@@ -69,6 +69,8 @@ pub fn createTask(self: *Self, comptime func: anytype, args: anytype) !*Task {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
+    try self.queue.ensureUnusedCapacity(1);
+
     const task = try self.allocator.create(Task);
     errdefer self.allocator.destroy(task);
 
@@ -140,6 +142,9 @@ fn dequeue(self: *Self, task: *Task) void {
 }
 
 pub fn destroyTask(self: *Self, task: *Task) void {
+    // one-shot tasks are never given to the user
+    std.debug.assert(!task.one_shot);
+
     self.dequeue(task);
 
     task.done.wait();
@@ -207,7 +212,7 @@ fn getNextDeadline(self: *Self) ?u64 {
     return if (self.queue.peek()) |task| task.next_run_time_ns else null;
 }
 
-fn enqueue(self: *Self, task: *Task) void {
+fn enqueue(self: *Self, task: *Task) bool {
     task.scheduled = true;
 
     // Treat immediate tasks as "scheduled now"
@@ -216,18 +221,9 @@ fn enqueue(self: *Self, task: *Task) void {
     }
 
     self.queue.add(task) catch |err| {
+        // This can't really happen, because for every task we create, we make sure we have capacity
         log.err("failed to add task to queue: {}", .{err});
-        // Fallback: mark as not scheduled and signal done
-        task.scheduled = false;
-        task.done.set();
-        // If one-shot, free immediately to avoid leaks and num_tasks imbalance.
-        if (task.one_shot) {
-            task.deinitFn(task.ctx, self.allocator);
-            self.allocator.destroy(task);
-            std.debug.assert(self.num_tasks > 0);
-            self.num_tasks -= 1;
-        }
-        return;
+        unreachable;
     };
 
     self.queue_not_empty.signal();
