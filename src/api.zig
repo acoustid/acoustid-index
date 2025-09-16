@@ -95,6 +95,7 @@ pub const GetIndexInfoResponse = struct {
 
 pub const CreateIndexResponse = struct {
     version: u64,
+    ready: bool,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };

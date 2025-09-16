@@ -743,6 +743,7 @@ pub fn createIndex(
 
     return api.CreateIndexResponse{
         .version = index_reader.getVersion(),
+        .ready = true,
     };
 }
 

@@ -492,6 +492,11 @@ fn handlePutIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: 
     };
     comptime assert(@TypeOf(response) == api.CreateIndexResponse);
 
+    // Set status code based on readiness
+    if (!response.ready) {
+        res.status = 202; // Accepted - processing in progress
+    }
+
     return writeResponse(response, req, res);
 }
 
