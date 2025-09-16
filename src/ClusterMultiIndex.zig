@@ -506,8 +506,6 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
     self.mutex.lock();
     defer self.mutex.unlock();
 
-    // Check current local state
-    const local_info = self.local_indexes.getLocalIndexInfo(index_name);
 
     switch (meta_op) {
         .create => |create_op| { // create
@@ -525,7 +523,7 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
                     };
 
                     // Delete the local index to advance redirect.version
-                    self.local_indexes.deleteIndex(index_name, .{}) catch |delete_err| {
+                    _ = self.local_indexes.deleteIndex(index_name, .{}) catch |delete_err| {
                         log.warn("failed to delete local index {s} for reconciliation: {}", .{ index_name, delete_err });
                         return delete_err;
                     };
@@ -541,7 +539,7 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
                     };
 
                     std.debug.assert(reconcile_result.generation == generation);
-                    log.info("created index {s} with generation {} after reconciliation", .{ index_name, generation });
+                    log.info("created local index {s} with generation {} after reconciliation", .{ index_name, generation });
                     break :blk reconcile_result;
                 },
                 error.NewerIndexAlreadyExists => {
@@ -564,34 +562,22 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
             };
         },
         .delete => { // delete
-            if (local_info) |info| {
-                if (info.deleted) {
-                    // Index already deleted (regardless of generation)
-                    if (info.generation == generation) {
-                        log.debug("index {s} already deleted with generation {}", .{ index_name, generation });
-                    } else {
-                        log.debug("index {s} already deleted (local generation {}, NATS generation {})", .{ index_name, info.generation, generation });
-                    }
-                    return;
-                }
-            } else {
-                // Index doesn't exist locally at all
-                log.debug("index {s} doesn't exist locally, nothing to delete", .{index_name});
-                return;
-            }
-
             // Stop updater for the index
             self.stopIndexUpdater(index_name) catch |err| {
                 log.err("failed to stop updater for index {s}: {}", .{ index_name, err });
             };
 
             // Delete local index
-            self.local_indexes.deleteIndex(index_name, .{}) catch |err| {
+            const delete_result = self.local_indexes.deleteIndex(index_name, .{}) catch |err| {
                 log.warn("failed to delete local index {s}: {}", .{ index_name, err });
                 return err;
             };
 
-            log.info("deleted index {s}", .{index_name});
+            if (delete_result.deleted) {
+                log.info("deleted local index {s}", .{index_name});
+            } else {
+                log.debug("local index {s} already deleted", .{index_name});
+            }
         },
     }
 }
@@ -624,7 +610,7 @@ fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, 
         .expect_generation = generation,
         .version = msg.metadata.sequence.stream,
     }) catch |err| {
-        log.err("failed to apply update to index {s}: {}", .{ index_name, err });
+        log.err("failed to apply update to local index {s}: {}", .{ index_name, err });
         return;
     };
 
@@ -632,7 +618,7 @@ fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, 
     std.debug.assert(msg.metadata.sequence.stream > updater.last_applied_seq);
     updater.last_applied_seq = msg.metadata.sequence.stream;
 
-    log.debug("applied update to index {s} (seq={})", .{ index_name, msg.metadata.sequence.stream });
+    log.debug("applied update to local index {s} (seq={})", .{ index_name, msg.metadata.sequence.stream });
 }
 
 // Interface methods for server.zig compatibility
@@ -764,7 +750,7 @@ pub fn createIndex(
     return api.CreateIndexResponse{ .version = 0, .ready = false, .generation = result.value.seq };
 }
 
-pub fn deleteIndex(self: *Self, index_name: []const u8, request: api.DeleteIndexRequest) !void {
+pub fn deleteIndex(self: *Self, index_name: []const u8, request: api.DeleteIndexRequest) !api.DeleteIndexResponse {
     if (!isValidIndexName(index_name)) {
         return error.InvalidIndexName;
     }
@@ -775,7 +761,7 @@ pub fn deleteIndex(self: *Self, index_name: []const u8, request: api.DeleteIndex
         if (request.expect_exists) {
             return error.IndexNotFound;
         }
-        return; // Already deleted
+        return api.DeleteIndexResponse{ .deleted = false }; // Already deleted
     }
     const generation = status.generation;
 
@@ -800,6 +786,8 @@ pub fn deleteIndex(self: *Self, index_name: []const u8, request: api.DeleteIndex
 
     const result = try self.js.publish(subject, data.items, .{ .msg_id = msg_id });
     defer result.deinit();
+
+    return api.DeleteIndexResponse{ .deleted = true };
 }
 
 pub fn getFingerprintInfo(

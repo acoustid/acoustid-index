@@ -535,7 +535,7 @@ pub fn getIndex(self: *Self, name: []const u8) !*Index {
     return self.getOrCreateIndex(name, false, .{});
 }
 
-pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexRequest) !void {
+pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexRequest) !api.DeleteIndexResponse {
     if (!isValidName(name)) {
         return error.InvalidIndexName;
     }
@@ -547,13 +547,13 @@ pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexReques
         if (request.expect_exists) {
             return error.IndexNotFound;
         }
-        return;
+        return api.DeleteIndexResponse{ .deleted = false };
     };
     if (!index_ref.index.has_value) {
         if (request.expect_exists) {
             return error.IndexNotFound;
         }
-        return;
+        return api.DeleteIndexResponse{ .deleted = false };
     }
 
 
@@ -603,6 +603,8 @@ pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexReques
 
     // Close the index
     index_ref.index.clear();
+
+    return api.DeleteIndexResponse{ .deleted = true };
 }
 
 
@@ -802,18 +804,6 @@ pub fn checkFingerprintExists(
     }
 }
 
-pub fn getLocalIndexInfo(self: *Self, name: []const u8) ?IndexInfo {
-    self.lock.lock();
-    defer self.lock.unlock();
-
-    const index_ref = self.indexes.get(name) orelse return null;
-
-    return IndexInfo{
-        .name = name,
-        .generation = index_ref.redirect.version,
-        .deleted = !index_ref.index.has_value,
-    };
-}
 
 pub fn listIndexes(self: *Self, allocator: std.mem.Allocator, options: ListOptions) ![]IndexInfo {
     self.lock.lock();
@@ -914,23 +904,12 @@ test "deleteIndex" {
     try std.testing.expectEqual(0, info.version);
     try ctx.indexes.checkIndexExists("foo");
 
-    try ctx.indexes.deleteIndex("foo", .{});
-    try std.testing.expectError(error.IndexNotFound, ctx.indexes.checkIndexExists("foo"));
-}
-
-test "deleteIndex twice" {
-    var ctx: TestContext = .{};
-    try ctx.setup();
-    defer ctx.teardown();
-
-    const info = try ctx.indexes.createIndex("foo", .{});
-    try std.testing.expectEqual(0, info.version);
-    try ctx.indexes.checkIndexExists("foo");
-
-    try ctx.indexes.deleteIndex("foo", .{});
+    const delete_result1 = try ctx.indexes.deleteIndex("foo", .{});
+    try std.testing.expectEqual(true, delete_result1.deleted);
     try std.testing.expectError(error.IndexNotFound, ctx.indexes.checkIndexExists("foo"));
 
-    try ctx.indexes.deleteIndex("foo", .{});
+    const delete_result2 = try ctx.indexes.deleteIndex("foo", .{});
+    try std.testing.expectEqual(false, delete_result2.deleted);
     try std.testing.expectError(error.IndexNotFound, ctx.indexes.checkIndexExists("foo"));
 }
 

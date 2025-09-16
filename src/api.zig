@@ -102,6 +102,14 @@ pub const CreateIndexResponse = struct {
     }
 };
 
+pub const DeleteIndexResponse = struct {
+    deleted: bool,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
 pub const GetFingerprintInfoResponse = struct {
     version: u64,
 
