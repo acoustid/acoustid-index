@@ -11,6 +11,7 @@ const metrics = @import("metrics.zig");
 const index_redirect = @import("index_redirect.zig");
 const IndexRedirect = index_redirect.IndexRedirect;
 const snapshot = @import("snapshot.zig");
+const filefmt = @import("filefmt.zig");
 
 const Self = @This();
 
@@ -59,7 +60,17 @@ pub const IndexRef = struct {
     references: usize = 1,
     delete_files: bool = false,
     being_deleted: bool = false,
+    load_state: LoadState = .ready,
+    load_context: ?LoadContext = null,
+    load_error: ?anyerror = null,
     reference_released: std.Thread.Condition = .{},
+    load_state_changed: std.Thread.Condition = .{},
+
+    pub const LoadState = enum {
+        ready,
+        restoring,
+        failed,
+    };
 
     pub fn incRef(self: *IndexRef) void {
         self.references += 1;
@@ -75,9 +86,23 @@ pub const IndexRef = struct {
         self.index.clear();
         self.index_dir.close();
     }
+
+    pub fn isReady(self: *IndexRef) bool {
+        return self.load_state == .ready and self.index.has_value;
+    }
 };
 
 const IndexRefHashMap = std.StringHashMapUnmanaged(*IndexRef);
+
+pub const LoadContext = struct {
+    // Context data
+    generation: u64,
+    snapshot_url: []const u8,
+
+    pub fn deinit(self: *LoadContext, allocator: std.mem.Allocator) void {
+        allocator.free(self.snapshot_url);
+    }
+};
 
 lock: std.Thread.Mutex = .{},
 lock_file: ?std.fs.File = null,
@@ -310,8 +335,12 @@ pub fn deinit(self: *Self) void {
 
     var iter = self.indexes.iterator();
     while (iter.next()) |entry| {
-        entry.value_ptr.*.deinit();
-        self.allocator.destroy(entry.value_ptr.*);
+        const ref = entry.value_ptr.*;
+        if (ref.load_context) |*ctx| {
+            ctx.deinit(self.allocator);
+        }
+        ref.deinit();
+        self.allocator.destroy(ref);
         self.allocator.free(entry.key_ptr.*);
     }
     self.indexes.deinit(self.allocator);
@@ -445,6 +474,61 @@ pub fn deinit(self: *Self) void {
 //     };
 // }
 
+fn restoreIndexTask(self: *Self, index_ref: *IndexRef) void {
+    // Do the actual streaming restore
+    streamRestoreFromUrl(self, index_ref) catch |err| {
+        log.err("restore failed for index: {}", .{err});
+
+        // Set failure state, clean up context, and notify waiters
+        self.lock.lock();
+        if (index_ref.load_context) |*ctx| {
+            ctx.deinit(self.allocator);
+        }
+        index_ref.load_context = null;
+        index_ref.load_error = err;
+        index_ref.load_state = .failed;
+        index_ref.load_state_changed.broadcast();
+        self.lock.unlock();
+        return;
+    };
+
+    // Success - clean up load context
+    self.lock.lock();
+    if (index_ref.load_context) |*ctx| {
+        ctx.deinit(self.allocator);
+    }
+    index_ref.load_context = null;
+    index_ref.load_error = null;
+    index_ref.load_state = .ready;
+    index_ref.load_state_changed.broadcast();
+    self.lock.unlock();
+
+    log.info("successfully restored index", .{});
+}
+
+fn streamRestoreFromUrl(self: *Self, index_ref: *IndexRef) !void {
+    const ctx = &index_ref.load_context.?;
+
+    // Get data directory path for the index
+    const data_path = try index_ref.redirect.getDataDir(self.allocator);
+    defer self.allocator.free(data_path);
+
+    // Use the existing downloadAndExtractSnapshot function
+    // It will download, extract, and return a ready-to-use Index
+    const restored_index = try snapshot.downloadAndExtractSnapshot(
+        ctx.snapshot_url,
+        self.allocator,
+        self.scheduler,
+        index_ref.index_dir, // Use our existing index directory
+        data_path,           // Extract to the data subdirectory
+        self.index_options
+    );
+
+    // Store the restored index in our IndexRef
+    index_ref.index.value = restored_index;
+    index_ref.index.has_value = true;
+}
+
 fn deleteIndexFiles(self: *Self, name: []const u8) !void {
     const tmp_name = try std.mem.concat(self.allocator, u8, &[_][]const u8{ name, ".delete" });
     defer self.allocator.free(tmp_name);
@@ -487,6 +571,13 @@ pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool, options: In
     defer self.lock.unlock();
 
     if (self.indexes.get(name)) |index_ref| {
+        // Check load state first
+        switch (index_ref.load_state) {
+            .restoring => return error.IndexRestoring,
+            .failed => return error.IndexLoadFailed,
+            .ready => {},
+        }
+
         if (index_ref.index.has_value) {
             // Index exists and is active
             if (index_ref.being_deleted) {
@@ -857,6 +948,123 @@ pub fn exportSnapshot(
     try snapshot.buildSnapshot(writer, index, allocator);
 }
 
+pub fn restoreIndex(
+    self: *Self,
+    index_name: []const u8,
+    generation: u64,
+    snapshot_url: []const u8,
+) !void {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
+
+    self.lock.lock();
+    defer self.lock.unlock();
+
+    // Get or create the IndexRef entry
+    const entry = try self.indexes.getOrPut(self.allocator, index_name);
+
+    if (!entry.found_existing) {
+        // Allocate new entry
+        entry.key_ptr.* = try self.allocator.dupe(u8, index_name);
+        errdefer self.allocator.free(entry.key_ptr.*);
+
+        const ref = try self.allocator.create(IndexRef);
+        errdefer self.allocator.destroy(ref);
+
+        ref.* = .{
+            .index_dir = try self.dir.makeOpenPath(index_name, .{ .iterate = true }),
+            .redirect = IndexRedirect.init(index_name, generation),
+        };
+        entry.value_ptr.* = ref;
+    }
+
+    const ref = entry.value_ptr.*;
+
+    // Check current state
+    switch (ref.load_state) {
+        .restoring => return error.AlreadyRestoring,
+        .ready => {
+            if (ref.index.has_value and !ref.redirect.deleted) {
+                return error.IndexAlreadyExists;
+            }
+        },
+        .failed => {
+            // Can retry after failure - clean up old context
+            if (ref.load_context) |*ctx| {
+                ctx.deinit(self.allocator);
+            }
+            ref.load_context = null;
+            ref.load_error = null;
+        },
+    }
+
+    // Create load context (stack allocated)
+    const snapshot_url_copy = try self.allocator.dupe(u8, snapshot_url);
+    errdefer self.allocator.free(snapshot_url_copy);
+
+    // Update state
+    ref.load_context = LoadContext{
+        .generation = generation,
+        .snapshot_url = snapshot_url_copy,
+    };
+    ref.load_state = .restoring;
+    ref.redirect.version = generation;
+    ref.redirect.deleted = false;
+
+    // Schedule restore task
+    const task = try self.scheduler.createTask(restoreIndexTask, .{ self, ref });
+    self.scheduler.scheduleTask(task);
+}
+
+pub fn waitForIndexReady(
+    self: *Self,
+    index_name: []const u8,
+    timeout_ms: u64,
+) !*Index {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
+
+    const deadline = std.time.milliTimestamp() + @as(i64, @intCast(timeout_ms));
+
+    while (true) {
+        self.lock.lock();
+
+        const index_ref = self.indexes.get(index_name) orelse {
+            self.lock.unlock();
+            return error.IndexNotFound;
+        };
+
+        if (index_ref.isReady()) {
+            // Index is ready, borrow and return
+            const index = borrowIndex(index_ref);
+            self.lock.unlock();
+            return index;
+        }
+
+        if (index_ref.load_state == .failed) {
+            const load_err = index_ref.load_error;
+            self.lock.unlock();
+            return load_err orelse error.LoadFailed;
+        }
+
+        // Still restoring - wait with timeout
+        const now = std.time.milliTimestamp();
+        if (now >= deadline) {
+            self.lock.unlock();
+            return error.Timeout;
+        }
+
+        const remaining_ns = @as(u64, @intCast(deadline - now)) * std.time.ns_per_ms;
+        index_ref.load_state_changed.timedWait(&self.lock, remaining_ns) catch {};
+        self.lock.unlock();
+
+        // Small sleep to avoid tight loop
+        std.Thread.sleep(10 * std.time.ns_per_ms);
+    }
+}
+
 const TestContext = struct {
     tmp_dir: std.testing.TmpDir = undefined,
     scheduler: Scheduler = undefined,
@@ -979,4 +1187,32 @@ test "update with custom version" {
     // Test that monotonicity is enforced
     const result_error = ctx.indexes.updateInternal(std.testing.allocator, "foo", .{ .changes = &changes }, .{ .version = 150 });
     try std.testing.expectError(error.VersionNotMonotonic, result_error);
+}
+
+test "restoreIndex state management" {
+    var ctx: TestContext = .{};
+    try ctx.setup();
+    defer ctx.teardown();
+
+    // Test restore with invalid URL (should fail quickly)
+    try ctx.indexes.restoreIndex("test_restore", 1, "http://invalid.test/snapshot.tar");
+
+    // Index should be in restoring state
+    const result = ctx.indexes.getIndex("test_restore");
+    try std.testing.expectError(error.IndexRestoring, result);
+
+    // Wait for it to fail (with short timeout)
+    const wait_result = ctx.indexes.waitForIndexReady("test_restore", 1000);
+    try std.testing.expectError(error.LoadFailed, wait_result);
+
+    // After failure, should be in failed state
+    const result2 = ctx.indexes.getIndex("test_restore");
+    try std.testing.expectError(error.IndexLoadFailed, result2);
+
+    // Should be able to retry restore after failure
+    try ctx.indexes.restoreIndex("test_restore", 1, "http://another.invalid.test/snapshot.tar");
+
+    // Should be restoring again
+    const result3 = ctx.indexes.getIndex("test_restore");
+    try std.testing.expectError(error.IndexRestoring, result3);
 }
