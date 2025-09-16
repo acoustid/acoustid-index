@@ -42,7 +42,6 @@ pub const CreateIndexRequest = struct {
 
 pub const DeleteIndexRequest = struct {
     expect_exists: bool = false,
-    generation: ?u64 = null,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };

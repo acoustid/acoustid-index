@@ -515,7 +515,7 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
             const create_result = self.local_indexes.createIndex(index_name, .{
                 .generation = generation,
             }) catch |err| switch (err) {
-                error.OlderIndexAlreadyExists => {
+                error.OlderIndexAlreadyExists => blk: {
                     // Reconcile: local index has older generation, delete and recreate
                     log.info("reconciling index {s}: local index is older, deleting and recreating", .{index_name});
 
@@ -542,6 +542,7 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
 
                     std.debug.assert(reconcile_result.generation == generation);
                     log.info("created index {s} with generation {} after reconciliation", .{ index_name, generation });
+                    break :blk reconcile_result;
                 },
                 error.NewerIndexAlreadyExists => {
                     // Local index is newer, this shouldn't happen - fail and let message be redelivered
@@ -584,15 +585,13 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
                 log.err("failed to stop updater for index {s}: {}", .{ index_name, err });
             };
 
-            // Delete local index with version validation and custom version from NATS sequence
-            self.local_indexes.deleteIndex(index_name, .{
-                .generation = generation,
-            }) catch |err| {
+            // Delete local index
+            self.local_indexes.deleteIndex(index_name, .{}) catch |err| {
                 log.warn("failed to delete local index {s}: {}", .{ index_name, err });
                 return err;
             };
 
-            log.info("deleted index {s} with generation {}", .{ index_name, generation });
+            log.info("deleted index {s}", .{index_name});
         },
     }
 }

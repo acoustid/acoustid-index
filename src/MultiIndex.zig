@@ -590,13 +590,7 @@ pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexReques
 
     log.info("deleting index {s}", .{name});
 
-    // Update redirect with new version and mark as deleted
-    if (request.generation) |generation| {
-        if (generation <= index_ref.redirect.version) {
-            return error.VersionTooLow;
-        }
-        index_ref.redirect.version = generation;
-    }
+    // Mark as deleted without changing generation
     index_ref.redirect.deleted = true;
     errdefer {
         index_ref.redirect.deleted = false;
