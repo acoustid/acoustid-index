@@ -32,6 +32,7 @@ pub const IndexOptions = struct {
     expect_generation: ?u64 = null,
     expect_does_not_exist: bool = false,
     version: ?u64 = null,
+    restore_from: ?[]const u8 = null,
 };
 
 const OptionalIndex = struct {
@@ -820,6 +821,19 @@ pub fn createIndexInternal(
         return error.InvalidIndexName;
     }
 
+    // If restore_from is provided, use restore path
+    if (options.restore_from) |snapshot_url| {
+        // Start restoration using existing restore logic
+        try self.startIndexRestore(index_name, options.generation orelse 1, snapshot_url);
+
+        // Return with ready=false to indicate async operation
+        return api.CreateIndexResponse{
+            .version = 0,
+            .ready = false,
+        };
+    }
+
+    // Normal create path (existing code)
     const index = try self.getOrCreateIndex(index_name, true, options);
     defer self.releaseIndex(index);
 
@@ -828,6 +842,7 @@ pub fn createIndexInternal(
 
     return api.CreateIndexResponse{
         .version = index_reader.getVersion(),
+        .ready = true,
     };
 }
 
@@ -835,9 +850,16 @@ pub fn createIndex(
     self: *Self,
     allocator: std.mem.Allocator,
     index_name: []const u8,
+    request: api.CreateIndexRequest,
 ) !api.CreateIndexResponse {
     _ = allocator; // Keep parameter for API compatibility but don't use it
-    return self.createIndexInternal(index_name, .{});
+
+    // Convert request to IndexOptions
+    const options = IndexOptions{
+        .restore_from = request.restore_from,
+    };
+
+    return self.createIndexInternal(index_name, options);
 }
 
 pub fn getFingerprintInfo(
@@ -948,7 +970,7 @@ pub fn exportSnapshot(
     try snapshot.buildSnapshot(writer, index, allocator);
 }
 
-pub fn restoreIndex(
+fn startIndexRestore(
     self: *Self,
     index_name: []const u8,
     generation: u64,
@@ -1096,7 +1118,7 @@ test "createIndex" {
     try ctx.setup();
     defer ctx.teardown();
 
-    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo", .{});
     try std.testing.expectEqual(0, info.version);
     try ctx.indexes.checkIndexExists("foo");
 }
@@ -1106,11 +1128,11 @@ test "createIndex twice" {
     try ctx.setup();
     defer ctx.teardown();
 
-    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo", .{});
     try std.testing.expectEqual(0, info.version);
     try ctx.indexes.checkIndexExists("foo");
 
-    const info2 = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    const info2 = try ctx.indexes.createIndex(std.testing.allocator, "foo", .{});
     try std.testing.expectEqual(0, info2.version);
     try ctx.indexes.checkIndexExists("foo");
 }
@@ -1120,7 +1142,7 @@ test "deleteIndex" {
     try ctx.setup();
     defer ctx.teardown();
 
-    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo", .{});
     try std.testing.expectEqual(0, info.version);
     try ctx.indexes.checkIndexExists("foo");
 
@@ -1133,7 +1155,7 @@ test "deleteIndex twice" {
     try ctx.setup();
     defer ctx.teardown();
 
-    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo", .{});
     try std.testing.expectEqual(0, info.version);
     try ctx.indexes.checkIndexExists("foo");
 
@@ -1151,7 +1173,7 @@ test "update" {
 
     const Change = @import("change.zig").Change;
 
-    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo", .{});
     try std.testing.expectEqual(0, info.version);
 
     var changes = [_]Change{
@@ -1169,7 +1191,7 @@ test "update with custom version" {
 
     const Change = @import("change.zig").Change;
 
-    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo", .{});
     try std.testing.expectEqual(0, info.version);
 
     var changes = [_]Change{
@@ -1189,13 +1211,16 @@ test "update with custom version" {
     try std.testing.expectError(error.VersionNotMonotonic, result_error);
 }
 
-test "restoreIndex state management" {
+test "createIndex with restore_from" {
     var ctx: TestContext = .{};
     try ctx.setup();
     defer ctx.teardown();
 
     // Test restore with invalid URL (should fail quickly)
-    try ctx.indexes.restoreIndex("test_restore", 1, "http://invalid.test/snapshot.tar");
+    const response1 = try ctx.indexes.createIndex(std.testing.allocator, "test_restore", .{
+        .restore_from = "http://invalid.test/snapshot.tar",
+    });
+    try std.testing.expectEqual(false, response1.ready);
 
     // Index should be in restoring state
     const result = ctx.indexes.getIndex("test_restore");
@@ -1210,7 +1235,10 @@ test "restoreIndex state management" {
     try std.testing.expectError(error.IndexLoadFailed, result2);
 
     // Should be able to retry restore after failure
-    try ctx.indexes.restoreIndex("test_restore", 1, "http://another.invalid.test/snapshot.tar");
+    const response2 = try ctx.indexes.createIndex(std.testing.allocator, "test_restore", .{
+        .restore_from = "http://another.invalid.test/snapshot.tar",
+    });
+    try std.testing.expectEqual(false, response2.ready);
 
     // Should be restoring again
     const result3 = ctx.indexes.getIndex("test_restore");
