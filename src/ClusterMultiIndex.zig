@@ -62,6 +62,7 @@ index_updaters: std.StringHashMap(*IndexUpdater),
 pub const IndexUpdater = struct {
     subscription: *nats.JetStreamSubscription,
     last_applied_seq: u64,
+    generation: u64,
     mutex: std.Thread.Mutex = .{},
 
     pub fn destroy(self: *IndexUpdater, allocator: std.mem.Allocator) void {
@@ -352,6 +353,17 @@ fn createMetaConsumer(self: *Self) !void {
 fn startIndexUpdater(self: *Self, index_name: []const u8, generation: u64, last_seq: u64) !void {
     // Caller must hold self.mutex
 
+    // Check if updater already exists with correct generation (idempotent)
+    if (self.index_updaters.get(index_name)) |existing_updater| {
+        if (existing_updater.generation == generation) {
+            log.debug("updater for index {s} generation {} already running", .{ index_name, generation });
+            return;
+        } else {
+            log.info("stopping old updater for index {s} (generation {} -> {})", .{ index_name, existing_updater.generation, generation });
+            try self.stopIndexUpdater(index_name);
+        }
+    }
+
     const consumer_name = try std.fmt.allocPrint(self.allocator, "{s}-{s}-g{d}", .{ self.replica_id, index_name, generation });
     defer self.allocator.free(consumer_name);
 
@@ -379,6 +391,7 @@ fn startIndexUpdater(self: *Self, index_name: []const u8, generation: u64, last_
     updater.* = IndexUpdater{
         .subscription = subscription,
         .last_applied_seq = last_seq,
+        .generation = generation,
         .mutex = .{},
     };
 
@@ -387,13 +400,18 @@ fn startIndexUpdater(self: *Self, index_name: []const u8, generation: u64, last_
     log.info("started updater for index {s} (generation={}, start_seq={})", .{ index_name, generation, last_seq + 1 });
 }
 
-fn getIndexUpdater(self: *Self, index_name: []const u8) ?*IndexUpdater {
+fn getIndexUpdater(self: *Self, index_name: []const u8, expected_generation: u64) ?*IndexUpdater {
     self.mutex.lock();
     defer self.mutex.unlock();
 
     if (self.index_updaters.get(index_name)) |updater| {
-        updater.mutex.lock();
-        return updater;
+        if (updater.generation == expected_generation) {
+            updater.mutex.lock();
+            return updater;
+        } else {
+            log.warn("updater for index {s} has wrong generation: expected {}, got {}", .{ index_name, expected_generation, updater.generation });
+            return null;
+        }
     }
     return null;
 }
@@ -498,17 +516,10 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
                     // Index already exists with correct generation, ensure updater is running
                     log.debug("index {s} already exists with generation {}, ensuring updater is running", .{ index_name, generation });
 
-                    // Check if updater is already running
-                    if (self.getIndexUpdater(index_name)) |existing_updater| {
-                        self.releaseIndexUpdater(existing_updater);
-                        log.debug("updater for index {s} already running", .{index_name});
-                        return;
-                    } else {
-                        // Start updater for existing index
-                        self.startIndexUpdater(index_name, generation, create_op.first_seq) catch |err| {
-                            log.err("failed to start updater for existing index {s}: {}", .{ index_name, err });
-                        };
-                    }
+                    // Start updater for existing index (idempotent)
+                    self.startIndexUpdater(index_name, generation, create_op.first_seq) catch |err| {
+                        log.err("failed to start updater for existing index {s}: {}", .{ index_name, err });
+                    };
                     return;
                 }
             }
@@ -564,8 +575,8 @@ fn processMetaOperation(self: *Self, index_name: []const u8, msg: *nats.JetStrea
 }
 
 fn processUpdateOperation(self: *Self, index_name: []const u8, generation: u64, msg: *nats.JetStreamMessage) !void {
-    const updater = self.getIndexUpdater(index_name) orelse {
-        log.warn("no updater found for index {s}", .{index_name});
+    const updater = self.getIndexUpdater(index_name, generation) orelse {
+        log.warn("no updater found for index {s} generation {}", .{ index_name, generation });
         return;
     };
     defer self.releaseIndexUpdater(updater);
