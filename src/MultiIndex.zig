@@ -899,7 +899,7 @@ test "createIndex twice" {
     try std.testing.expectEqual(0, info.version);
     try ctx.indexes.checkIndexExists("foo");
 
-    const info2 = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    const info2 = try ctx.indexes.createIndex("foo", .{});
     try std.testing.expectEqual(0, info2.version);
     try ctx.indexes.checkIndexExists("foo");
 }
@@ -913,7 +913,7 @@ test "deleteIndex" {
     try std.testing.expectEqual(0, info.version);
     try ctx.indexes.checkIndexExists("foo");
 
-    try ctx.indexes.deleteIndex("foo");
+    try ctx.indexes.deleteIndex("foo", .{});
     try std.testing.expectError(error.IndexNotFound, ctx.indexes.checkIndexExists("foo"));
 }
 
@@ -926,10 +926,10 @@ test "deleteIndex twice" {
     try std.testing.expectEqual(0, info.version);
     try ctx.indexes.checkIndexExists("foo");
 
-    try ctx.indexes.deleteIndex("foo");
+    try ctx.indexes.deleteIndex("foo", .{});
     try std.testing.expectError(error.IndexNotFound, ctx.indexes.checkIndexExists("foo"));
 
-    try ctx.indexes.deleteIndex("foo");
+    try ctx.indexes.deleteIndex("foo", .{});
     try std.testing.expectError(error.IndexNotFound, ctx.indexes.checkIndexExists("foo"));
 }
 
