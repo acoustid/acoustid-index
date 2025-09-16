@@ -284,12 +284,24 @@ fn writeIndexErrorAs404(req: *httpz.Request, res: *httpz.Response, err: anyerror
     return false;
 }
 
-fn getRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !?T {
+const GetRequestBodyOptions = struct {
+    allow_empty: bool = false,
+};
+
+fn getRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response, comptime options: GetRequestBodyOptions) !?T {
     const content = req.body() orelse {
+        if (options.allow_empty) {
+            return T{};
+        }
         log.warn("no body", .{});
         try writeErrorResponse(400, error.NoContent, req, res);
         return null;
     };
+
+    // If we have a body but allow_empty is true and the content is empty, return default struct
+    if (options.allow_empty and content.len == 0) {
+        return T{};
+    }
 
     const content_type = parseContentTypeHeader(req) catch {
         try writeErrorResponse(415, error.UnsupportedContentType, req, res);
@@ -321,7 +333,7 @@ fn handleSearch(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *h
     defer metrics.searchDuration(std.time.milliTimestamp() - start_time);
 
     const index_name = try getIndexName(req, res, true) orelse return;
-    const body = try getRequestBody(api.SearchRequest, req, res) orelse return;
+    const body = try getRequestBody(api.SearchRequest, req, res, .{}) orelse return;
 
     const response = ctx.indexes.search(req.arena, index_name, body) catch |err| {
         if (try writeIndexErrorAs404(req, res, err, true)) return;
@@ -334,7 +346,7 @@ fn handleSearch(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *h
 
 fn handleUpdate(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = try getIndexName(req, res, true) orelse return;
-    const body = try getRequestBody(api.UpdateRequest, req, res) orelse return;
+    const body = try getRequestBody(api.UpdateRequest, req, res, .{}) orelse return;
 
     const response = ctx.indexes.update(req.arena, index_name, body) catch |err| {
         if (err == error.VersionMismatch) {
@@ -392,7 +404,7 @@ const PutFingerprintRequest = struct {
 fn handlePutFingerprint(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = try getIndexName(req, res, true) orelse return;
     const id = try getId(req, res, true) orelse return;
-    const body = try getRequestBody(PutFingerprintRequest, req, res) orelse return;
+    const body = try getRequestBody(PutFingerprintRequest, req, res, .{}) orelse return;
 
     var changes: [1]Change = .{.{ .insert = .{
         .id = id,
@@ -465,8 +477,9 @@ const CreateIndexRequest = struct {
 
 fn handlePutIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = try getIndexName(req, res, true) orelse return;
+    const body = try getRequestBody(api.CreateIndexRequest, req, res, .{ .allow_empty = true }) orelse return;
 
-    const response = ctx.indexes.createIndex(req.arena, index_name) catch |err| {
+    const response = ctx.indexes.createIndex(index_name, body) catch |err| {
         if (err == error.InvalidIndexName) {
             try writeErrorResponse(400, err, req, res);
             return;
@@ -479,13 +492,19 @@ fn handlePutIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: 
     };
     comptime assert(@TypeOf(response) == api.CreateIndexResponse);
 
+    // Set status code based on readiness
+    if (!response.ready) {
+        res.status = 202; // Accepted - processing in progress
+    }
+
     return writeResponse(response, req, res);
 }
 
 fn handleDeleteIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = try getIndexName(req, res, true) orelse return;
+    const body = try getRequestBody(api.DeleteIndexRequest, req, res, .{ .allow_empty = true }) orelse return;
 
-    ctx.indexes.deleteIndex(index_name) catch |err| {
+    ctx.indexes.deleteIndex(index_name, body) catch |err| {
         if (err == error.InvalidIndexName) {
             try writeErrorResponse(400, err, req, res);
             return;
