@@ -32,12 +32,6 @@ fn isValidIndexName(name: []const u8) bool {
 
 const META_INDEX_NAME = "_meta";
 
-// Stream and subject constants
-const META_STREAM_NAME = "fpindex-meta";
-const UPDATES_STREAM_NAME = "fpindex-updates";
-const META_SUBJECT_PREFIX = "fpindex.m.";
-const UPDATES_SUBJECT_PREFIX = "fpindex.u.";
-
 const IndexStatus = struct {
     is_active: bool,
     generation: u64,
@@ -48,6 +42,9 @@ allocator: std.mem.Allocator,
 nc: *nats.Connection,
 local_indexes: *MultiIndex,
 replica_id: []const u8,
+prefix: []const u8,
+meta_stream_name: []const u8,
+updates_stream_name: []const u8,
 stopping: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
 
 // State tracking
@@ -105,13 +102,28 @@ pub const UpdateOp = struct {
     }
 };
 
-pub fn init(allocator: std.mem.Allocator, nc: *nats.Connection, local_indexes: *MultiIndex) !Self {
+pub fn init(allocator: std.mem.Allocator, nc: *nats.Connection, local_indexes: *MultiIndex, prefix: ?[]const u8) !Self {
     const replica_id = try loadOrCreateReplicaId(allocator, local_indexes);
+    errdefer allocator.free(replica_id);
+
+    const actual_prefix = prefix orelse "fpindex";
+    const prefix_copy = try allocator.dupe(u8, actual_prefix);
+    errdefer allocator.free(prefix_copy);
+
+    const meta_stream_name = try std.fmt.allocPrint(allocator, "{s}-meta", .{actual_prefix});
+    errdefer allocator.free(meta_stream_name);
+
+    const updates_stream_name = try std.fmt.allocPrint(allocator, "{s}-updates", .{actual_prefix});
+    errdefer allocator.free(updates_stream_name);
+
     return .{
         .allocator = allocator,
         .nc = nc,
         .local_indexes = local_indexes,
         .replica_id = replica_id,
+        .prefix = prefix_copy,
+        .meta_stream_name = meta_stream_name,
+        .updates_stream_name = updates_stream_name,
         .index_updaters = std.StringHashMap(*IndexUpdater).init(allocator),
     };
 }
@@ -176,6 +188,15 @@ pub fn deinit(self: *Self) void {
 
     self.allocator.free(self.replica_id);
     self.replica_id = undefined;
+
+    self.allocator.free(self.prefix);
+    self.prefix = undefined;
+
+    self.allocator.free(self.meta_stream_name);
+    self.meta_stream_name = undefined;
+
+    self.allocator.free(self.updates_stream_name);
+    self.updates_stream_name = undefined;
 }
 
 pub fn start(self: *Self) !void {
@@ -258,10 +279,10 @@ fn waitForUpdateSubscriptionsDrained(self: *Self, timeout_ms: u64) void {
 }
 
 fn getStatus(self: *Self, index_name: []const u8) !IndexStatus {
-    const subject = try std.fmt.allocPrint(self.allocator, META_SUBJECT_PREFIX ++ "{s}", .{index_name});
+    const subject = try std.fmt.allocPrint(self.allocator, "{s}.m.{s}", .{ self.prefix, index_name });
     defer self.allocator.free(subject);
 
-    const msg = self.js.getMsg(META_STREAM_NAME, .{ .last_by_subj = subject, .direct = true }) catch |err| switch (err) {
+    const msg = self.js.getMsg(self.meta_stream_name, .{ .last_by_subj = subject, .direct = true }) catch |err| switch (err) {
         error.MessageNotFound => return IndexStatus{ .is_active = false, .generation = 0 },
         else => return err,
     };
@@ -280,10 +301,10 @@ fn getStatus(self: *Self, index_name: []const u8) !IndexStatus {
 
 fn getLastVersion(self: *Self, index_name: []const u8, generation: u64) !u64 {
     // Get the last sequence number for this index's updates
-    const update_subject = try std.fmt.allocPrint(self.allocator, UPDATES_SUBJECT_PREFIX ++ "{s}.{d}", .{ index_name, generation });
+    const update_subject = try std.fmt.allocPrint(self.allocator, "{s}.u.{s}.{d}", .{ self.prefix, index_name, generation });
     defer self.allocator.free(update_subject);
 
-    const last_update_msg = self.js.getMsg(UPDATES_STREAM_NAME, .{ .last_by_subj = update_subject, .direct = true }) catch |err| switch (err) {
+    const last_update_msg = self.js.getMsg(self.updates_stream_name, .{ .last_by_subj = update_subject, .direct = true }) catch |err| switch (err) {
         error.MessageNotFound => {
             // No updates yet for this subject: version is 0 (consumers start from seq 1).
             return 0;
@@ -297,9 +318,12 @@ fn getLastVersion(self: *Self, index_name: []const u8, generation: u64) !u64 {
 
 fn ensureStream(self: *Self) !void {
     // Create meta stream
+    const meta_subject_pattern = try std.fmt.allocPrint(self.allocator, "{s}.m.>", .{self.prefix});
+    defer self.allocator.free(meta_subject_pattern);
+
     const meta_stream_config = nats.StreamConfig{
-        .name = META_STREAM_NAME,
-        .subjects = &[_][]const u8{META_SUBJECT_PREFIX ++ ">"},
+        .name = self.meta_stream_name,
+        .subjects = &[_][]const u8{meta_subject_pattern},
         .retention = .limits,
         .storage = .file,
         .num_replicas = 1,
@@ -317,9 +341,12 @@ fn ensureStream(self: *Self) !void {
     defer if (meta_stream_info) |*info| info.deinit();
 
     // Create updates stream
+    const updates_subject_pattern = try std.fmt.allocPrint(self.allocator, "{s}.u.>", .{self.prefix});
+    defer self.allocator.free(updates_subject_pattern);
+
     const updates_stream_config = nats.StreamConfig{
-        .name = UPDATES_STREAM_NAME,
-        .subjects = &[_][]const u8{UPDATES_SUBJECT_PREFIX ++ ">"},
+        .name = self.updates_stream_name,
+        .subjects = &[_][]const u8{updates_subject_pattern},
         .retention = .limits,
         .storage = .file,
         .num_replicas = 1,
@@ -338,8 +365,11 @@ fn ensureStream(self: *Self) !void {
 
 
 fn createMetaConsumer(self: *Self) !void {
-    self.meta_subscription = try self.js.subscribe(META_SUBJECT_PREFIX ++ "*", handleMetaMessage, .{self}, .{
-        .stream = META_STREAM_NAME,
+    const meta_subject_pattern = try std.fmt.allocPrint(self.allocator, "{s}.m.*", .{self.prefix});
+    defer self.allocator.free(meta_subject_pattern);
+
+    self.meta_subscription = try self.js.subscribe(meta_subject_pattern, handleMetaMessage, .{self}, .{
+        .stream = self.meta_stream_name,
         .manual_ack = true,
         .config = .{
             .deliver_policy = .last_per_subject,
@@ -367,11 +397,11 @@ fn startIndexUpdater(self: *Self, index_name: []const u8, generation: u64, last_
     const consumer_name = try std.fmt.allocPrint(self.allocator, "{s}-{s}-g{d}", .{ self.replica_id, index_name, generation });
     defer self.allocator.free(consumer_name);
 
-    const filter_subject = try std.fmt.allocPrint(self.allocator, UPDATES_SUBJECT_PREFIX ++ "{s}.{d}", .{ index_name, generation });
+    const filter_subject = try std.fmt.allocPrint(self.allocator, "{s}.u.{s}.{d}", .{ self.prefix, index_name, generation });
     defer self.allocator.free(filter_subject);
 
     const subscription = try self.js.subscribe(filter_subject, handleUpdateMessage, .{self}, .{
-        .stream = UPDATES_STREAM_NAME,
+        .stream = self.updates_stream_name,
         .durable = consumer_name,
         .manual_ack = true,
         .config = .{
@@ -430,7 +460,7 @@ fn stopIndexUpdater(self: *Self, index_name: []const u8) !void {
     }
 }
 
-fn handleMetaMessage(js_msg: *nats.JetStreamMessage, self: *Self) void {
+fn handleMetaMessage(js_msg: *nats.JetStreamMessage, self: *Self) !void {
     defer js_msg.deinit();
 
     if (self.stopping.load(.acquire)) {
@@ -439,8 +469,11 @@ fn handleMetaMessage(js_msg: *nats.JetStreamMessage, self: *Self) void {
     }
 
     // Parse subject to get index name
-    if (!std.mem.startsWith(u8, js_msg.msg.subject, META_SUBJECT_PREFIX)) return;
-    const parts_str = js_msg.msg.subject[META_SUBJECT_PREFIX.len..];
+    const meta_subject_prefix = try std.fmt.allocPrint(self.allocator, "{s}.m.", .{self.prefix});
+    defer self.allocator.free(meta_subject_prefix);
+
+    if (!std.mem.startsWith(u8, js_msg.msg.subject, meta_subject_prefix)) return;
+    const parts_str = js_msg.msg.subject[meta_subject_prefix.len..];
     var parts = std.mem.splitSequence(u8, parts_str, ".");
     const index_name = parts.next() orelse return;
     if (parts.next() != null) {
@@ -460,7 +493,7 @@ fn handleMetaMessage(js_msg: *nats.JetStreamMessage, self: *Self) void {
     };
 }
 
-fn handleUpdateMessage(js_msg: *nats.JetStreamMessage, self: *Self) void {
+fn handleUpdateMessage(js_msg: *nats.JetStreamMessage, self: *Self) !void {
     defer js_msg.deinit();
 
     if (self.stopping.load(.acquire)) {
@@ -468,9 +501,12 @@ fn handleUpdateMessage(js_msg: *nats.JetStreamMessage, self: *Self) void {
         return;
     }
 
-    // Parse subject: fpindex.u.{index}.{generation}
-    if (!std.mem.startsWith(u8, js_msg.msg.subject, UPDATES_SUBJECT_PREFIX)) return;
-    const parts_str = js_msg.msg.subject[UPDATES_SUBJECT_PREFIX.len..];
+    // Parse subject: {prefix}.u.{index}.{generation}
+    const updates_subject_prefix = try std.fmt.allocPrint(self.allocator, "{s}.u.", .{self.prefix});
+    defer self.allocator.free(updates_subject_prefix);
+
+    if (!std.mem.startsWith(u8, js_msg.msg.subject, updates_subject_prefix)) return;
+    const parts_str = js_msg.msg.subject[updates_subject_prefix.len..];
     var parts = std.mem.splitSequence(u8, parts_str, ".");
     const index_name = parts.next() orelse return;
     const generation_str = parts.next() orelse return;
@@ -660,7 +696,7 @@ pub fn update(
 
     try msgpack.encode(update_op, data.writer());
 
-    const update_subject = try std.fmt.allocPrint(self.allocator, UPDATES_SUBJECT_PREFIX ++ "{s}.{d}", .{ index_name, generation });
+    const update_subject = try std.fmt.allocPrint(self.allocator, "{s}.u.{s}.{d}", .{ self.prefix, index_name, generation });
     defer self.allocator.free(update_subject);
 
     var publish_opts = nats.PublishOptions{};
@@ -709,7 +745,7 @@ pub fn createIndex(
     }
 
     // Get the current last sequence from updates stream
-    const updates_stream_info = self.js.getStreamInfo(UPDATES_STREAM_NAME) catch |err| switch (err) {
+    const updates_stream_info = self.js.getStreamInfo(self.updates_stream_name) catch |err| switch (err) {
         error.StreamNotFound => blk: {
             // Updates stream doesn't exist yet, use seq 0
             break :blk null;
@@ -722,7 +758,7 @@ pub fn createIndex(
     } else 0;
 
     // Check current status
-    const subject = try std.fmt.allocPrint(self.allocator, META_SUBJECT_PREFIX ++ "{s}", .{index_name});
+    const subject = try std.fmt.allocPrint(self.allocator, "{s}.m.{s}", .{ self.prefix, index_name });
     defer self.allocator.free(subject);
 
     // Publish create operation
@@ -778,7 +814,7 @@ pub fn deleteIndex(self: *Self, index_name: []const u8, request: api.DeleteIndex
 
     try msgpack.encode(meta_op, data.writer());
 
-    const subject = try std.fmt.allocPrint(self.allocator, META_SUBJECT_PREFIX ++ "{s}", .{index_name});
+    const subject = try std.fmt.allocPrint(self.allocator, "{s}.m.{s}", .{ self.prefix, index_name });
     defer self.allocator.free(subject);
 
     const msg_id = try std.fmt.allocPrint(self.allocator, "delete-{s}-{d}", .{ index_name, generation });
