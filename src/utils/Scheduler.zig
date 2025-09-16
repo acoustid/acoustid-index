@@ -264,45 +264,34 @@ fn getTaskToRun(self: *Self) ?*Task {
     return null;
 }
 
-/// Calculate next run time for repeating tasks using fixed-delay scheduling
-/// (interval from now rather than from original deadline)
-fn nextRunAfterInterval(self: *Self, task: *Task) u64 {
-    const interval = task.interval_ns.?;
-    return self.timer.read() + interval;
-}
-
 fn markAsDone(self: *Self, task: *Task) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
 
-    const has_manual_reschedule = task.reschedule > 0;
-    const is_repeating = task.interval_ns != null;
+    task.running = false;
+    task.done.set();
 
+    // Auto-destroy one-shot tasks
     if (task.one_shot) {
-        // Auto-destroy one-shot tasks
-        task.running = false;
-        task.done.set(); // Signal completion before cleanup
         task.deinitFn(task.ctx, self.allocator);
         self.allocator.destroy(task);
         std.debug.assert(self.num_tasks > 0);
         self.num_tasks -= 1;
-    } else if (has_manual_reschedule or is_repeating) {
-        if (has_manual_reschedule) {
-            task.reschedule -= 1;
-        }
+        return;
+    }
 
-        if (is_repeating) {
-            // If no manual absolute time was set during execution, use interval
-            if (!has_manual_reschedule) {
-                task.next_run_time_ns = self.nextRunAfterInterval(task);
-            }
+    // Reschedule repeated tasks
+    if (task.interval_ns) |interval_ns| {
+        if (task.reschedule == 0) {
+            task.next_run_time_ns = self.timer.read() + interval_ns;
+            task.reschedule += 1;
         }
+    }
 
-        task.running = false;
+    // If the task was requested to be rescheduld (either internally or externally), enqueue is again
+    if (task.reschedule > 0) {
+        task.reschedule -= 1;
         self.enqueue(task);
-    } else {
-        task.running = false;
-        task.done.set();
     }
 }
 
@@ -497,7 +486,8 @@ test "Scheduler: runOnce auto-destroys task" {
     try scheduler.start(2);
     var waited_ns: u64 = 0;
     while (waited_ns < 500 * std.time.ns_per_ms and
-           (counter.count != 3 or scheduler.num_tasks != initial_tasks)) {
+        (counter.count != 3 or scheduler.num_tasks != initial_tasks))
+    {
         std.time.sleep(10 * std.time.ns_per_ms);
         waited_ns += 10 * std.time.ns_per_ms;
     }
