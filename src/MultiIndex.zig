@@ -101,7 +101,6 @@ pub const IndexRef = struct {
 const IndexRefHashMap = std.StringHashMapUnmanaged(*IndexRef);
 
 pub const LoadContext = struct {
-    // Context data
     generation: u64,
     snapshot_url: []const u8,
 
@@ -571,41 +570,75 @@ fn borrowIndex(index_ref: *IndexRef) *Index {
 
 pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool, options: IndexOptions) !*Index {
     self.lock.lock();
-    defer self.lock.unlock();
 
     if (self.indexes.get(name)) |index_ref| {
         // Check load state first
         switch (index_ref.load_state) {
-            .restoring => return error.IndexRestoring,
-            .failed => return error.IndexLoadFailed,
+            .restoring => {
+                self.lock.unlock();
+                return error.IndexRestoring;
+            },
+            .failed => {
+                if (options.restore_from != null) {
+                    // Allow retry of failed restore - fall through to restart logic
+                } else {
+                    self.lock.unlock();
+                    return error.IndexLoadFailed;
+                }
+            },
             .ready => {},
         }
 
         if (index_ref.index.has_value) {
             // Index exists and is active
             if (index_ref.being_deleted) {
+                self.lock.unlock();
                 return error.IndexBeingDeleted;
             }
             if (options.expect_does_not_exist) {
+                self.lock.unlock();
                 return error.IndexAlreadyExists;
             }
             // Validate expected generation if provided
             if (options.expect_generation) |expect_generation| {
                 if (index_ref.redirect.version != expect_generation) {
+                    self.lock.unlock();
                     return error.IndexGenerationMismatch;
                 }
             }
-            return borrowIndex(index_ref);
+            const borrowed = borrowIndex(index_ref);
+            self.lock.unlock();
+            return borrowed;
         }
         // Index is deleted (has_value == false) - fall through to handle recreation if create=true
     }
 
     if (!create) {
+        self.lock.unlock();
         return error.IndexNotFound;
     }
 
+    // Handle restore case
+    if (options.restore_from) |snapshot_url| {
+        // Get or determine the generation to use
+        const existing_ref = self.indexes.get(name);
+        const generation = if (options.generation) |gen| 
+            gen 
+        else if (existing_ref) |ref| 
+            ref.redirect.version + 1 
+        else 
+            1;
+
+        // Start restoration - unlock before calling startIndexRestore
+        self.lock.unlock();
+        try self.startIndexRestore(name, generation, snapshot_url);
+        return error.IndexRestoring;
+    }
+
     const index_ref = try self.createNewIndex(name, options.generation);
-    return borrowIndex(index_ref);
+    const borrowed = borrowIndex(index_ref);
+    self.lock.unlock();
+    return borrowed;
 }
 
 pub fn getIndex(self: *Self, name: []const u8) !*Index {
@@ -823,20 +856,16 @@ pub fn createIndexInternal(
         return error.InvalidIndexName;
     }
 
-    // If restore_from is provided, use restore path
-    if (options.restore_from) |snapshot_url| {
-        // Start restoration using existing restore logic
-        try self.startIndexRestore(index_name, options.generation orelse 1, snapshot_url);
-
-        // Return with ready=false to indicate async operation
-        return api.CreateIndexResponse{
-            .version = 0,
-            .ready = false,
-        };
-    }
-
-    // Normal create path (existing code)
-    const index = try self.getOrCreateIndex(index_name, true, options);
+    const index = self.getOrCreateIndex(index_name, true, options) catch |err| {
+        if (err == error.IndexRestoring) {
+            // Return with ready=false to indicate async operation
+            return api.CreateIndexResponse{
+                .version = 0,
+                .ready = false,
+            };
+        }
+        return err;
+    };
     defer self.releaseIndex(index);
 
     var index_reader = try index.acquireReader();
@@ -1082,9 +1111,6 @@ pub fn waitForIndexReady(
         const remaining_ns = @as(u64, @intCast(deadline - now)) * std.time.ns_per_ms;
         index_ref.load_state_changed.timedWait(&self.lock, remaining_ns) catch {};
         self.lock.unlock();
-
-        // Small sleep to avoid tight loop
-        std.Thread.sleep(10 * std.time.ns_per_ms);
     }
 }
 

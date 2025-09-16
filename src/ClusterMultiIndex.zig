@@ -678,7 +678,11 @@ pub fn createIndex(
     request: api.CreateIndexRequest,
 ) !api.CreateIndexResponse {
     _ = allocator;
-    _ = request; // Ignore restore_from in cluster mode for now
+    
+    // restore_from is not supported in cluster mode
+    if (request.restore_from != null) {
+        return error.RestoreNotSupported;
+    }
 
     if (!isValidIndexName(index_name)) {
         return error.InvalidIndexName;

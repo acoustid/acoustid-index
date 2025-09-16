@@ -251,7 +251,7 @@ fn handleNotFound(comptime T: type, _: *Context(T), req: *httpz.Request, res: *h
 
 fn handleError(comptime T: type, _: *Context(T), req: *httpz.Request, res: *httpz.Response, err: anyerror) void {
     switch (err) {
-        error.IndexNotReady => {
+        error.IndexNotReady, error.IndexRestoring, error.IndexLoadFailed => {
             writeErrorResponse(503, err, req, res) catch {
                 res.status = 503;
                 res.body = "not ready yet";
@@ -314,6 +314,39 @@ fn getRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !
     }
 
     unreachable;
+}
+
+const RequestBodyResult = enum { ok, error_handled, no_body };
+
+fn getOptionalRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response, result_ptr: *?T) !RequestBodyResult {
+    const content = req.body() orelse {
+        result_ptr.* = null;
+        return .no_body; // Empty body is OK
+    };
+
+    const content_type = parseContentTypeHeader(req) catch {
+        try writeErrorResponse(415, error.UnsupportedContentType, req, res);
+        return .error_handled;
+    };
+
+    switch (content_type) {
+        .json => {
+            result_ptr.* = json.parseFromSliceLeaky(T, req.arena, content, .{}) catch |err| {
+                log.warn("json error: {}", .{err});
+                try writeErrorResponse(400, err, req, res);
+                return .error_handled;
+            };
+        },
+        .msgpack => {
+            result_ptr.* = msgpack.decodeFromSliceLeaky(T, req.arena, content) catch |err| {
+                log.warn("msgpack error: {}", .{err});
+                try writeErrorResponse(400, err, req, res);
+                return .error_handled;
+            };
+        },
+    }
+
+    return .ok;
 }
 
 fn handleSearch(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
@@ -462,7 +495,9 @@ fn handlePutIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: 
     const index_name = try getIndexName(req, res, true) orelse return;
 
     // Try to parse body, default to empty request if none
-    const body = try getRequestBody(api.CreateIndexRequest, req, res);
+    var body: ?api.CreateIndexRequest = undefined;
+    const body_result = try getOptionalRequestBody(api.CreateIndexRequest, req, res, &body);
+    if (body_result == .error_handled) return;
 
     const request = body orelse api.CreateIndexRequest{};
 
