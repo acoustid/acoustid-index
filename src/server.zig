@@ -488,6 +488,14 @@ fn handlePutIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: 
             try writeErrorResponse(409, err, req, res);
             return;
         }
+        // Conflicts: index exists with incompatible expectations/generation
+        if (err == error.IndexAlreadyExists or
+            err == error.OlderIndexAlreadyExists or
+            err == error.NewerIndexAlreadyExists)
+        {
+            try writeErrorResponse(409, err, req, res);
+            return;
+        }
         return err;
     };
     comptime assert(@TypeOf(response) == api.CreateIndexResponse);
