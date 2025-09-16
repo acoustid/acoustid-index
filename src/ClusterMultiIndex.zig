@@ -675,8 +675,14 @@ pub fn createIndex(
     self: *Self,
     allocator: std.mem.Allocator,
     index_name: []const u8,
+    request: api.CreateIndexRequest,
 ) !api.CreateIndexResponse {
     _ = allocator;
+    
+    // restore_from is not supported in cluster mode
+    if (request.restore_from != null) {
+        return error.RestoreNotSupported;
+    }
 
     if (!isValidIndexName(index_name)) {
         return error.InvalidIndexName;
@@ -686,7 +692,7 @@ pub fn createIndex(
     const status = try self.getStatus(index_name);
     if (status.is_active) {
         const version = try self.getLastVersion(index_name, status.generation);
-        return api.CreateIndexResponse{ .version = version };
+        return api.CreateIndexResponse{ .version = version, .ready = true };
     }
 
     // Get the current last sequence from updates stream
@@ -727,7 +733,7 @@ pub fn createIndex(
     defer result.deinit();
 
     // New index has no updates yet; advertise version 0 so clients can gate with expected_last_sequence=0.
-    return api.CreateIndexResponse{ .version = 0 };
+    return api.CreateIndexResponse{ .version = 0, .ready = true };
 }
 
 pub fn deleteIndex(self: *Self, index_name: []const u8) !void {

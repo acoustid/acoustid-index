@@ -251,7 +251,7 @@ fn handleNotFound(comptime T: type, _: *Context(T), req: *httpz.Request, res: *h
 
 fn handleError(comptime T: type, _: *Context(T), req: *httpz.Request, res: *httpz.Response, err: anyerror) void {
     switch (err) {
-        error.IndexNotReady => {
+        error.IndexNotReady, error.IndexRestoring, error.IndexLoadFailed => {
             writeErrorResponse(503, err, req, res) catch {
                 res.status = 503;
                 res.body = "not ready yet";
@@ -314,6 +314,39 @@ fn getRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response) !
     }
 
     unreachable;
+}
+
+const RequestBodyResult = enum { ok, error_handled, no_body };
+
+fn getOptionalRequestBody(comptime T: type, req: *httpz.Request, res: *httpz.Response, result_ptr: *?T) !RequestBodyResult {
+    const content = req.body() orelse {
+        result_ptr.* = null;
+        return .no_body; // Empty body is OK
+    };
+
+    const content_type = parseContentTypeHeader(req) catch {
+        try writeErrorResponse(415, error.UnsupportedContentType, req, res);
+        return .error_handled;
+    };
+
+    switch (content_type) {
+        .json => {
+            result_ptr.* = json.parseFromSliceLeaky(T, req.arena, content, .{}) catch |err| {
+                log.warn("json error: {}", .{err});
+                try writeErrorResponse(400, err, req, res);
+                return .error_handled;
+            };
+        },
+        .msgpack => {
+            result_ptr.* = msgpack.decodeFromSliceLeaky(T, req.arena, content) catch |err| {
+                log.warn("msgpack error: {}", .{err});
+                try writeErrorResponse(400, err, req, res);
+                return .error_handled;
+            };
+        },
+    }
+
+    return .ok;
 }
 
 fn handleSearch(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
@@ -457,16 +490,18 @@ fn handleGetIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: 
 
 const EmptyResponse = struct {};
 
-const CreateIndexRequest = struct {
-    pub fn msgpackFormat() msgpack.StructFormat {
-        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
-    }
-};
 
 fn handlePutIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
     const index_name = try getIndexName(req, res, true) orelse return;
 
-    const response = ctx.indexes.createIndex(req.arena, index_name) catch |err| {
+    // Try to parse body, default to empty request if none
+    var body: ?api.CreateIndexRequest = undefined;
+    const body_result = try getOptionalRequestBody(api.CreateIndexRequest, req, res, &body);
+    if (body_result == .error_handled) return;
+
+    const request = body orelse api.CreateIndexRequest{};
+
+    const response = ctx.indexes.createIndex(req.arena, index_name, request) catch |err| {
         if (err == error.InvalidIndexName) {
             try writeErrorResponse(400, err, req, res);
             return;
@@ -475,9 +510,21 @@ fn handlePutIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: 
             try writeErrorResponse(409, err, req, res);
             return;
         }
+        if (err == error.IndexRestoring) {
+            // Index is already being restored
+            return writeResponse(api.CreateIndexResponse{
+                .version = 0,
+                .ready = false,
+            }, req, res);
+        }
         return err;
     };
     comptime assert(@TypeOf(response) == api.CreateIndexResponse);
+
+    // Set status based on ready state
+    if (!response.ready) {
+        res.status = 202; // Accepted - async operation started
+    }
 
     return writeResponse(response, req, res);
 }

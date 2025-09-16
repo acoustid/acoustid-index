@@ -11,6 +11,7 @@ const metrics = @import("metrics.zig");
 const index_redirect = @import("index_redirect.zig");
 const IndexRedirect = index_redirect.IndexRedirect;
 const snapshot = @import("snapshot.zig");
+const filefmt = @import("filefmt.zig");
 
 const Self = @This();
 
@@ -31,6 +32,7 @@ pub const IndexOptions = struct {
     expect_generation: ?u64 = null,
     expect_does_not_exist: bool = false,
     version: ?u64 = null,
+    restore_from: ?[]const u8 = null,
 };
 
 const OptionalIndex = struct {
@@ -59,7 +61,17 @@ pub const IndexRef = struct {
     references: usize = 1,
     delete_files: bool = false,
     being_deleted: bool = false,
+    load_state: LoadState = .ready,
+    load_context: ?LoadContext = null,
+    load_error: ?anyerror = null,
     reference_released: std.Thread.Condition = .{},
+    load_state_changed: std.Thread.Condition = .{},
+
+    pub const LoadState = enum {
+        ready,
+        restoring,
+        failed,
+    };
 
     pub fn incRef(self: *IndexRef) void {
         self.references += 1;
@@ -73,11 +85,29 @@ pub const IndexRef = struct {
 
     pub fn deinit(self: *IndexRef) void {
         self.index.clear();
+        if (self.load_context) |_| {
+            // Note: load_context should be null by the time we reach deinit
+            // but this is a safety fallback
+            std.debug.panic("IndexRef.deinit called with active load_context - this is a bug", .{});
+        }
         self.index_dir.close();
+    }
+
+    pub fn isReady(self: *IndexRef) bool {
+        return self.load_state == .ready and self.index.has_value;
     }
 };
 
 const IndexRefHashMap = std.StringHashMapUnmanaged(*IndexRef);
+
+pub const LoadContext = struct {
+    generation: u64,
+    snapshot_url: []const u8,
+
+    pub fn deinit(self: *LoadContext, allocator: std.mem.Allocator) void {
+        allocator.free(self.snapshot_url);
+    }
+};
 
 lock: std.Thread.Mutex = .{},
 lock_file: ?std.fs.File = null,
@@ -310,8 +340,9 @@ pub fn deinit(self: *Self) void {
 
     var iter = self.indexes.iterator();
     while (iter.next()) |entry| {
-        entry.value_ptr.*.deinit();
-        self.allocator.destroy(entry.value_ptr.*);
+        const ref = entry.value_ptr.*;
+        ref.deinit();
+        self.allocator.destroy(ref);
         self.allocator.free(entry.key_ptr.*);
     }
     self.indexes.deinit(self.allocator);
@@ -445,6 +476,61 @@ pub fn deinit(self: *Self) void {
 //     };
 // }
 
+fn restoreIndexTask(self: *Self, index_ref: *IndexRef) void {
+    // Do the actual streaming restore
+    streamRestoreFromUrl(self, index_ref) catch |err| {
+        log.err("restore failed for index: {}", .{err});
+
+        // Set failure state, clean up context, and notify waiters
+        self.lock.lock();
+        if (index_ref.load_context) |*ctx| {
+            ctx.deinit(self.allocator);
+        }
+        index_ref.load_context = null;
+        index_ref.load_error = err;
+        index_ref.load_state = .failed;
+        index_ref.load_state_changed.broadcast();
+        self.lock.unlock();
+        return;
+    };
+
+    // Success - clean up load context
+    self.lock.lock();
+    if (index_ref.load_context) |*ctx| {
+        ctx.deinit(self.allocator);
+    }
+    index_ref.load_context = null;
+    index_ref.load_error = null;
+    index_ref.load_state = .ready;
+    index_ref.load_state_changed.broadcast();
+    self.lock.unlock();
+
+    log.info("successfully restored index", .{});
+}
+
+fn streamRestoreFromUrl(self: *Self, index_ref: *IndexRef) !void {
+    const ctx = &index_ref.load_context.?;
+
+    // Get data directory path for the index
+    const data_path = try index_ref.redirect.getDataDir(self.allocator);
+    defer self.allocator.free(data_path);
+
+    // Use the existing downloadAndExtractSnapshot function
+    // It will download, extract, and return a ready-to-use Index
+    const restored_index = try snapshot.downloadAndExtractSnapshot(
+        ctx.snapshot_url,
+        self.allocator,
+        self.scheduler,
+        index_ref.index_dir, // Use our existing index directory
+        data_path,           // Extract to the data subdirectory
+        self.index_options
+    );
+
+    // Store the restored index in our IndexRef
+    index_ref.index.value = restored_index;
+    index_ref.index.has_value = true;
+}
+
 fn deleteIndexFiles(self: *Self, name: []const u8) !void {
     const tmp_name = try std.mem.concat(self.allocator, u8, &[_][]const u8{ name, ".delete" });
     defer self.allocator.free(tmp_name);
@@ -484,34 +570,75 @@ fn borrowIndex(index_ref: *IndexRef) *Index {
 
 pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool, options: IndexOptions) !*Index {
     self.lock.lock();
-    defer self.lock.unlock();
 
     if (self.indexes.get(name)) |index_ref| {
+        // Check load state first
+        switch (index_ref.load_state) {
+            .restoring => {
+                self.lock.unlock();
+                return error.IndexRestoring;
+            },
+            .failed => {
+                if (options.restore_from != null) {
+                    // Allow retry of failed restore - fall through to restart logic
+                } else {
+                    self.lock.unlock();
+                    return error.IndexLoadFailed;
+                }
+            },
+            .ready => {},
+        }
+
         if (index_ref.index.has_value) {
             // Index exists and is active
             if (index_ref.being_deleted) {
+                self.lock.unlock();
                 return error.IndexBeingDeleted;
             }
             if (options.expect_does_not_exist) {
+                self.lock.unlock();
                 return error.IndexAlreadyExists;
             }
             // Validate expected generation if provided
             if (options.expect_generation) |expect_generation| {
                 if (index_ref.redirect.version != expect_generation) {
+                    self.lock.unlock();
                     return error.IndexGenerationMismatch;
                 }
             }
-            return borrowIndex(index_ref);
+            const borrowed = borrowIndex(index_ref);
+            self.lock.unlock();
+            return borrowed;
         }
         // Index is deleted (has_value == false) - fall through to handle recreation if create=true
     }
 
     if (!create) {
+        self.lock.unlock();
         return error.IndexNotFound;
     }
 
+    // Handle restore case
+    if (options.restore_from) |snapshot_url| {
+        // Get or determine the generation to use
+        const existing_ref = self.indexes.get(name);
+        const generation = if (options.generation) |gen| 
+            gen 
+        else if (existing_ref) |ref| 
+            ref.redirect.version + 1 
+        else 
+            1;
+
+        // Start restoration - unlock before calling startIndexRestore
+        self.lock.unlock();
+        try self.startIndexRestore(name, generation, snapshot_url);
+        return error.IndexRestoring;
+    }
+
     const index_ref = try self.createNewIndex(name, options.generation);
-    return borrowIndex(index_ref);
+    const borrowed = borrowIndex(index_ref);
+    self.lock.unlock();
+    return borrowed;
 }
 
 pub fn getIndex(self: *Self, name: []const u8) !*Index {
@@ -729,7 +856,16 @@ pub fn createIndexInternal(
         return error.InvalidIndexName;
     }
 
-    const index = try self.getOrCreateIndex(index_name, true, options);
+    const index = self.getOrCreateIndex(index_name, true, options) catch |err| {
+        if (err == error.IndexRestoring) {
+            // Return with ready=false to indicate async operation
+            return api.CreateIndexResponse{
+                .version = 0,
+                .ready = false,
+            };
+        }
+        return err;
+    };
     defer self.releaseIndex(index);
 
     var index_reader = try index.acquireReader();
@@ -737,6 +873,7 @@ pub fn createIndexInternal(
 
     return api.CreateIndexResponse{
         .version = index_reader.getVersion(),
+        .ready = true,
     };
 }
 
@@ -744,9 +881,16 @@ pub fn createIndex(
     self: *Self,
     allocator: std.mem.Allocator,
     index_name: []const u8,
+    request: api.CreateIndexRequest,
 ) !api.CreateIndexResponse {
     _ = allocator; // Keep parameter for API compatibility but don't use it
-    return self.createIndexInternal(index_name, .{});
+
+    // Convert request to IndexOptions
+    const options = IndexOptions{
+        .restore_from = request.restore_from,
+    };
+
+    return self.createIndexInternal(index_name, options);
 }
 
 pub fn getFingerprintInfo(
@@ -857,6 +1001,119 @@ pub fn exportSnapshot(
     try snapshot.buildSnapshot(writer, index, allocator);
 }
 
+fn startIndexRestore(
+    self: *Self,
+    index_name: []const u8,
+    generation: u64,
+    snapshot_url: []const u8,
+) !void {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
+
+    self.lock.lock();
+    defer self.lock.unlock();
+
+    // Get or create the IndexRef entry
+    const entry = try self.indexes.getOrPut(self.allocator, index_name);
+
+    if (!entry.found_existing) {
+        // Allocate new entry
+        entry.key_ptr.* = try self.allocator.dupe(u8, index_name);
+        errdefer self.allocator.free(entry.key_ptr.*);
+
+        const ref = try self.allocator.create(IndexRef);
+        errdefer self.allocator.destroy(ref);
+
+        ref.* = .{
+            .index_dir = try self.dir.makeOpenPath(index_name, .{ .iterate = true }),
+            .redirect = IndexRedirect.init(index_name, generation),
+        };
+        entry.value_ptr.* = ref;
+    }
+
+    const ref = entry.value_ptr.*;
+
+    // Check current state
+    switch (ref.load_state) {
+        .restoring => return error.AlreadyRestoring,
+        .ready => {
+            if (ref.index.has_value and !ref.redirect.deleted) {
+                return error.IndexAlreadyExists;
+            }
+        },
+        .failed => {
+            // Can retry after failure - clean up old context
+            if (ref.load_context) |*ctx| {
+                ctx.deinit(self.allocator);
+            }
+            ref.load_context = null;
+            ref.load_error = null;
+        },
+    }
+
+    // Create load context (stack allocated)
+    const snapshot_url_copy = try self.allocator.dupe(u8, snapshot_url);
+    errdefer self.allocator.free(snapshot_url_copy);
+
+    // Update state
+    ref.load_context = LoadContext{
+        .generation = generation,
+        .snapshot_url = snapshot_url_copy,
+    };
+    ref.load_state = .restoring;
+    ref.redirect.version = generation;
+    ref.redirect.deleted = false;
+
+    // Schedule restore task (fire-and-forget)
+    try self.scheduler.runOnce(restoreIndexTask, .{ self, ref });
+}
+
+pub fn waitForIndexReady(
+    self: *Self,
+    index_name: []const u8,
+    timeout_ms: u64,
+) !*Index {
+    if (!isValidName(index_name)) {
+        return error.InvalidIndexName;
+    }
+
+    const deadline = std.time.milliTimestamp() + @as(i64, @intCast(timeout_ms));
+
+    while (true) {
+        self.lock.lock();
+
+        const index_ref = self.indexes.get(index_name) orelse {
+            self.lock.unlock();
+            return error.IndexNotFound;
+        };
+
+        if (index_ref.isReady()) {
+            // Index is ready, borrow and return
+            const index = borrowIndex(index_ref);
+            self.lock.unlock();
+            return index;
+        }
+
+        if (index_ref.load_state == .failed) {
+            const load_err = index_ref.load_error;
+            self.lock.unlock();
+            return load_err orelse error.LoadFailed;
+        }
+
+        // Still restoring - wait with timeout
+        const now = std.time.milliTimestamp();
+        if (now >= deadline) {
+            self.lock.unlock();
+            return error.Timeout;
+        }
+
+        const remaining_ns = @as(u64, @intCast(deadline - now)) * std.time.ns_per_ms;
+        index_ref.load_state_changed.timedWait(&self.lock, remaining_ns) catch {};
+        self.lock.unlock();
+    }
+}
+
 const TestContext = struct {
     tmp_dir: std.testing.TmpDir = undefined,
     scheduler: Scheduler = undefined,
@@ -888,7 +1145,7 @@ test "createIndex" {
     try ctx.setup();
     defer ctx.teardown();
 
-    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo", .{});
     try std.testing.expectEqual(0, info.version);
     try ctx.indexes.checkIndexExists("foo");
 }
@@ -898,11 +1155,11 @@ test "createIndex twice" {
     try ctx.setup();
     defer ctx.teardown();
 
-    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo", .{});
     try std.testing.expectEqual(0, info.version);
     try ctx.indexes.checkIndexExists("foo");
 
-    const info2 = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    const info2 = try ctx.indexes.createIndex(std.testing.allocator, "foo", .{});
     try std.testing.expectEqual(0, info2.version);
     try ctx.indexes.checkIndexExists("foo");
 }
@@ -912,7 +1169,7 @@ test "deleteIndex" {
     try ctx.setup();
     defer ctx.teardown();
 
-    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo", .{});
     try std.testing.expectEqual(0, info.version);
     try ctx.indexes.checkIndexExists("foo");
 
@@ -925,7 +1182,7 @@ test "deleteIndex twice" {
     try ctx.setup();
     defer ctx.teardown();
 
-    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo", .{});
     try std.testing.expectEqual(0, info.version);
     try ctx.indexes.checkIndexExists("foo");
 
@@ -943,7 +1200,7 @@ test "update" {
 
     const Change = @import("change.zig").Change;
 
-    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo", .{});
     try std.testing.expectEqual(0, info.version);
 
     var changes = [_]Change{
@@ -961,7 +1218,7 @@ test "update with custom version" {
 
     const Change = @import("change.zig").Change;
 
-    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo");
+    const info = try ctx.indexes.createIndex(std.testing.allocator, "foo", .{});
     try std.testing.expectEqual(0, info.version);
 
     var changes = [_]Change{
@@ -979,4 +1236,42 @@ test "update with custom version" {
     // Test that monotonicity is enforced
     const result_error = ctx.indexes.updateInternal(std.testing.allocator, "foo", .{ .changes = &changes }, .{ .version = 150 });
     try std.testing.expectError(error.VersionNotMonotonic, result_error);
+}
+
+test "createIndex with restore_from" {
+    var ctx: TestContext = .{};
+    try ctx.setup();
+    defer ctx.teardown();
+
+    // Test restore with invalid URL (should fail quickly)
+    const response1 = try ctx.indexes.createIndex(std.testing.allocator, "test_restore", .{
+        .restore_from = "http://invalid.test/snapshot.tar",
+    });
+    try std.testing.expectEqual(false, response1.ready);
+
+    // Index should be in restoring state
+    const result = ctx.indexes.getIndex("test_restore");
+    try std.testing.expectError(error.IndexRestoring, result);
+
+    // Wait for it to fail (with short timeout)
+    const wait_result = ctx.indexes.waitForIndexReady("test_restore", 1000);
+    try std.testing.expectError(error.UnknownHostName, wait_result);
+
+    // After failure, should be in failed state
+    const result2 = ctx.indexes.getIndex("test_restore");
+    try std.testing.expectError(error.IndexLoadFailed, result2);
+
+    // Should be able to retry restore after failure
+    const response2 = try ctx.indexes.createIndex(std.testing.allocator, "test_restore", .{
+        .restore_from = "http://another.invalid.test/snapshot.tar",
+    });
+    try std.testing.expectEqual(false, response2.ready);
+
+    // Should be restoring again
+    const result3 = ctx.indexes.getIndex("test_restore");
+    try std.testing.expectError(error.IndexRestoring, result3);
+
+    // Wait for second restore to fail before teardown
+    const wait_result2 = ctx.indexes.waitForIndexReady("test_restore", 1000);
+    try std.testing.expectError(error.UnknownHostName, wait_result2);
 }

@@ -75,8 +75,17 @@ pub const GetIndexInfoResponse = struct {
     }
 };
 
+pub const CreateIndexRequest = struct {
+    restore_from: ?[]const u8 = null,  // Optional URL to restore from
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
 pub const CreateIndexResponse = struct {
     version: u64,
+    ready: bool = true,  // false when restoring, true when ready
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
