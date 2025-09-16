@@ -482,6 +482,12 @@ fn borrowIndex(index_ref: *IndexRef) *Index {
     return &index_ref.index.value;
 }
 
+fn getIndexRef(index: *Index) *IndexRef {
+    const optional_index: *OptionalIndex = @fieldParentPtr("value", index);
+    const index_ref: *IndexRef = @fieldParentPtr("index", optional_index);
+    return index_ref;
+}
+
 pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool, options: IndexOptions) !*Index {
     self.lock.lock();
     defer self.lock.unlock();
@@ -492,13 +498,24 @@ pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool, options: In
             if (index_ref.being_deleted) {
                 return error.IndexBeingDeleted;
             }
-            if (options.expect_does_not_exist) {
-                return error.IndexAlreadyExists;
-            }
             // Validate expected generation if provided
             if (options.expect_generation) |expect_generation| {
                 if (index_ref.redirect.version != expect_generation) {
                     return error.IndexGenerationMismatch;
+                }
+            }
+            // Create-specific validations
+            if (create) {
+                if (options.expect_does_not_exist) {
+                    return error.IndexAlreadyExists;
+                }
+                // If generation is specified for create, index must have that exact generation
+                if (options.generation) |expected_generation| {
+                    if (index_ref.redirect.version < expected_generation) {
+                        return error.OlderIndexAlreadyExists;
+                    } else if (index_ref.redirect.version > expected_generation) {
+                        return error.NewerIndexAlreadyExists;
+                    }
                 }
             }
             return borrowIndex(index_ref);
@@ -741,9 +758,12 @@ pub fn createIndex(
     var index_reader = try index.acquireReader();
     defer index.releaseReader(&index_reader);
 
+    const index_ref = getIndexRef(index);
+
     return api.CreateIndexResponse{
         .version = index_reader.getVersion(),
         .ready = true,
+        .generation = index_ref.redirect.version,
     };
 }
 
@@ -889,17 +909,8 @@ test "createIndex" {
     const info = try ctx.indexes.createIndex("foo", .{});
     try std.testing.expectEqual(0, info.version);
     try ctx.indexes.checkIndexExists("foo");
-}
 
-test "createIndex twice" {
-    var ctx: TestContext = .{};
-    try ctx.setup();
-    defer ctx.teardown();
-
-    const info = try ctx.indexes.createIndex("foo", .{});
-    try std.testing.expectEqual(0, info.version);
-    try ctx.indexes.checkIndexExists("foo");
-
+    // Test idempotency - creating again should succeed
     const info2 = try ctx.indexes.createIndex("foo", .{});
     try std.testing.expectEqual(0, info2.version);
     try ctx.indexes.checkIndexExists("foo");
@@ -977,4 +988,48 @@ test "update with custom version" {
     // Test that monotonicity is enforced
     const result_error = ctx.indexes.updateInternal(std.testing.allocator, "foo", .{ .changes = &changes }, .{ .version = 150 });
     try std.testing.expectError(error.VersionNotMonotonic, result_error);
+}
+
+test "createIndex with custom generation" {
+    var ctx: TestContext = .{};
+    try ctx.setup();
+    defer ctx.teardown();
+
+    // Create index with custom generation
+    const info = try ctx.indexes.createIndex("foo", .{ .generation = 100 });
+    try std.testing.expectEqual(0, info.version);
+    try std.testing.expectEqual(100, info.generation);
+    try std.testing.expectEqual(true, info.ready);
+
+    // Try to create with same generation - should succeed
+    const info2 = try ctx.indexes.createIndex("foo", .{ .generation = 100 });
+    try std.testing.expectEqual(0, info2.version);
+    try std.testing.expectEqual(100, info2.generation);
+
+    // Try to create with older generation - should fail (existing is newer)
+    const result_older = ctx.indexes.createIndex("foo", .{ .generation = 50 });
+    try std.testing.expectError(error.NewerIndexAlreadyExists, result_older);
+
+    // Try to create with newer generation - should fail (existing is older)
+    const result_newer = ctx.indexes.createIndex("foo", .{ .generation = 150 });
+    try std.testing.expectError(error.OlderIndexAlreadyExists, result_newer);
+}
+
+test "createIndex with expect_does_not_exist" {
+    var ctx: TestContext = .{};
+    try ctx.setup();
+    defer ctx.teardown();
+
+    // Create index with expect_does_not_exist=true - should succeed
+    const info = try ctx.indexes.createIndex("foo", .{ .expect_does_not_exist = true });
+    try std.testing.expectEqual(0, info.version);
+    try std.testing.expectEqual(true, info.ready);
+
+    // Try to create again with expect_does_not_exist=true - should fail
+    const result = ctx.indexes.createIndex("foo", .{ .expect_does_not_exist = true });
+    try std.testing.expectError(error.IndexAlreadyExists, result);
+
+    // Normal create should still work (idempotent)
+    const info2 = try ctx.indexes.createIndex("foo", .{});
+    try std.testing.expectEqual(0, info2.version);
 }
