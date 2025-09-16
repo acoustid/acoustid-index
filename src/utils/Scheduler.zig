@@ -11,6 +11,7 @@ pub const Task = struct {
     deinitFn: *const fn (ctx: *anyopaque, allocator: std.mem.Allocator) void,
     interval_ns: ?u64 = null,
     next_run_time_ns: u64,
+    one_shot: bool = false,
 };
 
 const TaskQueue = std.PriorityQueue(*Task, void, compareTasksByDeadline);
@@ -20,11 +21,11 @@ fn compareTasksByDeadline(context: void, a: *Task, b: *Task) std.math.Order {
     // Both tasks should have next_run_time_ns set (immediate tasks get current time)
     const a_time = a.next_run_time_ns;
     const b_time = b.next_run_time_ns;
-    
+
     // Primary ordering by timestamp
     const time_order = std.math.order(a_time, b_time);
     if (time_order != .eq) return time_order;
-    
+
     // Secondary ordering by pointer address for absolute order
     return std.math.order(@intFromPtr(a), @intFromPtr(b));
 }
@@ -108,6 +109,11 @@ pub fn createRepeatingTask(self: *Self, interval_ms: u32, comptime func: anytype
     return task;
 }
 
+pub fn runOnce(self: *Self, comptime func: anytype, args: anytype) !void {
+    const task = try self.createTask(func, args);
+    task.one_shot = true;
+    self.scheduleTask(task);
+}
 
 fn removeFromQueue(self: *Self, task: *Task) void {
     if (std.mem.indexOfScalar(*Task, self.queue.items, task)) |index| {
@@ -151,7 +157,6 @@ pub fn scheduleTask(self: *Self, task: *Task) void {
     }
 }
 
-
 pub fn scheduleTaskAfter(self: *Self, task: *Task, delay_ms: u32) void {
     self.queue_mutex.lock();
     defer self.queue_mutex.unlock();
@@ -180,12 +185,12 @@ pub fn cancelRepeatingTask(self: *Self, task: *Task) void {
     defer self.queue_mutex.unlock();
 
     task.interval_ns = null;
-    
+
     // If queued and not running, unschedule immediately
     if (task.scheduled and !task.running) {
         self.removeFromQueue(task);
     }
-    
+
     // Clear any pending reschedules and complete if nothing pending
     task.reschedule = 0;
     if (!task.running) {
@@ -199,12 +204,12 @@ fn getNextDeadline(self: *Self) ?u64 {
 
 fn enqueue(self: *Self, task: *Task) void {
     task.scheduled = true;
-    
+
     // Treat immediate tasks as "scheduled now"
     if (task.next_run_time_ns == 0) {
         task.next_run_time_ns = self.timer.read();
     }
-    
+
     self.queue.add(task) catch |err| {
         log.err("failed to add task to queue: {}", .{err});
         // Fallback: mark as not scheduled and signal done
@@ -212,10 +217,9 @@ fn enqueue(self: *Self, task: *Task) void {
         task.done.set();
         return;
     };
-    
+
     self.queue_not_empty.signal();
 }
-
 
 fn getTaskToRun(self: *Self) ?*Task {
     self.queue_mutex.lock();
@@ -223,7 +227,7 @@ fn getTaskToRun(self: *Self) ?*Task {
 
     while (!self.stopping) {
         const current_time_ns = self.timer.read();
-        
+
         // O(1) peek at next task + O(log n) removal if ready
         if (self.queue.peek()) |task| {
             const task_time_ns = task.next_run_time_ns;
@@ -232,17 +236,17 @@ fn getTaskToRun(self: *Self) ?*Task {
                 removed_task.scheduled = false;
                 removed_task.running = true;
                 removed_task.done.reset();
-                
+
                 return removed_task;
             }
         }
-        
+
         // Calculate timeout using next deadline (O(1) peek)
         const timeout_ns: u64 = if (self.getNextDeadline()) |deadline| blk: {
             // If deadline has passed, use 0 timeout; otherwise use remaining time
             break :blk if (current_time_ns >= deadline) 0 else deadline - current_time_ns;
         } else std.time.ns_per_min;
-            
+
         self.queue_not_empty.timedWait(&self.queue_mutex, timeout_ns) catch {};
     }
     return null;
@@ -254,12 +258,19 @@ fn markAsDone(self: *Self, task: *Task) void {
 
     const has_manual_reschedule = task.reschedule > 0;
     const is_repeating = task.interval_ns != null;
-    
-    if (has_manual_reschedule or is_repeating) {
+
+    if (task.one_shot) {
+        // Auto-destroy one-shot tasks
+        task.running = false;
+        task.deinitFn(task.ctx, self.allocator);
+        self.allocator.destroy(task);
+        std.debug.assert(self.num_tasks > 0);
+        self.num_tasks -= 1;
+    } else if (has_manual_reschedule or is_repeating) {
         if (has_manual_reschedule) {
             task.reschedule -= 1;
         }
-        
+
         if (is_repeating) {
             // If no manual absolute time was set during execution, use interval
             if (!has_manual_reschedule) {
@@ -268,7 +279,7 @@ fn markAsDone(self: *Self, task: *Task) void {
                 task.next_run_time_ns = current_time_ns + interval;
             }
         }
-        
+
         task.running = false;
         self.enqueue(task);
     } else {
@@ -426,7 +437,7 @@ test "Scheduler: multiple repeating tasks with different intervals" {
 
     const fast_task = try scheduler.createRepeatingTask(50, Counter.incrFast, .{&counter});
     defer scheduler.destroyTask(fast_task);
-    
+
     const slow_task = try scheduler.createRepeatingTask(150, Counter.incrSlow, .{&counter});
     defer scheduler.destroyTask(slow_task);
 
@@ -442,4 +453,34 @@ test "Scheduler: multiple repeating tasks with different intervals" {
     try std.testing.expect(counter.fast_count >= 6);
     try std.testing.expect(counter.slow_count >= 2);
     try std.testing.expect(counter.fast_count > counter.slow_count);
+}
+
+test "Scheduler: runOnce auto-destroys task" {
+    var scheduler = Self.init(std.testing.allocator);
+    defer scheduler.deinit();
+
+    const Counter = struct {
+        count: usize = 0,
+
+        fn incr(self: *@This()) void {
+            self.count += 1;
+        }
+    };
+    var counter: Counter = .{};
+
+    const initial_tasks = scheduler.num_tasks;
+
+    // Schedule multiple one-shot tasks
+    try scheduler.runOnce(Counter.incr, .{&counter});
+    try scheduler.runOnce(Counter.incr, .{&counter});
+    try scheduler.runOnce(Counter.incr, .{&counter});
+
+    // Start scheduler and wait for completion
+    try scheduler.start(2);
+    std.time.sleep(100 * std.time.ns_per_ms);
+    scheduler.stop();
+
+    // Verify all tasks executed and were auto-destroyed
+    try std.testing.expect(counter.count == 3);
+    try std.testing.expect(scheduler.num_tasks == initial_tasks);
 }
