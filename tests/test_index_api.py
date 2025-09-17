@@ -105,11 +105,19 @@ def test_delete_index(client, index_name, create_index, fmt):
 
     req = client.delete(f"/{index_name}", headers=headers(fmt))
     assert req.status_code == 200, req.content
-    assert decode(fmt, req.content) == {}
+    if fmt == "json":
+        expected = {"deleted": True}
+    else:
+        expected = {"d": True}
+    assert decode(fmt, req.content) == expected
 
     req = client.delete(f"/{index_name}", headers=headers(fmt))
     assert req.status_code == 200, req.content
-    assert decode(fmt, req.content) == {}
+    if fmt == "json":
+        expected = {"deleted": False}
+    else:
+        expected = {"d": False}
+    assert decode(fmt, req.content) == expected
 
     req = client.head(f"/{index_name}")
     assert req.status_code == 404, req.content

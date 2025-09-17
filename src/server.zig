@@ -488,6 +488,14 @@ fn handlePutIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: 
             try writeErrorResponse(409, err, req, res);
             return;
         }
+        // Conflicts: index exists with incompatible expectations/generation
+        if (err == error.IndexAlreadyExists or
+            err == error.OlderIndexAlreadyExists or
+            err == error.NewerIndexAlreadyExists)
+        {
+            try writeErrorResponse(409, err, req, res);
+            return;
+        }
         return err;
     };
     comptime assert(@TypeOf(response) == api.CreateIndexResponse);
@@ -504,7 +512,7 @@ fn handleDeleteIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, re
     const index_name = try getIndexName(req, res, true) orelse return;
     const body = try getRequestBody(api.DeleteIndexRequest, req, res, .{ .allow_empty = true }) orelse return;
 
-    ctx.indexes.deleteIndex(index_name, body) catch |err| {
+    const delete_result = ctx.indexes.deleteIndex(index_name, body) catch |err| {
         if (err == error.InvalidIndexName) {
             try writeErrorResponse(400, err, req, res);
             return;
@@ -520,7 +528,7 @@ fn handleDeleteIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, re
         return err;
     };
 
-    return writeResponse(EmptyResponse{}, req, res);
+    return writeResponse(delete_result, req, res);
 }
 
 fn handleHeadIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: *httpz.Response) !void {
