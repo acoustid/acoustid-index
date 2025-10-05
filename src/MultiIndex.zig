@@ -898,6 +898,17 @@ pub fn createIndex(
         self.lock.lock();
         defer self.lock.unlock();
 
+        // Check if index already exists and is live
+        if (self.indexes.get(index_name)) |existing_ref| {
+            if (existing_ref.index.has_value) {
+                // Index exists and is live - cannot restore over it
+                if (existing_ref.being_restored) {
+                    return error.IndexBeingRestored;
+                }
+                return error.IndexAlreadyExists;
+            }
+        }
+
         const index_ref = try self.createNewIndex(index_name, request.generation, request.restore_from);
         return api.CreateIndexResponse{
             .version = 0,
