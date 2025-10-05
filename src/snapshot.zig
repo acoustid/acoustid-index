@@ -7,21 +7,13 @@ const index_manifest = @import("index_manifest.zig");
 const SegmentInfo = @import("segment.zig").SegmentInfo;
 const Scheduler = @import("utils/Scheduler.zig");
 
-/// Restores an index from a tar snapshot, creating a new index
+/// Restores an index from a tar snapshot into an already initialized Index
 pub fn restoreSnapshot(
     reader: anytype,
+    index: *Index,
     allocator: std.mem.Allocator,
-    scheduler: *Scheduler,
-    parent_dir: std.fs.Dir,
-    path: []const u8,
-    options: Index.Options,
-) !Index {
-    // Create index directory
-    var extract_dir = try parent_dir.makeOpenPath(path, .{ .iterate = true });
-    errdefer parent_dir.deleteTree(path) catch |err| {
-        std.log.err("failed to clean up directory {s}: {}", .{ path, err });
-    };
-    defer extract_dir.close();
+) !void {
+    _ = allocator;
 
     // Extract tar contents using iterator for pattern matching
     var file_name_buffer: [256]u8 = undefined;
@@ -38,35 +30,26 @@ pub fn restoreSnapshot(
 
         // Check if it's a manifest file
         if (filefmt.isManifestFileName(entry.name)) {
-            try extractTarEntry(entry, extract_dir);
+            try extractTarEntry(entry, index.dir);
         } else if (filefmt.isSegmentFileName(entry.name)) {
             // It's a valid segment file
-            try extractTarEntry(entry, extract_dir);
+            try extractTarEntry(entry, index.dir);
         } else {
             // Log and skip unknown files
             std.log.warn("skipping unknown file in snapshot: {s}", .{entry.name});
         }
     }
 
-    // Create and initialize the index
-    var index = try Index.init(allocator, scheduler, parent_dir, path, path, options);
-    errdefer index.deinit(); // Clean up index if open fails
-
     // Open the index to load from extracted files
     try index.open(false);
-
-    return index;
 }
 
-/// Downloads and extracts an index from a tar snapshot URL, creating a new index
-pub fn downloadAndExtractSnapshot(
+/// Downloads and restores an index from a tar snapshot URL into an already initialized Index
+pub fn downloadAndRestoreSnapshot(
     url: []const u8,
+    index: *Index,
     allocator: std.mem.Allocator,
-    scheduler: *Scheduler,
-    parent_dir: std.fs.Dir,
-    path: []const u8,
-    options: Index.Options,
-) !Index {
+) !void {
     std.log.info("downloading snapshot from {s}", .{url});
 
     // Parse the URL
@@ -121,7 +104,7 @@ pub fn downloadAndExtractSnapshot(
 
     // Stream the response directly to restoreSnapshot
     const reader = req.reader();
-    return restoreSnapshot(reader, allocator, scheduler, parent_dir, path, options);
+    return restoreSnapshot(reader, index, allocator);
 }
 
 fn extractTarEntry(entry: anytype, extract_dir: std.fs.Dir) !void {
@@ -255,11 +238,13 @@ test "index snapshot" {
 
     // Restore the snapshot using restoreSnapshot()
 
-    var tar_file_reader = std.io.fixedBufferStream(buffer.items);
-    var index2 = try restoreSnapshot(tar_file_reader.reader(), std.testing.allocator, &scheduler, tmp_dir.dir, "extract", .{
+    var index2 = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "extract", "extract", .{
         .min_segment_size = 1,
     });
     defer index2.deinit();
+
+    var tar_file_reader = std.io.fixedBufferStream(buffer.items);
+    try restoreSnapshot(tar_file_reader.reader(), &index2, std.testing.allocator);
 
     var index_reader2 = try index2.acquireReader();
     defer index2.releaseReader(&index_reader2);
@@ -278,11 +263,14 @@ test "restore snapshot with corrupt tar" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "test_corrupt", "test_corrupt", .{});
+    defer index.deinit();
+
     // Try to restore from corrupt data
     const corrupt_data = "not a tar file";
     var reader = std.io.fixedBufferStream(corrupt_data);
 
-    const result = restoreSnapshot(reader.reader(), std.testing.allocator, &scheduler, tmp_dir.dir, "test_corrupt", .{});
+    const result = restoreSnapshot(reader.reader(), &index, std.testing.allocator);
     try std.testing.expectError(error.UnexpectedEndOfStream, result);
 }
 
@@ -296,6 +284,9 @@ test "restore snapshot cleanup on failure" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "test_cleanup", "test_cleanup", .{});
+    defer index.deinit();
+
     // Create a valid tar with manifest but no segment files to trigger load failure
     var buffer = std.ArrayList(u8).init(std.testing.allocator);
     defer buffer.deinit();
@@ -308,15 +299,11 @@ test "restore snapshot cleanup on failure" {
     try tar_writer.finish();
 
     var reader = std.io.fixedBufferStream(buffer.items);
-    const result = restoreSnapshot(reader.reader(), std.testing.allocator, &scheduler, tmp_dir.dir, "test_cleanup", .{});
+    const result = restoreSnapshot(reader.reader(), &index, std.testing.allocator);
     try std.testing.expectError(error.InvalidFormat, result);
-
-    // Verify cleanup: directory should be removed entirely
-    const dir_result = tmp_dir.dir.openDir("test_cleanup", .{});
-    try std.testing.expectError(error.FileNotFound, dir_result);
 }
 
-test "downloadAndExtractSnapshot invalid URL" {
+test "downloadAndRestoreSnapshot invalid URL" {
     var scheduler = Scheduler.init(std.testing.allocator);
     defer scheduler.deinit();
 
@@ -326,19 +313,19 @@ test "downloadAndExtractSnapshot invalid URL" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "test_download", "test_download", .{});
+    defer index.deinit();
+
     // Test with invalid URL
-    const result = downloadAndExtractSnapshot(
+    const result = downloadAndRestoreSnapshot(
         "not-a-valid-url",
+        &index,
         std.testing.allocator,
-        &scheduler,
-        tmp_dir.dir,
-        "test_download",
-        .{},
     );
     try std.testing.expectError(error.InvalidFormat, result);
 }
 
-test "downloadAndExtractSnapshot nonexistent host" {
+test "downloadAndRestoreSnapshot nonexistent host" {
     var scheduler = Scheduler.init(std.testing.allocator);
     defer scheduler.deinit();
 
@@ -348,14 +335,14 @@ test "downloadAndExtractSnapshot nonexistent host" {
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
+    var index = try Index.init(std.testing.allocator, &scheduler, tmp_dir.dir, "test_download", "test_download", .{});
+    defer index.deinit();
+
     // Test with nonexistent host - this should fail at the network level
-    const result = downloadAndExtractSnapshot(
+    const result = downloadAndRestoreSnapshot(
         "http://nonexistent-host-12345.invalid/file.tar",
+        &index,
         std.testing.allocator,
-        &scheduler,
-        tmp_dir.dir,
-        "test_download",
-        .{},
     );
     // This could fail with various network errors, just ensure it doesn't crash
     _ = result catch {};

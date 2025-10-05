@@ -750,6 +750,10 @@ pub fn createIndex(
         return error.InvalidIndexName;
     }
 
+    if (request.restore_from != null) {
+        return error.RestoreNotSupportedInClusterMode;
+    }
+
     // First check if index exists and get current generation
     const status = try self.getStatus(index_name);
     if (status.is_active) {

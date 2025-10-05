@@ -31,6 +31,7 @@ pub const IndexOptions = struct {
     expect_generation: ?u64 = null,
     expect_does_not_exist: bool = false,
     version: ?u64 = null,
+    restore_from: ?[]const u8 = null,
 };
 
 const OptionalIndex = struct {
@@ -59,7 +60,10 @@ pub const IndexRef = struct {
     references: usize = 1,
     delete_files: bool = false,
     being_deleted: bool = false,
+    being_restored: bool = false,
+    restore_error: ?anyerror = null,
     reference_released: std.Thread.Condition = .{},
+    restoration_complete: std.Thread.Condition = .{},
 
     pub fn incRef(self: *IndexRef) void {
         self.references += 1;
@@ -173,7 +177,7 @@ fn openExistingIndex(self: *Self, path: []const u8) !*IndexRef {
     return ref;
 }
 
-fn createNewIndex(self: *Self, original_name: []const u8, generation: ?u64) !*IndexRef {
+fn createNewIndex(self: *Self, original_name: []const u8, generation: ?u64, restore_from: ?[]const u8) !*IndexRef {
     const entry = try self.indexes.getOrPut(self.allocator, original_name);
 
     const found_existing = entry.found_existing;
@@ -246,10 +250,28 @@ fn createNewIndex(self: *Self, original_name: []const u8, generation: ?u64) !*In
         ref.index.has_value = false;
     }
 
-    try ref.index.value.open(true);
+    if (restore_from) |url| {
+        // Mark as being restored
+        ref.being_restored = true;
 
-    log.debug("Index {s} created successfully", .{ref.redirect.name});
-    try index_redirect.writeRedirectFile(ref.index_dir, ref.redirect, self.allocator);
+        log.debug("Index {s} will be restored from {s}", .{ ref.redirect.name, url });
+
+        // Duplicate strings for the task
+        const index_name_copy = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(index_name_copy);
+
+        const url_copy = try self.allocator.dupe(u8, url);
+        errdefer self.allocator.free(url_copy);
+
+        // Start restore task
+        try self.scheduler.runOnce(restoreIndexTask, .{ self, index_name_copy, url_copy });
+    } else {
+        // Normal create: open the index
+        try ref.index.value.open(true);
+
+        log.debug("Index {s} created successfully", .{ref.redirect.name});
+        try index_redirect.writeRedirectFile(ref.index_dir, ref.redirect, self.allocator);
+    }
 
     return ref;
 }
@@ -462,6 +484,75 @@ fn deleteIndexFiles(self: *Self, name: []const u8) !void {
     };
 }
 
+fn restoreIndexTask(self: *Self, index_name: []const u8, url: []const u8) void {
+    defer {
+        self.allocator.free(index_name);
+        self.allocator.free(url);
+    }
+
+    log.info("starting restore task for index {s} from {s}", .{ index_name, url });
+
+    // Get the index reference
+    self.lock.lock();
+    const index_ref = self.indexes.get(index_name);
+    if (index_ref == null) {
+        self.lock.unlock();
+        log.warn("index {s} no longer exists, aborting restore", .{index_name});
+        return;
+    }
+    if (!index_ref.?.being_restored) {
+        self.lock.unlock();
+        log.warn("index {s} is no longer being restored, aborting", .{index_name});
+        return;
+    }
+    const index = &index_ref.?.index.value;
+    self.lock.unlock();
+
+    // Download and restore the snapshot (no lock held during long operation)
+    snapshot.downloadAndRestoreSnapshot(url, index, self.allocator) catch |err| {
+        log.err("failed to restore index {s} from {s}: {}", .{ index_name, url, err });
+
+        // Clean up on failure
+        self.lock.lock();
+        defer self.lock.unlock();
+        if (self.indexes.get(index_name)) |ref| {
+            if (ref == index_ref.? and ref.being_restored) {
+                ref.restore_error = err;
+                ref.index.clear();
+                ref.being_restored = false;
+                ref.restoration_complete.broadcast();
+            }
+        }
+        return;
+    };
+
+    // Success - mark as ready
+    self.lock.lock();
+    defer self.lock.unlock();
+
+    // Verify the index ref still exists and is in the expected state
+    if (self.indexes.get(index_name)) |ref| {
+        if (ref == index_ref.? and ref.being_restored) {
+            // Write redirect file now that restore is complete
+            index_redirect.writeRedirectFile(ref.index_dir, ref.redirect, self.allocator) catch |err| {
+                log.err("failed to write redirect file after restore for index {s}: {}", .{ index_name, err });
+
+                // Treat redirect write failure same as restore failure
+                ref.restore_error = err;
+                ref.index.clear();
+                ref.being_restored = false;
+                ref.restoration_complete.broadcast();
+                return;
+            };
+
+            log.info("restore completed for index {s}", .{index_name});
+            ref.being_restored = false;
+            ref.restore_error = null;
+            ref.restoration_complete.broadcast();
+        }
+    }
+}
+
 pub fn releaseIndex(self: *Self, index: *Index) void {
     self.lock.lock();
     defer self.lock.unlock();
@@ -478,6 +569,7 @@ pub fn releaseIndex(self: *Self, index: *Index) void {
 
 fn borrowIndex(index_ref: *IndexRef) *Index {
     assert(index_ref.index.has_value);
+    assert(!index_ref.being_restored);
     index_ref.incRef();
     return &index_ref.index.value;
 }
@@ -494,9 +586,12 @@ pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool, options: In
 
     if (self.indexes.get(name)) |index_ref| {
         if (index_ref.index.has_value) {
-            // Index exists and is active
+            // Index exists and is active (or being restored)
             if (index_ref.being_deleted) {
                 return error.IndexBeingDeleted;
+            }
+            if (index_ref.being_restored) {
+                return error.IndexBeingRestored;
             }
             // Validate expected generation if provided
             if (options.expect_generation) |expect_generation| {
@@ -527,12 +622,62 @@ pub fn getOrCreateIndex(self: *Self, name: []const u8, create: bool, options: In
         return error.IndexNotFound;
     }
 
-    const index_ref = try self.createNewIndex(name, options.generation);
+    const index_ref = try self.createNewIndex(name, options.generation, options.restore_from);
+
+    // Don't borrow the index if it's being restored - caller must wait for restoration to complete
+    if (index_ref.being_restored) {
+        return error.IndexBeingRestored;
+    }
+
     return borrowIndex(index_ref);
 }
 
 pub fn getIndex(self: *Self, name: []const u8) !*Index {
     return self.getOrCreateIndex(name, false, .{});
+}
+
+pub fn waitForIndexReady(self: *Self, name: []const u8, timeout_ms: u64) !*Index {
+    self.lock.lock();
+
+    const index_ref = self.indexes.get(name) orelse {
+        self.lock.unlock();
+        return error.IndexNotFound;
+    };
+
+    if (!index_ref.being_restored) {
+        // Index is ready (or doesn't exist / deleted)
+        self.lock.unlock();
+        return self.getIndex(name);
+    }
+
+    // Wait for restoration to complete
+    var timer = try std.time.Timer.start();
+    while (index_ref.being_restored) {
+        const elapsed_ms = timer.read() / std.time.ns_per_ms;
+        if (elapsed_ms > timeout_ms) {
+            self.lock.unlock();
+            log.warn("timeout waiting for index {s} to be restored", .{name});
+            return error.RestoreTimeout;
+        }
+
+        const remaining_timeout_ns = (timeout_ms - elapsed_ms) * std.time.ns_per_ms;
+        index_ref.restoration_complete.timedWait(&self.lock, remaining_timeout_ns) catch {
+            // Timeout occurred, continue the loop to check state again
+        };
+
+        // Check if the index still exists
+        const current_ref = self.indexes.get(name) orelse {
+            self.lock.unlock();
+            return error.IndexNotFound;
+        };
+        if (current_ref != index_ref) {
+            self.lock.unlock();
+            return error.IndexNotFound;
+        }
+    }
+
+    self.lock.unlock();
+    return self.getIndex(name);
 }
 
 pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexRequest) !api.DeleteIndexResponse {
@@ -560,6 +705,9 @@ pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexReques
     // Mark as being deleted to prevent new references
     if (index_ref.being_deleted) {
         return error.IndexAlreadyBeingDeleted;
+    }
+    if (index_ref.being_restored) {
+        return error.IndexBeingRestored;
     }
     index_ref.being_deleted = true;
     defer index_ref.being_deleted = false;
@@ -699,6 +847,7 @@ pub fn getIndexInfo(
     if (!isValidName(index_name)) {
         return error.InvalidIndexName;
     }
+
     const index = try self.getIndex(index_name);
     defer self.releaseIndex(index);
 
@@ -741,7 +890,21 @@ pub fn createIndex(
     const options = IndexOptions{
         .expect_does_not_exist = request.expect_does_not_exist,
         .generation = request.generation,
+        .restore_from = request.restore_from,
     };
+
+    // Special handling for restore: create directly, don't try to get the index
+    if (request.restore_from != null) {
+        self.lock.lock();
+        defer self.lock.unlock();
+
+        const index_ref = try self.createNewIndex(index_name, request.generation, request.restore_from);
+        return api.CreateIndexResponse{
+            .version = 0,
+            .ready = false,
+            .generation = index_ref.redirect.version,
+        };
+    }
 
     const index = try self.getOrCreateIndex(index_name, true, options);
     defer self.releaseIndex(index);

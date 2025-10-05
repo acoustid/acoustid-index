@@ -273,7 +273,7 @@ fn writeErrorResponse(status: u16, err: anyerror, req: *httpz.Request, res: *htt
 }
 
 fn writeIndexErrorAs404(req: *httpz.Request, res: *httpz.Response, err: anyerror, send_body: bool) !bool {
-    if (err == error.IndexBeingDeleted or err == error.IndexNotFound or err == error.InvalidIndexName) {
+    if (err == error.IndexBeingDeleted or err == error.IndexBeingRestored or err == error.IndexNotFound or err == error.InvalidIndexName) {
         if (send_body) {
             try writeErrorResponse(404, err, req, res);
         } else {
@@ -484,7 +484,15 @@ fn handlePutIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, res: 
             try writeErrorResponse(400, err, req, res);
             return;
         }
+        if (err == error.RestoreNotSupportedInClusterMode) {
+            try writeErrorResponse(400, err, req, res);
+            return;
+        }
         if (err == error.IndexBeingDeleted) {
+            try writeErrorResponse(409, err, req, res);
+            return;
+        }
+        if (err == error.IndexBeingRestored) {
             try writeErrorResponse(409, err, req, res);
             return;
         }
@@ -521,7 +529,7 @@ fn handleDeleteIndex(comptime T: type, ctx: *Context(T), req: *httpz.Request, re
             try writeErrorResponse(404, err, req, res);
             return;
         }
-        if (err == error.DeleteTimeout or err == error.IndexAlreadyBeingDeleted) {
+        if (err == error.DeleteTimeout or err == error.IndexAlreadyBeingDeleted or err == error.IndexBeingRestored) {
             try writeErrorResponse(409, err, req, res);
             return;
         }

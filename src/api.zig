@@ -34,6 +34,7 @@ pub const UpdateRequest = struct {
 pub const CreateIndexRequest = struct {
     expect_does_not_exist: bool = false,
     generation: ?u64 = null,
+    restore_from: ?[]const u8 = null,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
