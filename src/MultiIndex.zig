@@ -505,6 +505,7 @@ fn restoreIndexTask(self: *Self, index_name: []const u8, url: []const u8) void {
         log.warn("index {s} is no longer being restored, aborting", .{index_name});
         return;
     }
+    std.debug.assert(index_ref.?.index.has_value);
     const index = &index_ref.?.index.value;
     self.lock.unlock();
 
