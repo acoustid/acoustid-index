@@ -253,6 +253,7 @@ fn createNewIndex(self: *Self, original_name: []const u8, generation: ?u64, rest
     if (restore_from) |url| {
         // Mark as being restored
         ref.being_restored = true;
+        errdefer ref.being_restored = false;
 
         log.debug("Index {s} will be restored from {s}", .{ ref.redirect.name, url });
 
