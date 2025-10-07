@@ -326,12 +326,22 @@ pub fn deinit(self: *Self) void {
         self.scheduler.destroyTask(task);
     }
 
+    // Wait for any restore tasks to complete
+    var iter = self.indexes.iterator();
+    while (iter.next()) |entry| {
+        const ref = entry.value_ptr.*;
+        while (ref.being_restored) {
+            log.info("waiting for restore task to complete for index {s}", .{entry.key_ptr.*});
+            ref.restoration_complete.wait(&self.lock);
+        }
+    }
+
     if (self.lock_file) |file| {
         file.unlock();
         file.close();
     }
 
-    var iter = self.indexes.iterator();
+    iter = self.indexes.iterator();
     while (iter.next()) |entry| {
         entry.value_ptr.*.deinit();
         self.allocator.destroy(entry.value_ptr.*);
