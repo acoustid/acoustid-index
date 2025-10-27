@@ -16,4 +16,4 @@ CMD ["fpindex", "--dir", "/var/lib/acoustid-index", "--address", "0.0.0.0", "--p
 # Final stage with binary copied in
 FROM base AS final
 
-ADD zig-out/bin/fpindex /usr/bin
+ADD --chmod=755 zig-out/bin/fpindex /usr/bin
