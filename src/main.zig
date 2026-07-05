@@ -14,6 +14,7 @@ const Config = struct {
     dir: []const u8 = "data",
     host: []const u8 = "127.0.0.1",
     port: u16 = 8080,
+    checkpoint_threshold: usize = 100_000,
 };
 
 fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !void {
@@ -28,6 +29,7 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
         else => return err,
     };
     var multi_index = MultiIndex.init(allocator, data_dir);
+    multi_index.checkpoint_threshold = config.checkpoint_threshold;
     defer multi_index.deinit();
     try multi_index.open();
 
@@ -68,6 +70,8 @@ fn parseArgs(args: std.process.Args) !Config {
             config.host = it.next() orelse return error.MissingArgument;
         } else if (std.mem.eql(u8, arg, "--port")) {
             config.port = try std.fmt.parseInt(u16, it.next() orelse return error.MissingArgument, 10);
+        } else if (std.mem.eql(u8, arg, "--checkpoint-threshold")) {
+            config.checkpoint_threshold = try std.fmt.parseInt(usize, it.next() orelse return error.MissingArgument, 10);
         } else {
             std.log.warn("ignoring unknown argument '{s}'", .{arg});
         }
@@ -97,4 +101,5 @@ test {
     _ = @import("Metadata.zig");
     _ = @import("segment_merge_policy.zig");
     _ = @import("filefmt.zig");
+    _ = @import("Index.zig");
 }

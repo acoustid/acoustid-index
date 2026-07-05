@@ -20,6 +20,7 @@ allocator: std.mem.Allocator,
 dir: zio.Dir,
 lock: zio.RwLock = .init,
 indexes: std.StringHashMapUnmanaged(*Index) = .empty,
+checkpoint_threshold: usize = 100_000,
 
 pub fn init(allocator: std.mem.Allocator, dir: zio.Dir) Self {
     return .{ .allocator = allocator, .dir = dir };
@@ -53,7 +54,7 @@ pub fn open(self: *Self) !void {
         const index_dir = try self.dir.openDir(name, .{});
         const index = try self.allocator.create(Index);
         errdefer self.allocator.destroy(index);
-        index.* = Index.open(self.allocator, index_dir) catch |err| {
+        index.* = Index.open(self.allocator, index_dir, self.checkpoint_threshold) catch |err| {
             index_dir.close();
             return err;
         };
@@ -121,7 +122,7 @@ pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexReques
     const index_dir = try self.dir.openDir(name, .{});
     const index = try self.allocator.create(Index);
     errdefer self.allocator.destroy(index);
-    index.* = Index.open(self.allocator, index_dir) catch |err| {
+    index.* = Index.open(self.allocator, index_dir, self.checkpoint_threshold) catch |err| {
         index_dir.close();
         return err;
     };
@@ -151,17 +152,28 @@ pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexReques
     return .{ .deleted = false };
 }
 
-// The only file for now is the oplog. (Extend when file segments land.)
+// Delete every file in the index dir (oplog, manifest, segment files), then the
+// dir itself. Names are collected first since deleting during iteration is
+// unsafe.
 fn removeIndexDir(self: *Self, name: []const u8) !void {
-    var sub = try self.dir.openDir(name, .{});
-    sub.deleteFile("oplog") catch |err| switch (err) {
-        error.FileNotFound => {},
-        else => {
-            sub.close();
-            return err;
-        },
-    };
-    sub.close();
+    var sub = try self.dir.openDir(name, .{ .iterate = true });
+    defer sub.close();
+
+    var names: std.ArrayListUnmanaged([]u8) = .empty;
+    defer {
+        for (names.items) |n| self.allocator.free(n);
+        names.deinit(self.allocator);
+    }
+
+    var it = sub.iterate();
+    while (try it.next()) |entry| {
+        if (entry.kind != .file) continue;
+        try names.append(self.allocator, try self.allocator.dupe(u8, entry.name));
+    }
+    for (names.items) |n| {
+        sub.deleteFile(n) catch |err| if (err != error.FileNotFound) return err;
+    }
+
     try self.dir.deleteDir(name);
 }
 
