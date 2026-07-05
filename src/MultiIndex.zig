@@ -170,18 +170,29 @@ pub fn getIndexInfo(self: *Self, arena: std.mem.Allocator, name: []const u8) !ap
 }
 
 pub fn getFingerprintInfo(self: *Self, arena: std.mem.Allocator, name: []const u8, id: u32) !api.GetFingerprintInfoResponse {
-    _ = self;
     _ = arena;
-    _ = name;
-    _ = id;
-    return error.NotImplemented;
+    try self.lock.lockShared();
+    defer self.lock.unlockShared();
+
+    const index = self.indexes.get(name) orelse return error.IndexNotFound;
+    var reader = try index.acquireReader();
+    defer reader.deinit();
+
+    const info = reader.getDocInfo(id) orelse return error.FingerprintNotFound;
+    if (info.deleted) return error.FingerprintNotFound;
+    return .{ .version = info.version };
 }
 
 pub fn checkFingerprintExists(self: *Self, name: []const u8, id: u32) !bool {
-    _ = self;
-    _ = name;
-    _ = id;
-    return error.NotImplemented;
+    try self.lock.lockShared();
+    defer self.lock.unlockShared();
+
+    const index = self.indexes.get(name) orelse return error.IndexNotFound;
+    var reader = try index.acquireReader();
+    defer reader.deinit();
+
+    const info = reader.getDocInfo(id);
+    return info != null and !info.?.deleted;
 }
 
 /// Index names double as directory names, so restrict them to a safe set (no

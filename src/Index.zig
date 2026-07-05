@@ -21,6 +21,7 @@ const TieredMergePolicy = @import("segment_merge_policy.zig").TieredMergePolicy;
 const SearchResults = @import("common.zig").SearchResults;
 const SharedPtr = @import("shared_ptr.zig").SharedPtr;
 const KeepOrDelete = @import("common.zig").KeepOrDelete;
+const DocInfo = @import("common.zig").DocInfo;
 const log = std.log.scoped(.index);
 
 const FileRef = SharedPtr(FileSegment);
@@ -46,6 +47,29 @@ pub const Segments = struct {
         self.allocator.free(self.memory);
         self.allocator.free(self.file);
         self.* = undefined;
+    }
+
+    // The newest segment that mentions `id` wins (segments partition the version
+    // space), giving the doc's current version and whether it's a tombstone.
+    // Returns null if no segment mentions the id at all.
+    pub fn getDocInfo(self: *const Segments, id: u32) ?DocInfo {
+        var i = self.memory.len;
+        while (i > 0) {
+            i -= 1;
+            const seg = self.memory[i].value;
+            if (id >= seg.min_doc_id and id <= seg.max_doc_id) {
+                if (seg.docs.get(id)) |alive| return .{ .version = seg.info.version, .deleted = !alive };
+            }
+        }
+        var j = self.file.len;
+        while (j > 0) {
+            j -= 1;
+            const seg = self.file[j].value;
+            if (id >= seg.min_doc_id and id <= seg.max_doc_id) {
+                if (seg.docs.get(id)) |alive| return .{ .version = seg.info.version, .deleted = !alive };
+            }
+        }
+        return null;
     }
 
     // Newest -> oldest across both lists (globally descending version). Segments
@@ -89,6 +113,12 @@ pub const IndexReader = struct {
 
     pub fn version(self: *const IndexReader) u64 {
         return self.snapshot.value.version;
+    }
+
+    /// Current state of a doc id in this snapshot, or null if never seen. A
+    /// tombstone (deleted) is reported as `.deleted = true`.
+    pub fn getDocInfo(self: *const IndexReader, id: u32) ?DocInfo {
+        return self.snapshot.value.getDocInfo(id);
     }
 };
 
@@ -838,5 +868,51 @@ test "oplog truncation after checkpoint" {
         var h = [_]u32{40}; // id 40's unique hash
         try reader.search(&h, &results);
         try std.testing.expectEqual(@as(usize, 1), results.getResults().len);
+    }
+}
+
+test "getDocInfo reports version and tombstones, across a checkpoint" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_index_docinfo";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+    var index = try Self.open(std.testing.allocator, dir, 100_000);
+    defer index.deinit();
+
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 5, .hashes = &[_]u32{ 10, 20 } } }}, null, null);
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 6, .hashes = &[_]u32{ 10, 30 } } }}, null, null);
+
+    {
+        var r = try index.acquireReader();
+        defer r.deinit();
+        try std.testing.expectEqual(@as(u64, 1), r.getDocInfo(5).?.version);
+        try std.testing.expect(!r.getDocInfo(5).?.deleted);
+        try std.testing.expectEqual(@as(u64, 2), r.getDocInfo(6).?.version);
+        try std.testing.expect(r.getDocInfo(99) == null);
+    }
+
+    // Delete 5: newest segment wins, reported as a tombstone.
+    _ = try index.update(&[_]Change{.{ .delete = .{ .id = 5 } }}, null, null);
+    {
+        var r = try index.acquireReader();
+        defer r.deinit();
+        try std.testing.expect(r.getDocInfo(5).?.deleted);
+        try std.testing.expectEqual(@as(u64, 3), r.getDocInfo(5).?.version);
+    }
+
+    // Same answers after flushing to a file segment.
+    try index.runMaintenance();
+    {
+        var r = try index.acquireReader();
+        defer r.deinit();
+        try std.testing.expect(r.getDocInfo(5).?.deleted);
+        try std.testing.expect(!r.getDocInfo(6).?.deleted);
+        try std.testing.expectEqual(@as(u64, 2), r.getDocInfo(6).?.version);
     }
 }
