@@ -1,0 +1,18 @@
+.{
+    .name = .fpindex,
+    .version = "0.0.0",
+    .fingerprint = 0x38793b7cf12ed7c9,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        // Local co-developed checkouts. Path deps so changes flow immediately
+        // during the rewrite; switch to git+pinned before any release.
+        .zio = .{ .path = "../zio" },
+        .dusty = .{ .path = "../dusty" },
+        .msgpack = .{ .path = "../msgpack.zig" },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

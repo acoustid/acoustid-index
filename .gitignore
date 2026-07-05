@@ -1,0 +1,20 @@
+.zig-cache/
+zig-out/
+
+# scratch / build artifacts
+*.o
+core.*
+*.core
+
+# local data / test dirs
+/data/
+*.data
+venv/
+.venv/
+
+# editor
+.vscode/
+.zed/
+
+# fetched package cache
+zig-pkg/
