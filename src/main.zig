@@ -96,4 +96,5 @@ test {
     _ = @import("common.zig");
     _ = @import("Metadata.zig");
     _ = @import("segment_merge_policy.zig");
+    _ = @import("filefmt.zig");
 }

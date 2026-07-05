@@ -124,3 +124,28 @@ pub fn build(self: *Self, changes: []const Change, metadata: ?Metadata) !void {
 pub fn cleanup(self: *Self) void {
     _ = self;
 }
+
+pub fn reader(self: *const Self) Reader {
+    return .{ .segment = self, .index = 0 };
+}
+
+pub const Reader = struct {
+    segment: *const Self,
+    index: usize,
+
+    pub fn close(self: *Reader) void {
+        _ = self;
+    }
+
+    pub fn read(self: *Reader) !?Item {
+        if (self.index < self.segment.items.items.len) {
+            return self.segment.items.items[self.index];
+        } else {
+            return null;
+        }
+    }
+
+    pub fn advance(self: *Reader) void {
+        self.index += 1;
+    }
+};
