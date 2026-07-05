@@ -4,6 +4,7 @@
 // per query hash, then decodes only the candidate blocks.
 
 const std = @import("std");
+const zio = @import("zio");
 const log = std.log.scoped(.file_segment);
 const assert = std.debug.assert;
 
@@ -123,6 +124,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !
     }} ** MAX_BLOCKS_PER_HASH;
 
     for (sorted_hashes) |hash| {
+        try zio.maybeYield();
         var block_no = prev_block_range_start + std.sort.lowerBound(
             u32,
             self.block_index[prev_block_range_start..],

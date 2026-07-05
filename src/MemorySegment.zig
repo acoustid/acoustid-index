@@ -1,4 +1,5 @@
 const std = @import("std");
+const zio = @import("zio");
 const log = std.log;
 
 const common = @import("common.zig");
@@ -46,6 +47,7 @@ pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
 pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !void {
     var items = self.items.items;
     for (sorted_hashes) |hash| {
+        try zio.maybeYield();
         const matches = std.sort.equalRange(Item, items, Item{ .hash = hash, .id = 0 }, Item.orderByHash);
         for (matches[0]..matches[1]) |i| {
             try results.incr(items[i].id, self.info.version);

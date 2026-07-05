@@ -5,9 +5,13 @@
 // (read/advance + `.segment`) that filefmt.writeSegment can consume directly.
 
 const std = @import("std");
+const zio = @import("zio");
 const Item = @import("segment.zig").Item;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
 const Metadata = @import("Metadata.zig");
+
+// How often the merge loop offers to yield the executor (merges are CPU-bound).
+const yield_interval = 1024;
 
 pub const MergedSegmentInfo = struct {
     info: SegmentInfo = .{},
@@ -56,6 +60,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
         segment: MergedSegmentInfo,
         estimated_size: usize = 0,
         current_item: ?Item = null,
+        reads: usize = 0,
 
         pub fn init(allocator: std.mem.Allocator, num_sources: usize) !Self {
             return .{
@@ -138,6 +143,8 @@ pub fn SegmentMerger(comptime Segment: type) type {
                 if (min_item) |item| {
                     self.sources.items[min_item_index].advance();
                     self.current_item = item;
+                    self.reads += 1;
+                    if (self.reads % yield_interval == 0) try zio.maybeYield();
                 }
             }
             return self.current_item;
