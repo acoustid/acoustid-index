@@ -86,7 +86,10 @@ pub fn main(init: std.process.Init.Minimal) !void {
 
     const config = try parseArgs(init.args);
 
-    var rt = try zio.Runtime.init(allocator, .{});
+    // Multiple executors so searches, updates, and merges spread across cores.
+    // The index is thread-safe: reads work on a refcounted snapshot, the segment
+    // pointer is swapped under a lock, and refcounts are atomic.
+    var rt = try zio.Runtime.init(allocator, .{ .executors = .auto });
     defer rt.deinit();
 
     var task = try zio.spawn(runServer, .{ allocator, rt, config });
