@@ -45,7 +45,7 @@ fn fingerprintId(req: *http.Request) !u32 {
 
 fn sendError(res: *http.Response, err: anyerror) void {
     res.status = switch (err) {
-        error.BadRequest => .bad_request,
+        error.BadRequest, error.InvalidIndexName => .bad_request,
         error.IndexNotFound, error.FingerprintNotFound => .not_found,
         error.IndexNotReady => .service_unavailable,
         error.VersionMismatch, error.IndexAlreadyExists => .conflict,

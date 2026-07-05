@@ -1,24 +1,28 @@
-// Manages a set of named in-memory indexes and exposes the high-level
-// operations the HTTP handlers call. Request/response shapes come from api.zig.
+// Manages a set of named indexes, each stored in its own subdirectory of the
+// data root (the directory's presence is the index's existence). Exposes the
+// high-level operations the HTTP handlers call.
 //
 // The map lock is held (shared) for the duration of search/update so a
-// concurrent delete can't free the index mid-operation. A later IndexRef
-// refcount can replace this without changing the method signatures.
+// concurrent delete can't free an index mid-operation; create/delete take it
+// exclusive. Each Index has its own lock, so updates to different indexes run
+// concurrently.
 
 const std = @import("std");
 const zio = @import("zio");
 const api = @import("api.zig");
 const Index = @import("Index.zig");
 const SearchResults = @import("common.zig").SearchResults;
+const log = std.log.scoped(.multi_index);
 
 const Self = @This();
 
 allocator: std.mem.Allocator,
+dir: zio.Dir,
 lock: zio.RwLock = .init,
 indexes: std.StringHashMapUnmanaged(*Index) = .empty,
 
-pub fn init(allocator: std.mem.Allocator) Self {
-    return .{ .allocator = allocator };
+pub fn init(allocator: std.mem.Allocator, dir: zio.Dir) Self {
+    return .{ .allocator = allocator, .dir = dir };
 }
 
 pub fn deinit(self: *Self) void {
@@ -29,6 +33,35 @@ pub fn deinit(self: *Self) void {
         self.allocator.free(entry.key_ptr.*);
     }
     self.indexes.deinit(self.allocator);
+    self.dir.close();
+}
+
+/// Discover existing indexes (subdirectories of the data root) and replay each
+/// one's oplog to rebuild its in-memory state.
+pub fn open(self: *Self) !void {
+    var it = self.dir.iterate();
+    while (try it.next()) |entry| {
+        if (entry.kind != .directory) continue;
+        if (!isValidName(entry.name)) {
+            log.warn("skipping unexpected entry '{s}' in data dir", .{entry.name});
+            continue;
+        }
+        // entry.name is only valid until the next it.next(); dupe before any I/O.
+        const name = try self.allocator.dupe(u8, entry.name);
+        errdefer self.allocator.free(name);
+
+        const index_dir = try self.dir.openDir(name, .{});
+        const index = try self.allocator.create(Index);
+        errdefer self.allocator.destroy(index);
+        index.* = Index.open(self.allocator, index_dir) catch |err| {
+            index_dir.close();
+            return err;
+        };
+        errdefer index.deinit();
+
+        try self.indexes.put(self.allocator, name, index);
+        log.info("opened index '{s}' at version {d}", .{ name, index.version });
+    }
 }
 
 pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: api.SearchRequest) !api.SearchResponse {
@@ -59,7 +92,7 @@ pub fn update(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
     defer self.lock.unlockShared();
 
     const index = self.indexes.get(name) orelse return error.IndexNotFound;
-    const version = try index.update(request.changes, request.metadata, .{ .expected_version = request.expected_version });
+    const version = try index.update(request.changes, request.metadata, request.expected_version);
     return .{ .version = version };
 }
 
@@ -70,6 +103,8 @@ pub fn checkIndexExists(self: *Self, name: []const u8) !bool {
 }
 
 pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexRequest) !api.CreateIndexResponse {
+    if (!isValidName(name)) return error.InvalidIndexName;
+
     try self.lock.lock();
     defer self.lock.unlock();
 
@@ -78,15 +113,25 @@ pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexReques
         return .{ .version = existing.version, .ready = true, .generation = request.generation orelse 0 };
     }
 
+    self.dir.createDir(name, 0o755) catch |err| switch (err) {
+        error.PathAlreadyExists => {}, // reuse an orphaned dir from a prior run
+        else => return err,
+    };
+
+    const index_dir = try self.dir.openDir(name, .{});
     const index = try self.allocator.create(Index);
     errdefer self.allocator.destroy(index);
-    index.* = Index.init(self.allocator);
+    index.* = Index.open(self.allocator, index_dir) catch |err| {
+        index_dir.close();
+        return err;
+    };
+    errdefer index.deinit();
 
     const name_copy = try self.allocator.dupe(u8, name);
     errdefer self.allocator.free(name_copy);
 
     try self.indexes.put(self.allocator, name_copy, index);
-    return .{ .version = 0, .ready = true, .generation = request.generation orelse 0 };
+    return .{ .version = index.version, .ready = true, .generation = request.generation orelse 0 };
 }
 
 pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexRequest) !api.DeleteIndexResponse {
@@ -97,10 +142,27 @@ pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexReques
         kv.value.deinit();
         self.allocator.destroy(kv.value);
         self.allocator.free(kv.key);
+        self.removeIndexDir(name) catch |err| {
+            log.warn("failed to remove index dir '{s}': {}", .{ name, err });
+        };
         return .{ .deleted = true };
     }
     if (request.expect_exists) return error.IndexNotFound;
     return .{ .deleted = false };
+}
+
+// The only file for now is the oplog. (Extend when file segments land.)
+fn removeIndexDir(self: *Self, name: []const u8) !void {
+    var sub = try self.dir.openDir(name, .{});
+    sub.deleteFile("oplog") catch |err| switch (err) {
+        error.FileNotFound => {},
+        else => {
+            sub.close();
+            return err;
+        },
+    };
+    sub.close();
+    try self.dir.deleteDir(name);
 }
 
 pub fn getIndexInfo(self: *Self, arena: std.mem.Allocator, name: []const u8) !api.GetIndexInfoResponse {
@@ -124,4 +186,14 @@ pub fn checkFingerprintExists(self: *Self, name: []const u8, id: u32) !bool {
     _ = name;
     _ = id;
     return error.NotImplemented;
+}
+
+/// Index names double as directory names, so restrict them to a safe set (no
+/// path separators, no dots -> no traversal).
+fn isValidName(name: []const u8) bool {
+    if (name.len == 0 or name.len > 255) return false;
+    for (name) |c| {
+        if (!std.ascii.isAlphanumeric(c) and c != '_' and c != '-') return false;
+    }
+    return true;
 }
