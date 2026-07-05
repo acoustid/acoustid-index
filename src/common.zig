@@ -1,5 +1,36 @@
 const std = @import("std");
+const zio = @import("zio");
 const testing = std.testing;
+
+// Recursively delete `parent/name` and everything under it, then the dir itself.
+// Names are collected before deleting since deleting during iteration is unsafe.
+pub fn deleteDirTree(allocator: std.mem.Allocator, parent: zio.Dir, name: []const u8) !void {
+    var sub = try parent.openDir(name, .{ .iterate = true });
+
+    var files: std.ArrayListUnmanaged([]u8) = .empty;
+    var dirs: std.ArrayListUnmanaged([]u8) = .empty;
+    defer {
+        for (files.items) |n| allocator.free(n);
+        for (dirs.items) |n| allocator.free(n);
+        files.deinit(allocator);
+        dirs.deinit(allocator);
+    }
+
+    var it = sub.iterate();
+    while (try it.next()) |entry| {
+        const dup = try allocator.dupe(u8, entry.name);
+        if (entry.kind == .directory) {
+            try dirs.append(allocator, dup);
+        } else {
+            try files.append(allocator, dup);
+        }
+    }
+    for (files.items) |n| sub.deleteFile(n) catch |err| if (err != error.FileNotFound) return err;
+    for (dirs.items) |n| try deleteDirTree(allocator, sub, n);
+
+    sub.close();
+    try parent.deleteDir(name);
+}
 
 pub const DocInfo = struct {
     version: u64,

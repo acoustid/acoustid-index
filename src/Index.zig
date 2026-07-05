@@ -93,7 +93,11 @@ pub const IndexReader = struct {
 };
 
 allocator: std.mem.Allocator,
+// Index dir, split into two subdirs: `data_dir` holds the manifest + file
+// segments, `oplog_dir` holds the WAL. The Index owns and closes all three.
 dir: zio.Dir,
+data_dir: zio.Dir,
+oplog_dir: zio.Dir,
 oplog: Oplog,
 
 // Guards the `segments` pointer: readers acquire it shared (briefly), the writer
@@ -128,15 +132,21 @@ pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: us
         mem_list.deinit(allocator);
     }
 
+    // The WAL and the data files live in separate subdirs.
+    const data_dir = try openOrCreateDir(dir, "data");
+    errdefer data_dir.close();
+    const oplog_dir = try openOrCreateDir(dir, "oplog");
+    errdefer oplog_dir.close();
+
     // 1. Load file segments listed in the manifest.
     var file_version: u64 = 0;
-    const infos = try manifest.read(dir, allocator);
+    const infos = try manifest.read(data_dir, allocator);
     defer allocator.free(infos);
     for (infos) |info| {
         var ref = try FileRef.create(allocator, FileSegment.init(allocator));
         {
             errdefer ref.release(allocator, FileSegment.deinit, .{.keep});
-            try filefmt.readSegment(dir, info, ref.value);
+            try filefmt.readSegment(data_dir, info, ref.value);
         }
         try file_list.append(allocator, ref);
         file_version = @max(file_version, info.getLastCommitId());
@@ -144,7 +154,7 @@ pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: us
 
     // 2. Open the oplog and replay only the tail (versions > file_version).
     var ctx = ReplayCtx{ .allocator = allocator, .mem_list = &mem_list, .file_version = file_version };
-    var oplog = try Oplog.open(allocator, dir, &ctx, ReplayCtx.apply);
+    var oplog = try Oplog.open(allocator, oplog_dir, &ctx, ReplayCtx.apply);
     errdefer oplog.deinit();
 
     const version = @max(file_version, oplog.last_version);
@@ -160,12 +170,22 @@ pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: us
     return .{
         .allocator = allocator,
         .dir = dir,
+        .data_dir = data_dir,
+        .oplog_dir = oplog_dir,
         .oplog = oplog,
         .segments = segments,
         .version = version,
         .file_version = file_version,
         .checkpoint_threshold = checkpoint_threshold,
     };
+}
+
+fn openOrCreateDir(parent: zio.Dir, name: []const u8) !zio.Dir {
+    parent.createDir(name, 0o755) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+    return parent.openDir(name, .{ .iterate = true });
 }
 
 const ReplayCtx = struct {
@@ -187,6 +207,8 @@ pub fn deinit(self: *Self) void {
     self.stop();
     self.oplog.deinit();
     self.segments.release(self.allocator, Segments.deinit, .{.keep});
+    self.oplog_dir.close();
+    self.data_dir.close();
     self.dir.close();
 }
 
@@ -544,12 +566,12 @@ fn mergeToFileSegment(self: *Self, comptime Segment: type, sources: []SharedPtr(
     try merger.prepare(collection);
     const info = merger.segment.info;
 
-    try filefmt.writeSegment(self.dir, &merger, self.allocator);
-    errdefer filefmt.deleteSegmentFile(self.dir, info) catch {};
+    try filefmt.writeSegment(self.data_dir, &merger, self.allocator);
+    errdefer filefmt.deleteSegmentFile(self.data_dir, info) catch {};
 
     var ref = try FileRef.create(self.allocator, FileSegment.init(self.allocator));
     errdefer ref.release(self.allocator, FileSegment.deinit, .{.delete});
-    try filefmt.readSegment(self.dir, info, ref.value);
+    try filefmt.readSegment(self.data_dir, info, ref.value);
     return ref;
 }
 
@@ -557,17 +579,11 @@ fn writeManifestFor(self: *Self, file: []const FileRef) !void {
     const infos = try self.allocator.alloc(SegmentInfo, file.len);
     defer self.allocator.free(infos);
     for (file, 0..) |seg, i| infos[i] = seg.value.info;
-    try manifest.write(self.dir, self.allocator, infos);
+    try manifest.write(self.data_dir, self.allocator, infos);
 }
 
 fn cleanupTestDir(cwd: zio.Dir, path: []const u8) void {
-    var sub = cwd.openDir(path, .{ .iterate = true }) catch return;
-    var it = sub.iterate();
-    while (it.next() catch null) |entry| {
-        if (entry.kind == .file) sub.deleteFile(entry.name) catch {};
-    }
-    sub.close();
-    cwd.deleteDir(path) catch {};
+    @import("common.zig").deleteDirTree(std.testing.allocator, cwd, path) catch {};
 }
 
 test "checkpoint and reload" {

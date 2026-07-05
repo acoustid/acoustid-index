@@ -156,29 +156,9 @@ pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexReques
     return .{ .deleted = false };
 }
 
-// Delete every file in the index dir (oplog, manifest, segment files), then the
-// dir itself. Names are collected first since deleting during iteration is
-// unsafe.
+// Delete the whole index dir (the oplog/ and data/ subdirs and their contents).
 fn removeIndexDir(self: *Self, name: []const u8) !void {
-    var sub = try self.dir.openDir(name, .{ .iterate = true });
-    defer sub.close();
-
-    var names: std.ArrayListUnmanaged([]u8) = .empty;
-    defer {
-        for (names.items) |n| self.allocator.free(n);
-        names.deinit(self.allocator);
-    }
-
-    var it = sub.iterate();
-    while (try it.next()) |entry| {
-        if (entry.kind != .file) continue;
-        try names.append(self.allocator, try self.allocator.dupe(u8, entry.name));
-    }
-    for (names.items) |n| {
-        sub.deleteFile(n) catch |err| if (err != error.FileNotFound) return err;
-    }
-
-    try self.dir.deleteDir(name);
+    try @import("common.zig").deleteDirTree(self.allocator, self.dir, name);
 }
 
 pub fn getIndexInfo(self: *Self, arena: std.mem.Allocator, name: []const u8) !api.GetIndexInfoResponse {
