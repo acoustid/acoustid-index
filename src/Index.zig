@@ -1,8 +1,9 @@
 // A single index: an on-disk oplog (WAL) plus in-memory and on-disk (file)
-// segments. On open, file segments are loaded from the manifest and the oplog
-// tail is replayed. When memory grows past a threshold, all memory segments are
-// merged into one file segment (checkpoint); file segments are in turn merged by
-// a tiered policy to keep their count bounded.
+// segments, held in an immutable refcounted snapshot (Segments). Readers acquire
+// a snapshot and search it lock-free; the single writer builds a new snapshot
+// (sharing unchanged segments via SharedPtr) and swaps it under a brief lock.
+// A segment's file is deleted only when its last reference drops, so a merge
+// never pulls a segment out from under an in-flight search.
 
 const std = @import("std");
 const zio = @import("zio");
@@ -18,306 +19,384 @@ const SegmentInfo = @import("segment.zig").SegmentInfo;
 const SegmentMerger = @import("segment_merger.zig").SegmentMerger;
 const TieredMergePolicy = @import("segment_merge_policy.zig").TieredMergePolicy;
 const SearchResults = @import("common.zig").SearchResults;
+const SharedPtr = @import("shared_ptr.zig").SharedPtr;
+const KeepOrDelete = @import("common.zig").KeepOrDelete;
 const log = std.log.scoped(.index);
 
+const FileRef = SharedPtr(FileSegment);
+const MemoryRef = SharedPtr(MemorySegment);
+
 const Self = @This();
+
+// Immutable snapshot of the index's segments. Refcounted via SharedPtr(Segments).
+// Both lists are ordered oldest -> newest by version; file segments are older
+// than all memory segments.
+pub const Segments = struct {
+    allocator: std.mem.Allocator,
+    file: []FileRef,
+    memory: []MemoryRef,
+    version: u64 = 0,
+    file_version: u64 = 0,
+
+    // `delete` controls whether a segment whose refcount hits zero deletes its
+    // backing file (.delete for segments dropped by a merge, .keep on shutdown).
+    pub fn deinit(self: *Segments, delete: KeepOrDelete) void {
+        for (self.memory) |*s| s.release(self.allocator, MemorySegment.deinit, .{.delete});
+        for (self.file) |*s| s.release(self.allocator, FileSegment.deinit, .{delete});
+        self.allocator.free(self.memory);
+        self.allocator.free(self.file);
+        self.* = undefined;
+    }
+
+    // Newest -> oldest across both lists (globally descending version). Segments
+    // are non-merged per version, so info.version is the doc's version.
+    pub fn hasNewerVersion(self: *const Segments, id: u32, version: u64) bool {
+        var i = self.memory.len;
+        while (i > 0) {
+            i -= 1;
+            const seg = self.memory[i].value;
+            if (seg.info.version <= version) return false;
+            if (id >= seg.min_doc_id and id <= seg.max_doc_id and seg.docs.contains(id)) return true;
+        }
+        var j = self.file.len;
+        while (j > 0) {
+            j -= 1;
+            const seg = self.file[j].value;
+            if (seg.info.version <= version) return false;
+            if (id >= seg.min_doc_id and id <= seg.max_doc_id and seg.docs.contains(id)) return true;
+        }
+        return false;
+    }
+};
+
+// A held snapshot. Search works on it without any lock.
+pub const IndexReader = struct {
+    allocator: std.mem.Allocator,
+    snapshot: SharedPtr(Segments),
+
+    pub fn deinit(self: *IndexReader) void {
+        self.snapshot.release(self.allocator, Segments.deinit, .{.keep});
+    }
+
+    // `hashes` is sorted in place.
+    pub fn search(self: *IndexReader, hashes: []u32, results: *SearchResults) !void {
+        std.sort.pdq(u32, hashes, {}, std.sort.asc(u32));
+        const segs = self.snapshot.value;
+        for (segs.file) |seg| try seg.value.search(hashes, results);
+        for (segs.memory) |seg| try seg.value.search(hashes, results);
+        try results.finish(segs);
+    }
+
+    pub fn version(self: *const IndexReader) u64 {
+        return self.snapshot.value.version;
+    }
+};
 
 allocator: std.mem.Allocator,
 dir: zio.Dir,
 oplog: Oplog,
 
-// Reads take this shared, the single writer takes it exclusive. Different
-// indexes have independent locks, so their writes don't contend.
-lock: zio.RwLock = .init,
+// Guards the `segments` pointer: readers acquire it shared (briefly), the writer
+// swaps it exclusive (briefly). The actual search/merge work happens outside it.
+segments_lock: zio.RwLock = .init,
+// Serializes writers (only one may build+swap a snapshot at a time).
+write_lock: zio.Mutex = .init,
 
-// version = commit id of the last applied change (log-position-as-version).
+// Current snapshot. Never mutated in place; replaced by the writer.
+segments: SharedPtr(Segments),
+
+// Writer-owned bookkeeping (stable under write_lock).
 version: u64 = 0,
-
-// Highest commit id already captured in a file segment. Oplog replay skips
-// transactions at or below this so file + memory segments don't double-count.
 file_version: u64 = 0,
-
-// Checkpoint the oldest memory segment once memory exceeds this many items.
 checkpoint_threshold: usize = 100_000,
 
-// Both lists are ordered oldest -> newest by version; file segments are older
-// than all memory segments.
-file_segments: std.ArrayListUnmanaged(*FileSegment) = .empty,
-memory_segments: std.ArrayListUnmanaged(*MemorySegment) = .empty,
-
 pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: usize) !Self {
-    var self = Self{ .allocator = allocator, .dir = dir, .oplog = undefined, .checkpoint_threshold = checkpoint_threshold };
-    errdefer self.freeSegments();
+    var file_list: std.ArrayListUnmanaged(FileRef) = .empty;
+    var mem_list: std.ArrayListUnmanaged(MemoryRef) = .empty;
+    errdefer {
+        for (file_list.items) |*s| s.release(allocator, FileSegment.deinit, .{.keep});
+        file_list.deinit(allocator);
+        for (mem_list.items) |*s| s.release(allocator, MemorySegment.deinit, .{.delete});
+        mem_list.deinit(allocator);
+    }
 
     // 1. Load file segments listed in the manifest.
+    var file_version: u64 = 0;
     const infos = try manifest.read(dir, allocator);
     defer allocator.free(infos);
     for (infos) |info| {
-        const seg = try allocator.create(FileSegment);
-        seg.* = FileSegment.init(allocator);
-        errdefer {
-            seg.deinit(.keep);
-            allocator.destroy(seg);
+        var ref = try FileRef.create(allocator, FileSegment.init(allocator));
+        {
+            errdefer ref.release(allocator, FileSegment.deinit, .{.keep});
+            try filefmt.readSegment(dir, info, ref.value);
         }
-        try filefmt.readSegment(dir, info, seg);
-        try self.file_segments.append(allocator, seg);
-        self.file_version = @max(self.file_version, info.getLastCommitId());
+        try file_list.append(allocator, ref);
+        file_version = @max(file_version, info.getLastCommitId());
     }
-    self.version = self.file_version;
 
     // 2. Open the oplog and replay only the tail (versions > file_version).
-    self.oplog = try Oplog.open(allocator, dir, &self, applyReplay);
-    self.version = @max(self.version, self.oplog.last_version);
-    return self;
+    var ctx = ReplayCtx{ .allocator = allocator, .mem_list = &mem_list, .file_version = file_version };
+    var oplog = try Oplog.open(allocator, dir, &ctx, ReplayCtx.apply);
+    errdefer oplog.deinit();
+
+    const version = @max(file_version, oplog.last_version);
+
+    const segments = try SharedPtr(Segments).create(allocator, .{
+        .allocator = allocator,
+        .file = try file_list.toOwnedSlice(allocator),
+        .memory = try mem_list.toOwnedSlice(allocator),
+        .version = version,
+        .file_version = file_version,
+    });
+
+    return .{
+        .allocator = allocator,
+        .dir = dir,
+        .oplog = oplog,
+        .segments = segments,
+        .version = version,
+        .file_version = file_version,
+        .checkpoint_threshold = checkpoint_threshold,
+    };
 }
 
-fn applyReplay(self: *Self, txn: Transaction) !void {
-    if (txn.id <= self.file_version) return; // already in a file segment
-    try self.memory_segments.ensureUnusedCapacity(self.allocator, 1);
-    const seg = try self.buildSegment(txn.changes, txn.metadata);
-    self.commitSegment(seg, txn.id);
-}
+const ReplayCtx = struct {
+    allocator: std.mem.Allocator,
+    mem_list: *std.ArrayListUnmanaged(MemoryRef),
+    file_version: u64,
+
+    fn apply(self: *ReplayCtx, txn: Transaction) !void {
+        if (txn.id <= self.file_version) return; // already in a file segment
+        var ref = try MemoryRef.create(self.allocator, MemorySegment.init(self.allocator, .{}));
+        errdefer ref.release(self.allocator, MemorySegment.deinit, .{.delete});
+        try ref.value.build(txn.changes, txn.metadata);
+        ref.value.info = .{ .version = txn.id, .merges = 0 };
+        try self.mem_list.append(self.allocator, ref);
+    }
+};
 
 pub fn deinit(self: *Self) void {
     self.oplog.deinit();
-    self.freeSegments();
+    self.segments.release(self.allocator, Segments.deinit, .{.keep});
     self.dir.close();
 }
 
-fn freeSegments(self: *Self) void {
-    for (self.memory_segments.items) |seg| {
-        seg.deinit(.delete);
-        self.allocator.destroy(seg);
-    }
-    self.memory_segments.deinit(self.allocator);
-    for (self.file_segments.items) |seg| {
-        seg.deinit(.keep);
-        self.allocator.destroy(seg);
-    }
-    self.file_segments.deinit(self.allocator);
+/// Acquire a consistent snapshot to search. Caller must deinit it.
+pub fn acquireReader(self: *Self) IndexReader {
+    self.segments_lock.lockShared() catch {};
+    defer self.segments_lock.unlockShared();
+    return .{ .allocator = self.allocator, .snapshot = self.segments.acquire() };
 }
 
-// Writer path. Build the segment before the durable append so a build failure
-// never leaves the log ahead of memory; the oplog append is the commit point.
-pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata, expected_version: ?u64) !u64 {
-    try self.lock.lock();
-    defer self.lock.unlock();
+// Install a new snapshot, swap it in, and release the old one (dropping the
+// files of any segment no longer referenced). Takes ownership of file/memory on
+// success; on OOM leaves them for the caller to release.
+fn installSnapshot(self: *Self, file: []FileRef, memory: []MemoryRef, version: u64, file_version: u64) !void {
+    const snap = try SharedPtr(Segments).create(self.allocator, .{
+        .allocator = self.allocator,
+        .file = file,
+        .memory = memory,
+        .version = version,
+        .file_version = file_version,
+    });
 
-    try self.memory_segments.ensureUnusedCapacity(self.allocator, 1);
-    const seg = try self.buildSegment(changes, metadata);
-    errdefer {
-        seg.deinit(.delete);
-        self.allocator.destroy(seg);
-    }
+    self.segments_lock.lock() catch {};
+    var old = self.segments;
+    self.segments = snap;
+    self.segments_lock.unlock();
+
+    old.release(self.allocator, Segments.deinit, .{.delete});
+    self.version = version;
+    self.file_version = file_version;
+}
+
+fn cloneRefs(comptime T: type, allocator: std.mem.Allocator, src: []SharedPtr(T)) ![]SharedPtr(T) {
+    const dst = try allocator.alloc(SharedPtr(T), src.len);
+    for (src, 0..) |s, i| dst[i] = s.acquire();
+    return dst;
+}
+
+fn releaseRefs(comptime T: type, allocator: std.mem.Allocator, refs: []SharedPtr(T), cleanup: KeepOrDelete) void {
+    for (refs) |*s| s.release(allocator, T.deinit, .{cleanup});
+    allocator.free(refs);
+}
+
+// Writer path. Build the memory segment before the durable append so a build
+// failure never leaves the log ahead of memory; the oplog append is the commit
+// point.
+pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata, expected_version: ?u64) !u64 {
+    self.write_lock.lock() catch {};
+    defer self.write_lock.unlock();
+
+    var seg = try MemoryRef.create(self.allocator, MemorySegment.init(self.allocator, .{}));
+    var seg_consumed = false;
+    errdefer if (!seg_consumed) seg.release(self.allocator, MemorySegment.deinit, .{.delete});
+    try seg.value.build(changes, metadata);
 
     const version = try self.oplog.append(changes, metadata, expected_version);
-    self.commitSegment(seg, version);
+    seg.value.info = .{ .version = version, .merges = 0 };
+
+    const cur = self.segments.value;
+    const new_file = try cloneRefs(FileSegment, self.allocator, cur.file);
+    var arrays_consumed = false;
+    errdefer if (!arrays_consumed) releaseRefs(FileSegment, self.allocator, new_file, .keep);
+
+    const new_memory = try self.allocator.alloc(MemoryRef, cur.memory.len + 1);
+    errdefer if (!arrays_consumed) self.allocator.free(new_memory);
+    for (cur.memory, 0..) |s, i| new_memory[i] = s.acquire();
+    new_memory[cur.memory.len] = seg;
+    seg_consumed = true;
+
+    try self.installSnapshot(new_file, new_memory, version, self.file_version);
+    arrays_consumed = true;
 
     self.maybeCheckpoint() catch |err| {
         // A checkpoint failure doesn't lose data (it's still in the oplog and
-        // memory); just log and let a later update retry.
+        // the current snapshot); just log and let a later update retry.
         log.warn("checkpoint failed: {}", .{err});
     };
     return version;
 }
 
-fn buildSegment(self: *Self, changes: []const Change, metadata: ?Metadata) !*MemorySegment {
-    const seg = try self.allocator.create(MemorySegment);
-    errdefer self.allocator.destroy(seg);
-    seg.* = MemorySegment.init(self.allocator, .{});
-    errdefer seg.deinit(.delete);
-    try seg.build(changes, metadata);
-    return seg;
-}
-
-// Infallible: the caller must have reserved capacity in memory_segments.
-fn commitSegment(self: *Self, seg: *MemorySegment, version: u64) void {
-    seg.info = .{ .version = version, .merges = 0 };
-    self.memory_segments.appendAssumeCapacity(seg);
-    self.version = version;
-}
-
 fn memoryItemCount(self: *const Self) usize {
     var total: usize = 0;
-    for (self.memory_segments.items) |seg| total += seg.getSize();
+    for (self.segments.value.memory) |seg| total += seg.value.getSize();
     return total;
 }
 
 fn maybeCheckpoint(self: *Self) !void {
-    if (self.memory_segments.items.len == 0 or self.memoryItemCount() <= self.checkpoint_threshold) return;
+    if (self.segments.value.memory.len == 0 or self.memoryItemCount() <= self.checkpoint_threshold) return;
     try self.checkpoint();
     try self.maybeMergeFiles();
 }
 
-// Merge all memory segments into a single file segment, make it official in the
-// manifest, then clear memory. Crash-safe: the data stays in the oplog until the
-// manifest write commits.
+// Merge all memory segments into a single file segment and swap in a snapshot
+// with empty memory.
 fn checkpoint(self: *Self) !void {
-    if (self.memory_segments.items.len == 0) return;
+    const cur = self.segments.value;
+    if (cur.memory.len == 0) return;
 
-    const fseg = try self.mergeToFileSegment(MemorySegment, self.memory_segments.items);
-    var committed = false;
-    errdefer if (!committed) self.discardFileSegment(fseg);
+    var fseg = try self.mergeToFileSegment(MemorySegment, cur.memory, cur);
+    var consumed = false;
+    errdefer if (!consumed) fseg.release(self.allocator, FileSegment.deinit, .{.delete});
+    const info = fseg.value.info;
 
-    try self.file_segments.append(self.allocator, fseg);
-    errdefer _ = self.file_segments.pop();
+    const new_file = try self.allocator.alloc(FileRef, cur.file.len + 1);
+    var arrays_consumed = false;
+    errdefer if (!arrays_consumed) self.allocator.free(new_file);
+    for (cur.file, 0..) |s, i| new_file[i] = s.acquire();
+    new_file[cur.file.len] = fseg;
+    consumed = true;
 
-    try self.writeManifest();
-    committed = true;
+    const new_memory = try self.allocator.alloc(MemoryRef, 0);
 
-    self.file_version = @max(self.file_version, fseg.info.getLastCommitId());
-    for (self.memory_segments.items) |seg| {
-        seg.deinit(.delete);
-        self.allocator.destroy(seg);
-    }
-    self.memory_segments.clearRetainingCapacity();
+    // Manifest must reflect the committed file set before the swap.
+    try self.writeManifestFor(new_file);
+    try self.installSnapshot(new_file, new_memory, self.version, @max(self.file_version, info.getLastCommitId()));
+    arrays_consumed = true;
 
-    log.info("checkpointed to file segment {x}-{x} ({} items)", .{ fseg.info.version, fseg.info.merges, fseg.num_items });
+    log.info("checkpointed to file segment {x}-{x} ({} items)", .{ info.version, info.merges, fseg.value.num_items });
 }
 
-fn fileSegmentSize(seg: *FileSegment) usize {
-    return seg.getSize();
+fn fileSegmentSize(seg: FileRef) usize {
+    return seg.value.getSize();
 }
 
-fn fileSegmentFrozen(seg: *FileSegment) bool {
+fn fileSegmentFrozen(seg: FileRef) bool {
     _ = seg;
     return false;
 }
 
 fn maybeMergeFiles(self: *Self) !void {
-    const policy = TieredMergePolicy(*FileSegment, fileSegmentSize, fileSegmentFrozen){
+    const policy = TieredMergePolicy(FileRef, fileSegmentSize, fileSegmentFrozen){
         .min_segment_size = 100,
         .max_segment_size = 1_000_000_000,
         .segments_per_merge = 10,
         .segments_per_level = 10,
     };
-    const budget = policy.calculateBudget(self.file_segments.items);
-    if (self.file_segments.items.len <= budget) return;
+    const cur = self.segments.value;
+    const budget = policy.calculateBudget(cur.file);
+    if (cur.file.len <= budget) return;
 
-    const candidate = policy.findSegmentsToMerge(self.file_segments.items) orelse return;
+    const candidate = policy.findSegmentsToMerge(cur.file) orelse return;
     if (candidate.end - candidate.start < 2) return;
     try self.mergeFileRange(candidate.start, candidate.end);
 }
 
-// Merge file_segments[start..end] into one, commit via the manifest, then swap
-// the in-memory list and delete the old files.
+// Merge file[start..end] into one and swap in a snapshot with it in place. The
+// old snapshot's release deletes the merged-away files once no reader holds them.
 fn mergeFileRange(self: *Self, start: usize, end: usize) !void {
+    const cur = self.segments.value;
     const n = end - start;
 
-    const fseg = try self.mergeToFileSegment(FileSegment, self.file_segments.items[start..end]);
-    var committed = false;
-    errdefer if (!committed) self.discardFileSegment(fseg);
+    // Capture the merged-away file infos before the swap (cur may be freed once
+    // the old snapshot is released); their files are deleted after commit.
+    const removed = try self.allocator.alloc(SegmentInfo, n);
+    defer self.allocator.free(removed);
+    for (cur.file[start..end], 0..) |s, i| removed[i] = s.value.info;
 
-    // Keep the old segment pointers for post-commit cleanup (dupe before the
-    // manifest write so an alloc failure stays before the commit point).
-    const old_segs = try self.allocator.dupe(*FileSegment, self.file_segments.items[start..end]);
-    defer self.allocator.free(old_segs);
+    var fseg = try self.mergeToFileSegment(FileSegment, cur.file[start..end], cur);
+    var consumed = false;
+    errdefer if (!consumed) fseg.release(self.allocator, FileSegment.deinit, .{.delete});
+    const info = fseg.value.info;
 
-    var new_infos = try std.ArrayListUnmanaged(SegmentInfo).initCapacity(self.allocator, self.file_segments.items.len - n + 1);
-    defer new_infos.deinit(self.allocator);
-    for (self.file_segments.items[0..start]) |s| new_infos.appendAssumeCapacity(s.info);
-    new_infos.appendAssumeCapacity(fseg.info);
-    for (self.file_segments.items[end..]) |s| new_infos.appendAssumeCapacity(s.info);
-    try manifest.write(self.dir, self.allocator, new_infos.items);
-    committed = true;
+    const new_file = try self.allocator.alloc(FileRef, cur.file.len - n + 1);
+    var arrays_consumed = false;
+    errdefer if (!arrays_consumed) self.allocator.free(new_file);
+    for (cur.file[0..start], 0..) |s, i| new_file[i] = s.acquire();
+    new_file[start] = fseg;
+    for (cur.file[end..], 0..) |s, i| new_file[start + 1 + i] = s.acquire();
+    consumed = true;
 
-    // Infallible in-memory swap: replace [start..end] with fseg.
-    self.file_segments.items[start] = fseg;
-    var k = end - 1;
-    while (k > start) : (k -= 1) _ = self.file_segments.orderedRemove(k);
+    const new_memory = try cloneRefs(MemorySegment, self.allocator, cur.memory);
+    errdefer if (!arrays_consumed) releaseRefs(MemorySegment, self.allocator, new_memory, .delete);
 
-    for (old_segs) |s| {
-        filefmt.deleteSegmentFile(self.dir, s.info) catch |err| {
-            log.warn("failed to delete merged segment {x}: {}", .{ s.info.version, err });
+    try self.writeManifestFor(new_file);
+    try self.installSnapshot(new_file, new_memory, self.version, self.file_version);
+    arrays_consumed = true;
+
+    // Old snapshot committed away; delete the merged-away files. In-flight
+    // readers keep the heap-loaded segments alive, so this is safe.
+    for (removed) |ri| {
+        filefmt.deleteSegmentFile(self.dir, ri) catch |err| {
+            log.warn("failed to delete merged segment {x}: {}", .{ ri.version, err });
         };
-        s.deinit(.keep);
-        self.allocator.destroy(s);
     }
 
-    log.info("merged {} file segments -> {x}-{x} ({} items)", .{ n, fseg.info.version, fseg.info.merges, fseg.num_items });
+    log.info("merged {} file segments -> {x}-{x} ({} items)", .{ n, info.version, info.merges, fseg.value.num_items });
 }
 
-// Merge `sources` (all of type Segment) into a new on-disk file segment and load
-// it back. On error the written file is cleaned up. Caller owns the result.
-fn mergeToFileSegment(self: *Self, comptime Segment: type, sources: []const *Segment) !*FileSegment {
+// Merge `sources` into a new on-disk file segment and load it back. `collection`
+// provides hasNewerVersion (the current snapshot). On error the written file is
+// removed. Caller owns the returned ref.
+fn mergeToFileSegment(self: *Self, comptime Segment: type, sources: []SharedPtr(Segment), collection: anytype) !FileRef {
     var merger = try SegmentMerger(Segment).init(self.allocator, sources.len);
     defer merger.deinit();
-    for (sources) |s| merger.addSource(s);
-    try merger.prepare(self);
+    for (sources) |s| merger.addSource(s.value);
+    try merger.prepare(collection);
     const info = merger.segment.info;
 
     try filefmt.writeSegment(self.dir, &merger, self.allocator);
     errdefer filefmt.deleteSegmentFile(self.dir, info) catch {};
 
-    const fseg = try self.allocator.create(FileSegment);
-    errdefer self.allocator.destroy(fseg);
-    fseg.* = FileSegment.init(self.allocator);
-    errdefer fseg.deinit(.keep);
-    try filefmt.readSegment(self.dir, info, fseg);
-    return fseg;
+    var ref = try FileRef.create(self.allocator, FileSegment.init(self.allocator));
+    errdefer ref.release(self.allocator, FileSegment.deinit, .{.delete});
+    try filefmt.readSegment(self.dir, info, ref.value);
+    return ref;
 }
 
-fn discardFileSegment(self: *Self, fseg: *FileSegment) void {
-    filefmt.deleteSegmentFile(self.dir, fseg.info) catch {};
-    fseg.deinit(.keep);
-    self.allocator.destroy(fseg);
-}
-
-fn writeManifest(self: *Self) !void {
-    const infos = try self.allocator.alloc(SegmentInfo, self.file_segments.items.len);
+fn writeManifestFor(self: *Self, file: []const FileRef) !void {
+    const infos = try self.allocator.alloc(SegmentInfo, file.len);
     defer self.allocator.free(infos);
-    for (self.file_segments.items, 0..) |seg, i| infos[i] = seg.info;
+    for (file, 0..) |seg, i| infos[i] = seg.value.info;
     try manifest.write(self.dir, self.allocator, infos);
-}
-
-// Reader path (runs on the search/API runtime). `hashes` is sorted in place.
-pub fn search(self: *Self, hashes: []u32, results: *SearchResults) !void {
-    try self.lock.lockShared();
-    defer self.lock.unlockShared();
-
-    std.sort.pdq(u32, hashes, {}, std.sort.asc(u32));
-    for (self.file_segments.items) |seg| {
-        try seg.search(hashes, results);
-    }
-    for (self.memory_segments.items) |seg| {
-        try seg.search(hashes, results);
-    }
-    try results.finish(self);
-}
-
-// Used by SearchResults.finish to drop hits shadowed by a newer version.
-// Called under the shared lock held by search(), so it must not re-lock.
-// Segments are non-merged (one version each), so info.version is the doc's
-// version. Iterate newest -> oldest across both lists (globally descending).
-pub fn hasNewerVersion(self: *const Self, id: u32, version: u64) bool {
-    var i = self.memory_segments.items.len;
-    while (i > 0) {
-        i -= 1;
-        const seg = self.memory_segments.items[i];
-        if (seg.info.version <= version) return false;
-        if (id >= seg.min_doc_id and id <= seg.max_doc_id and seg.docs.contains(id)) return true;
-    }
-    var j = self.file_segments.items.len;
-    while (j > 0) {
-        j -= 1;
-        const seg = self.file_segments.items[j];
-        if (seg.info.version <= version) return false;
-        if (id >= seg.min_doc_id and id <= seg.max_doc_id and seg.docs.contains(id)) return true;
-    }
-    return false;
 }
 
 fn cleanupTestDir(cwd: zio.Dir, path: []const u8) void {
     var sub = cwd.openDir(path, .{ .iterate = true }) catch return;
-    var names: [64][filefmt.max_file_name_size]u8 = undefined;
-    var count: usize = 0;
     var it = sub.iterate();
     while (it.next() catch null) |entry| {
-        if (entry.kind != .file or count >= names.len) continue;
-        @memcpy(names[count][0..entry.name.len], entry.name);
-        // store length via a sentinel: use a parallel array
-        count += 1;
-        sub.deleteFile(entry.name) catch {};
+        if (entry.kind == .file) sub.deleteFile(entry.name) catch {};
     }
     sub.close();
     cwd.deleteDir(path) catch {};
@@ -336,41 +415,42 @@ test "checkpoint and reload" {
     const ins1 = [_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{ 100, 200, 300 } } }};
     const ins2 = [_]Change{.{ .insert = .{ .id = 2, .hashes = &[_]u32{ 100, 200, 300 } } }};
 
-    // First open: insert enough to trigger a checkpoint (threshold 5 items).
     {
         const dir = try cwd.openDir(dir_path, .{});
         var index = try Self.open(std.testing.allocator, dir, 5);
         defer index.deinit();
 
-        _ = try index.update(&ins1, null, null); // 3 items
-        _ = try index.update(&ins2, null, null); // +3 -> checkpoint merges all memory
+        _ = try index.update(&ins1, null, null);
+        _ = try index.update(&ins2, null, null); // triggers checkpoint
 
-        // Checkpoint flushed both memory segments into one file segment.
-        try std.testing.expectEqual(@as(usize, 1), index.file_segments.items.len);
-        try std.testing.expectEqual(@as(usize, 0), index.memory_segments.items.len);
+        try std.testing.expectEqual(@as(usize, 1), index.segments.value.file.len);
+        try std.testing.expectEqual(@as(usize, 0), index.segments.value.memory.len);
 
         var results = SearchResults.init(std.testing.allocator, .{ .max_results = 10, .min_score = 1 });
         defer results.deinit();
+        var reader = index.acquireReader();
+        defer reader.deinit();
         var hashes = [_]u32{ 100, 200, 300 };
-        try index.search(&hashes, &results);
+        try reader.search(&hashes, &results);
         try std.testing.expectEqual(@as(u32, 3), results.hits.get(1).?.score);
         try std.testing.expectEqual(@as(u32, 3), results.hits.get(2).?.score);
     }
 
-    // Reopen: file segment from manifest; oplog tail is fully covered.
     {
         const dir = try cwd.openDir(dir_path, .{});
         var index = try Self.open(std.testing.allocator, dir, 5);
         defer index.deinit();
 
-        try std.testing.expectEqual(@as(usize, 1), index.file_segments.items.len);
-        try std.testing.expectEqual(@as(usize, 0), index.memory_segments.items.len);
+        try std.testing.expectEqual(@as(usize, 1), index.segments.value.file.len);
+        try std.testing.expectEqual(@as(usize, 0), index.segments.value.memory.len);
         try std.testing.expectEqual(@as(u64, 2), index.version);
 
         var results = SearchResults.init(std.testing.allocator, .{ .max_results = 10, .min_score = 1 });
         defer results.deinit();
+        var reader = index.acquireReader();
+        defer reader.deinit();
         var hashes = [_]u32{ 100, 200, 300 };
-        try index.search(&hashes, &results);
+        try reader.search(&hashes, &results);
         try std.testing.expectEqual(@as(u32, 3), results.hits.get(1).?.score);
         try std.testing.expectEqual(@as(u32, 3), results.hits.get(2).?.score);
     }
@@ -387,27 +467,69 @@ test "file segment merging bounds count and preserves deletes" {
     defer cleanupTestDir(cwd, dir_path);
 
     const dir = try cwd.openDir(dir_path, .{});
-    var index = try Self.open(std.testing.allocator, dir, 1); // checkpoint every update
+    var index = try Self.open(std.testing.allocator, dir, 1);
     defer index.deinit();
 
-    // Each update becomes its own file segment; merging must keep the count down.
     var id: u32 = 1;
     while (id <= 30) : (id += 1) {
         const ins = [_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{ 100, id } } }};
         _ = try index.update(&ins, null, null);
     }
-    try std.testing.expect(index.file_segments.items.len < 30);
+    try std.testing.expect(index.segments.value.file.len < 30);
 
-    // Delete one doc; the tombstone must shadow its insert across the merges.
     const del = [_]Change{.{ .delete = .{ .id = 5 } }};
     _ = try index.update(&del, null, null);
 
     var results = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });
     defer results.deinit();
+    var reader = index.acquireReader();
+    defer reader.deinit();
     var hashes = [_]u32{100};
-    try index.search(&hashes, &results);
+    try reader.search(&hashes, &results);
 
     const out = results.getResults();
-    try std.testing.expectEqual(@as(usize, 29), out.len); // 30 inserted, 1 deleted
+    try std.testing.expectEqual(@as(usize, 29), out.len);
     for (out) |r| try std.testing.expect(r.id != 5);
+}
+
+test "reader snapshot is stable across writes" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_index_snapshot";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    const dir = try cwd.openDir(dir_path, .{});
+    var index = try Self.open(std.testing.allocator, dir, 5);
+    defer index.deinit();
+
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{100} } }}, null, null);
+
+    // Snapshot taken now sees only id 1.
+    var reader = index.acquireReader();
+    defer reader.deinit();
+
+    // Many more writes trigger checkpoints + merges that free the segments the
+    // new snapshots no longer reference; the old reader must stay valid.
+    var id: u32 = 2;
+    while (id <= 30) : (id += 1) {
+        _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{100} } }}, null, null);
+    }
+
+    var r1 = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });
+    defer r1.deinit();
+    var h1 = [_]u32{100};
+    try reader.search(&h1, &r1);
+    try std.testing.expectEqual(@as(usize, 1), r1.getResults().len); // snapshot isolation
+
+    var r2 = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });
+    defer r2.deinit();
+    var fresh = index.acquireReader();
+    defer fresh.deinit();
+    var h2 = [_]u32{100};
+    try fresh.search(&h2, &r2);
+    try std.testing.expectEqual(@as(usize, 30), r2.getResults().len);
 }

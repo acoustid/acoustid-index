@@ -79,7 +79,9 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
     });
     // arena-backed; freed with the request arena.
 
-    try index.search(request.query, &collector);
+    var reader = index.acquireReader();
+    defer reader.deinit();
+    try reader.search(request.query, &collector);
 
     const results = collector.getResults();
     const out = try arena.alloc(api.SearchResult, results.len);
