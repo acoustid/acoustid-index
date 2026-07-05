@@ -59,6 +59,7 @@ pub fn open(self: *Self) !void {
             return err;
         };
         errdefer index.deinit();
+        try index.start();
 
         try self.indexes.put(self.allocator, name, index);
         log.info("opened index '{s}' at version {d}", .{ name, index.version });
@@ -129,6 +130,7 @@ pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexReques
         return err;
     };
     errdefer index.deinit();
+    try index.start();
 
     const name_copy = try self.allocator.dupe(u8, name);
     errdefer self.allocator.free(name_copy);

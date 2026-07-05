@@ -31,6 +31,8 @@ const BlockCacheEntry = struct {
 };
 
 allocator: std.mem.Allocator,
+// Directory the segment file lives in; used to delete the file on deinit(.delete).
+dir: zio.Dir = undefined,
 info: SegmentInfo = .{},
 metadata: Metadata,
 docs: std.AutoHashMapUnmanaged(u32, bool) = .{},
@@ -48,8 +50,18 @@ pub fn init(allocator: std.mem.Allocator) Self {
     return .{ .allocator = allocator, .metadata = Metadata.initOwned(allocator) };
 }
 
+// When `delete_file` is .delete (a segment dropped by a merge), delete the
+// backing file — this happens when the last reference is released, so an
+// in-flight reader keeps the file until it's done. Only loaded segments (with a
+// data buffer, hence a valid `dir`) have a file to delete.
 pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
-    _ = delete_file;
+    if (delete_file == .delete and self.data.len > 0) {
+        var buf: [64]u8 = undefined;
+        const name = std.fmt.bufPrint(&buf, "{x:0>16}-{x:0>8}.data", .{ self.info.version, self.info.merges }) catch unreachable;
+        self.dir.deleteFile(name) catch |err| {
+            if (err != error.FileNotFound) log.warn("failed to delete segment file {s}: {}", .{ name, err });
+        };
+    }
     self.metadata.deinit();
     self.docs.deinit(self.allocator);
     if (self.data.len > 0) self.allocator.free(self.data);

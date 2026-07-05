@@ -110,6 +110,13 @@ version: u64 = 0,
 file_version: u64 = 0,
 checkpoint_threshold: usize = 100_000,
 
+// Background maintenance (checkpoint + file merges) runs on a dedicated per-index
+// coroutine so it never blocks the update path. `wake` is a coalescing signal
+// (capacity 1); updates trySend to it when there's likely work.
+wake_buffer: [1]u8 = undefined,
+wake: zio.Channel(u8) = undefined,
+maintenance: ?zio.JoinHandle(void) = null,
+
 pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: usize) !Self {
     var file_list: std.ArrayListUnmanaged(FileRef) = .empty;
     var mem_list: std.ArrayListUnmanaged(MemoryRef) = .empty;
@@ -176,6 +183,7 @@ const ReplayCtx = struct {
 };
 
 pub fn deinit(self: *Self) void {
+    self.stop();
     self.oplog.deinit();
     self.segments.release(self.allocator, Segments.deinit, .{.keep});
     self.dir.close();
@@ -250,12 +258,47 @@ pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata, expecte
     try self.installSnapshot(new_file, new_memory, version, self.file_version);
     arrays_consumed = true;
 
-    self.maybeCheckpoint() catch |err| {
-        // A checkpoint failure doesn't lose data (it's still in the oplog and
-        // the current snapshot); just log and let a later update retry.
-        log.warn("checkpoint failed: {}", .{err});
-    };
+    // Hand checkpoint/merge to the maintenance coroutine (coalescing signal).
+    // Only if it's running — tests drive runMaintenance() synchronously instead.
+    if (self.maintenance != null and self.memoryItemCount() > self.checkpoint_threshold) {
+        self.wake.trySend(1) catch {};
+    }
     return version;
+}
+
+/// Start the background maintenance coroutine. Call once the Index is at its
+/// final address (its `wake` buffer must be stable).
+pub fn start(self: *Self) !void {
+    self.wake = zio.Channel(u8).init(&self.wake_buffer);
+    self.maintenance = try zio.spawn(maintenanceLoop, .{self});
+}
+
+/// Stop the maintenance coroutine and wait for it to finish. Call before deinit.
+pub fn stop(self: *Self) void {
+    if (self.maintenance) |*task| {
+        self.wake.close(.immediate);
+        task.join();
+        self.maintenance = null;
+    }
+}
+
+fn maintenanceLoop(self: *Self) void {
+    while (true) {
+        _ = self.wake.receive() catch return; // channel closed -> stop
+        self.runMaintenance() catch |err| {
+            log.warn("maintenance failed: {}", .{err});
+        };
+    }
+}
+
+// Do all pending work: flush memory, then merge file segments, until neither
+// has anything to do. A concurrent update may add work again, which re-signals.
+fn runMaintenance(self: *Self) !void {
+    while (true) {
+        if (try self.checkpoint()) continue;
+        if (try self.mergeFiles()) continue;
+        break;
+    }
 }
 
 fn memoryItemCount(self: *const Self) usize {
@@ -264,38 +307,10 @@ fn memoryItemCount(self: *const Self) usize {
     return total;
 }
 
-fn maybeCheckpoint(self: *Self) !void {
-    if (self.segments.value.memory.len == 0 or self.memoryItemCount() <= self.checkpoint_threshold) return;
-    try self.checkpoint();
-    try self.maybeMergeFiles();
-}
-
-// Merge all memory segments into a single file segment and swap in a snapshot
-// with empty memory.
-fn checkpoint(self: *Self) !void {
-    const cur = self.segments.value;
-    if (cur.memory.len == 0) return;
-
-    var fseg = try self.mergeToFileSegment(MemorySegment, cur.memory, cur);
-    var consumed = false;
-    errdefer if (!consumed) fseg.release(self.allocator, FileSegment.deinit, .{.delete});
-    const info = fseg.value.info;
-
-    const new_file = try self.allocator.alloc(FileRef, cur.file.len + 1);
-    var arrays_consumed = false;
-    errdefer if (!arrays_consumed) self.allocator.free(new_file);
-    for (cur.file, 0..) |s, i| new_file[i] = s.acquire();
-    new_file[cur.file.len] = fseg;
-    consumed = true;
-
-    const new_memory = try self.allocator.alloc(MemoryRef, 0);
-
-    // Manifest must reflect the committed file set before the swap.
-    try self.writeManifestFor(new_file);
-    try self.installSnapshot(new_file, new_memory, self.version, @max(self.file_version, info.getLastCommitId()));
-    arrays_consumed = true;
-
-    log.info("checkpointed to file segment {x}-{x} ({} items)", .{ info.version, info.merges, fseg.value.num_items });
+fn memorySize(memory: []const MemoryRef) usize {
+    var total: usize = 0;
+    for (memory) |seg| total += seg.value.getSize();
+    return total;
 }
 
 fn fileSegmentSize(seg: FileRef) usize {
@@ -307,63 +322,121 @@ fn fileSegmentFrozen(seg: FileRef) bool {
     return false;
 }
 
-fn maybeMergeFiles(self: *Self) !void {
+// Flush all memory segments to one file segment. The merge runs without the
+// write lock; only the manifest write + snapshot swap hold it, so updates keep
+// flowing. Updates that arrive during the merge stay in memory (they append to
+// the suffix; the flushed segments are the prefix). Returns true if it ran.
+fn checkpoint(self: *Self) !bool {
+    self.segments_lock.lockShared() catch {};
+    var snap = self.segments.acquire();
+    self.segments_lock.unlockShared();
+    defer snap.release(self.allocator, Segments.deinit, .{.keep});
+
+    const flush_count = snap.value.memory.len;
+    if (flush_count == 0 or memorySize(snap.value.memory) <= self.checkpoint_threshold) return false;
+
+    var fseg = try self.mergeToFileSegment(MemorySegment, snap.value.memory, snap.value);
+    var installed = false;
+    var fseg_placed = false;
+    errdefer if (!installed and !fseg_placed) fseg.release(self.allocator, FileSegment.deinit, .{.delete});
+    const info = fseg.value.info;
+
+    self.write_lock.lock() catch {};
+    defer self.write_lock.unlock();
+
+    const cur = self.segments.value;
+    const kept = cur.memory[flush_count..];
+
+    const new_file = try self.allocator.alloc(FileRef, cur.file.len + 1);
+    var nf: usize = 0;
+    errdefer if (!installed) {
+        for (new_file[0..nf]) |*s| s.release(self.allocator, FileSegment.deinit, .{.delete});
+        self.allocator.free(new_file);
+    };
+    for (cur.file) |s| {
+        new_file[nf] = s.acquire();
+        nf += 1;
+    }
+    new_file[nf] = fseg;
+    nf += 1;
+    fseg_placed = true;
+
+    const new_memory = try cloneRefs(MemorySegment, self.allocator, kept);
+    errdefer if (!installed) releaseRefs(MemorySegment, self.allocator, new_memory, .keep);
+
+    try self.writeManifestFor(new_file);
+    try self.installSnapshot(new_file, new_memory, self.version, @max(self.file_version, info.getLastCommitId()));
+    installed = true;
+
+    log.info("checkpointed to file segment {x}-{x} ({} items)", .{ info.version, info.merges, fseg.value.num_items });
+    return true;
+}
+
+// Merge a tiered-policy-selected range of file segments into one. Same phase
+// split: the merge is lock-free, only the swap holds the write lock. The
+// merged-away files are deleted when the old snapshot's last reference drops
+// (FileSegment.deinit(.delete)), so in-flight readers keep them until done.
+// Returns true if a merge ran.
+fn mergeFiles(self: *Self) !bool {
     const policy = TieredMergePolicy(FileRef, fileSegmentSize, fileSegmentFrozen){
         .min_segment_size = 100,
         .max_segment_size = 1_000_000_000,
         .segments_per_merge = 10,
         .segments_per_level = 10,
     };
-    const cur = self.segments.value;
-    const budget = policy.calculateBudget(cur.file);
-    if (cur.file.len <= budget) return;
 
-    const candidate = policy.findSegmentsToMerge(cur.file) orelse return;
-    if (candidate.end - candidate.start < 2) return;
-    try self.mergeFileRange(candidate.start, candidate.end);
-}
+    self.segments_lock.lockShared() catch {};
+    var snap = self.segments.acquire();
+    self.segments_lock.unlockShared();
+    defer snap.release(self.allocator, Segments.deinit, .{.keep});
 
-// Merge file[start..end] into one and swap in a snapshot with it in place. The
-// old snapshot's release deletes the merged-away files once no reader holds them.
-fn mergeFileRange(self: *Self, start: usize, end: usize) !void {
-    const cur = self.segments.value;
-    const n = end - start;
+    const src_file = snap.value.file;
+    if (src_file.len <= policy.calculateBudget(src_file)) return false;
+    const candidate = policy.findSegmentsToMerge(src_file) orelse return false;
+    const lo = candidate.start;
+    const hi = candidate.end;
+    if (hi - lo < 2) return false;
+    const n = hi - lo;
 
-    // Capture the merged-away file infos before the swap (cur may be freed once
-    // the old snapshot is released); their files are deleted after commit.
-    const removed = try self.allocator.alloc(SegmentInfo, n);
-    defer self.allocator.free(removed);
-    for (cur.file[start..end], 0..) |s, i| removed[i] = s.value.info;
-
-    var fseg = try self.mergeToFileSegment(FileSegment, cur.file[start..end], cur);
-    var consumed = false;
-    errdefer if (!consumed) fseg.release(self.allocator, FileSegment.deinit, .{.delete});
+    var fseg = try self.mergeToFileSegment(FileSegment, src_file[lo..hi], snap.value);
+    var installed = false;
+    var fseg_placed = false;
+    errdefer if (!installed and !fseg_placed) fseg.release(self.allocator, FileSegment.deinit, .{.delete});
     const info = fseg.value.info;
 
+    self.write_lock.lock() catch {};
+    defer self.write_lock.unlock();
+
+    // File segments are unchanged since the capture (only this coroutine touches
+    // them), so start/end are still valid; memory may have grown.
+    const cur = self.segments.value;
     const new_file = try self.allocator.alloc(FileRef, cur.file.len - n + 1);
-    var arrays_consumed = false;
-    errdefer if (!arrays_consumed) self.allocator.free(new_file);
-    for (cur.file[0..start], 0..) |s, i| new_file[i] = s.acquire();
-    new_file[start] = fseg;
-    for (cur.file[end..], 0..) |s, i| new_file[start + 1 + i] = s.acquire();
-    consumed = true;
+    var nf: usize = 0;
+    errdefer if (!installed) {
+        for (new_file[0..nf]) |*s| s.release(self.allocator, FileSegment.deinit, .{.delete});
+        self.allocator.free(new_file);
+    };
+    for (cur.file[0..lo]) |s| {
+        new_file[nf] = s.acquire();
+        nf += 1;
+    }
+    new_file[nf] = fseg;
+    nf += 1;
+    fseg_placed = true;
+    for (cur.file[hi..]) |s| {
+        new_file[nf] = s.acquire();
+        nf += 1;
+    }
 
     const new_memory = try cloneRefs(MemorySegment, self.allocator, cur.memory);
-    errdefer if (!arrays_consumed) releaseRefs(MemorySegment, self.allocator, new_memory, .delete);
+    errdefer if (!installed) releaseRefs(MemorySegment, self.allocator, new_memory, .keep);
 
     try self.writeManifestFor(new_file);
     try self.installSnapshot(new_file, new_memory, self.version, self.file_version);
-    arrays_consumed = true;
-
-    // Old snapshot committed away; delete the merged-away files. In-flight
-    // readers keep the heap-loaded segments alive, so this is safe.
-    for (removed) |ri| {
-        filefmt.deleteSegmentFile(self.dir, ri) catch |err| {
-            log.warn("failed to delete merged segment {x}: {}", .{ ri.version, err });
-        };
-    }
+    installed = true;
 
     log.info("merged {} file segments -> {x}-{x} ({} items)", .{ n, info.version, info.merges, fseg.value.num_items });
+    return true;
 }
 
 // Merge `sources` into a new on-disk file segment and load it back. `collection`
@@ -421,7 +494,8 @@ test "checkpoint and reload" {
         defer index.deinit();
 
         _ = try index.update(&ins1, null, null);
-        _ = try index.update(&ins2, null, null); // triggers checkpoint
+        _ = try index.update(&ins2, null, null);
+        try index.runMaintenance(); // flush memory -> file segment
 
         try std.testing.expectEqual(@as(usize, 1), index.segments.value.file.len);
         try std.testing.expectEqual(@as(usize, 0), index.segments.value.memory.len);
@@ -474,6 +548,7 @@ test "file segment merging bounds count and preserves deletes" {
     while (id <= 30) : (id += 1) {
         const ins = [_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{ 100, id } } }};
         _ = try index.update(&ins, null, null);
+        try index.runMaintenance();
     }
     try std.testing.expect(index.segments.value.file.len < 30);
 
@@ -517,6 +592,7 @@ test "reader snapshot is stable across writes" {
     var id: u32 = 2;
     while (id <= 30) : (id += 1) {
         _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{100} } }}, null, null);
+        try index.runMaintenance();
     }
 
     var r1 = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });

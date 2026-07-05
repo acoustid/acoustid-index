@@ -202,6 +202,8 @@ pub fn readSegment(dir: zio.Dir, info: SegmentInfo, segment: *FileSegment) !void
     var name_buf: [max_file_name_size]u8 = undefined;
     const name = buildSegmentFileName(&name_buf, info);
 
+    segment.dir = dir;
+
     const st = try dir.statPath(name);
     const file_size: usize = @intCast(st.size);
 
