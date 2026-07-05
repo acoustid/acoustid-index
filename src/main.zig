@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const zio = @import("zio");
 const http = @import("dusty");
 
@@ -9,6 +10,26 @@ const http = @import("dusty");
 const MultiIndex = @import("MultiIndex.zig");
 const Server = @import("server.zig").Server;
 const registerRoutes = @import("server.zig").registerRoutes;
+
+// Process allocator: a leak-checking DebugAllocator in Debug builds, the C
+// allocator (malloc) otherwise — malloc scales better than a mutex-guarded GPA
+// under many threads.
+const RootAllocator = struct {
+    const use_debug = builtin.mode == .Debug;
+    gpa: if (use_debug) std.heap.DebugAllocator(.{}) else void,
+
+    fn init() RootAllocator {
+        return .{ .gpa = if (use_debug) .{} else {} };
+    }
+
+    fn allocator(self: *RootAllocator) std.mem.Allocator {
+        return if (use_debug) self.gpa.allocator() else std.heap.c_allocator;
+    }
+
+    fn deinit(self: *RootAllocator) void {
+        if (use_debug) _ = self.gpa.deinit();
+    }
+};
 
 const Config = struct {
     dir: []const u8 = "data",
@@ -80,9 +101,9 @@ fn parseArgs(args: std.process.Args) !Config {
 }
 
 pub fn main(init: std.process.Init.Minimal) !void {
-    var gpa = std.heap.DebugAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    var root_allocator = RootAllocator.init();
+    defer root_allocator.deinit();
+    const allocator = root_allocator.allocator();
 
     const config = try parseArgs(init.args);
 
