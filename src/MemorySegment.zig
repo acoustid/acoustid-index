@@ -60,6 +60,27 @@ pub fn getSize(self: Self) usize {
     return self.items.items.len;
 }
 
+// Build this memory segment from a SegmentMerger's output (used for in-memory
+// merges). `merger.segment` holds the merged info/metadata/docs; read() yields
+// the merged items in order.
+pub fn buildFromMerger(self: *Self, merger: anytype) !void {
+    self.info = merger.segment.info;
+    self.min_doc_id = merger.segment.min_doc_id;
+    self.max_doc_id = merger.segment.max_doc_id;
+
+    try self.metadata.update(merger.segment.metadata);
+
+    try self.docs.ensureTotalCapacity(self.allocator, merger.segment.docs.count());
+    var it = merger.segment.docs.iterator();
+    while (it.next()) |entry| self.docs.putAssumeCapacity(entry.key_ptr.*, entry.value_ptr.*);
+
+    try self.items.ensureTotalCapacity(self.allocator, merger.estimated_size);
+    while (try merger.read()) |item| {
+        try self.items.append(self.allocator, item);
+        merger.advance();
+    }
+}
+
 pub fn build(self: *Self, changes: []const Change, metadata: ?Metadata) !void {
     var num_docs: u32 = 0;
     var num_items: usize = 0;

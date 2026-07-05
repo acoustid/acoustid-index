@@ -259,11 +259,11 @@ pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata, expecte
     try self.installSnapshot(new_file, new_memory, version, self.file_version);
     arrays_consumed = true;
 
-    // Signal the maintenance coroutine (level-triggered; safe even when it isn't
-    // running — tests drive runMaintenance() synchronously instead).
-    if (self.memoryItemCount() > self.checkpoint_threshold) {
-        self.wake.set();
-    }
+    // Any update may create maintenance work (memory merge, then checkpoint,
+    // then file merge). Signal the coroutine; it decides what's actually needed.
+    // Level-triggered, so it's safe even when the coroutine isn't running (tests
+    // drive runMaintenance() synchronously instead).
+    self.wake.set();
     return version;
 }
 
@@ -294,10 +294,12 @@ fn maintenanceLoop(self: *Self) void {
     }
 }
 
-// Do all pending work: flush memory, then merge file segments, until neither
-// has anything to do. A concurrent update may add work again, which re-signals.
+// Cascade all pending work until nothing is left: consolidate memory segments,
+// flush memory to a file segment, then merge file segments. A concurrent update
+// may add work again, which re-signals the wake flag.
 fn runMaintenance(self: *Self) !void {
     while (true) {
+        if (try self.mergeMemory()) continue;
         if (try self.checkpoint()) continue;
         if (try self.mergeFiles()) continue;
         break;
@@ -323,6 +325,86 @@ fn fileSegmentSize(seg: FileRef) usize {
 fn fileSegmentFrozen(seg: FileRef) bool {
     _ = seg;
     return false;
+}
+
+fn memorySegmentSize(seg: MemoryRef) usize {
+    return seg.value.getSize();
+}
+
+fn memorySegmentFrozen(seg: MemoryRef) bool {
+    _ = seg;
+    return false;
+}
+
+// Consolidate a tiered-policy-selected range of memory segments into one new
+// in-memory segment (no disk). Cuts how many segments a search scans between
+// checkpoints. Same phase split as the others: merge lock-free, swap under the
+// write lock. Returns true if a merge ran.
+fn mergeMemory(self: *Self) !bool {
+    const policy = TieredMergePolicy(MemoryRef, memorySegmentSize, memorySegmentFrozen){
+        .min_segment_size = 100,
+        .max_segment_size = self.checkpoint_threshold,
+        .segments_per_merge = 10,
+        .segments_per_level = 5,
+    };
+
+    self.segments_lock.lockShared() catch {};
+    var snap = self.segments.acquire();
+    self.segments_lock.unlockShared();
+    defer snap.release(self.allocator, Segments.deinit, .{.keep});
+
+    const src_mem = snap.value.memory;
+    if (src_mem.len <= policy.calculateBudget(src_mem)) return false;
+    const candidate = policy.findSegmentsToMerge(src_mem) orelse return false;
+    const lo = candidate.start;
+    const hi = candidate.end;
+    if (hi - lo < 2) return false;
+    const n = hi - lo;
+
+    var merged = try MemoryRef.create(self.allocator, MemorySegment.init(self.allocator, .{}));
+    var merged_placed = false;
+    var installed = false;
+    errdefer if (!installed and !merged_placed) merged.release(self.allocator, MemorySegment.deinit, .{.delete});
+    {
+        var merger = try SegmentMerger(MemorySegment).init(self.allocator, n);
+        defer merger.deinit();
+        for (src_mem[lo..hi]) |s| merger.addSource(s.value);
+        try merger.prepare(snap.value);
+        try merged.value.buildFromMerger(&merger);
+    }
+
+    self.write_lock.lock() catch {};
+    defer self.write_lock.unlock();
+
+    // Existing memory segments don't move (updates only append), so lo/hi stay
+    // valid; the suffix picks up updates that arrived during the merge.
+    const cur = self.segments.value;
+    const new_memory = try self.allocator.alloc(MemoryRef, cur.memory.len - n + 1);
+    var nm: usize = 0;
+    errdefer if (!installed) {
+        for (new_memory[0..nm]) |*s| s.release(self.allocator, MemorySegment.deinit, .{.delete});
+        self.allocator.free(new_memory);
+    };
+    for (cur.memory[0..lo]) |s| {
+        new_memory[nm] = s.acquire();
+        nm += 1;
+    }
+    new_memory[nm] = merged;
+    nm += 1;
+    merged_placed = true;
+    for (cur.memory[hi..]) |s| {
+        new_memory[nm] = s.acquire();
+        nm += 1;
+    }
+
+    const new_file = try cloneRefs(FileSegment, self.allocator, cur.file);
+    errdefer if (!installed) releaseRefs(FileSegment, self.allocator, new_file, .keep);
+
+    try self.installSnapshot(new_file, new_memory, self.version, self.file_version);
+    installed = true;
+
+    log.info("merged {} memory segments -> {x}-{x} ({} items)", .{ n, merged.value.info.version, merged.value.info.merges, merged.value.getSize() });
+    return true;
 }
 
 // Flush all memory segments to one file segment. The merge runs without the
@@ -611,4 +693,39 @@ test "reader snapshot is stable across writes" {
     var h2 = [_]u32{100};
     try fresh.search(&h2, &r2);
     try std.testing.expectEqual(@as(usize, 30), r2.getResults().len);
+}
+
+test "memory merge consolidates memory segments without checkpointing" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_index_memmerge";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    const dir = try cwd.openDir(dir_path, .{});
+    var index = try Self.open(std.testing.allocator, dir, 100_000); // high threshold: no checkpoint
+    defer index.deinit();
+
+    // 50 tiny updates stay well under the checkpoint threshold.
+    var id: u32 = 1;
+    while (id <= 50) : (id += 1) {
+        _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{id} } }}, null, null);
+        try index.runMaintenance();
+    }
+
+    // No checkpoint (below threshold), but memory merged into far fewer segments.
+    try std.testing.expectEqual(@as(usize, 0), index.segments.value.file.len);
+    try std.testing.expect(index.segments.value.memory.len < 50);
+
+    // Everything still searchable.
+    var results = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });
+    defer results.deinit();
+    var reader = index.acquireReader();
+    defer reader.deinit();
+    var h = [_]u32{25};
+    try reader.search(&h, &results);
+    try std.testing.expectEqual(@as(usize, 1), results.getResults().len);
 }
