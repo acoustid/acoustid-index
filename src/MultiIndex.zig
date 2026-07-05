@@ -51,7 +51,7 @@ pub fn open(self: *Self) !void {
         const name = try self.allocator.dupe(u8, entry.name);
         errdefer self.allocator.free(name);
 
-        const index_dir = try self.dir.openDir(name, .{});
+        const index_dir = try self.dir.openDir(name, .{ .iterate = true });
         const index = try self.allocator.create(Index);
         errdefer self.allocator.destroy(index);
         index.* = Index.open(self.allocator, index_dir, self.checkpoint_threshold) catch |err| {
@@ -122,7 +122,7 @@ pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexReques
         else => return err,
     };
 
-    const index_dir = try self.dir.openDir(name, .{});
+    const index_dir = try self.dir.openDir(name, .{ .iterate = true });
     const index = try self.allocator.create(Index);
     errdefer self.allocator.destroy(index);
     index.* = Index.open(self.allocator, index_dir, self.checkpoint_threshold) catch |err| {

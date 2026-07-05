@@ -456,6 +456,13 @@ fn checkpoint(self: *Self) !bool {
     try self.installSnapshot(new_file, new_memory, self.version, @max(self.file_version, info.getLastCommitId()));
     installed = true;
 
+    // Transactions up to file_version are now durable in file segments; drop the
+    // oplog files entirely below it. (After the manifest commit, so a crash in
+    // between just leaves redundant oplog entries that replay skips.)
+    self.oplog.truncate(self.file_version) catch |err| {
+        log.warn("oplog truncate failed: {}", .{err});
+    };
+
     log.info("checkpointed to file segment {x}-{x} ({} items)", .{ info.version, info.merges, fseg.value.num_items });
     return true;
 }
@@ -577,7 +584,7 @@ test "checkpoint and reload" {
     const ins2 = [_]Change{.{ .insert = .{ .id = 2, .hashes = &[_]u32{ 100, 200, 300 } } }};
 
     {
-        const dir = try cwd.openDir(dir_path, .{});
+        const dir = try cwd.openDir(dir_path, .{ .iterate = true });
         var index = try Self.open(std.testing.allocator, dir, 5);
         defer index.deinit();
 
@@ -599,7 +606,7 @@ test "checkpoint and reload" {
     }
 
     {
-        const dir = try cwd.openDir(dir_path, .{});
+        const dir = try cwd.openDir(dir_path, .{ .iterate = true });
         var index = try Self.open(std.testing.allocator, dir, 5);
         defer index.deinit();
 
@@ -628,7 +635,7 @@ test "file segment merging bounds count and preserves deletes" {
     try cwd.createDir(dir_path, 0o755);
     defer cleanupTestDir(cwd, dir_path);
 
-    const dir = try cwd.openDir(dir_path, .{});
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
     var index = try Self.open(std.testing.allocator, dir, 1);
     defer index.deinit();
 
@@ -665,7 +672,7 @@ test "reader snapshot is stable across writes" {
     try cwd.createDir(dir_path, 0o755);
     defer cleanupTestDir(cwd, dir_path);
 
-    const dir = try cwd.openDir(dir_path, .{});
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
     var index = try Self.open(std.testing.allocator, dir, 5);
     defer index.deinit();
 
@@ -708,7 +715,7 @@ test "memory merge consolidates memory segments without checkpointing" {
     try cwd.createDir(dir_path, 0o755);
     defer cleanupTestDir(cwd, dir_path);
 
-    const dir = try cwd.openDir(dir_path, .{});
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
     var index = try Self.open(std.testing.allocator, dir, 100_000); // high threshold: no checkpoint
     defer index.deinit();
 
@@ -731,4 +738,55 @@ test "memory merge consolidates memory segments without checkpointing" {
     var h = [_]u32{25};
     try reader.search(&h, &results);
     try std.testing.expectEqual(@as(usize, 1), results.getResults().len);
+}
+
+test "oplog truncation after checkpoint" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_oplog_truncate";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    {
+        const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+        var index = try Self.open(std.testing.allocator, dir, 10);
+        defer index.deinit();
+        index.oplog.max_file_size = 80; // force frequent rotation
+
+        var id: u32 = 1;
+        while (id <= 40) : (id += 1) {
+            _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{ 100, id } } }}, null, null);
+            try index.runMaintenance();
+        }
+    }
+
+    // Truncation should have deleted the oplog files below the checkpoints.
+    {
+        var dir = try cwd.openDir(dir_path, .{ .iterate = true });
+        defer dir.close();
+        var n: usize = 0;
+        var it = dir.iterate();
+        while (try it.next()) |e| {
+            if (e.kind == .file and std.mem.endsWith(u8, e.name, ".xlog")) n += 1;
+        }
+        try std.testing.expect(n < 15);
+    }
+
+    // Reload from the truncated log + file segments; data intact.
+    {
+        const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+        var index = try Self.open(std.testing.allocator, dir, 10);
+        defer index.deinit();
+
+        var results = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });
+        defer results.deinit();
+        var reader = index.acquireReader();
+        defer reader.deinit();
+        var h = [_]u32{40}; // id 40's unique hash
+        try reader.search(&h, &results);
+        try std.testing.expectEqual(@as(usize, 1), results.getResults().len);
+    }
 }
