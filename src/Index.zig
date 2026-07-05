@@ -119,8 +119,7 @@ checkpoint_threshold: usize = 100_000,
 // "there is work" flag: set() coalesces (stays set until the worker resets it),
 // and is safe to call any time — no dependency on the coroutine running.
 wake: zio.ResetEvent = .init,
-stopping: std.atomic.Value(bool) = .init(false),
-maintenance: ?zio.JoinHandle(void) = null,
+maintenance: ?zio.JoinHandle(zio.Cancelable!void) = null,
 
 pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: usize) !Self {
     var file_list: std.ArrayListUnmanaged(FileRef) = .empty;
@@ -263,6 +262,11 @@ pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata, expecte
     try self.write_lock.lock();
     defer self.write_lock.unlock();
 
+    // Shield the commit: once we hold the write lock, the oplog append / manifest
+    // write / snapshot swap must complete atomically even under cancellation.
+    zio.beginShield();
+    defer zio.endShield();
+
     var seg = try MemoryRef.create(self.allocator, MemorySegment.init(self.allocator, .{}));
     var seg_consumed = false;
     errdefer if (!seg_consumed) seg.release(self.allocator, MemorySegment.deinit, .{.delete});
@@ -300,22 +304,24 @@ pub fn start(self: *Self) !void {
 }
 
 /// Stop the maintenance coroutine and wait for it to finish. Call before deinit.
+/// Cancellation aborts an in-progress merge (its commit is shielded, so it
+/// either completes atomically or hasn't started); cancel() also joins.
 pub fn stop(self: *Self) void {
     if (self.maintenance) |*task| {
-        self.stopping.store(true, .release);
-        self.wake.set();
-        task.join();
+        task.cancel();
         self.maintenance = null;
     }
 }
 
-fn maintenanceLoop(self: *Self) void {
+// Runs until cancelled. Cancellation surfaces as error.Canceled from wait() or
+// from an in-progress merge, and is propagated out (the task result). Other
+// (transient) errors are logged and the loop keeps going.
+fn maintenanceLoop(self: *Self) zio.Cancelable!void {
     while (true) {
-        self.wake.wait() catch return;
+        try self.wake.wait();
         self.wake.reset(); // reset before processing so a set() during the pass isn't lost
-        if (self.stopping.load(.acquire)) return;
         self.runMaintenance() catch |err| switch (err) {
-            error.Canceled => return, // task torn down mid-work; exit cleanly
+            error.Canceled => return error.Canceled,
             else => log.warn("maintenance failed: {}", .{err}),
         };
     }
@@ -406,6 +412,11 @@ fn mergeMemory(self: *Self) !bool {
     try self.write_lock.lock();
     defer self.write_lock.unlock();
 
+    // Shield the commit: once we hold the write lock, the oplog append / manifest
+    // write / snapshot swap must complete atomically even under cancellation.
+    zio.beginShield();
+    defer zio.endShield();
+
     // Existing memory segments don't move (updates only append), so lo/hi stay
     // valid; the suffix picks up updates that arrived during the merge.
     const cur = self.segments.value;
@@ -458,6 +469,11 @@ fn checkpoint(self: *Self) !bool {
 
     try self.write_lock.lock();
     defer self.write_lock.unlock();
+
+    // Shield the commit: once we hold the write lock, the oplog append / manifest
+    // write / snapshot swap must complete atomically even under cancellation.
+    zio.beginShield();
+    defer zio.endShield();
 
     const cur = self.segments.value;
     const kept = cur.memory[flush_count..];
@@ -528,6 +544,11 @@ fn mergeFiles(self: *Self) !bool {
 
     try self.write_lock.lock();
     defer self.write_lock.unlock();
+
+    // Shield the commit: once we hold the write lock, the oplog append / manifest
+    // write / snapshot swap must complete atomically even under cancellation.
+    zio.beginShield();
+    defer zio.endShield();
 
     // File segments are unchanged since the capture (only this coroutine touches
     // them), so start/end are still valid; memory may have grown.
