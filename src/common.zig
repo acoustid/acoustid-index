@@ -25,7 +25,7 @@ pub const SearchOptions = struct {
 pub const SearchResults = struct {
     allocator: std.mem.Allocator,
     options: SearchOptions,
-    results: std.ArrayListUnmanaged(SearchResult) = .{},
+    results: std.ArrayListUnmanaged(SearchResult) = .empty,
     hits: std.AutoHashMapUnmanaged(u32, Hit) = .{},
 
     const Hit = packed struct {
