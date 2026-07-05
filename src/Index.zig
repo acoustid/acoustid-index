@@ -346,6 +346,9 @@ fn mergeMemory(self: *Self) !bool {
         .max_segment_size = self.checkpoint_threshold,
         .segments_per_merge = 10,
         .segments_per_level = 5,
+        // Cap memory at ~16 segments before merging (matches the old design);
+        // without this the geometric budget merges far too aggressively.
+        .max_segments = 16,
     };
 
     self.segments_lock.lockShared() catch {};
