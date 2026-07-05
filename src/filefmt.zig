@@ -183,7 +183,11 @@ pub fn writeSegment(dir: zio.Dir, seg_reader: anytype, allocator: std.mem.Alloca
     {
         errdefer {
             file.close();
-            dir.deleteFile(tmp_name) catch {};
+            zio.beginShield();
+            defer zio.endShield();
+            dir.deleteFile(tmp_name) catch |err| {
+                log.warn("failed to remove temp segment file: {}", .{err});
+            };
         }
         var written: usize = 0;
         while (written < bytes.len) {

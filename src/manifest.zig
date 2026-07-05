@@ -7,6 +7,7 @@ const std = @import("std");
 const zio = @import("zio");
 const msgpack = @import("msgpack");
 const SegmentInfo = @import("segment.zig").SegmentInfo;
+const log = std.log.scoped(.manifest);
 
 const manifest_file = "manifest";
 const manifest_tmp = "manifest.tmp";
@@ -48,7 +49,11 @@ pub fn write(dir: zio.Dir, allocator: std.mem.Allocator, segments: []const Segme
     {
         errdefer {
             file.close();
-            dir.deleteFile(manifest_tmp) catch {};
+            zio.beginShield();
+            defer zio.endShield();
+            dir.deleteFile(manifest_tmp) catch |err| {
+                log.warn("failed to remove temp manifest file: {}", .{err});
+            };
         }
         var written: usize = 0;
         while (written < bytes.len) {

@@ -80,7 +80,7 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
     });
     // arena-backed; freed with the request arena.
 
-    var reader = index.acquireReader();
+    var reader = try index.acquireReader();
     defer reader.deinit();
     try reader.search(request.query, &collector);
 

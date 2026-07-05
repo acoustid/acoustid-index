@@ -213,25 +213,29 @@ pub fn deinit(self: *Self) void {
 }
 
 /// Acquire a consistent snapshot to search. Caller must deinit it.
-pub fn acquireReader(self: *Self) IndexReader {
-    self.segments_lock.lockShared() catch {};
+pub fn acquireReader(self: *Self) !IndexReader {
+    try self.segments_lock.lockShared();
     defer self.segments_lock.unlockShared();
     return .{ .allocator = self.allocator, .snapshot = self.segments.acquire() };
 }
 
 // Install a new snapshot, swap it in, and release the old one (dropping the
 // files of any segment no longer referenced). Takes ownership of file/memory on
-// success; on OOM leaves them for the caller to release.
+// success; on any error (cancelled lock or OOM) leaves them for the caller.
 fn installSnapshot(self: *Self, file: []FileRef, memory: []MemoryRef, version: u64, file_version: u64) !void {
-    const snap = try SharedPtr(Segments).create(self.allocator, .{
+    // Lock first: if the create fails we still hold nothing the caller owns, and
+    // if the lock is cancelled we haven't consumed file/memory.
+    try self.segments_lock.lock();
+    const snap = SharedPtr(Segments).create(self.allocator, .{
         .allocator = self.allocator,
         .file = file,
         .memory = memory,
         .version = version,
         .file_version = file_version,
-    });
-
-    self.segments_lock.lock() catch {};
+    }) catch |err| {
+        self.segments_lock.unlock();
+        return err;
+    };
     var old = self.segments;
     self.segments = snap;
     self.segments_lock.unlock();
@@ -256,7 +260,7 @@ fn releaseRefs(comptime T: type, allocator: std.mem.Allocator, refs: []SharedPtr
 // failure never leaves the log ahead of memory; the oplog append is the commit
 // point.
 pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata, expected_version: ?u64) !u64 {
-    self.write_lock.lock() catch {};
+    try self.write_lock.lock();
     defer self.write_lock.unlock();
 
     var seg = try MemoryRef.create(self.allocator, MemorySegment.init(self.allocator, .{}));
@@ -310,8 +314,9 @@ fn maintenanceLoop(self: *Self) void {
         self.wake.wait() catch return;
         self.wake.reset(); // reset before processing so a set() during the pass isn't lost
         if (self.stopping.load(.acquire)) return;
-        self.runMaintenance() catch |err| {
-            log.warn("maintenance failed: {}", .{err});
+        self.runMaintenance() catch |err| switch (err) {
+            error.Canceled => return, // task torn down mid-work; exit cleanly
+            else => log.warn("maintenance failed: {}", .{err}),
         };
     }
 }
@@ -373,7 +378,7 @@ fn mergeMemory(self: *Self) !bool {
         .max_segments = 16,
     };
 
-    self.segments_lock.lockShared() catch {};
+    try self.segments_lock.lockShared();
     var snap = self.segments.acquire();
     self.segments_lock.unlockShared();
     defer snap.release(self.allocator, Segments.deinit, .{.keep});
@@ -398,7 +403,7 @@ fn mergeMemory(self: *Self) !bool {
         try merged.value.buildFromMerger(&merger);
     }
 
-    self.write_lock.lock() catch {};
+    try self.write_lock.lock();
     defer self.write_lock.unlock();
 
     // Existing memory segments don't move (updates only append), so lo/hi stay
@@ -437,7 +442,7 @@ fn mergeMemory(self: *Self) !bool {
 // flowing. Updates that arrive during the merge stay in memory (they append to
 // the suffix; the flushed segments are the prefix). Returns true if it ran.
 fn checkpoint(self: *Self) !bool {
-    self.segments_lock.lockShared() catch {};
+    try self.segments_lock.lockShared();
     var snap = self.segments.acquire();
     self.segments_lock.unlockShared();
     defer snap.release(self.allocator, Segments.deinit, .{.keep});
@@ -451,7 +456,7 @@ fn checkpoint(self: *Self) !bool {
     errdefer if (!installed and !fseg_placed) fseg.release(self.allocator, FileSegment.deinit, .{.delete});
     const info = fseg.value.info;
 
-    self.write_lock.lock() catch {};
+    try self.write_lock.lock();
     defer self.write_lock.unlock();
 
     const cur = self.segments.value;
@@ -502,7 +507,7 @@ fn mergeFiles(self: *Self) !bool {
         .segments_per_level = 10,
     };
 
-    self.segments_lock.lockShared() catch {};
+    try self.segments_lock.lockShared();
     var snap = self.segments.acquire();
     self.segments_lock.unlockShared();
     defer snap.release(self.allocator, Segments.deinit, .{.keep});
@@ -521,7 +526,7 @@ fn mergeFiles(self: *Self) !bool {
     errdefer if (!installed and !fseg_placed) fseg.release(self.allocator, FileSegment.deinit, .{.delete});
     const info = fseg.value.info;
 
-    self.write_lock.lock() catch {};
+    try self.write_lock.lock();
     defer self.write_lock.unlock();
 
     // File segments are unchanged since the capture (only this coroutine touches
@@ -567,7 +572,15 @@ fn mergeToFileSegment(self: *Self, comptime Segment: type, sources: []SharedPtr(
     const info = merger.segment.info;
 
     try filefmt.writeSegment(self.data_dir, &merger, self.allocator);
-    errdefer filefmt.deleteSegmentFile(self.data_dir, info) catch {};
+    errdefer {
+        // Shielded so the just-written file is removed even under cancellation
+        // (a cancelled task's I/O is otherwise skipped, orphaning the file).
+        zio.beginShield();
+        defer zio.endShield();
+        filefmt.deleteSegmentFile(self.data_dir, info) catch |err| {
+            log.warn("failed to remove segment file after error: {}", .{err});
+        };
+    }
 
     var ref = try FileRef.create(self.allocator, FileSegment.init(self.allocator));
     errdefer ref.release(self.allocator, FileSegment.deinit, .{.delete});
@@ -613,7 +626,7 @@ test "checkpoint and reload" {
 
         var results = SearchResults.init(std.testing.allocator, .{ .max_results = 10, .min_score = 1 });
         defer results.deinit();
-        var reader = index.acquireReader();
+        var reader = try index.acquireReader();
         defer reader.deinit();
         var hashes = [_]u32{ 100, 200, 300 };
         try reader.search(&hashes, &results);
@@ -632,7 +645,7 @@ test "checkpoint and reload" {
 
         var results = SearchResults.init(std.testing.allocator, .{ .max_results = 10, .min_score = 1 });
         defer results.deinit();
-        var reader = index.acquireReader();
+        var reader = try index.acquireReader();
         defer reader.deinit();
         var hashes = [_]u32{ 100, 200, 300 };
         try reader.search(&hashes, &results);
@@ -668,7 +681,7 @@ test "file segment merging bounds count and preserves deletes" {
 
     var results = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });
     defer results.deinit();
-    var reader = index.acquireReader();
+    var reader = try index.acquireReader();
     defer reader.deinit();
     var hashes = [_]u32{100};
     try reader.search(&hashes, &results);
@@ -695,7 +708,7 @@ test "reader snapshot is stable across writes" {
     _ = try index.update(&[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{100} } }}, null, null);
 
     // Snapshot taken now sees only id 1.
-    var reader = index.acquireReader();
+    var reader = try index.acquireReader();
     defer reader.deinit();
 
     // Many more writes trigger checkpoints + merges that free the segments the
@@ -714,7 +727,7 @@ test "reader snapshot is stable across writes" {
 
     var r2 = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });
     defer r2.deinit();
-    var fresh = index.acquireReader();
+    var fresh = try index.acquireReader();
     defer fresh.deinit();
     var h2 = [_]u32{100};
     try fresh.search(&h2, &r2);
@@ -749,7 +762,7 @@ test "memory merge consolidates memory segments without checkpointing" {
     // Everything still searchable.
     var results = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });
     defer results.deinit();
-    var reader = index.acquireReader();
+    var reader = try index.acquireReader();
     defer reader.deinit();
     var h = [_]u32{25};
     try reader.search(&h, &results);
@@ -799,7 +812,7 @@ test "oplog truncation after checkpoint" {
 
         var results = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });
         defer results.deinit();
-        var reader = index.acquireReader();
+        var reader = try index.acquireReader();
         defer reader.deinit();
         var h = [_]u32{40}; // id 40's unique hash
         try reader.search(&h, &results);
