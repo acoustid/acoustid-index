@@ -1,8 +1,8 @@
 // A single index: an on-disk oplog (WAL) plus in-memory and on-disk (file)
 // segments. On open, file segments are loaded from the manifest and the oplog
-// tail is replayed. When memory grows past a threshold, the oldest memory
-// segment is checkpointed to a file segment. Merging of file segments comes
-// later; for now each checkpoint produces one file segment.
+// tail is replayed. When memory grows past a threshold, all memory segments are
+// merged into one file segment (checkpoint); file segments are in turn merged by
+// a tiered policy to keep their count bounded.
 
 const std = @import("std");
 const zio = @import("zio");
@@ -14,6 +14,9 @@ const FileSegment = @import("FileSegment.zig");
 const Oplog = @import("Oplog.zig");
 const filefmt = @import("filefmt.zig");
 const manifest = @import("manifest.zig");
+const SegmentInfo = @import("segment.zig").SegmentInfo;
+const SegmentMerger = @import("segment_merger.zig").SegmentMerger;
+const TieredMergePolicy = @import("segment_merge_policy.zig").TieredMergePolicy;
 const SearchResults = @import("common.zig").SearchResults;
 const log = std.log.scoped(.index);
 
@@ -141,45 +144,127 @@ fn memoryItemCount(self: *const Self) usize {
 }
 
 fn maybeCheckpoint(self: *Self) !void {
-    while (self.memory_segments.items.len > 0 and self.memoryItemCount() > self.checkpoint_threshold) {
-        try self.checkpointOldest();
-    }
+    if (self.memory_segments.items.len == 0 or self.memoryItemCount() <= self.checkpoint_threshold) return;
+    try self.checkpoint();
+    try self.maybeMergeFiles();
 }
 
-// Write the oldest memory segment to a file segment, make it official in the
-// manifest, then drop the memory segment. Crash-safe: the manifest write is the
-// commit point, and the data stays in the oplog until then.
-fn checkpointOldest(self: *Self) !void {
-    const mem = self.memory_segments.items[0];
+// Merge all memory segments into a single file segment, make it official in the
+// manifest, then clear memory. Crash-safe: the data stays in the oplog until the
+// manifest write commits.
+fn checkpoint(self: *Self) !void {
+    if (self.memory_segments.items.len == 0) return;
 
-    var mem_reader = mem.reader();
-    defer mem_reader.close();
-    try filefmt.writeSegment(self.dir, &mem_reader, self.allocator);
-
-    const fseg = try self.allocator.create(FileSegment);
-    fseg.* = FileSegment.init(self.allocator);
-    errdefer {
-        fseg.deinit(.keep);
-        self.allocator.destroy(fseg);
-    }
-    try filefmt.readSegment(self.dir, mem.info, fseg);
+    const fseg = try self.mergeToFileSegment(MemorySegment, self.memory_segments.items);
+    var committed = false;
+    errdefer if (!committed) self.discardFileSegment(fseg);
 
     try self.file_segments.append(self.allocator, fseg);
     errdefer _ = self.file_segments.pop();
 
     try self.writeManifest();
+    committed = true;
 
-    // Commit point passed; now drop the memory segment.
-    self.file_version = @max(self.file_version, mem.info.getLastCommitId());
-    _ = self.memory_segments.orderedRemove(0);
-    mem.deinit(.delete);
-    self.allocator.destroy(mem);
+    self.file_version = @max(self.file_version, fseg.info.getLastCommitId());
+    for (self.memory_segments.items) |seg| {
+        seg.deinit(.delete);
+        self.allocator.destroy(seg);
+    }
+    self.memory_segments.clearRetainingCapacity();
 
-    log.info("checkpointed segment {x} ({} items) to disk", .{ mem.info.version, fseg.num_items });
+    log.info("checkpointed to file segment {x}-{x} ({} items)", .{ fseg.info.version, fseg.info.merges, fseg.num_items });
+}
+
+fn fileSegmentSize(seg: *FileSegment) usize {
+    return seg.getSize();
+}
+
+fn fileSegmentFrozen(seg: *FileSegment) bool {
+    _ = seg;
+    return false;
+}
+
+fn maybeMergeFiles(self: *Self) !void {
+    const policy = TieredMergePolicy(*FileSegment, fileSegmentSize, fileSegmentFrozen){
+        .min_segment_size = 100,
+        .max_segment_size = 1_000_000_000,
+        .segments_per_merge = 10,
+        .segments_per_level = 10,
+    };
+    const budget = policy.calculateBudget(self.file_segments.items);
+    if (self.file_segments.items.len <= budget) return;
+
+    const candidate = policy.findSegmentsToMerge(self.file_segments.items) orelse return;
+    if (candidate.end - candidate.start < 2) return;
+    try self.mergeFileRange(candidate.start, candidate.end);
+}
+
+// Merge file_segments[start..end] into one, commit via the manifest, then swap
+// the in-memory list and delete the old files.
+fn mergeFileRange(self: *Self, start: usize, end: usize) !void {
+    const n = end - start;
+
+    const fseg = try self.mergeToFileSegment(FileSegment, self.file_segments.items[start..end]);
+    var committed = false;
+    errdefer if (!committed) self.discardFileSegment(fseg);
+
+    // Keep the old segment pointers for post-commit cleanup (dupe before the
+    // manifest write so an alloc failure stays before the commit point).
+    const old_segs = try self.allocator.dupe(*FileSegment, self.file_segments.items[start..end]);
+    defer self.allocator.free(old_segs);
+
+    var new_infos = try std.ArrayListUnmanaged(SegmentInfo).initCapacity(self.allocator, self.file_segments.items.len - n + 1);
+    defer new_infos.deinit(self.allocator);
+    for (self.file_segments.items[0..start]) |s| new_infos.appendAssumeCapacity(s.info);
+    new_infos.appendAssumeCapacity(fseg.info);
+    for (self.file_segments.items[end..]) |s| new_infos.appendAssumeCapacity(s.info);
+    try manifest.write(self.dir, self.allocator, new_infos.items);
+    committed = true;
+
+    // Infallible in-memory swap: replace [start..end] with fseg.
+    self.file_segments.items[start] = fseg;
+    var k = end - 1;
+    while (k > start) : (k -= 1) _ = self.file_segments.orderedRemove(k);
+
+    for (old_segs) |s| {
+        filefmt.deleteSegmentFile(self.dir, s.info) catch |err| {
+            log.warn("failed to delete merged segment {x}: {}", .{ s.info.version, err });
+        };
+        s.deinit(.keep);
+        self.allocator.destroy(s);
+    }
+
+    log.info("merged {} file segments -> {x}-{x} ({} items)", .{ n, fseg.info.version, fseg.info.merges, fseg.num_items });
+}
+
+// Merge `sources` (all of type Segment) into a new on-disk file segment and load
+// it back. On error the written file is cleaned up. Caller owns the result.
+fn mergeToFileSegment(self: *Self, comptime Segment: type, sources: []const *Segment) !*FileSegment {
+    var merger = try SegmentMerger(Segment).init(self.allocator, sources.len);
+    defer merger.deinit();
+    for (sources) |s| merger.addSource(s);
+    try merger.prepare(self);
+    const info = merger.segment.info;
+
+    try filefmt.writeSegment(self.dir, &merger, self.allocator);
+    errdefer filefmt.deleteSegmentFile(self.dir, info) catch {};
+
+    const fseg = try self.allocator.create(FileSegment);
+    errdefer self.allocator.destroy(fseg);
+    fseg.* = FileSegment.init(self.allocator);
+    errdefer fseg.deinit(.keep);
+    try filefmt.readSegment(self.dir, info, fseg);
+    return fseg;
+}
+
+fn discardFileSegment(self: *Self, fseg: *FileSegment) void {
+    filefmt.deleteSegmentFile(self.dir, fseg.info) catch {};
+    fseg.deinit(.keep);
+    self.allocator.destroy(fseg);
 }
 
 fn writeManifest(self: *Self) !void {
-    var infos = try self.allocator.alloc(@import("segment.zig").SegmentInfo, self.file_segments.items.len);
+    const infos = try self.allocator.alloc(SegmentInfo, self.file_segments.items.len);
     defer self.allocator.free(infos);
     for (self.file_segments.items, 0..) |seg, i| infos[i] = seg.info;
     try manifest.write(self.dir, self.allocator, infos);
@@ -258,27 +343,28 @@ test "checkpoint and reload" {
         defer index.deinit();
 
         _ = try index.update(&ins1, null, null); // 3 items
-        _ = try index.update(&ins2, null, null); // +3 -> checkpoint oldest
+        _ = try index.update(&ins2, null, null); // +3 -> checkpoint merges all memory
 
+        // Checkpoint flushed both memory segments into one file segment.
         try std.testing.expectEqual(@as(usize, 1), index.file_segments.items.len);
-        try std.testing.expectEqual(@as(usize, 1), index.memory_segments.items.len);
+        try std.testing.expectEqual(@as(usize, 0), index.memory_segments.items.len);
 
         var results = SearchResults.init(std.testing.allocator, .{ .max_results = 10, .min_score = 1 });
         defer results.deinit();
         var hashes = [_]u32{ 100, 200, 300 };
         try index.search(&hashes, &results);
-        try std.testing.expectEqual(@as(u32, 3), results.hits.get(1).?.score); // from file segment
-        try std.testing.expectEqual(@as(u32, 3), results.hits.get(2).?.score); // from memory segment
+        try std.testing.expectEqual(@as(u32, 3), results.hits.get(1).?.score);
+        try std.testing.expectEqual(@as(u32, 3), results.hits.get(2).?.score);
     }
 
-    // Reopen: file segment from manifest + oplog tail replay.
+    // Reopen: file segment from manifest; oplog tail is fully covered.
     {
         const dir = try cwd.openDir(dir_path, .{});
         var index = try Self.open(std.testing.allocator, dir, 5);
         defer index.deinit();
 
         try std.testing.expectEqual(@as(usize, 1), index.file_segments.items.len);
-        try std.testing.expectEqual(@as(usize, 1), index.memory_segments.items.len);
+        try std.testing.expectEqual(@as(usize, 0), index.memory_segments.items.len);
         try std.testing.expectEqual(@as(u64, 2), index.version);
 
         var results = SearchResults.init(std.testing.allocator, .{ .max_results = 10, .min_score = 1 });
@@ -288,4 +374,40 @@ test "checkpoint and reload" {
         try std.testing.expectEqual(@as(u32, 3), results.hits.get(1).?.score);
         try std.testing.expectEqual(@as(u32, 3), results.hits.get(2).?.score);
     }
+}
+
+test "file segment merging bounds count and preserves deletes" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_index_merge";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    const dir = try cwd.openDir(dir_path, .{});
+    var index = try Self.open(std.testing.allocator, dir, 1); // checkpoint every update
+    defer index.deinit();
+
+    // Each update becomes its own file segment; merging must keep the count down.
+    var id: u32 = 1;
+    while (id <= 30) : (id += 1) {
+        const ins = [_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{ 100, id } } }};
+        _ = try index.update(&ins, null, null);
+    }
+    try std.testing.expect(index.file_segments.items.len < 30);
+
+    // Delete one doc; the tombstone must shadow its insert across the merges.
+    const del = [_]Change{.{ .delete = .{ .id = 5 } }};
+    _ = try index.update(&del, null, null);
+
+    var results = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });
+    defer results.deinit();
+    var hashes = [_]u32{100};
+    try index.search(&hashes, &results);
+
+    const out = results.getResults();
+    try std.testing.expectEqual(@as(usize, 29), out.len); // 30 inserted, 1 deleted
+    for (out) |r| try std.testing.expect(r.id != 5);
 }

@@ -70,6 +70,50 @@ fn loadBlockData(self: Self, block_no: usize, block_reader: *BlockReader, lazy: 
     block_reader.load(self.blocks[start..padded_end], lazy);
 }
 
+const Item = @import("segment.zig").Item;
+
+pub fn reader(self: *const Self) Reader {
+    return .{ .segment = self, .block_reader = BlockReader.init(self.min_doc_id) };
+}
+
+// Yields all items in sorted (hash, id) order by walking blocks. Used by the
+// merger to build a new (merged) segment.
+pub const Reader = struct {
+    segment: *const Self,
+    block_no: usize = 0,
+    index_in_block: usize = 0,
+    block_reader: BlockReader,
+    block_loaded: bool = false,
+
+    pub fn close(self: *Reader) void {
+        _ = self;
+    }
+
+    pub fn read(self: *Reader) !?Item {
+        while (true) {
+            if (self.block_no >= self.segment.num_blocks) return null;
+            if (!self.block_loaded) {
+                self.segment.loadBlockData(self.block_no, &self.block_reader, false);
+                self.block_loaded = true;
+                self.index_in_block = 0;
+            }
+            if (self.index_in_block >= self.block_reader.getNumItems()) {
+                self.block_no += 1;
+                self.block_loaded = false;
+                continue;
+            }
+            return Item{
+                .hash = self.block_reader.hashes[self.index_in_block],
+                .id = self.block_reader.docids[self.index_in_block],
+            };
+        }
+    }
+
+    pub fn advance(self: *Reader) void {
+        self.index_in_block += 1;
+    }
+};
+
 pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !void {
     var prev_block_range_start: usize = 0;
 
