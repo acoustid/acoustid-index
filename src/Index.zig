@@ -111,10 +111,11 @@ file_version: u64 = 0,
 checkpoint_threshold: usize = 100_000,
 
 // Background maintenance (checkpoint + file merges) runs on a dedicated per-index
-// coroutine so it never blocks the update path. `wake` is a coalescing signal
-// (capacity 1); updates trySend to it when there's likely work.
-wake_buffer: [1]u8 = undefined,
-wake: zio.Channel(u8) = undefined,
+// coroutine so it never blocks the update path. `wake` is a level-triggered
+// "there is work" flag: set() coalesces (stays set until the worker resets it),
+// and is safe to call any time — no dependency on the coroutine running.
+wake: zio.ResetEvent = .init,
+stopping: std.atomic.Value(bool) = .init(false),
 maintenance: ?zio.JoinHandle(void) = null,
 
 pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: usize) !Self {
@@ -258,25 +259,25 @@ pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata, expecte
     try self.installSnapshot(new_file, new_memory, version, self.file_version);
     arrays_consumed = true;
 
-    // Hand checkpoint/merge to the maintenance coroutine (coalescing signal).
-    // Only if it's running — tests drive runMaintenance() synchronously instead.
-    if (self.maintenance != null and self.memoryItemCount() > self.checkpoint_threshold) {
-        self.wake.trySend(1) catch {};
+    // Signal the maintenance coroutine (level-triggered; safe even when it isn't
+    // running — tests drive runMaintenance() synchronously instead).
+    if (self.memoryItemCount() > self.checkpoint_threshold) {
+        self.wake.set();
     }
     return version;
 }
 
 /// Start the background maintenance coroutine. Call once the Index is at its
-/// final address (its `wake` buffer must be stable).
+/// final address (the coroutine captures `self`).
 pub fn start(self: *Self) !void {
-    self.wake = zio.Channel(u8).init(&self.wake_buffer);
     self.maintenance = try zio.spawn(maintenanceLoop, .{self});
 }
 
 /// Stop the maintenance coroutine and wait for it to finish. Call before deinit.
 pub fn stop(self: *Self) void {
     if (self.maintenance) |*task| {
-        self.wake.close(.immediate);
+        self.stopping.store(true, .release);
+        self.wake.set();
         task.join();
         self.maintenance = null;
     }
@@ -284,7 +285,9 @@ pub fn stop(self: *Self) void {
 
 fn maintenanceLoop(self: *Self) void {
     while (true) {
-        _ = self.wake.receive() catch return; // channel closed -> stop
+        self.wake.wait() catch return;
+        self.wake.reset(); // reset before processing so a set() during the pass isn't lost
+        if (self.stopping.load(.acquire)) return;
         self.runMaintenance() catch |err| {
             log.warn("maintenance failed: {}", .{err});
         };
