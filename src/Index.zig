@@ -152,12 +152,17 @@ pub const IndexReader = struct {
         self.snapshot.release(self.allocator, Segments.deinit, .{});
     }
 
-    // `hashes` is sorted in place.
+    // `hashes` is sorted and de-duplicated in place. The query is conceptually a
+    // set: MemorySegment.search counts a repeated hash once (it advances past
+    // consumed items) but FileSegment.search would count it twice (it re-probes the
+    // same block), so a duplicate hash scores a doc differently before vs after a
+    // checkpoint. Dedupe up front so both agree (and skip redundant probes).
     pub fn search(self: *IndexReader, hashes: []u32, results: *SearchResults) !void {
         std.sort.pdq(u32, hashes, {}, std.sort.asc(u32));
+        const query = dedupSorted(hashes);
         const segs = self.snapshot.value;
-        for (segs.file) |seg| try seg.value.search(hashes, results);
-        for (segs.memory) |seg| try seg.value.search(hashes, results);
+        for (segs.file) |seg| try seg.value.search(query, results);
+        for (segs.memory) |seg| try seg.value.search(query, results);
         try results.finish(segs);
     }
 
@@ -403,6 +408,20 @@ fn swapSnapshot(self: *Self, snap: SharedPtr(Segments)) void {
     old.release(self.allocator, Segments.deinit, .{});
     self.version = version;
     self.file_version = file_version;
+}
+
+// Collapse runs of equal values in a sorted slice in place; returns the unique
+// prefix.
+fn dedupSorted(sorted: []u32) []u32 {
+    if (sorted.len == 0) return sorted;
+    var w: usize = 1;
+    for (sorted[1..]) |v| {
+        if (v != sorted[w - 1]) {
+            sorted[w] = v;
+            w += 1;
+        }
+    }
+    return sorted[0..w];
 }
 
 fn cloneRefs(comptime T: type, allocator: std.mem.Allocator, src: []SharedPtr(T)) ![]SharedPtr(T) {
@@ -838,6 +857,48 @@ fn countDataFiles(cwd: zio.Dir, dir_path: []const u8) !usize {
         if (e.kind == .file and std.mem.endsWith(u8, e.name, ".data")) count += 1;
     }
     return count;
+}
+
+test "duplicate query hashes score consistently across memory and file segments" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_index_dup_query";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+    var index = try Self.open(std.testing.allocator, dir, 1, true, null); // threshold 1 -> flushes
+    defer index.deinit();
+
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{ 100, 200 } } }}, .{});
+
+    // In-memory: a repeated query hash scores the doc once (query is a set).
+    {
+        var r = SearchResults.init(std.testing.allocator, .{ .max_results = 10, .min_score = 1 });
+        defer r.deinit();
+        var reader = try index.acquireReader();
+        defer reader.deinit();
+        var q = [_]u32{ 100, 100 };
+        try reader.search(&q, &r);
+        try std.testing.expectEqual(@as(u32, 1), r.hits.get(1).?.score);
+    }
+
+    // After flushing to a file segment the same query must score identically (it
+    // scored 2 before the dedupe, because FileSegment re-probed the repeated hash).
+    try index.runMaintenance();
+    try std.testing.expectEqual(@as(usize, 1), index.segments.value.file.len);
+    {
+        var r = SearchResults.init(std.testing.allocator, .{ .max_results = 10, .min_score = 1 });
+        defer r.deinit();
+        var reader = try index.acquireReader();
+        defer reader.deinit();
+        var q = [_]u32{ 100, 100 };
+        try reader.search(&q, &r);
+        try std.testing.expectEqual(@as(u32, 1), r.hits.get(1).?.score);
+    }
 }
 
 test "merged-away files are deleted even when a reader outlived the merge" {
