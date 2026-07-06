@@ -407,6 +407,11 @@ pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexReques
 // apply it (create-your-writes). Other nodes converge asynchronously via their own
 // meta consumers.
 fn createIndexReplicated(self: *Self, repl: *Replicator, name: []const u8, request: api.CreateIndexRequest) !api.CreateIndexResponse {
+    // The coordinator owns generation assignment in replicated mode (generation = the
+    // create's meta-feed position, so lineages order consistently across nodes), so a
+    // client-supplied one is meaningless here — reject it rather than silently ignore.
+    if (request.generation != null) return error.GenerationNotAllowed;
+
     // Best-effort local guard (a truly authoritative check would need the
     // coordinator to reject; createIndex is idempotent there).
     if (request.expect_does_not_exist and try self.checkIndexExists(name)) return error.IndexAlreadyExists;

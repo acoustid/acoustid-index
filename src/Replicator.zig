@@ -467,6 +467,10 @@ test "replicated create+update flows through the coordinator; RYW + search see i
     defer arena.deinit();
     const a = arena.allocator();
 
+    // A client-supplied generation is meaningless in replicated mode (the coordinator
+    // assigns it) — rejected, not silently ignored.
+    try std.testing.expectError(error.GenerationNotAllowed, mi.createIndex("main", .{ .generation = 1 }));
+
     // Create routes through the coordinator + waits for the local meta consumer to
     // build the index (create-your-writes).
     const created = try mi.createIndex("main", .{});
