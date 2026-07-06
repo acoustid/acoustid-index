@@ -82,7 +82,19 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
 
     var reader = try index.acquireReader();
     defer reader.deinit();
-    try reader.search(request.query, &collector);
+
+    // Bound the search: the segment scans hit maybeYield, so an expired timer
+    // cancels the task there. check() tells our timeout apart from a real
+    // (shutdown) cancellation, which still propagates.
+    const timeout_ms = if (request.timeout == 0) api.default_search_timeout else @min(request.timeout, api.max_search_timeout);
+    var deadline: zio.AutoCancel = .init;
+    deadline.set(.fromMilliseconds(timeout_ms));
+    defer deadline.clear();
+
+    reader.search(request.query, &collector) catch |err| {
+        if (err == error.Canceled and deadline.check(error.Canceled)) return error.SearchTimeout;
+        return err;
+    };
 
     const results = collector.getResults();
     const out = try arena.alloc(api.SearchResult, results.len);

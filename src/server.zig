@@ -88,7 +88,7 @@ fn sendError(req: *http.Request, res: *http.Response, err: anyerror) void {
     res.status = switch (err) {
         error.BadRequest, error.InvalidIndexName => .bad_request,
         error.IndexNotFound, error.FingerprintNotFound => .not_found,
-        error.IndexNotReady => .service_unavailable,
+        error.IndexNotReady, error.SearchTimeout => .service_unavailable,
         error.VersionMismatch, error.IndexAlreadyExists => .conflict,
         error.UnsupportedMediaType => .unsupported_media_type,
         error.NotImplemented => .not_implemented,
