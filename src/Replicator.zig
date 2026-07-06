@@ -36,12 +36,15 @@ const meta_batch = 64;
 // Server-side long-poll window for the meta catch-up phase's final (empty) read.
 // Only affects how long startup waits once the feed is drained — correctness does
 // not depend on catch-up completeness (the streaming phase continues from `after`).
-const meta_catchup_ms = 100;
-// Backoff between retries of a failed meta reconcile / data apply / feed read
-// (transient only), so a persistently-failing coordinator doesn't tight-spin.
-const reconcile_retry_ms = 1000;
-const apply_retry_ms = 1000;
-const read_retry_ms = 1000;
+const meta_catchup: zio.Timeout = .{ .duration = .fromMilliseconds(100) };
+// Backoff before retrying a transient failure (fold OOM, data apply, feed read), so
+// a persistently-failing coordinator doesn't tight-spin.
+const fold_retry: zio.Duration = .fromMilliseconds(1000);
+const apply_retry: zio.Duration = .fromMilliseconds(1000);
+const read_retry: zio.Duration = .fromMilliseconds(1000);
+// How often the meta loop retries parked (persistently-failing) reconciles while it
+// otherwise blocks waiting for new meta ops.
+const pending_retry: zio.Timeout = .{ .duration = .fromMilliseconds(1000) };
 
 allocator: std.mem.Allocator,
 mi: *MultiIndex,
@@ -181,7 +184,7 @@ fn consumeLoop(c: *Consumer, start_version: u64) zio.Cancelable!void {
         const n = self.coordinator.read(c.name, c.generation, after, &buf, .none) catch |err| {
             if (err == error.Canceled) return error.Canceled;
             log.warn("data read failed for '{s}' gen {d}: {}", .{ c.name, c.generation, err });
-            try zio.sleep(.fromMilliseconds(read_retry_ms));
+            try zio.sleep(read_retry);
             continue;
         };
         if (n == 0) continue;
@@ -215,7 +218,7 @@ fn applyWithRetry(self: *Self, c: *Consumer, changes: []const Change, version: u
             },
             else => {
                 log.warn("apply failed for '{s}' at version {d} (retrying): {}", .{ c.name, version, err });
-                try zio.sleep(.fromMilliseconds(apply_retry_ms));
+                try zio.sleep(apply_retry);
                 continue;
             },
         };
@@ -227,6 +230,18 @@ fn applyWithRetry(self: *Self, c: *Consumer, changes: []const Change, version: u
 
 fn metaLoop(self: *Self) zio.Cancelable!void {
     var after: u64 = 0;
+
+    // Reconciles that keep failing are parked here (by name, latest op wins) and
+    // retried on a timer, so a single poison op can't wedge the whole feed. The
+    // watermark still advances past a parked op — createIndexReplicated re-checks
+    // the index is actually present, so a parked create surfaces to its client as
+    // "not found, retry" rather than blocking every OTHER index's lifecycle.
+    var pending: std.StringHashMapUnmanaged(FoldedOp) = .empty;
+    defer {
+        var pit = pending.keyIterator();
+        while (pit.next()) |k| self.allocator.free(k.*);
+        pending.deinit(self.allocator);
+    }
 
     // Phase 1: catch up and fold to final state per name, so a replica joining a
     // long-lived cluster reconciles each index once instead of replaying every
@@ -241,10 +256,10 @@ fn metaLoop(self: *Self) zio.Cancelable!void {
         }
         var buf: [meta_batch]MetaOp = undefined;
         while (true) {
-            const n = self.coordinator.readMeta(after, &buf, .{ .duration = .fromMilliseconds(meta_catchup_ms) }) catch |err| {
+            const n = self.coordinator.readMeta(after, &buf, meta_catchup) catch |err| {
                 if (err == error.Canceled) return error.Canceled;
                 log.warn("meta catch-up read failed: {}", .{err});
-                try zio.sleep(.fromMilliseconds(read_retry_ms));
+                try zio.sleep(read_retry);
                 continue;
             };
             if (n == 0) break; // drained within the window -> caught up
@@ -262,7 +277,7 @@ fn metaLoop(self: *Self) zio.Cancelable!void {
         // divergence — otherwise it lingers as a searchable zombie with no consumer).
         var it = folded.iterator();
         while (it.next()) |e| {
-            try self.reconcileWithRetry(e.key_ptr.*, e.value_ptr.kind, e.value_ptr.generation);
+            try self.reconcileOrPark(&pending, e.key_ptr.*, e.value_ptr.kind, e.value_ptr.generation);
         }
         self.dropStaleLocalIndexes(&folded) catch |err| {
             if (err == error.Canceled) return error.Canceled;
@@ -272,17 +287,20 @@ fn metaLoop(self: *Self) zio.Cancelable!void {
     }
 
     // Phase 2: stream, reconciling each op as it arrives (each new op is the latest
-    // for its index, so per-op reconcile is safe).
+    // for its index, so per-op reconcile is safe). Between reads, retry parked ops;
+    // while any are parked, bound the read so the retry timer keeps firing.
     var buf: [meta_batch]MetaOp = undefined;
     while (true) {
-        const n = self.coordinator.readMeta(after, &buf, .none) catch |err| {
+        try self.retryParked(&pending);
+        const deadline: zio.Timeout = if (pending.count() == 0) .none else pending_retry;
+        const n = self.coordinator.readMeta(after, &buf, deadline) catch |err| {
             if (err == error.Canceled) return error.Canceled;
             log.warn("meta stream read failed: {}", .{err});
-            try zio.sleep(.fromMilliseconds(read_retry_ms));
+            try zio.sleep(read_retry);
             continue;
         };
         for (buf[0..n]) |op| {
-            try self.reconcileWithRetry(op.index_name, op.kind, op.pos);
+            try self.reconcileOrPark(&pending, op.index_name, op.kind, op.pos);
             after = op.pos;
             self.markMetaApplied(op.pos);
         }
@@ -296,22 +314,48 @@ fn reconcileOne(self: *Self, name: []const u8, kind: MetaOp.Kind, generation: u6
     }
 }
 
-// Reconcile one op, retrying on transient failure with backoff. We must NOT advance
-// the meta watermark past a failed reconcile: the coordinator's create is
-// idempotent, so a client retry would return the same (already-applied) position
-// and find the index still missing — the op would never be revisited. Blocking here
-// until it succeeds (or shutdown cancels) keeps a transient error (ENOSPC, EMFILE,
-// OOM) from permanently stranding an index. Cancellation propagates out.
-fn reconcileWithRetry(self: *Self, name: []const u8, kind: MetaOp.Kind, generation: u64) zio.Cancelable!void {
-    while (true) {
-        self.reconcileOne(name, kind, generation) catch |err| {
-            if (err == error.Canceled) return error.Canceled;
-            log.warn("meta reconcile failed for '{s}' (retrying): {}", .{ name, err });
-            try zio.sleep(.fromMilliseconds(reconcile_retry_ms));
-            continue;
+// Reconcile one op once. On a non-Canceled failure, park it by name (latest op wins)
+// for the retry timer instead of blocking the loop; on success, clear any prior
+// parked entry. Cancellation propagates for clean shutdown.
+fn reconcileOrPark(self: *Self, pending: *std.StringHashMapUnmanaged(FoldedOp), name: []const u8, kind: MetaOp.Kind, generation: u64) zio.Cancelable!void {
+    self.reconcileOne(name, kind, generation) catch |err| {
+        if (err == error.Canceled) return error.Canceled;
+        log.warn("meta reconcile failed for '{s}' (parking for retry): {}", .{ name, err });
+        self.park(pending, name, .{ .kind = kind, .generation = generation }) catch |perr| {
+            if (perr == error.Canceled) return error.Canceled;
+            log.warn("failed to park meta op for '{s}' (stranded until superseded): {}", .{ name, perr });
         };
         return;
+    };
+    self.unpark(pending, name);
+}
+
+// Retry every parked op; drop the ones that now succeed. Only the meta loop touches
+// `pending`, so iterating while reconcileOne suspends is safe.
+fn retryParked(self: *Self, pending: *std.StringHashMapUnmanaged(FoldedOp)) zio.Cancelable!void {
+    if (pending.count() == 0) return;
+    var done: std.ArrayListUnmanaged([]const u8) = .empty;
+    defer done.deinit(self.allocator);
+    var it = pending.iterator();
+    while (it.next()) |e| {
+        self.reconcileOne(e.key_ptr.*, e.value_ptr.kind, e.value_ptr.generation) catch |err| {
+            if (err == error.Canceled) return error.Canceled;
+            continue; // still failing; leave it parked
+        };
+        // Record the key to remove after iterating (can't mutate the map mid-scan).
+        done.append(self.allocator, e.key_ptr.*) catch {}; // OOM: just retry next round
     }
+    for (done.items) |name| self.unpark(pending, name);
+}
+
+fn park(self: *Self, pending: *std.StringHashMapUnmanaged(FoldedOp), name: []const u8, op: FoldedOp) !void {
+    const gop = try pending.getOrPut(self.allocator, name);
+    if (!gop.found_existing) gop.key_ptr.* = try self.allocator.dupe(u8, name);
+    gop.value_ptr.* = op;
+}
+
+fn unpark(self: *Self, pending: *std.StringHashMapUnmanaged(FoldedOp), name: []const u8) void {
+    if (pending.fetchRemove(name)) |kv| self.allocator.free(kv.key);
 }
 
 fn foldPut(self: *Self, folded: *std.StringHashMapUnmanaged(FoldedOp), op: MetaOp) !void {
@@ -325,7 +369,7 @@ fn foldPutWithRetry(self: *Self, folded: *std.StringHashMapUnmanaged(FoldedOp), 
         self.foldPut(folded, op) catch |err| {
             if (err == error.Canceled) return error.Canceled;
             log.warn("meta fold failed for '{s}' (retrying): {}", .{ op.index_name, err });
-            try zio.sleep(.fromMilliseconds(reconcile_retry_ms));
+            try zio.sleep(fold_retry);
             continue;
         };
         return;
@@ -457,6 +501,41 @@ test "meta consumer drops a local index absent from the meta feed" {
         try zio.sleep(.fromMilliseconds(10));
     }
     try std.testing.expect(!try mi.checkIndexExists("orphan"));
+}
+
+test "a poison meta op parks and does not wedge other indexes" {
+    const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{ .executors = .exact(2) });
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_replicator_poison";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    // Plant a plain FILE where index "bad"'s directory would go, so its reconcile
+    // (openOrCreateDir -> openDir) fails deterministically forever.
+    (try dir.createFile("bad", .{ .truncate = true })).close();
+
+    var cl = MemoryCoordinator.init(std.testing.allocator);
+    defer cl.deinit();
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    try mi.startReplication(cl.coordinator());
+
+    // The poison create can't reconcile; it parks, the watermark advances, and the
+    // caller gets "not found" (retryable) rather than a hang.
+    try std.testing.expectError(error.IndexNotFound, mi.createIndex("bad", .{}));
+
+    // A healthy index still creates fine — the parked op did NOT block the feed.
+    const good = try mi.createIndex("good", .{});
+    try std.testing.expect(good.ready);
+    try std.testing.expect(try mi.checkIndexExists("good"));
 }
 
 test "applyLog rejects a stale generation" {

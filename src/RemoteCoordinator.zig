@@ -28,7 +28,7 @@ const MetaDeleteResponse = changelog_mod.MetaDeleteResponse;
 const Self = @This();
 // Cap on any single long-poll window (server side may still return sooner). Used
 // when the caller passes `.none` (block indefinitely, in bounded windows).
-const long_poll_ms = 20_000;
+const long_poll: zio.Duration = .fromMilliseconds(20_000);
 
 allocator: std.mem.Allocator,
 io: std.Io,
@@ -172,7 +172,7 @@ fn readMetaImpl(ptr: *anyopaque, after: u64, out: []MetaOp, deadline: zio.Timeou
 // promptly once the feed is drained.
 fn timeoutMs(deadline: zio.Timeout) u64 {
     return switch (deadline) {
-        .none => long_poll_ms,
+        .none => long_poll.toMilliseconds(),
         .duration => |d| d.toMilliseconds(),
         // Callers only ever pass .none (consumers) or .duration (meta catch-up).
         .deadline => unreachable,
