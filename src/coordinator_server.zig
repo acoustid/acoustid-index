@@ -44,6 +44,16 @@ pub fn registerRoutes(server: *Server) void {
     r.get("/_meta", handleReadMeta);
     r.post("/_status", handleStatus);
     r.get("/_donor/:index/:gen", handleDonor);
+    r.post("/_truncate/:index/:gen", handleTruncate);
+}
+
+fn handleTruncate(co: *Service, req: *http.Request, res: *http.Response) !void {
+    const index = req.params.get("index") orelse return fail(res, .bad_request, "missing index");
+    const generation = genParam(req) orelse return fail(res, .bad_request, "bad generation");
+    const floor = queryInt(req, "floor") orelse return fail(res, .bad_request, "missing floor");
+    co.coordinator.setRetentionFloor(index, generation, floor) catch |err|
+        return fail(res, statusFor(err), @errorName(err));
+    try respond(EmptyResponse{}, res);
 }
 
 fn handleStatus(co: *Service, req: *http.Request, res: *http.Response) !void {
@@ -139,6 +149,7 @@ fn statusFor(err: anyerror) http.Status {
     return switch (err) {
         error.VersionMismatch => .conflict,
         error.IndexNotFound => .not_found,
+        error.BelowRetention => .gone, // the requested position was truncated
         else => .internal_server_error,
     };
 }

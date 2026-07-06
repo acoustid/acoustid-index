@@ -239,6 +239,26 @@ fn markApplied(self: *Self, c: *Consumer, version: u64) void {
     self.cond.broadcast();
 }
 
+// Fetch a snapshot of (c.name, c.generation) from a donor the coordinator points us at
+// and swap it into the local index, returning the version to resume from. The donor is
+// picked for freshness, so its watermark clears the retention floor that triggered this.
+fn bootstrapConsumer(self: *Self, c: *Consumer, after: u64) !u64 {
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const donor = (try self.coordinator.findDonor(a, c.name, c.generation, after)) orelse return error.NoDonor;
+    const client = if (self.http_client) |*cl| cl else return error.NoHttpClient;
+
+    const url = try std.fmt.allocPrint(a, "{s}/{s}/_snapshot", .{ donor.advertise_addr, c.name });
+    var resp = try client.fetch(url, .{ .method = .get });
+    defer resp.deinit();
+    if (resp.status() != .ok) return error.SnapshotFetchFailed;
+
+    log.info("bootstrapping '{s}' gen {d} from {s} (watermark {d})", .{ c.name, c.generation, donor.advertise_addr, donor.file_version });
+    return self.mi.bootstrapLineage(c.name, c.generation, resp.reader());
+}
+
 fn consumeLoop(c: *Consumer, start_version: u64) zio.Cancelable!void {
     const self = c.replicator;
     var buf: [batch_size]Entry = undefined;
@@ -247,6 +267,20 @@ fn consumeLoop(c: *Consumer, start_version: u64) zio.Cancelable!void {
     while (true) {
         const n = self.coordinator.read(c.name, c.generation, after, &buf, .none) catch |err| {
             if (err == error.Canceled) return error.Canceled;
+            // The feed was truncated past our position: fetch a snapshot from a donor,
+            // swap it in, and resume from its watermark. Retry on any bootstrap failure
+            // (no donor yet, coordinator hiccup) — the next read re-signals.
+            if (err == error.BelowRetention) {
+                const f = self.bootstrapConsumer(c, after) catch |berr| {
+                    if (berr == error.Canceled) return error.Canceled;
+                    log.warn("bootstrap failed for '{s}' gen {d}: {}", .{ c.name, c.generation, berr });
+                    try zio.sleep(read_retry);
+                    continue;
+                };
+                after = f;
+                self.markApplied(c, f);
+                continue;
+            }
             log.warn("data read failed for '{s}' gen {d}: {}", .{ c.name, c.generation, err });
             try zio.sleep(read_retry);
             continue;
@@ -706,6 +740,7 @@ const WedgedReads = struct {
         .readMeta = readMetaImpl,
         .reportStatus = reportStatusImpl,
         .findDonor = findDonorImpl,
+        .setRetentionFloor = setRetentionFloorImpl,
     };
     fn appendImpl(ptr: *anyopaque, name: []const u8, generation: u64, changes: []const Change, expected: ?u64) anyerror!u64 {
         const self: *WedgedReads = @ptrCast(@alignCast(ptr));
@@ -735,6 +770,10 @@ const WedgedReads = struct {
     fn findDonorImpl(ptr: *anyopaque, arena: std.mem.Allocator, name: []const u8, generation: u64, after: u64) anyerror!?coordinator_mod.DonorInfo {
         const self: *WedgedReads = @ptrCast(@alignCast(ptr));
         return self.inner.findDonor(arena, name, generation, after);
+    }
+    fn setRetentionFloorImpl(ptr: *anyopaque, name: []const u8, generation: u64, floor: u64) anyerror!void {
+        const self: *WedgedReads = @ptrCast(@alignCast(ptr));
+        return self.inner.setRetentionFloor(name, generation, floor);
     }
 };
 

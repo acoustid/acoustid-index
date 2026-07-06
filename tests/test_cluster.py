@@ -250,3 +250,61 @@ def test_replica_status_reporter_registers_donor(tmp_path):
             p.send_signal(signal.SIGKILL)
         for p in procs:
             p.wait()
+
+
+def test_new_node_bootstraps_from_peer(tmp_path):
+    """A new node joins after the changelog is truncated past position 0: it can't
+    replay from scratch, so it fetches a snapshot from a live peer and resumes."""
+    import msgpack
+
+    if not os.path.exists(BINARY):
+        subprocess.run(["zig", "build"], cwd=REPO_ROOT, check=True)
+
+    co, p1, p2 = _free_port(), _free_port(), _free_port()
+    procs = []
+
+    def start(args):
+        procs.append(subprocess.Popen([BINARY] + args))
+
+    def donor(after):
+        r = urllib.request.urlopen(f"http://127.0.0.1:{co}/_donor/main/1?after={after}", timeout=5)
+        return msgpack.unpackb(r.read(), raw=False).get("d")
+
+    try:
+        start(["--coordinator", "--port", str(co)])
+        _wait(co, "/_changelog/x/1?after=0&max=1&timeout_ms=50")
+        url = f"http://127.0.0.1:{co}"
+
+        # r1 checkpoints each update (threshold 1) so it holds donatable file segments.
+        a1 = f"http://127.0.0.1:{p1}"
+        start(["--port", str(p1), "--dir", str(tmp_path / "r1"), "--coordinator-url", url,
+               "--advertise-addr", a1, "--report-interval-ms", "200", "--checkpoint-threshold", "1"])
+        _wait(p1, "/_health")
+        _req(p1, "PUT", "/main")
+        _req(p1, "PUT", "/main/1", {"hashes": [10, 20, 30]})
+        _req(p1, "PUT", "/main/2", {"hashes": [40, 50, 60]})
+        assert _search_has(p1, [10, 20, 30], 1)
+
+        # Wait until r1 has checkpointed and advertised a donatable watermark.
+        deadline = time.time() + 10
+        while time.time() < deadline and donor(1) is None:
+            time.sleep(0.1)
+        assert donor(1) is not None, "r1 never advertised a donatable segment"
+
+        # Truncate the changelog below r1's watermark: a fresh consumer at 0 must bootstrap.
+        req = urllib.request.Request(f"http://127.0.0.1:{co}/_truncate/main/1?floor=1", method="POST")
+        assert urllib.request.urlopen(req, timeout=5).status == 200
+
+        # New node joins: it can't replay from 0 (truncated) -> bootstraps from r1.
+        a2 = f"http://127.0.0.1:{p2}"
+        start(["--port", str(p2), "--dir", str(tmp_path / "r2"), "--coordinator-url", url,
+               "--advertise-addr", a2, "--report-interval-ms", "200"])
+        _wait(p2, "/_health")
+        assert _wait_index(p2, "main")
+        assert _search_has(p2, [10, 20, 30], 1)
+        assert _search_has(p2, [40, 50, 60], 2)
+    finally:
+        for p in procs:
+            p.send_signal(signal.SIGKILL)
+        for p in procs:
+            p.wait()

@@ -67,6 +67,7 @@ const vtable: Coordinator.VTable = .{
     .readMeta = readMetaImpl,
     .reportStatus = reportStatusImpl,
     .findDonor = findDonorImpl,
+    .setRetentionFloor = setRetentionFloorImpl,
 };
 
 fn appendImpl(ptr: *anyopaque, index_name: []const u8, generation: u64, changes: []const Change, expected: ?u64) anyerror!u64 {
@@ -208,6 +209,20 @@ fn findDonorImpl(ptr: *anyopaque, arena: std.mem.Allocator, index_name: []const 
     return .{ .advertise_addr = try arena.dupe(u8, d.advertise_addr), .file_version = d.file_version };
 }
 
+fn setRetentionFloorImpl(ptr: *anyopaque, index_name: []const u8, generation: u64, floor: u64) anyerror!void {
+    const self: *Self = @ptrCast(@alignCast(ptr));
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const url = try std.fmt.allocPrint(a, "{s}/_truncate/{s}/{d}?floor={d}", .{ self.base_url, index_name, generation, floor });
+    var client = http.Client.init(self.allocator, self.io, .{});
+    defer client.deinit();
+    var resp = try client.fetch(url, .{ .method = .post });
+    defer resp.deinit();
+    if (resp.status() != .ok) return statusToError(resp.status());
+}
+
 // The long-poll window to request from the server. `.none` (block indefinitely)
 // maps to the max window; the consumer loops across windows. A `.duration` (e.g.
 // the meta catch-up's short deadline) is passed through so the server returns
@@ -245,6 +260,7 @@ fn statusToError(status: http.Status) anyerror {
     return switch (status) {
         .conflict => error.VersionMismatch,
         .not_found => error.IndexNotFound,
+        .gone => error.BelowRetention, // truncated past the requested position -> bootstrap
         else => error.CoordinatorError,
     };
 }

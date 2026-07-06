@@ -199,6 +199,11 @@ pub const Coordinator = struct {
         /// `generation`) that a reader at `after` can resume from (file_version >=
         /// `after`), or null if none. The returned addr is allocated in `arena`.
         findDonor: *const fn (ptr: *anyopaque, arena: std.mem.Allocator, index_name: []const u8, generation: u64, after: u64) anyerror!?DonorInfo,
+
+        /// Retention control: seqs <= `floor` are considered dropped for the lineage, so
+        /// a `read(after < floor)` returns error.BelowRetention. The PG impl derives this
+        /// from real retention; the stub takes it explicitly (admin/tests).
+        setRetentionFloor: *const fn (ptr: *anyopaque, index_name: []const u8, generation: u64, floor: u64) anyerror!void,
     };
 
     pub fn append(self: Coordinator, index_name: []const u8, generation: u64, changes: []const Change, expected: ?u64) !u64 {
@@ -227,6 +232,10 @@ pub const Coordinator = struct {
 
     pub fn findDonor(self: Coordinator, arena: std.mem.Allocator, index_name: []const u8, generation: u64, after: u64) !?DonorInfo {
         return self.vtable.findDonor(self.ptr, arena, index_name, generation, after);
+    }
+
+    pub fn setRetentionFloor(self: Coordinator, index_name: []const u8, generation: u64, floor: u64) !void {
+        return self.vtable.setRetentionFloor(self.ptr, index_name, generation, floor);
     }
 };
 
@@ -309,7 +318,13 @@ pub const MemoryCoordinator = struct {
         .readMeta = readMetaImpl,
         .reportStatus = reportStatusImpl,
         .findDonor = findDonorImpl,
+        .setRetentionFloor = setRetentionFloorImpl,
     };
+
+    fn setRetentionFloorImpl(ptr: *anyopaque, index_name: []const u8, generation: u64, floor: u64) anyerror!void {
+        const self: *MemoryCoordinator = @ptrCast(@alignCast(ptr));
+        return self.setRetentionFloor(index_name, generation, floor);
+    }
 
     fn appendImpl(ptr: *anyopaque, index_name: []const u8, generation: u64, changes: []const Change, expected: ?u64) anyerror!u64 {
         const self: *MemoryCoordinator = @ptrCast(@alignCast(ptr));
