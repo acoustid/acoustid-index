@@ -3,51 +3,37 @@ const http = @import("dusty");
 const msgpack = @import("msgpack");
 const api = @import("api.zig");
 const Change = @import("change.zig").Change;
+const MultiIndex = @import("MultiIndex.zig");
 
-/// The HTTP server, generic over the index manager `M` (MultiIndex for
-/// standalone, ReplicatedMultiIndex for replicated mode). `M` must expose the
-/// methods the handlers call (search/update/getIndexInfo/checkIndexExists/…).
-pub fn Server(comptime M: type) type {
-    return http.Server(M);
-}
+pub const Server = http.Server(MultiIndex);
 
-// Handlers are free functions generic over the manager `M`; this adapts one to
-// dusty's fixed handler signature for a concrete `M`.
-fn HandlerWrapper(comptime M: type, comptime handler_fn: anytype) type {
-    return struct {
-        fn wrapper(mi: *M, req: *http.Request, res: *http.Response) !void {
-            return handler_fn(M, mi, req, res);
-        }
-    };
-}
-
-pub fn registerRoutes(comptime M: type, server: *Server(M)) void {
+pub fn registerRoutes(server: *Server) void {
     const r = &server.router;
 
-    r.get("/_metrics", HandlerWrapper(M, handleMetrics).wrapper);
-    r.get("/_health", HandlerWrapper(M, handleHealth).wrapper);
-    r.head("/_health", HandlerWrapper(M, handleHealth).wrapper);
+    r.get("/_metrics", handleMetrics);
+    r.get("/_health", handleHealth);
+    r.head("/_health", handleHealth);
 
-    r.get("/:index/_health", HandlerWrapper(M, handleIndexHealth).wrapper);
-    r.head("/:index/_health", HandlerWrapper(M, handleIndexHealth).wrapper);
+    r.get("/:index/_health", handleIndexHealth);
+    r.head("/:index/_health", handleIndexHealth);
 
-    r.post("/:index/_search", HandlerWrapper(M, handleSearch).wrapper);
-    r.post("/:index/_update", HandlerWrapper(M, handleUpdate).wrapper);
+    r.post("/:index/_search", handleSearch);
+    r.post("/:index/_update", handleUpdate);
 
-    r.head("/:index/:id", HandlerWrapper(M, handleHeadFingerprint).wrapper);
-    r.get("/:index/:id", HandlerWrapper(M, handleGetFingerprint).wrapper);
-    r.put("/:index/:id", HandlerWrapper(M, handlePutFingerprint).wrapper);
-    r.delete("/:index/:id", HandlerWrapper(M, handleDeleteFingerprint).wrapper);
+    r.head("/:index/:id", handleHeadFingerprint);
+    r.get("/:index/:id", handleGetFingerprint);
+    r.put("/:index/:id", handlePutFingerprint);
+    r.delete("/:index/:id", handleDeleteFingerprint);
 
-    r.head("/:index", HandlerWrapper(M, handleHeadIndex).wrapper);
-    r.get("/:index", HandlerWrapper(M, handleGetIndex).wrapper);
-    r.put("/:index", HandlerWrapper(M, handlePutIndex).wrapper);
-    r.delete("/:index", HandlerWrapper(M, handleDeleteIndex).wrapper);
+    r.head("/:index", handleHeadIndex);
+    r.get("/:index", handleGetIndex);
+    r.put("/:index", handlePutIndex);
+    r.delete("/:index", handleDeleteIndex);
 
-    r.get("/:index/_snapshot", HandlerWrapper(M, handleSnapshotExport).wrapper);
+    r.get("/:index/_snapshot", handleSnapshotExport);
 }
 
-// --- helpers (manager-independent) ---
+// --- helpers ---
 
 fn indexName(req: *http.Request) []const u8 {
     return req.params.get("index") orelse "";
@@ -175,16 +161,16 @@ fn optionalBody(comptime T: type, req: *http.Request, res: *http.Response, defau
 
 // --- system ---
 
-fn handleMetrics(comptime M: type, mi: *M, _: *http.Request, res: *http.Response) !void {
+fn handleMetrics(mi: *MultiIndex, _: *http.Request, res: *http.Response) !void {
     try mi.writeMetrics(res.writer());
     try res.header("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
 }
 
-fn handleHealth(comptime M: type, _: *M, _: *http.Request, res: *http.Response) !void {
+fn handleHealth(_: *MultiIndex, _: *http.Request, res: *http.Response) !void {
     res.body = "OK\n";
 }
 
-fn handleIndexHealth(comptime M: type, mi: *M, req: *http.Request, res: *http.Response) !void {
+fn handleIndexHealth(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
     const exists = mi.checkIndexExists(indexName(req)) catch |err| return sendError(req, res, err);
     if (exists) {
         res.body = "OK\n";
@@ -195,7 +181,7 @@ fn handleIndexHealth(comptime M: type, mi: *M, req: *http.Request, res: *http.Re
 
 // --- search / update ---
 
-fn handleSearch(comptime M: type, mi: *M, req: *http.Request, res: *http.Response) !void {
+fn handleSearch(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
     var request = requireBody(api.SearchRequest, req, res) orelse return;
     // Sanitize untrusted request values (the legacy front-end passes trusted ones).
     request.limit = @max(@min(request.limit, api.max_search_limit), api.min_search_limit);
@@ -204,7 +190,7 @@ fn handleSearch(comptime M: type, mi: *M, req: *http.Request, res: *http.Respons
     try respond(response, req, res);
 }
 
-fn handleUpdate(comptime M: type, mi: *M, req: *http.Request, res: *http.Response) !void {
+fn handleUpdate(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
     const request = requireBody(api.UpdateRequest, req, res) orelse return;
     const response = mi.update(req.arena, indexName(req), request) catch |err| return sendError(req, res, err);
     try respond(response, req, res);
@@ -216,19 +202,19 @@ const PutFingerprintRequest = struct {
     hashes: []u32,
 };
 
-fn handleHeadFingerprint(comptime M: type, mi: *M, req: *http.Request, res: *http.Response) !void {
+fn handleHeadFingerprint(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
     const id = fingerprintId(req) catch |err| return sendError(req, res, err);
     const exists = mi.checkFingerprintExists(indexName(req), id) catch |err| return sendError(req, res, err);
     if (!exists) res.status = .not_found;
 }
 
-fn handleGetFingerprint(comptime M: type, mi: *M, req: *http.Request, res: *http.Response) !void {
+fn handleGetFingerprint(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
     const id = fingerprintId(req) catch |err| return sendError(req, res, err);
     const response = mi.getFingerprintInfo(req.arena, indexName(req), id) catch |err| return sendError(req, res, err);
     try respond(response, req, res);
 }
 
-fn handlePutFingerprint(comptime M: type, mi: *M, req: *http.Request, res: *http.Response) !void {
+fn handlePutFingerprint(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
     const id = fingerprintId(req) catch |err| return sendError(req, res, err);
     const body = requireBody(PutFingerprintRequest, req, res) orelse return;
     const request = api.UpdateRequest{
@@ -238,7 +224,7 @@ fn handlePutFingerprint(comptime M: type, mi: *M, req: *http.Request, res: *http
     try sendEmpty(req, res);
 }
 
-fn handleDeleteFingerprint(comptime M: type, mi: *M, req: *http.Request, res: *http.Response) !void {
+fn handleDeleteFingerprint(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
     const id = fingerprintId(req) catch |err| return sendError(req, res, err);
     const request = api.UpdateRequest{
         .changes = &[_]Change{.{ .delete = .{ .id = id } }},
@@ -249,30 +235,30 @@ fn handleDeleteFingerprint(comptime M: type, mi: *M, req: *http.Request, res: *h
 
 // --- index management ---
 
-fn handleHeadIndex(comptime M: type, mi: *M, req: *http.Request, res: *http.Response) !void {
+fn handleHeadIndex(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
     const exists = mi.checkIndexExists(indexName(req)) catch |err| return sendError(req, res, err);
     if (!exists) res.status = .not_found;
 }
 
-fn handleGetIndex(comptime M: type, mi: *M, req: *http.Request, res: *http.Response) !void {
+fn handleGetIndex(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
     const response = mi.getIndexInfo(req.arena, indexName(req)) catch |err| return sendError(req, res, err);
     try respond(response, req, res);
 }
 
-fn handlePutIndex(comptime M: type, mi: *M, req: *http.Request, res: *http.Response) !void {
+fn handlePutIndex(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
     const request = optionalBody(api.CreateIndexRequest, req, res, .{}) orelse return;
     const response = mi.createIndex(indexName(req), request) catch |err| return sendError(req, res, err);
     if (!response.ready) res.status = .accepted; // 202 until ready
     try respond(response, req, res);
 }
 
-fn handleDeleteIndex(comptime M: type, mi: *M, req: *http.Request, res: *http.Response) !void {
+fn handleDeleteIndex(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
     const request = optionalBody(api.DeleteIndexRequest, req, res, .{}) orelse return;
     const response = mi.deleteIndex(indexName(req), request) catch |err| return sendError(req, res, err);
     try respond(response, req, res);
 }
 
-fn handleSnapshotExport(comptime M: type, _: *M, req: *http.Request, res: *http.Response) !void {
+fn handleSnapshotExport(_: *MultiIndex, req: *http.Request, res: *http.Response) !void {
     // TODO: snapshot export (bootstrap path).
     sendError(req, res, error.NotImplemented);
 }

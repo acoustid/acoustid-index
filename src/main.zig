@@ -10,7 +10,8 @@ const http = @import("dusty");
 const MultiIndex = @import("MultiIndex.zig");
 const metrics = @import("metrics.zig");
 const legacy = @import("legacy.zig");
-const httpmod = @import("server.zig");
+const Server = @import("server.zig").Server;
+const registerRoutes = @import("server.zig").registerRoutes;
 
 // Process allocator: a leak-checking DebugAllocator in Debug builds, the C
 // allocator (malloc) otherwise — malloc scales better than a mutex-guarded GPA
@@ -60,10 +61,10 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
     defer multi_index.deinit();
     try multi_index.open();
 
-    var server = httpmod.Server(MultiIndex).init(allocator, io, .{}, &multi_index);
+    var server = Server.init(allocator, io, .{}, &multi_index);
     defer server.deinit();
 
-    httpmod.registerRoutes(MultiIndex, &server);
+    registerRoutes(&server);
 
     var sigint = try zio.Signal.init(.interrupt);
     defer sigint.deinit();
@@ -73,7 +74,7 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
     const addr: http.Address = .{ .ip = try std.Io.net.IpAddress.parse(config.host, config.port) };
     std.log.info("fpindex-ng listening on http://{s}:{d} (dir={s})", .{ config.host, config.port, config.dir });
 
-    var http_task = try zio.spawn(httpmod.Server(MultiIndex).listen, .{ &server, addr });
+    var http_task = try zio.spawn(Server.listen, .{ &server, addr });
     defer http_task.cancel();
 
     if (config.legacy_port != 0) {
