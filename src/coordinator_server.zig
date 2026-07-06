@@ -9,8 +9,8 @@ const std = @import("std");
 const zio = @import("zio");
 const http = @import("dusty");
 const msgpack = @import("msgpack");
-const changelog_mod = @import("changelog.zig");
-const Changelog = changelog_mod.Changelog;
+const changelog_mod = @import("Coordinator.zig");
+const Coordinator = changelog_mod.Coordinator;
 const Entry = changelog_mod.Entry;
 const AppendRequest = changelog_mod.AppendRequest;
 const AppendResponse = changelog_mod.AppendResponse;
@@ -18,11 +18,11 @@ const ReadResponse = changelog_mod.ReadResponse;
 
 const max_read_entries = 1024;
 
-pub const Coordinator = struct {
-    changelog: Changelog,
+pub const Service = struct {
+    coordinator: Coordinator,
 };
 
-pub const Server = http.Server(Coordinator);
+pub const Server = http.Server(Service);
 
 pub fn registerRoutes(server: *Server) void {
     const r = &server.router;
@@ -30,17 +30,17 @@ pub fn registerRoutes(server: *Server) void {
     r.get("/_changelog/:index", handleRead);
 }
 
-fn handleAppend(co: *Coordinator, req: *http.Request, res: *http.Response) !void {
+fn handleAppend(co: *Service, req: *http.Request, res: *http.Response) !void {
     const index = req.params.get("index") orelse return fail(res, .bad_request, "missing index");
     const body = (req.body() catch null) orelse return fail(res, .bad_request, "missing body");
     const areq = msgpack.decodeFromSliceLeaky(AppendRequest, req.arena, body) catch
         return fail(res, .bad_request, "bad body");
-    const id = co.changelog.append(index, areq.changes, areq.expected) catch |err|
+    const id = co.coordinator.append(index, areq.changes, areq.expected) catch |err|
         return fail(res, statusFor(err), @errorName(err));
     try respond(AppendResponse{ .id = id }, res);
 }
 
-fn handleRead(co: *Coordinator, req: *http.Request, res: *http.Response) !void {
+fn handleRead(co: *Service, req: *http.Request, res: *http.Response) !void {
     const index = req.params.get("index") orelse return fail(res, .bad_request, "missing index");
     const after = queryInt(req, "after") orelse 0;
     const max: usize = @intCast(@min(queryInt(req, "max") orelse 256, max_read_entries));
@@ -48,7 +48,7 @@ fn handleRead(co: *Coordinator, req: *http.Request, res: *http.Response) !void {
 
     const buf = try req.arena.alloc(Entry, max);
     const deadline: zio.Timeout = if (timeout_ms == 0) .none else .{ .duration = .fromMilliseconds(timeout_ms) };
-    const n = co.changelog.read(index, after, buf, deadline) catch |err|
+    const n = co.coordinator.read(index, after, buf, deadline) catch |err|
         return fail(res, statusFor(err), @errorName(err));
     try respond(ReadResponse{ .entries = buf[0..n] }, res);
 }

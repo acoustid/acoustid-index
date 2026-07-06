@@ -15,9 +15,9 @@
 const std = @import("std");
 const zio = @import("zio");
 const MultiIndex = @import("MultiIndex.zig");
-const changelog_mod = @import("changelog.zig");
-const Changelog = changelog_mod.Changelog;
-const Entry = changelog_mod.Entry;
+const coordinator_mod = @import("Coordinator.zig");
+const Coordinator = coordinator_mod.Coordinator;
+const Entry = coordinator_mod.Entry;
 const Change = @import("change.zig").Change;
 const api = @import("api.zig");
 const log = std.log.scoped(.replicator);
@@ -27,7 +27,7 @@ const batch_size = 256;
 
 allocator: std.mem.Allocator,
 mi: *MultiIndex,
-changelog: Changelog,
+coordinator: Coordinator,
 mutex: zio.Mutex = .init,
 cond: zio.Condition = .init, // broadcast after each apply (read-your-writes)
 consumers: std.StringHashMapUnmanaged(*Consumer) = .empty,
@@ -39,8 +39,8 @@ const Consumer = struct {
     task: ?zio.JoinHandle(zio.Cancelable!void) = null,
 };
 
-pub fn init(allocator: std.mem.Allocator, mi: *MultiIndex, changelog: Changelog) Self {
-    return .{ .allocator = allocator, .mi = mi, .changelog = changelog };
+pub fn init(allocator: std.mem.Allocator, mi: *MultiIndex, coordinator: Coordinator) Self {
+    return .{ .allocator = allocator, .mi = mi, .coordinator = coordinator };
 }
 
 pub fn deinit(self: *Self) void {
@@ -108,7 +108,7 @@ pub fn update(self: *Self, name: []const u8, request: api.UpdateRequest) !api.Up
         defer self.mutex.unlock();
         if (!self.consumers.contains(name)) return error.IndexNotFound;
     }
-    const id = try self.changelog.append(name, request.changes, request.expected_version);
+    const id = try self.coordinator.append(name, request.changes, request.expected_version);
     try self.waitApplied(name, id);
     return .{ .version = id };
 }
@@ -136,7 +136,7 @@ fn consumeLoop(c: *Consumer, start_version: u64) zio.Cancelable!void {
     var changes: [batch_size]Change = undefined;
     var after = start_version;
     while (true) {
-        const n = self.changelog.read(c.name, after, &buf, .none) catch |err| {
+        const n = self.coordinator.read(c.name, after, &buf, .none) catch |err| {
             if (err == error.Canceled) return error.Canceled;
             log.warn("changelog read failed for '{s}': {}", .{ c.name, err });
             continue;
@@ -158,7 +158,7 @@ fn consumeLoop(c: *Consumer, start_version: u64) zio.Cancelable!void {
 // ---- tests ----
 
 test "replicated update flows through the changelog; RYW + search see it" {
-    const MemoryChangelog = changelog_mod.MemoryChangelog;
+    const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
     const common = @import("common.zig");
 
     const rt = try zio.Runtime.init(std.testing.allocator, .{ .executors = .exact(2) });
@@ -173,13 +173,13 @@ test "replicated update flows through the changelog; RYW + search see it" {
 
     // The changelog must outlive the manager (its consumers borrow it), so declare
     // it first — LIFO defers then run mi.deinit() before cl.deinit().
-    var cl = MemoryChangelog.init(std.testing.allocator);
+    var cl = MemoryCoordinator.init(std.testing.allocator);
     defer cl.deinit();
 
     var mi = MultiIndex.init(std.testing.allocator, dir);
     defer mi.deinit();
     _ = try mi.createIndex("main", .{});
-    try mi.startReplication(cl.changelog());
+    try mi.startReplication(cl.coordinator());
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

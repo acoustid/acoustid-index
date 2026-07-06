@@ -16,7 +16,7 @@ const Index = @import("Index.zig");
 const Change = @import("change.zig").Change;
 const Metadata = @import("change.zig").Metadata;
 const Replicator = @import("Replicator.zig");
-const Changelog = @import("changelog.zig").Changelog;
+const Coordinator = @import("Coordinator.zig").Coordinator;
 const SearchResults = @import("common.zig").SearchResults;
 const metrics = @import("metrics.zig");
 const log = std.log.scoped(.multi_index);
@@ -52,10 +52,10 @@ pub fn init(allocator: std.mem.Allocator, dir: zio.Dir) Self {
 
 /// Enter replicated mode: writes append to `changelog` and a per-index consumer
 /// applies them back. Call after open(), before serving. Borrows the changelog.
-pub fn startReplication(self: *Self, changelog: Changelog) !void {
+pub fn startReplication(self: *Self, coordinator: Coordinator) !void {
     const repl = try self.allocator.create(Replicator);
     errdefer self.allocator.destroy(repl);
-    repl.* = Replicator.init(self.allocator, self, changelog);
+    repl.* = Replicator.init(self.allocator, self, coordinator);
     errdefer repl.deinit();
     try repl.start();
     self.replication = repl;

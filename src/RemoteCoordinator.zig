@@ -12,8 +12,8 @@ const std = @import("std");
 const zio = @import("zio");
 const http = @import("dusty");
 const msgpack = @import("msgpack");
-const changelog_mod = @import("changelog.zig");
-const Changelog = changelog_mod.Changelog;
+const changelog_mod = @import("Coordinator.zig");
+const Coordinator = changelog_mod.Coordinator;
 const Entry = changelog_mod.Entry;
 const Change = @import("change.zig").Change;
 const AppendRequest = changelog_mod.AppendRequest;
@@ -43,11 +43,11 @@ pub fn deinit(self: *Self) void {
     self.read_arenas.deinit(self.allocator);
 }
 
-pub fn changelog(self: *Self) Changelog {
+pub fn coordinator(self: *Self) Coordinator {
     return .{ .ptr = self, .vtable = &vtable };
 }
 
-const vtable: Changelog.VTable = .{ .append = appendImpl, .read = readImpl };
+const vtable: Coordinator.VTable = .{ .append = appendImpl, .read = readImpl };
 
 fn appendImpl(ptr: *anyopaque, index_name: []const u8, changes: []const Change, expected: ?u64) anyerror!u64 {
     const self: *Self = @ptrCast(@alignCast(ptr));

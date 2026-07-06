@@ -4,7 +4,7 @@
 // In production, fpindex does NOT connect to PG. It speaks this protocol to a
 // stateless gateway (over websocket); the gateway is the only component that
 // touches PG (LISTEN/NOTIFY + SELECT/INSERT). Implementations:
-//   - MemoryChangelog: in-memory stub for tests (here).
+//   - MemoryCoordinator: in-memory stub for tests (here).
 //   - WebSocketChangelog: fpindex -> gateway (later; PG-free).
 //   - the gateway's own PG-backed impl (later; owns pg.zig).
 //
@@ -24,7 +24,7 @@ const Change = @import("change.zig").Change;
 
 /// One committed op in the shared, ordered log. `id` is the global position and
 /// doubles as the index version. For an insert, `change.insert.hashes` is
-/// borrowed from the Changelog and valid only until the next `read()` on the same
+/// borrowed from the Coordinator and valid only until the next `read()` on the same
 /// reader — copy it (e.g. into a segment) before reading on.
 pub const Entry = struct {
     id: u64,
@@ -62,7 +62,7 @@ pub const ReadResponse = struct {
 };
 
 /// Runtime-dispatched handle to a changelog implementation.
-pub const Changelog = struct {
+pub const Coordinator = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
 
@@ -80,18 +80,18 @@ pub const Changelog = struct {
         read: *const fn (ptr: *anyopaque, index_name: []const u8, after: u64, out: []Entry, deadline: zio.Timeout) anyerror!usize,
     };
 
-    pub fn append(self: Changelog, index_name: []const u8, changes: []const Change, expected: ?u64) !u64 {
+    pub fn append(self: Coordinator, index_name: []const u8, changes: []const Change, expected: ?u64) !u64 {
         return self.vtable.append(self.ptr, index_name, changes, expected);
     }
 
-    pub fn read(self: Changelog, index_name: []const u8, after: u64, out: []Entry, deadline: zio.Timeout) !usize {
+    pub fn read(self: Coordinator, index_name: []const u8, after: u64, out: []Entry, deadline: zio.Timeout) !usize {
         return self.vtable.read(self.ptr, index_name, after, out, deadline);
     }
 };
 
 /// In-memory changelog stub. Upholds the PG invariants above; not durable, not
 /// partitioned, no retention — those live only in the PG-backed implementation.
-pub const MemoryChangelog = struct {
+pub const MemoryCoordinator = struct {
     allocator: std.mem.Allocator,
     mutex: zio.Mutex = .init,
     cond: zio.Condition = .init,
@@ -104,24 +104,24 @@ pub const MemoryChangelog = struct {
         change: Change, // insert hashes owned
     };
 
-    pub fn init(allocator: std.mem.Allocator) MemoryChangelog {
+    pub fn init(allocator: std.mem.Allocator) MemoryCoordinator {
         return .{ .allocator = allocator };
     }
 
-    pub fn deinit(self: *MemoryChangelog) void {
+    pub fn deinit(self: *MemoryCoordinator) void {
         for (self.rows.items) |*row| self.freeRow(row);
         self.rows.deinit(self.allocator);
         self.* = undefined;
     }
 
-    pub fn changelog(self: *MemoryChangelog) Changelog {
+    pub fn coordinator(self: *MemoryCoordinator) Coordinator {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    const vtable: Changelog.VTable = .{ .append = appendImpl, .read = readImpl };
+    const vtable: Coordinator.VTable = .{ .append = appendImpl, .read = readImpl };
 
     fn appendImpl(ptr: *anyopaque, index_name: []const u8, changes: []const Change, expected: ?u64) anyerror!u64 {
-        const self: *MemoryChangelog = @ptrCast(@alignCast(ptr));
+        const self: *MemoryCoordinator = @ptrCast(@alignCast(ptr));
         try self.mutex.lock();
         defer self.mutex.unlock();
 
@@ -154,7 +154,7 @@ pub const MemoryChangelog = struct {
     }
 
     fn readImpl(ptr: *anyopaque, index_name: []const u8, after: u64, out: []Entry, deadline: zio.Timeout) anyerror!usize {
-        const self: *MemoryChangelog = @ptrCast(@alignCast(ptr));
+        const self: *MemoryCoordinator = @ptrCast(@alignCast(ptr));
         try self.mutex.lock();
         defer self.mutex.unlock();
 
@@ -179,7 +179,7 @@ pub const MemoryChangelog = struct {
         }
     }
 
-    fn maxIdForLocked(self: *MemoryChangelog, index_name: []const u8) u64 {
+    fn maxIdForLocked(self: *MemoryCoordinator, index_name: []const u8) u64 {
         var max: u64 = 0;
         for (self.rows.items) |row| {
             if (row.id > max and std.mem.eql(u8, row.index_name, index_name)) max = row.id;
@@ -187,7 +187,7 @@ pub const MemoryChangelog = struct {
         return max;
     }
 
-    fn freeRow(self: *MemoryChangelog, row: *Row) void {
+    fn freeRow(self: *MemoryCoordinator, row: *Row) void {
         self.allocator.free(row.index_name);
         freeChange(self.allocator, row.change);
     }
@@ -215,13 +215,13 @@ fn ins(id: u32, hashes: []const u32) Change {
     return .{ .insert = .{ .id = id, .hashes = hashes } };
 }
 
-test "MemoryChangelog: shared monotonic ids, one per op" {
+test "MemoryCoordinator: shared monotonic ids, one per op" {
     const rt = try zio.Runtime.init(testing.allocator, .{});
     defer rt.deinit();
 
-    var cl = MemoryChangelog.init(testing.allocator);
+    var cl = MemoryCoordinator.init(testing.allocator);
     defer cl.deinit();
-    const log = cl.changelog();
+    const log = cl.coordinator();
 
     // Two ops -> ids 1,2 -> version 2.
     try testing.expectEqual(@as(u64, 2), try log.append("a", &.{ ins(1, &.{ 10, 20 }), ins(2, &.{30}) }, null));
@@ -231,13 +231,13 @@ test "MemoryChangelog: shared monotonic ids, one per op" {
     try testing.expectEqual(@as(u64, 4), try log.append("a", &.{.{ .delete = .{ .id = 1 } }}, null));
 }
 
-test "MemoryChangelog: optimistic concurrency" {
+test "MemoryCoordinator: optimistic concurrency" {
     const rt = try zio.Runtime.init(testing.allocator, .{});
     defer rt.deinit();
 
-    var cl = MemoryChangelog.init(testing.allocator);
+    var cl = MemoryCoordinator.init(testing.allocator);
     defer cl.deinit();
-    const log = cl.changelog();
+    const log = cl.coordinator();
 
     // Fresh index: expected version is 0.
     try testing.expectError(error.VersionMismatch, log.append("a", &.{ins(1, &.{10})}, 5));
@@ -247,13 +247,13 @@ test "MemoryChangelog: optimistic concurrency" {
     try testing.expectEqual(@as(u64, 2), try log.append("a", &.{ins(2, &.{20})}, 1));
 }
 
-test "MemoryChangelog: read fills buffer in id order, filtered by index + after" {
+test "MemoryCoordinator: read fills buffer in id order, filtered by index + after" {
     const rt = try zio.Runtime.init(testing.allocator, .{});
     defer rt.deinit();
 
-    var cl = MemoryChangelog.init(testing.allocator);
+    var cl = MemoryCoordinator.init(testing.allocator);
     defer cl.deinit();
-    const log = cl.changelog();
+    const log = cl.coordinator();
 
     _ = try log.append("a", &.{ ins(1, &.{10}), ins(2, &.{20}) }, null); // ids 1,2
     _ = try log.append("b", &.{ins(3, &.{30})}, null); // id 3 (other index)
@@ -278,34 +278,34 @@ test "MemoryChangelog: read fills buffer in id order, filtered by index + after"
     try testing.expectEqual(@as(u64, 4), buf[0].id);
 }
 
-test "MemoryChangelog: read on empty times out, returns 0" {
+test "MemoryCoordinator: read on empty times out, returns 0" {
     const rt = try zio.Runtime.init(testing.allocator, .{});
     defer rt.deinit();
 
-    var cl = MemoryChangelog.init(testing.allocator);
+    var cl = MemoryCoordinator.init(testing.allocator);
     defer cl.deinit();
-    const log = cl.changelog();
+    const log = cl.coordinator();
 
     var buf: [4]Entry = undefined;
     try testing.expectEqual(@as(usize, 0), try log.read("a", 0, &buf, .{ .duration = .fromMilliseconds(5) }));
 }
 
-test "MemoryChangelog: read blocks until a concurrent append wakes it" {
+test "MemoryCoordinator: read blocks until a concurrent append wakes it" {
     const rt = try zio.Runtime.init(testing.allocator, .{ .executors = .exact(2) });
     defer rt.deinit();
 
-    var cl = MemoryChangelog.init(testing.allocator);
+    var cl = MemoryCoordinator.init(testing.allocator);
     defer cl.deinit();
-    const log = cl.changelog();
+    const log = cl.coordinator();
 
     const Ctx = struct {
-        fn reader(l: Changelog, got: *usize, first: *u64) !void {
+        fn reader(l: Coordinator, got: *usize, first: *u64) !void {
             var buf: [4]Entry = undefined;
             const n = try l.read("a", 0, &buf, .none); // blocks until the append
             got.* = n;
             if (n > 0) first.* = buf[0].id;
         }
-        fn appender(l: Changelog) !void {
+        fn appender(l: Coordinator) !void {
             _ = try l.append("a", &.{ins(1, &.{ 10, 20 })}, null);
         }
     };

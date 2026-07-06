@@ -10,9 +10,9 @@ const http = @import("dusty");
 const MultiIndex = @import("MultiIndex.zig");
 const metrics = @import("metrics.zig");
 const legacy = @import("legacy.zig");
-const coordinator = @import("coordinator.zig");
-const MemoryChangelog = @import("changelog.zig").MemoryChangelog;
-const RemoteChangelog = @import("RemoteChangelog.zig");
+const coordinator_server = @import("coordinator_server.zig");
+const MemoryCoordinator = @import("Coordinator.zig").MemoryCoordinator;
+const RemoteCoordinator = @import("RemoteCoordinator.zig");
 const Server = @import("server.zig").Server;
 const registerRoutes = @import("server.zig").registerRoutes;
 
@@ -67,8 +67,8 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
 
     // In replica mode the changelog must outlive the index manager (its consumers
     // borrow it), so create it first — LIFO defers then tear mi down before it.
-    var remote: ?RemoteChangelog = if (config.coordinator_url) |url|
-        RemoteChangelog.init(allocator, io, url)
+    var remote: ?RemoteCoordinator = if (config.coordinator_url) |url|
+        RemoteCoordinator.init(allocator, io, url)
     else
         null;
     defer if (remote) |*r| r.deinit();
@@ -80,7 +80,7 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
     try multi_index.open();
 
     if (remote) |*r| {
-        try multi_index.startReplication(r.changelog());
+        try multi_index.startReplication(r.coordinator());
         std.log.info("replicating from coordinator {s}", .{config.coordinator_url.?});
     }
 
@@ -130,13 +130,13 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
 // Run as the changelog coordinator: an HTTP server exposing append/read of an
 // in-memory changelog for replicas to consume. No index, no data dir.
 fn runCoordinator(allocator: std.mem.Allocator, io: std.Io, config: Config) !void {
-    var mc = MemoryChangelog.init(allocator);
+    var mc = MemoryCoordinator.init(allocator);
     defer mc.deinit();
-    var co = coordinator.Coordinator{ .changelog = mc.changelog() };
+    var co = coordinator_server.Service{ .coordinator = mc.coordinator() };
 
-    var server = coordinator.Server.init(allocator, io, .{}, &co);
+    var server = coordinator_server.Server.init(allocator, io, .{}, &co);
     defer server.deinit();
-    coordinator.registerRoutes(&server);
+    coordinator_server.registerRoutes(&server);
 
     var sigint = try zio.Signal.init(.interrupt);
     defer sigint.deinit();
@@ -146,7 +146,7 @@ fn runCoordinator(allocator: std.mem.Allocator, io: std.Io, config: Config) !voi
     const addr: http.Address = .{ .ip = try std.Io.net.IpAddress.parse(config.host, config.port) };
     std.log.info("fpindex coordinator listening on http://{s}:{d}", .{ config.host, config.port });
 
-    var http_task = try zio.spawn(coordinator.Server.listen, .{ &server, addr });
+    var http_task = try zio.spawn(coordinator_server.Server.listen, .{ &server, addr });
     defer http_task.cancel();
 
     const result = try zio.select(.{ .http = &http_task, .sigint = &sigint, .sigterm = &sigterm });
@@ -215,8 +215,8 @@ test {
     _ = @import("segment_merge_policy.zig");
     _ = @import("filefmt.zig");
     _ = @import("Index.zig");
-    _ = @import("changelog.zig");
+    _ = @import("Coordinator.zig");
     _ = @import("Replicator.zig");
-    _ = @import("coordinator.zig");
-    _ = @import("RemoteChangelog.zig");
+    _ = @import("coordinator_server.zig");
+    _ = @import("RemoteCoordinator.zig");
 }
