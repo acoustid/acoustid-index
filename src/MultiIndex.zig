@@ -24,6 +24,8 @@ indexes: std.StringHashMapUnmanaged(*Index) = .empty,
 checkpoint_threshold: usize = 100_000,
 // Whether index oplogs fsync each append (false when an upstream owns durability).
 sync: bool = true,
+// Max file-segment loads in flight across all indexes during open(); 0 = no limit.
+load_concurrency: usize = 0,
 
 pub fn init(allocator: std.mem.Allocator, dir: zio.Dir) Self {
     return .{ .allocator = allocator, .dir = dir };
@@ -40,9 +42,18 @@ pub fn deinit(self: *Self) void {
     self.dir.close();
 }
 
-/// Discover existing indexes (subdirectories of the data root) and replay each
-/// one's oplog to rebuild its in-memory state.
+/// Discover existing indexes (subdirectories of the data root) and open them
+/// concurrently, rebuilding each from its oplog + file segments. A shared
+/// semaphore (when load_concurrency > 0) caps the total file-segment loads in
+/// flight across all indexes.
 pub fn open(self: *Self) !void {
+    // 1. Collect index names first: entry.name is only valid until the next
+    //    it.next(), so we can't hold it across the concurrent opens.
+    var names: std.ArrayListUnmanaged([]const u8) = .empty;
+    defer names.deinit(self.allocator);
+    var names_owned = true;
+    errdefer if (names_owned) for (names.items) |n| self.allocator.free(n);
+
     var it = self.dir.iterate();
     while (try it.next()) |entry| {
         if (entry.kind != .directory) continue;
@@ -50,23 +61,78 @@ pub fn open(self: *Self) !void {
             log.warn("skipping unexpected entry '{s}' in data dir", .{entry.name});
             continue;
         }
-        // entry.name is only valid until the next it.next(); dupe before any I/O.
-        const name = try self.allocator.dupe(u8, entry.name);
-        errdefer self.allocator.free(name);
-
-        const index_dir = try self.dir.openDir(name, .{ .iterate = true });
-        const index = try self.allocator.create(Index);
-        errdefer self.allocator.destroy(index);
-        index.* = Index.open(self.allocator, index_dir, self.checkpoint_threshold, self.sync) catch |err| {
-            index_dir.close();
-            return err;
-        };
-        errdefer index.deinit();
-        try index.start();
-
-        try self.indexes.put(self.allocator, name, index);
-        log.info("opened index '{s}' at version {d}", .{ name, index.version });
+        try names.append(self.allocator, try self.allocator.dupe(u8, entry.name));
     }
+    if (names.items.len == 0) return;
+
+    // 2. Open all indexes concurrently. Each writes its own slot; the shared load
+    //    semaphore bounds concurrent segment reads (acquired per-segment inside
+    //    Index.open, so index opens never hold a permit while waiting -> no
+    //    deadlock).
+    const indexes = try self.allocator.alloc(*Index, names.items.len);
+    defer self.allocator.free(indexes);
+    const results = try self.allocator.alloc(anyerror!void, names.items.len);
+    defer self.allocator.free(results);
+    for (results) |*r| r.* = error.IndexNotOpened; // sentinel for slots never spawned
+
+    var load_sem: zio.Semaphore = .{ .permits = self.load_concurrency };
+    const sem_ptr: ?*zio.Semaphore = if (self.load_concurrency == 0) null else &load_sem;
+
+    var fatal: ?anyerror = null;
+    {
+        var group: zio.Group = .init;
+        defer group.cancel();
+        for (names.items, 0..) |name, i| {
+            group.spawn(openOneIndex, .{ self, name, sem_ptr, &indexes[i], &results[i] }) catch |err| {
+                fatal = err;
+                break;
+            };
+        }
+        group.wait() catch |err| {
+            fatal = fatal orelse err;
+        };
+    }
+
+    // 3. Install the indexes that opened (sequential; the map isn't concurrent),
+    //    free the names of the rest. On any failure return the error — already
+    //    installed indexes are torn down by deinit().
+    names_owned = false; // this phase now owns every name
+    for (results, names.items, 0..) |res, name, i| {
+        if (res) |_| {
+            const index = indexes[i];
+            self.indexes.put(self.allocator, name, index) catch |err| {
+                index.deinit();
+                self.allocator.destroy(index);
+                self.allocator.free(name);
+                fatal = fatal orelse err;
+                continue;
+            };
+            log.info("opened index '{s}' at version {d}", .{ name, index.version });
+        } else |err| {
+            self.allocator.free(name);
+            if (err != error.IndexNotOpened) fatal = fatal orelse err;
+        }
+    }
+    if (fatal) |err| return err;
+}
+
+// Group-spawned: opens one index into out_index, capturing its result into
+// out_res (void return keeps the group's error flags clean).
+fn openOneIndex(self: *Self, name: []const u8, load_sem: ?*zio.Semaphore, out_index: **Index, out_res: *anyerror!void) void {
+    out_res.* = self.openOneIndexInner(name, load_sem, out_index);
+}
+
+fn openOneIndexInner(self: *Self, name: []const u8, load_sem: ?*zio.Semaphore, out_index: **Index) !void {
+    const index_dir = try self.dir.openDir(name, .{ .iterate = true });
+    const index = try self.allocator.create(Index);
+    errdefer self.allocator.destroy(index);
+    index.* = Index.open(self.allocator, index_dir, self.checkpoint_threshold, self.sync, load_sem) catch |err| {
+        index_dir.close();
+        return err;
+    };
+    errdefer index.deinit();
+    try index.start();
+    out_index.* = index;
 }
 
 /// Search an index. Options ride in the request (limit, min_score, score_pct,
@@ -159,7 +225,7 @@ pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexReques
     const index_dir = try self.dir.openDir(name, .{ .iterate = true });
     const index = try self.allocator.create(Index);
     errdefer self.allocator.destroy(index);
-    index.* = Index.open(self.allocator, index_dir, self.checkpoint_threshold, self.sync) catch |err| {
+    index.* = Index.open(self.allocator, index_dir, self.checkpoint_threshold, self.sync, null) catch |err| {
         index_dir.close();
         return err;
     };

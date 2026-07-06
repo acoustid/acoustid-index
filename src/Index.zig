@@ -211,7 +211,7 @@ checkpoint_threshold: usize = 100_000,
 wake: zio.ResetEvent = .init,
 maintenance: ?zio.JoinHandle(zio.Cancelable!void) = null,
 
-pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: usize, sync: bool) !Self {
+pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: usize, sync: bool, load_sem: ?*zio.Semaphore) !Self {
     var file_list: std.ArrayListUnmanaged(FileRef) = .empty;
     var mem_list: std.ArrayListUnmanaged(MemoryRef) = .empty;
     errdefer {
@@ -249,7 +249,16 @@ pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: us
         var group: zio.Group = .init;
         defer group.cancel(); // cancel+join any stragglers on early exit
         for (infos, 0..) |info, i| {
-            group.spawn(loadFileSegment, .{ data_dir, info, allocator, &refs[i], &results[i] }) catch |err| {
+            // Acquire a permit BEFORE spawning, so at most `permits` loads are
+            // ever live at once — this bounds spawned coroutines (and their
+            // in-memory buffers), not just concurrent reads. The loader releases
+            // the permit when it finishes.
+            if (load_sem) |sem| sem.wait() catch |err| {
+                fatal = err; // Canceled
+                break;
+            };
+            group.spawn(loadFileSegment, .{ load_sem, data_dir, info, allocator, &refs[i], &results[i] }) catch |err| {
+                if (load_sem) |sem| sem.post(); // no loader will release it
                 fatal = err;
                 break;
             };
@@ -300,8 +309,10 @@ pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: us
 }
 
 // Group-spawned; captures its result into out_res (void return keeps the group's
-// error flags clean — errors are collected by the caller instead).
-fn loadFileSegment(dir: zio.Dir, info: SegmentInfo, allocator: std.mem.Allocator, out_ref: *FileRef, out_res: *anyerror!void) void {
+// error flags clean — errors are collected by the caller instead) and releases
+// the load permit the spawner acquired.
+fn loadFileSegment(load_sem: ?*zio.Semaphore, dir: zio.Dir, info: SegmentInfo, allocator: std.mem.Allocator, out_ref: *FileRef, out_res: *anyerror!void) void {
+    defer if (load_sem) |sem| sem.post();
     out_res.* = loadFileSegmentInner(dir, info, allocator, out_ref);
 }
 
@@ -771,7 +782,7 @@ test "checkpoint and reload" {
 
     {
         const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-        var index = try Self.open(std.testing.allocator, dir, 5, true);
+        var index = try Self.open(std.testing.allocator, dir, 5, true, null);
         defer index.deinit();
 
         _ = try index.update(&ins1, null, .{});
@@ -793,7 +804,7 @@ test "checkpoint and reload" {
 
     {
         const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-        var index = try Self.open(std.testing.allocator, dir, 5, true);
+        var index = try Self.open(std.testing.allocator, dir, 5, true, null);
         defer index.deinit();
 
         try std.testing.expectEqual(@as(usize, 1), index.segments.value.file.len);
@@ -822,7 +833,7 @@ test "file segment merging bounds count and preserves deletes" {
     defer cleanupTestDir(cwd, dir_path);
 
     const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-    var index = try Self.open(std.testing.allocator, dir, 1, true);
+    var index = try Self.open(std.testing.allocator, dir, 1, true, null);
     defer index.deinit();
 
     var id: u32 = 1;
@@ -859,7 +870,7 @@ test "reader snapshot is stable across writes" {
     defer cleanupTestDir(cwd, dir_path);
 
     const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-    var index = try Self.open(std.testing.allocator, dir, 5, true);
+    var index = try Self.open(std.testing.allocator, dir, 5, true, null);
     defer index.deinit();
 
     _ = try index.update(&[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{100} } }}, null, .{});
@@ -902,7 +913,7 @@ test "memory merge consolidates memory segments without checkpointing" {
     defer cleanupTestDir(cwd, dir_path);
 
     const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-    var index = try Self.open(std.testing.allocator, dir, 100_000, true); // high threshold: no checkpoint
+    var index = try Self.open(std.testing.allocator, dir, 100_000, true, null); // high threshold: no checkpoint
     defer index.deinit();
 
     // 50 tiny updates stay well under the checkpoint threshold.
@@ -938,7 +949,7 @@ test "oplog truncation after checkpoint" {
 
     {
         const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-        var index = try Self.open(std.testing.allocator, dir, 10, true);
+        var index = try Self.open(std.testing.allocator, dir, 10, true, null);
         defer index.deinit();
         index.oplog.max_file_size = 80; // force frequent rotation
 
@@ -964,7 +975,7 @@ test "oplog truncation after checkpoint" {
     // Reload from the truncated log + file segments; data intact.
     {
         const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-        var index = try Self.open(std.testing.allocator, dir, 10, true);
+        var index = try Self.open(std.testing.allocator, dir, 10, true, null);
         defer index.deinit();
 
         var results = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });
@@ -988,7 +999,7 @@ test "getDocInfo reports version and tombstones, across a checkpoint" {
     defer cleanupTestDir(cwd, dir_path);
 
     const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-    var index = try Self.open(std.testing.allocator, dir, 100_000, true);
+    var index = try Self.open(std.testing.allocator, dir, 100_000, true, null);
     defer index.deinit();
 
     _ = try index.update(&[_]Change{.{ .insert = .{ .id = 5, .hashes = &[_]u32{ 10, 20 } } }}, null, .{});
@@ -1034,7 +1045,7 @@ test "index stats and metadata aggregation" {
     defer cleanupTestDir(cwd, dir_path);
 
     const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-    var index = try Self.open(std.testing.allocator, dir, 100_000, true);
+    var index = try Self.open(std.testing.allocator, dir, 100_000, true, null);
     defer index.deinit();
 
     var md1 = Metadata.initOwned(std.testing.allocator);
@@ -1077,7 +1088,7 @@ test "oplog recovers the valid prefix from a corrupt tail" {
     // Write 5 clean records.
     {
         const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-        var index = try Self.open(std.testing.allocator, dir, 100_000, true);
+        var index = try Self.open(std.testing.allocator, dir, 100_000, true, null);
         defer index.deinit();
         var id: u32 = 1;
         while (id <= 5) : (id += 1) {
@@ -1108,7 +1119,7 @@ test "oplog recovers the valid prefix from a corrupt tail" {
     // Reopen: the torn tail is dropped, the 5 valid records recovered.
     {
         const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-        var index = try Self.open(std.testing.allocator, dir, 100_000, true);
+        var index = try Self.open(std.testing.allocator, dir, 100_000, true, null);
         defer index.deinit();
         try std.testing.expectEqual(@as(u64, 5), index.version);
 

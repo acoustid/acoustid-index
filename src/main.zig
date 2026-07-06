@@ -40,6 +40,8 @@ const Config = struct {
     checkpoint_threshold: usize = 100_000,
     // Legacy line-protocol listener; 0 disables it.
     legacy_port: u16 = 0,
+    // Max file-segment loads in flight across all indexes at startup; 0 = no limit.
+    load_concurrency: usize = 0,
 };
 
 fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !void {
@@ -55,6 +57,7 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
     };
     var multi_index = MultiIndex.init(allocator, data_dir);
     multi_index.checkpoint_threshold = config.checkpoint_threshold;
+    multi_index.load_concurrency = config.load_concurrency;
     defer multi_index.deinit();
     try multi_index.open();
 
@@ -116,6 +119,8 @@ fn parseArgs(args: std.process.Args) !Config {
             config.checkpoint_threshold = try std.fmt.parseInt(usize, it.next() orelse return error.MissingArgument, 10);
         } else if (std.mem.eql(u8, arg, "--legacy-port")) {
             config.legacy_port = try std.fmt.parseInt(u16, it.next() orelse return error.MissingArgument, 10);
+        } else if (std.mem.eql(u8, arg, "--load-concurrency")) {
+            config.load_concurrency = try std.fmt.parseInt(usize, it.next() orelse return error.MissingArgument, 10);
         } else {
             std.log.warn("ignoring unknown argument '{s}'", .{arg});
         }
