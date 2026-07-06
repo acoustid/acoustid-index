@@ -6,6 +6,8 @@ const std = @import("std");
 const m = @import("metrics");
 
 const SearchDuration = m.Histogram(f64, &.{ 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5 });
+const ScannedDocs = m.Histogram(u64, &.{ 1, 2, 3, 5, 10, 50, 100, 500, 1000 });
+const ScannedBlocks = m.Histogram(u64, &.{ 1, 2, 3, 5, 10 });
 
 const Metrics = struct {
     searches: m.Counter(u64),
@@ -16,6 +18,8 @@ const Metrics = struct {
     memory_merges: m.Counter(u64),
     file_merges: m.Counter(u64),
     search_duration: SearchDuration,
+    scanned_docs_per_hash: ScannedDocs,
+    scanned_blocks_per_hash: ScannedBlocks,
 };
 
 // No-op until init(); calls before then just don't record (never crash).
@@ -33,6 +37,8 @@ pub fn init(comptime opts: m.RegistryOpts) void {
         .memory_merges = m.Counter(u64).init("fpindex_memory_merges_total", .{}, opts),
         .file_merges = m.Counter(u64).init("fpindex_file_merges_total", .{}, opts),
         .search_duration = SearchDuration.init("fpindex_search_duration_seconds", .{}, opts),
+        .scanned_docs_per_hash = ScannedDocs.init("fpindex_scanned_docs_per_hash", .{}, opts),
+        .scanned_blocks_per_hash = ScannedBlocks.init("fpindex_scanned_blocks_per_hash", .{}, opts),
     };
 }
 
@@ -59,6 +65,12 @@ pub fn incFileMerges() void {
 }
 pub fn observeSearchSeconds(seconds: f64) void {
     metrics.search_duration.observe(seconds);
+}
+pub fn observeScannedDocsPerHash(n: u64) void {
+    metrics.scanned_docs_per_hash.observe(n);
+}
+pub fn observeScannedBlocksPerHash(n: u64) void {
+    metrics.scanned_blocks_per_hash.observe(n);
 }
 
 /// Render the global metrics in Prometheus text format.

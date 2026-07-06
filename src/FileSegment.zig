@@ -3,6 +3,7 @@
 // block-index slices point into `data`. Search binary-searches the block index
 // per query hash, then decodes only the candidate blocks.
 
+const metrics = @import("metrics.zig");
 const std = @import("std");
 const zio = @import("zio");
 const log = std.log.scoped(.file_segment);
@@ -168,5 +169,8 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !
             if (num_blocks >= MAX_BLOCKS_PER_HASH) break;
             if (num_docs > MAX_DOCS_PER_HASH) break;
         }
+
+        metrics.observeScannedDocsPerHash(num_docs);
+        metrics.observeScannedBlocksPerHash(num_blocks);
     }
 }
