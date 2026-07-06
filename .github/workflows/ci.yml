@@ -11,10 +11,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Zig 0.16.0
-        run: |
-          curl -fsSL https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz | tar -xJ
-          echo "$PWD/zig-x86_64-linux-0.16.0" >> "$GITHUB_PATH"
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
 
       - name: Build
         run: zig build --summary all
