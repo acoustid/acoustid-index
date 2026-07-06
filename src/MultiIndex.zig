@@ -2,25 +2,40 @@
 // data root (the directory's presence is the index's existence). Exposes the
 // high-level operations the HTTP handlers call.
 //
-// The map lock is held (shared) for the duration of search/update so a
-// concurrent delete can't free an index mid-operation; create/delete take it
-// exclusive. Each Index has its own lock, so updates to different indexes run
-// concurrently.
+// The manager lock is held only briefly — to look up an index and bump its
+// refcount (getIndex), or to release it (releaseIndex) — never for the duration
+// of a search/update. So a slow operation doesn't block createIndex/deleteIndex.
+// deleteIndex marks the index and waits for outstanding borrows to drain before
+// freeing it; the segment snapshot a search holds is refcounted separately, so a
+// search survives a concurrent delete.
 
 const std = @import("std");
 const zio = @import("zio");
 const api = @import("api.zig");
 const Index = @import("Index.zig");
+const Change = @import("change.zig").Change;
+const Metadata = @import("change.zig").Metadata;
 const SearchResults = @import("common.zig").SearchResults;
 const metrics = @import("metrics.zig");
 const log = std.log.scoped(.multi_index);
 
 const Self = @This();
 
+// A refcounted index slot. `index` is embedded, so &ref.index is stable while the
+// ref lives on the heap (the maintenance coroutine captures it). `references`
+// starts at 1 for the map's own reference; getIndex/releaseIndex adjust it under
+// the manager lock, and deleteIndex waits for it to fall back to 1.
+const IndexRef = struct {
+    index: Index,
+    references: usize = 1,
+    being_deleted: bool = false,
+    released: zio.Condition = .init,
+};
+
 allocator: std.mem.Allocator,
 dir: zio.Dir,
-lock: zio.RwLock = .init,
-indexes: std.StringHashMapUnmanaged(*Index) = .empty,
+lock: zio.Mutex = .init,
+indexes: std.StringHashMapUnmanaged(*IndexRef) = .empty,
 checkpoint_threshold: usize = 100_000,
 // Whether index oplogs fsync each append (false when an upstream owns durability).
 sync: bool = true,
@@ -34,12 +49,33 @@ pub fn init(allocator: std.mem.Allocator, dir: zio.Dir) Self {
 pub fn deinit(self: *Self) void {
     var it = self.indexes.iterator();
     while (it.next()) |entry| {
-        entry.value_ptr.*.deinit();
+        entry.value_ptr.*.index.deinit();
         self.allocator.destroy(entry.value_ptr.*);
         self.allocator.free(entry.key_ptr.*);
     }
     self.indexes.deinit(self.allocator);
     self.dir.close();
+}
+
+// Borrow an index: bump its refcount under a brief lock and return it. The caller
+// operates without holding the manager lock and must releaseIndex when done.
+fn getIndex(self: *Self, name: []const u8) !*Index {
+    try self.lock.lock();
+    defer self.lock.unlock();
+    const ref = self.indexes.get(name) orelse return error.IndexNotFound;
+    if (ref.being_deleted) return error.IndexNotFound;
+    ref.references += 1;
+    return &ref.index;
+}
+
+// Return a borrow. Uncancelable: it runs in defer cleanup and must always
+// complete (a leaked reference would deadlock deleteIndex forever).
+fn releaseIndex(self: *Self, index: *Index) void {
+    self.lock.lockUncancelable();
+    defer self.lock.unlock();
+    const ref: *IndexRef = @fieldParentPtr("index", index);
+    ref.references -= 1;
+    ref.released.broadcast();
 }
 
 /// Discover existing indexes (subdirectories of the data root) and open them
@@ -69,8 +105,8 @@ pub fn open(self: *Self) !void {
     //    semaphore bounds concurrent segment reads (acquired per-segment inside
     //    Index.open, so index opens never hold a permit while waiting -> no
     //    deadlock).
-    const indexes = try self.allocator.alloc(*Index, names.items.len);
-    defer self.allocator.free(indexes);
+    const refs = try self.allocator.alloc(*IndexRef, names.items.len);
+    defer self.allocator.free(refs);
     const results = try self.allocator.alloc(anyerror!void, names.items.len);
     defer self.allocator.free(results);
     for (results) |*r| r.* = error.IndexNotOpened; // sentinel for slots never spawned
@@ -83,7 +119,7 @@ pub fn open(self: *Self) !void {
         var group: zio.Group = .init;
         defer group.cancel();
         for (names.items, 0..) |name, i| {
-            group.spawn(openOneIndex, .{ self, name, sem_ptr, &indexes[i], &results[i] }) catch |err| {
+            group.spawn(openOneIndex, .{ self, name, sem_ptr, &refs[i], &results[i] }) catch |err| {
                 fatal = err;
                 break;
             };
@@ -99,15 +135,15 @@ pub fn open(self: *Self) !void {
     names_owned = false; // this phase now owns every name
     for (results, names.items, 0..) |res, name, i| {
         if (res) |_| {
-            const index = indexes[i];
-            self.indexes.put(self.allocator, name, index) catch |err| {
-                index.deinit();
-                self.allocator.destroy(index);
+            const ref = refs[i];
+            self.indexes.put(self.allocator, name, ref) catch |err| {
+                ref.index.deinit();
+                self.allocator.destroy(ref);
                 self.allocator.free(name);
                 fatal = fatal orelse err;
                 continue;
             };
-            log.info("opened index '{s}' at version {d}", .{ name, index.version });
+            log.info("opened index '{s}' at version {d}", .{ name, ref.index.version });
         } else |err| {
             self.allocator.free(name);
             if (err != error.IndexNotOpened) fatal = fatal orelse err;
@@ -116,32 +152,31 @@ pub fn open(self: *Self) !void {
     if (fatal) |err| return err;
 }
 
-// Group-spawned: opens one index into out_index, capturing its result into
-// out_res (void return keeps the group's error flags clean).
-fn openOneIndex(self: *Self, name: []const u8, load_sem: ?*zio.Semaphore, out_index: **Index, out_res: *anyerror!void) void {
-    out_res.* = self.openOneIndexInner(name, load_sem, out_index);
+// Group-spawned: opens one index into out_ref, capturing its result into out_res
+// (void return keeps the group's error flags clean).
+fn openOneIndex(self: *Self, name: []const u8, load_sem: ?*zio.Semaphore, out_ref: **IndexRef, out_res: *anyerror!void) void {
+    out_res.* = self.openOneIndexInner(name, load_sem, out_ref);
 }
 
-fn openOneIndexInner(self: *Self, name: []const u8, load_sem: ?*zio.Semaphore, out_index: **Index) !void {
+fn openOneIndexInner(self: *Self, name: []const u8, load_sem: ?*zio.Semaphore, out_ref: **IndexRef) !void {
     const index_dir = try self.dir.openDir(name, .{ .iterate = true });
-    const index = try self.allocator.create(Index);
-    errdefer self.allocator.destroy(index);
-    index.* = Index.open(self.allocator, index_dir, self.checkpoint_threshold, self.sync, load_sem) catch |err| {
+    const ref = try self.allocator.create(IndexRef);
+    errdefer self.allocator.destroy(ref);
+    ref.* = .{ .index = undefined };
+    ref.index = Index.open(self.allocator, index_dir, self.checkpoint_threshold, self.sync, load_sem) catch |err| {
         index_dir.close();
         return err;
     };
-    errdefer index.deinit();
-    try index.start();
-    out_index.* = index;
+    errdefer ref.index.deinit();
+    try ref.index.start();
+    out_ref.* = ref;
 }
 
 /// Search an index. Options ride in the request (limit, min_score, score_pct,
 /// timeout); callers sanitize untrusted values first. `timeout == 0` = no bound.
 pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: api.SearchRequest) !api.SearchResponse {
-    try self.lock.lockShared();
-    defer self.lock.unlockShared();
-
-    const index = self.indexes.get(name) orelse return error.IndexNotFound;
+    const index = try self.getIndex(name);
+    defer self.releaseIndex(index);
     metrics.incSearches();
 
     var collector = SearchResults.init(arena, .{
@@ -175,35 +210,68 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
 
 pub fn update(self: *Self, arena: std.mem.Allocator, name: []const u8, request: api.UpdateRequest) !api.UpdateResponse {
     _ = arena;
-    try self.lock.lockShared();
-    defer self.lock.unlockShared();
-
-    const index = self.indexes.get(name) orelse return error.IndexNotFound;
+    const index = try self.getIndex(name);
+    defer self.releaseIndex(index);
     metrics.incUpdates();
     const version = try index.update(request.changes, request.metadata, .{ .expected_version = request.expected_version });
     return .{ .version = version };
 }
 
+/// Apply changes at an externally-assigned version (the replicated consumer's
+/// apply path; version = changelog id). The external log owns ordering and
+/// durability, so this just stamps the version onto the local oplog + segments.
+pub fn applyLog(self: *Self, name: []const u8, changes: []const Change, metadata: ?Metadata, version: u64) !void {
+    const index = try self.getIndex(name);
+    defer self.releaseIndex(index);
+    metrics.incUpdates();
+    _ = try index.update(changes, metadata, .{ .version = version });
+}
+
+/// The index's current version (max applied changelog id) — where a consumer
+/// resumes after local oplog replay.
+pub fn indexVersion(self: *Self, name: []const u8) !u64 {
+    const index = try self.getIndex(name);
+    defer self.releaseIndex(index);
+    return index.version;
+}
+
+/// Snapshot of the current index names (owned: caller frees each string and the
+/// slice). Used to launch a consumer per existing index at startup.
+pub fn listIndexNames(self: *Self, allocator: std.mem.Allocator) ![][]const u8 {
+    try self.lock.lock();
+    defer self.lock.unlock();
+    var names: std.ArrayListUnmanaged([]const u8) = .empty;
+    errdefer {
+        for (names.items) |n| allocator.free(n);
+        names.deinit(allocator);
+    }
+    var it = self.indexes.keyIterator();
+    while (it.next()) |k| try names.append(allocator, try allocator.dupe(u8, k.*));
+    return names.toOwnedSlice(allocator);
+}
+
 /// Render metrics (global counters + a per-index docs gauge) in Prometheus text.
+/// Holds the manager lock across the (brief) scrape.
 pub fn writeMetrics(self: *Self, w: *std.Io.Writer) !void {
     try metrics.writeGlobal(w);
 
-    try self.lock.lockShared();
-    defer self.lock.unlockShared();
+    try self.lock.lock();
+    defer self.lock.unlock();
 
     try w.writeAll("# HELP fpindex_docs Number of documents in an index\n# TYPE fpindex_docs gauge\n");
     var it = self.indexes.iterator();
     while (it.next()) |entry| {
-        var reader = try entry.value_ptr.*.acquireReader();
+        var reader = try entry.value_ptr.*.index.acquireReader();
         defer reader.deinit();
         try w.print("fpindex_docs{{index=\"{s}\"}} {d}\n", .{ entry.key_ptr.*, reader.numDocs() });
     }
 }
 
 pub fn checkIndexExists(self: *Self, name: []const u8) !bool {
-    try self.lock.lockShared();
-    defer self.lock.unlockShared();
-    return self.indexes.contains(name);
+    try self.lock.lock();
+    defer self.lock.unlock();
+    const ref = self.indexes.get(name) orelse return false;
+    return !ref.being_deleted;
 }
 
 pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexRequest) !api.CreateIndexResponse {
@@ -213,8 +281,13 @@ pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexReques
     defer self.lock.unlock();
 
     if (self.indexes.get(name)) |existing| {
-        if (request.expect_does_not_exist) return error.IndexAlreadyExists;
-        return .{ .version = existing.version, .ready = true, .generation = request.generation orelse 0 };
+        if (!existing.being_deleted) {
+            if (request.expect_does_not_exist) return error.IndexAlreadyExists;
+            return .{ .version = existing.index.version, .ready = true, .generation = request.generation orelse 0 };
+        }
+        // being deleted: fall through and let the delete finish would be racy;
+        // for now treat a concurrently-deleting index as already existing.
+        return error.IndexAlreadyExists;
     }
 
     self.dir.createDir(name, 0o755) catch |err| switch (err) {
@@ -223,37 +296,55 @@ pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexReques
     };
 
     const index_dir = try self.dir.openDir(name, .{ .iterate = true });
-    const index = try self.allocator.create(Index);
-    errdefer self.allocator.destroy(index);
-    index.* = Index.open(self.allocator, index_dir, self.checkpoint_threshold, self.sync, null) catch |err| {
+    const ref = try self.allocator.create(IndexRef);
+    errdefer self.allocator.destroy(ref);
+    ref.* = .{ .index = undefined };
+    ref.index = Index.open(self.allocator, index_dir, self.checkpoint_threshold, self.sync, null) catch |err| {
         index_dir.close();
         return err;
     };
-    errdefer index.deinit();
-    try index.start();
+    errdefer ref.index.deinit();
+    try ref.index.start();
 
     const name_copy = try self.allocator.dupe(u8, name);
     errdefer self.allocator.free(name_copy);
 
-    try self.indexes.put(self.allocator, name_copy, index);
-    return .{ .version = index.version, .ready = true, .generation = request.generation orelse 0 };
+    try self.indexes.put(self.allocator, name_copy, ref);
+    return .{ .version = ref.index.version, .ready = true, .generation = request.generation orelse 0 };
 }
 
 pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexRequest) !api.DeleteIndexResponse {
     try self.lock.lock();
     defer self.lock.unlock();
 
-    if (self.indexes.fetchRemove(name)) |kv| {
-        kv.value.deinit();
-        self.allocator.destroy(kv.value);
-        self.allocator.free(kv.key);
-        self.removeIndexDir(name) catch |err| {
-            log.warn("failed to remove index dir '{s}': {}", .{ name, err });
-        };
-        return .{ .deleted = true };
+    const ref = self.indexes.get(name) orelse {
+        if (request.expect_exists) return error.IndexNotFound;
+        return .{ .deleted = false };
+    };
+    if (ref.being_deleted) {
+        if (request.expect_exists) return error.IndexNotFound;
+        return .{ .deleted = false };
     }
-    if (request.expect_exists) return error.IndexNotFound;
-    return .{ .deleted = false };
+
+    // Block new borrows, then wait for outstanding ones to drain to the map's
+    // own reference. releaseIndex broadcasts on each drop; wait releases the lock.
+    ref.being_deleted = true;
+    while (ref.references > 1) {
+        ref.released.wait(&self.lock) catch |err| {
+            ref.being_deleted = false; // a cancelled delete must not disable the index
+            ref.released.broadcast();
+            return err;
+        };
+    }
+
+    const kv = self.indexes.fetchRemove(name).?;
+    kv.value.index.deinit();
+    self.allocator.destroy(kv.value);
+    self.allocator.free(kv.key);
+    self.removeIndexDir(name) catch |err| {
+        log.warn("failed to remove index dir '{s}': {}", .{ name, err });
+    };
+    return .{ .deleted = true };
 }
 
 // Delete the whole index dir (the oplog/ and data/ subdirs and their contents).
@@ -262,10 +353,9 @@ fn removeIndexDir(self: *Self, name: []const u8) !void {
 }
 
 pub fn getIndexInfo(self: *Self, arena: std.mem.Allocator, name: []const u8) !api.GetIndexInfoResponse {
-    try self.lock.lockShared();
-    defer self.lock.unlockShared();
+    const index = try self.getIndex(name);
+    defer self.releaseIndex(index);
 
-    const index = self.indexes.get(name) orelse return error.IndexNotFound;
     var reader = try index.acquireReader();
     defer reader.deinit();
 
@@ -283,10 +373,9 @@ pub fn getIndexInfo(self: *Self, arena: std.mem.Allocator, name: []const u8) !ap
 
 pub fn getFingerprintInfo(self: *Self, arena: std.mem.Allocator, name: []const u8, id: u32) !api.GetFingerprintInfoResponse {
     _ = arena;
-    try self.lock.lockShared();
-    defer self.lock.unlockShared();
+    const index = try self.getIndex(name);
+    defer self.releaseIndex(index);
 
-    const index = self.indexes.get(name) orelse return error.IndexNotFound;
     var reader = try index.acquireReader();
     defer reader.deinit();
 
@@ -296,10 +385,9 @@ pub fn getFingerprintInfo(self: *Self, arena: std.mem.Allocator, name: []const u
 }
 
 pub fn checkFingerprintExists(self: *Self, name: []const u8, id: u32) !bool {
-    try self.lock.lockShared();
-    defer self.lock.unlockShared();
+    const index = try self.getIndex(name);
+    defer self.releaseIndex(index);
 
-    const index = self.indexes.get(name) orelse return error.IndexNotFound;
     var reader = try index.acquireReader();
     defer reader.deinit();
 
