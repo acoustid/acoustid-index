@@ -45,6 +45,11 @@ const read_retry: zio.Duration = .fromMilliseconds(1000);
 // How often the meta loop retries parked (persistently-failing) reconciles while it
 // otherwise blocks waiting for new meta ops.
 const pending_retry: zio.Timeout = .{ .duration = .fromMilliseconds(1000) };
+// A write's read-your-writes wait gives up after this long without progress (the
+// consumer applying anything) — so a coordinator that dies after accepting the write
+// returns error.ReplicationTimeout (-> 503) instead of hanging the request forever.
+// Overridable per-instance (`ryw_timeout` field); tests set it short.
+pub const default_ryw_timeout: zio.Timeout = .{ .duration = .fromMilliseconds(30_000) };
 
 allocator: std.mem.Allocator,
 mi: *MultiIndex,
@@ -55,6 +60,7 @@ meta_cond: zio.Condition = .init, // broadcast after each meta apply (create/del
 consumers: std.StringHashMapUnmanaged(*Consumer) = .empty,
 meta_applied: u64 = 0, // max meta pos reconciled (guarded by mutex)
 meta_task: ?zio.JoinHandle(zio.Cancelable!void) = null,
+ryw_timeout: zio.Timeout = default_ryw_timeout, // read/create/delete-your-writes deadline
 
 const Consumer = struct {
     name: []const u8, // owned; also the map key
@@ -164,7 +170,12 @@ fn waitApplied(self: *Self, name: []const u8, generation: u64, id: u64) !void {
         const c = self.consumers.get(name) orelse return error.IndexNotFound;
         if (c.generation != generation) return error.IndexNotFound;
         if (c.applied >= id) return;
-        try self.cond.wait(&self.mutex);
+        self.cond.timedWait(&self.mutex, self.ryw_timeout) catch |err| switch (err) {
+            // Each wait resets on any apply, so this fires only after a full window
+            // with NO progress — i.e. the consumer is wedged (coordinator down).
+            error.Timeout => return error.ReplicationTimeout,
+            else => |e| return e, // Canceled -> shutdown
+        };
     }
 }
 
@@ -399,7 +410,15 @@ fn dropStaleLocalIndexes(self: *Self, folded: *const std.StringHashMapUnmanaged(
 pub fn waitMetaApplied(self: *Self, pos: u64) !void {
     try self.mutex.lock();
     defer self.mutex.unlock();
-    while (self.meta_applied < pos) try self.meta_cond.wait(&self.mutex);
+    while (self.meta_applied < pos) {
+        self.meta_cond.timedWait(&self.mutex, self.ryw_timeout) catch |err| switch (err) {
+            // Fires only after a full window with no meta progress (the meta consumer
+            // is wedged, e.g. coordinator unreachable). A parked op advances the
+            // watermark, so it never lands here.
+            error.Timeout => return error.ReplicationTimeout,
+            else => |e| return e, // Canceled -> shutdown
+        };
+    }
 }
 
 fn markMetaApplied(self: *Self, pos: u64) void {
@@ -501,6 +520,79 @@ test "meta consumer drops a local index absent from the meta feed" {
         try zio.sleep(.fromMilliseconds(10));
     }
     try std.testing.expect(!try mi.checkIndexExists("orphan"));
+}
+
+// Test coordinator: delegates everything to `inner` except data `read`, which always
+// fails — a coordinator reachable for writes/meta but wedged for data reads.
+const WedgedReads = struct {
+    inner: Coordinator,
+
+    fn coordinator(self: *WedgedReads) Coordinator {
+        return .{ .ptr = self, .vtable = &vtable };
+    }
+    const vtable: Coordinator.VTable = .{
+        .append = appendImpl,
+        .read = readImpl,
+        .createIndex = createIndexImpl,
+        .deleteIndex = deleteIndexImpl,
+        .readMeta = readMetaImpl,
+    };
+    fn appendImpl(ptr: *anyopaque, name: []const u8, generation: u64, changes: []const Change, expected: ?u64) anyerror!u64 {
+        const self: *WedgedReads = @ptrCast(@alignCast(ptr));
+        return self.inner.append(name, generation, changes, expected);
+    }
+    fn readImpl(ptr: *anyopaque, name: []const u8, generation: u64, after: u64, out: []Entry, deadline: zio.Timeout) anyerror!usize {
+        _ = .{ ptr, name, generation, after, out, deadline };
+        return error.CoordinatorError;
+    }
+    fn createIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!u64 {
+        const self: *WedgedReads = @ptrCast(@alignCast(ptr));
+        return self.inner.createIndex(name);
+    }
+    fn deleteIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!u64 {
+        const self: *WedgedReads = @ptrCast(@alignCast(ptr));
+        return self.inner.deleteIndex(name);
+    }
+    fn readMetaImpl(ptr: *anyopaque, after: u64, out: []MetaOp, deadline: zio.Timeout) anyerror!usize {
+        const self: *WedgedReads = @ptrCast(@alignCast(ptr));
+        return self.inner.readMeta(after, out, deadline);
+    }
+};
+
+test "read-your-writes times out when the consumer can't apply" {
+    const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{ .executors = .exact(2) });
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_replicator_ryw_timeout";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var cl = MemoryCoordinator.init(std.testing.allocator);
+    defer cl.deinit();
+    var wedged = WedgedReads{ .inner = cl.coordinator() };
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    try mi.startReplication(wedged.coordinator());
+    mi.replication.?.ryw_timeout = .{ .duration = .fromMilliseconds(300) };
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    _ = try mi.createIndex("main", .{}); // meta path works -> index + consumer exist
+
+    // The append is accepted; the consumer can never read it back, so the write's
+    // read-your-writes wait times out (-> 503) instead of hanging forever.
+    var h = [_]u32{ 1, 2, 3 };
+    const changes = [_]Change{.{ .insert = .{ .id = 1, .hashes = &h } }};
+    try std.testing.expectError(error.ReplicationTimeout, mi.update(a, "main", .{ .changes = &changes }));
 }
 
 test "a poison meta op parks and does not wedge other indexes" {
