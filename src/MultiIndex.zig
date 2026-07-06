@@ -278,29 +278,6 @@ pub fn applyLog(self: *Self, name: []const u8, changes: []const Change, metadata
     _ = try index.update(changes, metadata, .{ .version = version });
 }
 
-/// The index's current version (max applied changelog id) — where a consumer
-/// resumes after local oplog replay.
-pub fn indexVersion(self: *Self, name: []const u8) !u64 {
-    const index = try self.getIndex(name);
-    defer self.releaseIndex(index);
-    return index.version;
-}
-
-/// Snapshot of the current index names (owned: caller frees each string and the
-/// slice). Used to launch a consumer per existing index at startup.
-pub fn listIndexNames(self: *Self, allocator: std.mem.Allocator) ![][]const u8 {
-    try self.lock.lock();
-    defer self.lock.unlock();
-    var names: std.ArrayListUnmanaged([]const u8) = .empty;
-    errdefer {
-        for (names.items) |n| allocator.free(n);
-        names.deinit(allocator);
-    }
-    var it = self.indexes.keyIterator();
-    while (it.next()) |k| try names.append(allocator, try allocator.dupe(u8, k.*));
-    return names.toOwnedSlice(allocator);
-}
-
 /// Render metrics (global counters + a per-index docs gauge) in Prometheus text.
 /// Holds the manager lock across the (brief) scrape.
 pub fn writeMetrics(self: *Self, w: *std.Io.Writer) !void {
@@ -327,6 +304,7 @@ pub fn checkIndexExists(self: *Self, name: []const u8) !bool {
 
 pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexRequest) !api.CreateIndexResponse {
     if (!isValidName(name)) return error.InvalidIndexName;
+    if (self.replication) |repl| return self.createIndexReplicated(repl, name, request);
 
     try self.lock.lock();
     defer self.lock.unlock();
@@ -341,11 +319,9 @@ pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexReques
 
     // New generation = one past any prior lineage's (from the redirect), so a
     // recreate after delete is a physically separate v<gen> dir.
-    const name_dir = try openOrCreateDir(self.dir, name);
-    var name_dir_open = true;
-    defer if (name_dir_open) name_dir.close();
-
     const generation: u64 = blk: {
+        const name_dir = openOrCreateDir(self.dir, name) catch |err| return err;
+        defer name_dir.close();
         const r = index_redirect.read(name_dir, self.allocator) catch |err| switch (err) {
             error.FileNotFound => break :blk 1,
             else => return err,
@@ -353,6 +329,35 @@ pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexReques
         defer self.allocator.free(r.name);
         break :blk r.generation + 1;
     };
+
+    const ref = try self.installNewLineage(name, generation);
+    return .{ .version = ref.index.version, .ready = true, .generation = generation };
+}
+
+// Replicated create: route through the coordinator (which mints the index_id ==
+// generation on the global meta feed), then wait for THIS node's meta consumer to
+// apply it (create-your-writes). Other nodes converge asynchronously via their own
+// meta consumers.
+fn createIndexReplicated(self: *Self, repl: *Replicator, name: []const u8, request: api.CreateIndexRequest) !api.CreateIndexResponse {
+    // Best-effort local guard (a truly authoritative check would need the
+    // coordinator to reject; createIndex is idempotent there).
+    if (request.expect_does_not_exist and try self.checkIndexExists(name)) return error.IndexAlreadyExists;
+
+    const generation = try repl.coordinator.createIndex(name);
+    try repl.waitMetaApplied(generation);
+
+    try self.lock.lock();
+    defer self.lock.unlock();
+    const ref = self.indexes.get(name) orelse return error.IndexNotFound;
+    return .{ .version = ref.index.version, .ready = true, .generation = ref.generation };
+}
+
+// Create a fresh local lineage at `generation`, open its index, and install it in
+// the map. Caller must hold the manager lock. Does not touch replication.
+fn installNewLineage(self: *Self, name: []const u8, generation: u64) !*IndexRef {
+    const name_dir = try openOrCreateDir(self.dir, name);
+    var name_dir_open = true;
+    defer if (name_dir_open) name_dir.close();
 
     const data_dir = try self.createLineageDir(name_dir, name, generation);
     name_dir.close();
@@ -371,15 +376,7 @@ pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexReques
     const name_copy = try self.allocator.dupe(u8, name);
     errdefer self.allocator.free(name_copy);
     try self.indexes.put(self.allocator, name_copy, ref);
-
-    // In replicated mode, start consuming the log for this index. Only touches
-    // the Replicator lock + spawns, so it's safe under the manager lock.
-    if (self.replication) |repl| {
-        repl.addConsumer(name, ref.index.version) catch |err| {
-            log.warn("failed to start replication consumer for '{s}': {}", .{ name, err });
-        };
-    }
-    return .{ .version = ref.index.version, .ready = true, .generation = generation };
+    return ref;
 }
 
 // Write the redirect and open (creating) the generation's v<gen> data dir. The
@@ -391,25 +388,66 @@ fn createLineageDir(self: *Self, name_dir: zio.Dir, name: []const u8, generation
     return openOrCreateDir(name_dir, dd);
 }
 
-pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexRequest) !api.DeleteIndexResponse {
-    // Stop the consumer first (before holding the manager lock) so its in-flight
-    // apply can finish and its borrow drains for the wait below.
-    if (self.replication) |repl| repl.removeConsumer(name);
+// ---- meta-consumer local ops (replicated mode) ----
+//
+// Driven by the Replicator's single meta consumer; `generation` is the coordinator
+// meta pos of the lineage's create. The meta consumer is the ONLY mutator of the
+// index map in replicated mode, so these don't race the create/delete API (which
+// routes through the coordinator and waits).
 
+/// Reconcile the local state for `name` against a create for `generation`. Same
+/// generation -> just (idempotently) ensure the data consumer runs. Different
+/// generation or absent -> drop any stale lineage and build the new one.
+pub fn reconcileCreate(self: *Self, name: []const u8, generation: u64) !void {
+    {
+        try self.lock.lock();
+        defer self.lock.unlock();
+        if (self.indexes.get(name)) |ref| {
+            if (!ref.being_deleted and ref.generation == generation) {
+                if (self.replication) |repl| try repl.addConsumer(name, generation, ref.index.version);
+                return;
+            }
+        }
+    }
+    try self.deleteIndexLocal(name); // no-op if absent; drops a stale lineage
+    try self.createIndexLocal(name, generation);
+}
+
+// Build a fresh local lineage at `generation` and start its data consumer. Assumes
+// `name` is not currently active (reconcileCreate drops a stale lineage first).
+fn createIndexLocal(self: *Self, name: []const u8, generation: u64) !void {
+    try self.lock.lock();
+    defer self.lock.unlock();
+    const ref = try self.installNewLineage(name, generation);
+    // A fresh lineage resumes its data feed at version 0 (the generation scope
+    // isolates it from prior lineages — no start_position). Safe under the manager
+    // lock: addConsumer only touches the Replicator lock + spawns.
+    if (self.replication) |repl| try repl.addConsumer(name, generation, ref.index.version);
+}
+
+/// Drop the local index for `name` (stop its data consumer, drain borrows, remove
+/// the lineage dir). No-op if absent. The meta consumer's delete + rebuild path.
+pub fn deleteIndexLocal(self: *Self, name: []const u8) !void {
+    // Stop the consumer first (before the manager lock) so its in-flight apply can
+    // finish and its borrow drains for the wait in dropIndex.
+    if (self.replication) |repl| repl.removeConsumer(name);
+    _ = try self.dropIndex(name);
+}
+
+const DropResult = enum { dropped, absent };
+
+// Remove `name` from the map: block new borrows, drain outstanding ones, deinit,
+// and mark the redirect deleted (dropping the generation's data dir). Caller must
+// have already stopped any replication consumer.
+fn dropIndex(self: *Self, name: []const u8) !DropResult {
     try self.lock.lock();
     defer self.lock.unlock();
 
-    const ref = self.indexes.get(name) orelse {
-        if (request.expect_exists) return error.IndexNotFound;
-        return .{ .deleted = false };
-    };
-    if (ref.being_deleted) {
-        if (request.expect_exists) return error.IndexNotFound;
-        return .{ .deleted = false };
-    }
+    const ref = self.indexes.get(name) orelse return .absent;
+    if (ref.being_deleted) return .absent;
 
-    // Block new borrows, then wait for outstanding ones to drain to the map's
-    // own reference. releaseIndex broadcasts on each drop; wait releases the lock.
+    // Block new borrows, then wait for outstanding ones to drain to the map's own
+    // reference. releaseIndex broadcasts on each drop; wait releases the lock.
     ref.being_deleted = true;
     while (ref.references > 1) {
         ref.released.wait(&self.lock) catch |err| {
@@ -429,7 +467,29 @@ pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexReques
     self.markDeleted(name, gen) catch |err| {
         log.warn("failed to mark index '{s}' deleted: {}", .{ name, err });
     };
-    return .{ .deleted = true };
+    return .dropped;
+}
+
+pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexRequest) !api.DeleteIndexResponse {
+    if (self.replication) |repl| return self.deleteIndexReplicated(repl, name, request);
+
+    switch (try self.dropIndex(name)) {
+        .dropped => return .{ .deleted = true },
+        .absent => {
+            if (request.expect_exists) return error.IndexNotFound;
+            return .{ .deleted = false };
+        },
+    }
+}
+
+// Replicated delete: route through the coordinator (append delete to the meta
+// feed, get its pos), then wait for THIS node's meta consumer to apply it.
+fn deleteIndexReplicated(self: *Self, repl: *Replicator, name: []const u8, request: api.DeleteIndexRequest) !api.DeleteIndexResponse {
+    const existed = try self.checkIndexExists(name);
+    if (!existed and request.expect_exists) return error.IndexNotFound;
+    const pos = try repl.coordinator.deleteIndex(name);
+    try repl.waitMetaApplied(pos);
+    return .{ .deleted = existed };
 }
 
 fn markDeleted(self: *Self, name: []const u8, generation: u64) !void {
@@ -441,11 +501,6 @@ fn markDeleted(self: *Self, name: []const u8, generation: u64) !void {
     deleteDirTree(self.allocator, name_dir, dd) catch |err| {
         log.warn("failed to remove data dir for '{s}': {}", .{ name, err });
     };
-}
-
-// Delete the whole index dir (the oplog/ and data/ subdirs and their contents).
-fn removeIndexDir(self: *Self, name: []const u8) !void {
-    try @import("common.zig").deleteDirTree(self.allocator, self.dir, name);
 }
 
 pub fn getIndexInfo(self: *Self, arena: std.mem.Allocator, name: []const u8) !api.GetIndexInfoResponse {

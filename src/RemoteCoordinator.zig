@@ -1,12 +1,13 @@
-// A Changelog that talks to a coordinator over HTTP (dusty client): append POSTs,
-// read long-polls GET. PG-free — the coordinator (or an external AcoustID
-// component) owns the actual log. Implements the same vtable as MemoryChangelog,
-// so the Replicator can't tell the difference.
+// A Coordinator that talks to the coordinator server over HTTP (dusty client):
+// data append POSTs, data read long-polls GET, meta create/delete/read on the
+// registry. PG-free — the coordinator (or an external AcoustID component) owns the
+// actual log. Implements the same vtable as MemoryCoordinator, so the Replicator
+// can't tell the difference.
 //
-// read() returns entries whose hashes are borrowed until the next read (the
-// Changelog contract). Since there is one consumer per index, we decode each
-// index's response into its own arena (reset per read), so concurrent reads for
-// different indexes don't clash.
+// The data feed is keyed by (index_name, generation) — a lineage. read() returns
+// entries whose hashes are borrowed until the next read (the contract); since there
+// is one consumer per index name, we decode each into its own arena (reset per
+// read), so concurrent reads for different indexes don't clash.
 
 const std = @import("std");
 const zio = @import("zio");
@@ -22,8 +23,11 @@ const AppendResponse = changelog_mod.AppendResponse;
 const ReadResponse = changelog_mod.ReadResponse;
 const MetaReadResponse = changelog_mod.MetaReadResponse;
 const MetaCreateResponse = changelog_mod.MetaCreateResponse;
+const MetaDeleteResponse = changelog_mod.MetaDeleteResponse;
 
 const Self = @This();
+// Cap on any single long-poll window (server side may still return sooner). Used
+// when the caller passes `.none` (block indefinitely, in bounded windows).
 const long_poll_ms = 20_000;
 
 allocator: std.mem.Allocator,
@@ -60,7 +64,7 @@ const vtable: Coordinator.VTable = .{
     .readMeta = readMetaImpl,
 };
 
-fn appendImpl(ptr: *anyopaque, index_name: []const u8, changes: []const Change, expected: ?u64) anyerror!u64 {
+fn appendImpl(ptr: *anyopaque, index_name: []const u8, generation: u64, changes: []const Change, expected: ?u64) anyerror!u64 {
     const self: *Self = @ptrCast(@alignCast(ptr));
     var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
@@ -68,7 +72,7 @@ fn appendImpl(ptr: *anyopaque, index_name: []const u8, changes: []const Change, 
 
     var aw: std.Io.Writer.Allocating = .init(a);
     try msgpack.encode(AppendRequest{ .changes = @constCast(changes), .expected = expected }, &aw.writer);
-    const url = try std.fmt.allocPrint(a, "{s}/_changelog/{s}", .{ self.base_url, index_name });
+    const url = try std.fmt.allocPrint(a, "{s}/_changelog/{s}/{d}", .{ self.base_url, index_name, generation });
 
     var client = http.Client.init(self.allocator, self.io, .{});
     defer client.deinit();
@@ -81,16 +85,15 @@ fn appendImpl(ptr: *anyopaque, index_name: []const u8, changes: []const Change, 
     return ares.id;
 }
 
-fn readImpl(ptr: *anyopaque, index_name: []const u8, after: u64, out: []Entry, deadline: zio.Timeout) anyerror!usize {
+fn readImpl(ptr: *anyopaque, index_name: []const u8, generation: u64, after: u64, out: []Entry, deadline: zio.Timeout) anyerror!usize {
     const self: *Self = @ptrCast(@alignCast(ptr));
-    _ = deadline; // consumer loops with .none; each call is one long-poll window
 
     const arena = try self.arenaFor(index_name);
     _ = arena.reset(.retain_capacity); // frees the previous read's entries
     const ra = arena.allocator();
 
-    const url = try std.fmt.allocPrint(ra, "{s}/_changelog/{s}?after={d}&max={d}&timeout_ms={d}", .{
-        self.base_url, index_name, after, out.len, long_poll_ms,
+    const url = try std.fmt.allocPrint(ra, "{s}/_changelog/{s}/{d}?after={d}&max={d}&timeout_ms={d}", .{
+        self.base_url, index_name, generation, after, out.len, timeoutMs(deadline),
     });
     var client = http.Client.init(self.allocator, self.io, .{});
     defer client.deinit();
@@ -123,29 +126,32 @@ fn createIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!u64 {
     return cres.generation;
 }
 
-fn deleteIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!void {
+fn deleteIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!u64 {
     const self: *Self = @ptrCast(@alignCast(ptr));
     var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
+    const a = arena.allocator();
 
-    const url = try std.fmt.allocPrint(arena.allocator(), "{s}/_index/{s}", .{ self.base_url, name });
+    const url = try std.fmt.allocPrint(a, "{s}/_index/{s}", .{ self.base_url, name });
     var client = http.Client.init(self.allocator, self.io, .{});
     defer client.deinit();
     var resp = try client.fetch(url, .{ .method = .delete });
     defer resp.deinit();
-    const s = resp.status();
-    if (s != .no_content and s != .ok) return statusToError(s);
+    if (resp.status() != .ok) return statusToError(resp.status());
+
+    const body = (try resp.body()) orelse return error.EmptyResponse;
+    const dres = try msgpack.decodeFromSliceLeaky(MetaDeleteResponse, a, body);
+    return dres.pos;
 }
 
 fn readMetaImpl(ptr: *anyopaque, after: u64, out: []MetaOp, deadline: zio.Timeout) anyerror!usize {
     const self: *Self = @ptrCast(@alignCast(ptr));
-    _ = deadline; // consumer loops; each call is one long-poll window
 
     _ = self.meta_arena.reset(.retain_capacity);
     const ra = self.meta_arena.allocator();
 
     const url = try std.fmt.allocPrint(ra, "{s}/_meta?after={d}&max={d}&timeout_ms={d}", .{
-        self.base_url, after, out.len, long_poll_ms,
+        self.base_url, after, out.len, timeoutMs(deadline),
     });
     var client = http.Client.init(self.allocator, self.io, .{});
     defer client.deinit();
@@ -160,8 +166,20 @@ fn readMetaImpl(ptr: *anyopaque, after: u64, out: []MetaOp, deadline: zio.Timeou
     return n;
 }
 
-// One decode arena per index (one consumer per index -> no concurrent use of the
-// same arena); the map itself is guarded by the mutex.
+// The long-poll window to request from the server. `.none` (block indefinitely)
+// maps to the max window; the consumer loops across windows. A `.duration` (e.g.
+// the meta catch-up's short deadline) is passed through so the server returns
+// promptly once the feed is drained.
+fn timeoutMs(deadline: zio.Timeout) u64 {
+    return switch (deadline) {
+        .none => long_poll_ms,
+        .duration => |d| d.toMilliseconds(),
+        .deadline => long_poll_ms, // not used on these paths
+    };
+}
+
+// One decode arena per index name (one consumer per name -> no concurrent use of
+// the same arena); the map itself is guarded by the mutex.
 fn arenaFor(self: *Self, index_name: []const u8) !*std.heap.ArenaAllocator {
     try self.mutex.lock();
     defer self.mutex.unlock();

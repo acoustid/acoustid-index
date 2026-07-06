@@ -64,6 +64,24 @@ def _search_has(port, query, want_id, tries=50):
     return False
 
 
+def _index_exists(port, name="main"):
+    try:
+        r = urllib.request.urlopen(f"http://127.0.0.1:{port}/{name}", timeout=2)
+        return r.status == 200
+    except urllib.error.HTTPError as e:
+        return e.code == 200
+    except Exception:
+        return False
+
+
+def _wait_index(port, name="main", want=True, tries=50):
+    for _ in range(tries):
+        if _index_exists(port, name) == want:
+            return True
+        time.sleep(0.1)
+    return False
+
+
 @pytest.fixture
 def cluster(tmp_path):
     """Coordinator + two replicas. Yields (co_port, r1_port, r2_port)."""
@@ -77,7 +95,7 @@ def cluster(tmp_path):
         procs.append(subprocess.Popen([BINARY] + args))
 
     start(["--coordinator", "--port", str(co)])
-    _wait(co, "/_changelog/x?after=0&max=1&timeout_ms=50")
+    _wait(co, "/_changelog/x/1?after=0&max=1&timeout_ms=50")
     url = f"http://127.0.0.1:{co}"
     start(["--port", str(p1), "--dir", str(tmp_path / "r1"), "--coordinator-url", url])
     start(["--port", str(p2), "--dir", str(tmp_path / "r2"), "--coordinator-url", url])
@@ -92,18 +110,18 @@ def cluster(tmp_path):
             p.wait()
 
 
-def test_writes_propagate_both_ways(cluster):
+def test_index_create_propagates(cluster):
     _co, p1, p2 = cluster
-    # Index lifecycle is local for now, so create it on each replica.
+    # Create on ONE replica; it must appear on the other via the meta feed.
     _req(p1, "PUT", "/main")
-    _req(p2, "PUT", "/main")
+    assert _index_exists(p1, "main")  # create-your-writes on the writer
+    assert _wait_index(p2, "main")    # propagates to the other replica
 
-    # Write on replica 1: read-your-writes locally, and it reaches replica 2.
+    # Writes then flow both ways on the shared index.
     _req(p1, "PUT", "/main/1", {"hashes": [100, 200, 300, 55555]})
     assert _search_has(p1, [100, 200, 300], 1)
     assert _search_has(p2, [100, 200, 300], 1)
 
-    # Write on replica 2: reaches replica 1 (multi-master).
     _req(p2, "PUT", "/main/2", {"hashes": [400, 500, 600, 55555]})
     assert _search_has(p2, [400, 500, 600], 2)
     assert _search_has(p1, [400, 500, 600], 2)
@@ -111,3 +129,24 @@ def test_writes_propagate_both_ways(cluster):
     # Both replicas converge on both docs (shared hash).
     assert {h["id"] for h in _search(p1, [55555])} == {1, 2}
     assert {h["id"] for h in _search(p2, [55555])} == {1, 2}
+
+
+def test_index_delete_and_recreate_converges(cluster):
+    _co, p1, p2 = cluster
+    _req(p1, "PUT", "/main")
+    assert _wait_index(p2, "main")
+    _req(p1, "PUT", "/main/1", {"hashes": [1, 2, 3]})
+    assert _search_has(p2, [1, 2, 3], 1)
+
+    # Delete on p1 -> both converge to "gone".
+    _req(p1, "DELETE", "/main")
+    assert _wait_index(p1, "main", want=False)
+    assert _wait_index(p2, "main", want=False)
+
+    # Recreate on p2 -> new lineage on both; the old lineage's doc stays gone
+    # (isolation is the generation scope), and new writes propagate.
+    _req(p2, "PUT", "/main")
+    assert _wait_index(p1, "main")
+    assert not _search_has(p1, [1, 2, 3], 1, tries=5)
+    _req(p2, "PUT", "/main/9", {"hashes": [7, 8, 9]})
+    assert _search_has(p1, [7, 8, 9], 9)
