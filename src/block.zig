@@ -236,6 +236,10 @@ pub const BlockReader = struct {
         if (range.start >= range.end) {
             return &[_]u32{};
         }
+        // Only [start,end) of self.docids gets delta-accumulated here; the rest is
+        // left as raw quads. Invalidate any full-buffer cache so a later
+        // getDocids()/getItems() re-decodes instead of returning the partial buffer.
+        self.docids_loaded = false;
 
         const header = self.getHeaderPtr();
         // Read StreamVByte-encoded docids for just this range

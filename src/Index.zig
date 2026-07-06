@@ -527,12 +527,6 @@ fn runMaintenance(self: *Self) !void {
     }
 }
 
-fn memoryItemCount(self: *const Self) usize {
-    var total: usize = 0;
-    for (self.segments.value.memory) |seg| total += seg.value.getSize();
-    return total;
-}
-
 fn memorySize(memory: []const MemoryRef) usize {
     var total: usize = 0;
     for (memory) |seg| total += seg.value.getSize();

@@ -57,7 +57,7 @@ fn handleReadMeta(co: *Service, req: *http.Request, res: *http.Response) !void {
     const timeout_ms = queryInt(req, "timeout_ms") orelse 0;
 
     const buf = try req.arena.alloc(MetaOp, max);
-    const deadline: zio.Timeout = if (timeout_ms == 0) .none else .{ .duration = .fromMilliseconds(timeout_ms) };
+    const deadline: zio.Timeout = .{ .duration = .fromMilliseconds(timeout_ms) };
     const n = co.coordinator.readMeta(after, buf, deadline) catch |err|
         return fail(res, statusFor(err), @errorName(err));
     try respond(MetaReadResponse{ .ops = buf[0..n] }, res);
@@ -82,7 +82,7 @@ fn handleRead(co: *Service, req: *http.Request, res: *http.Response) !void {
     const timeout_ms = queryInt(req, "timeout_ms") orelse 0;
 
     const buf = try req.arena.alloc(Entry, max);
-    const deadline: zio.Timeout = if (timeout_ms == 0) .none else .{ .duration = .fromMilliseconds(timeout_ms) };
+    const deadline: zio.Timeout = .{ .duration = .fromMilliseconds(timeout_ms) };
     const n = co.coordinator.read(index, generation, after, buf, deadline) catch |err|
         return fail(res, statusFor(err), @errorName(err));
     try respond(ReadResponse{ .entries = buf[0..n] }, res);

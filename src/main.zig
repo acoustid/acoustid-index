@@ -51,6 +51,11 @@ const Config = struct {
     coordinator_url: ?[]const u8 = null,
 };
 
+// Bulk `_update` batches (and the coordinator's append bodies, which carry the same
+// changes) run well past dusty's 1MB default, so raise the body cap to 16MB (matching
+// the previous version).
+const server_config: http.ServerConfig = .{ .request = .{ .max_body_size = 16 * 1024 * 1024 } };
+
 fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !void {
     const io = rt.io();
 
@@ -84,7 +89,7 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
         std.log.info("replicating from coordinator {s}", .{config.coordinator_url.?});
     }
 
-    var server = Server.init(allocator, io, .{}, &multi_index);
+    var server = Server.init(allocator, io, server_config, &multi_index);
     defer server.deinit();
 
     registerRoutes(&server);
@@ -134,7 +139,7 @@ fn runCoordinator(allocator: std.mem.Allocator, io: std.Io, config: Config) !voi
     defer mc.deinit();
     var co = coordinator_server.Service{ .coordinator = mc.coordinator() };
 
-    var server = coordinator_server.Server.init(allocator, io, .{}, &co);
+    var server = coordinator_server.Server.init(allocator, io, server_config, &co);
     defer server.deinit();
     coordinator_server.registerRoutes(&server);
 

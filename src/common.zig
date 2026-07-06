@@ -86,15 +86,6 @@ pub const SearchResults = struct {
         }
     }
 
-    pub fn get(self: SearchResults, id: u32) ?SearchResult {
-        const hit = self.hits.get(id) orelse return null;
-        return .{
-            .id = id,
-            .score = hit.score,
-            .version = hit.version,
-        };
-    }
-
     pub fn finish(self: *SearchResults, collection: anytype) !void {
         var ids = try std.ArrayListUnmanaged(u32).initCapacity(self.allocator, self.hits.count());
         defer ids.deinit(self.allocator);

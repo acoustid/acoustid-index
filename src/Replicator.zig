@@ -14,10 +14,12 @@
 // The index (and MultiIndex.applyLog) stays oblivious to replication.
 //
 // Locking: this component's mutex guards the consumer map + per-consumer applied
-// watermark + the meta_applied watermark. The consumers' apply paths take the
-// MultiIndex lock separately; the two are never held at once (the meta consumer
-// takes the MultiIndex lock, releases it, then takes this mutex to mark applied),
-// so there is no lock-ordering cycle.
+// watermark + the meta_applied watermark. When both this mutex and the MultiIndex
+// lock are held the order is ALWAYS MultiIndex.lock -> Replicator.mutex (reconcile
+// paths call addConsumer while holding the MultiIndex lock), NEVER the reverse — no
+// method takes the MultiIndex lock while holding this mutex (the data consumers'
+// apply path takes the MultiIndex lock without this mutex; removeConsumer cancel+joins
+// outside this mutex). So there is no lock-ordering cycle.
 
 const std = @import("std");
 const zio = @import("zio");

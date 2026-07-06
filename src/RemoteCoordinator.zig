@@ -174,8 +174,13 @@ fn timeoutMs(deadline: zio.Timeout) u64 {
     return switch (deadline) {
         .none => long_poll.toMilliseconds(),
         .duration => |d| d.toMilliseconds(),
-        // Callers only ever pass .none (consumers) or .duration (meta catch-up).
-        .deadline => unreachable,
+        // Callers only ever pass .none (consumers) or .duration (meta catch-up), but
+        // convert a deadline to its remaining ms (0 if already past) rather than
+        // relying on that with an `unreachable`.
+        .deadline => |ts| blk: {
+            const now = zio.Timestamp.now(.monotonic);
+            break :blk if (ts.toNanoseconds() > now.toNanoseconds()) now.durationTo(ts).toMilliseconds() else 0;
+        },
     };
 }
 
