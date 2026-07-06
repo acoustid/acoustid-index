@@ -111,6 +111,53 @@ pub const MetaDeleteResponse = struct {
     }
 };
 
+// ---- Replica registry (peer discovery for snapshot bootstrap) ----
+// Replicas periodically report their state; the coordinator is the rendezvous point
+// that a bootstrapping node queries for a donor. See notes/bootstrap-design.md.
+
+/// A replica's state for one lineage it holds locally.
+pub const LineageStatus = struct {
+    index_name: []const u8,
+    generation: u64,
+    applied: u64, // highest data-feed seq applied (the index version)
+    file_version: u64, // checkpointed watermark — a snapshot from this replica resumes here
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+/// A replica's periodic heartbeat: who it is, where to fetch its snapshots, and what
+/// it holds. Replaces the replica's previous status; absence past a timeout = dead.
+pub const ReplicaStatus = struct {
+    replica_id: []const u8,
+    advertise_addr: []const u8, // base URL other nodes fetch GET /:index/_snapshot from
+    lineages: []const LineageStatus,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+/// Where a bootstrapping node should fetch a snapshot, and the watermark it will land
+/// on (so it resumes the data feed from there).
+pub const DonorInfo = struct {
+    advertise_addr: []const u8,
+    file_version: u64,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+pub const DonorResponse = struct {
+    donor: ?DonorInfo = null,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
 /// Runtime-dispatched handle to a changelog implementation.
 pub const Coordinator = struct {
     ptr: *anyopaque,
@@ -143,6 +190,15 @@ pub const Coordinator = struct {
         /// Block until a meta op with pos > `after` exists (or `deadline`), fill
         /// `out` in pos order, return the count. Ops are valid until the next call.
         readMeta: *const fn (ptr: *anyopaque, after: u64, out: []MetaOp, deadline: zio.Timeout) anyerror!usize,
+
+        // Replica registry (peer discovery).
+        /// Record/refresh a replica's heartbeat (liveness + per-lineage watermarks).
+        /// The implementation copies what it needs; `status` need not outlive the call.
+        reportStatus: *const fn (ptr: *anyopaque, status: ReplicaStatus) anyerror!void,
+        /// Pick a live replica able to donate a snapshot of (`index_name`,
+        /// `generation`) that a reader at `after` can resume from (file_version >=
+        /// `after`), or null if none. The returned addr is allocated in `arena`.
+        findDonor: *const fn (ptr: *anyopaque, arena: std.mem.Allocator, index_name: []const u8, generation: u64, after: u64) anyerror!?DonorInfo,
     };
 
     pub fn append(self: Coordinator, index_name: []const u8, generation: u64, changes: []const Change, expected: ?u64) !u64 {
@@ -164,6 +220,14 @@ pub const Coordinator = struct {
     pub fn readMeta(self: Coordinator, after: u64, out: []MetaOp, deadline: zio.Timeout) !usize {
         return self.vtable.readMeta(self.ptr, after, out, deadline);
     }
+
+    pub fn reportStatus(self: Coordinator, status: ReplicaStatus) !void {
+        return self.vtable.reportStatus(self.ptr, status);
+    }
+
+    pub fn findDonor(self: Coordinator, arena: std.mem.Allocator, index_name: []const u8, generation: u64, after: u64) !?DonorInfo {
+        return self.vtable.findDonor(self.ptr, arena, index_name, generation, after);
+    }
 };
 
 /// In-memory changelog stub. Upholds the invariants above; not durable, not
@@ -176,6 +240,33 @@ pub const MemoryCoordinator = struct {
     // Meta feed (index registry), global, never truncated.
     meta_ops: std.ArrayListUnmanaged(MetaEntry) = .empty,
     next_meta_pos: u64 = 1,
+    // Replica registry (peer discovery), keyed by replica_id.
+    replicas: std.ArrayListUnmanaged(ReplicaRecord) = .empty,
+    // Simulated changelog retention per lineage: seqs <= floor are conceptually
+    // dropped. The stub never truncates on its own (setRetentionFloor drives it in
+    // tests); the PG impl computes this from real retention.
+    retention: std.ArrayListUnmanaged(RetentionFloor) = .empty,
+
+    // A replica whose heartbeat is older than this is treated as dead.
+    const liveness_timeout: zio.Duration = .fromMilliseconds(30_000);
+
+    const ReplicaRecord = struct {
+        replica_id: []const u8, // owned
+        advertise_addr: []const u8, // owned
+        lineages: []OwnedLineage, // owned
+        last_seen: zio.Timestamp,
+    };
+    const OwnedLineage = struct {
+        index_name: []const u8, // owned
+        generation: u64,
+        applied: u64,
+        file_version: u64,
+    };
+    const RetentionFloor = struct {
+        index_name: []const u8, // owned
+        generation: u64,
+        floor: u64,
+    };
 
     const Row = struct {
         index_name: []const u8, // owned
@@ -199,6 +290,10 @@ pub const MemoryCoordinator = struct {
         self.rows.deinit(self.allocator);
         for (self.meta_ops.items) |op| self.allocator.free(op.index_name);
         self.meta_ops.deinit(self.allocator);
+        for (self.replicas.items) |*rec| self.freeReplicaRecord(rec);
+        self.replicas.deinit(self.allocator);
+        for (self.retention.items) |r| self.allocator.free(r.index_name);
+        self.retention.deinit(self.allocator);
         self.* = undefined;
     }
 
@@ -212,6 +307,8 @@ pub const MemoryCoordinator = struct {
         .createIndex = createIndexImpl,
         .deleteIndex = deleteIndexImpl,
         .readMeta = readMetaImpl,
+        .reportStatus = reportStatusImpl,
+        .findDonor = findDonorImpl,
     };
 
     fn appendImpl(ptr: *anyopaque, index_name: []const u8, generation: u64, changes: []const Change, expected: ?u64) anyerror!u64 {
@@ -251,6 +348,10 @@ pub const MemoryCoordinator = struct {
         try self.mutex.lock();
         defer self.mutex.unlock();
 
+        // The reader wants seqs > after, but retention has dropped everything <= floor;
+        // if after < floor those seqs are gone, so the reader must bootstrap.
+        if (after < self.retentionFloorLocked(index_name, generation)) return error.BelowRetention;
+
         while (true) {
             var n: usize = 0;
             for (self.rows.items) |row| { // stored in append order == per-lineage seq order
@@ -284,6 +385,103 @@ pub const MemoryCoordinator = struct {
     fn freeRow(self: *MemoryCoordinator, row: *Row) void {
         self.allocator.free(row.index_name);
         freeChange(self.allocator, row.change);
+    }
+
+    fn reportStatusImpl(ptr: *anyopaque, status: ReplicaStatus) anyerror!void {
+        const self: *MemoryCoordinator = @ptrCast(@alignCast(ptr));
+        try self.mutex.lock();
+        defer self.mutex.unlock();
+
+        // Build the owned replacement first, so a mid-build failure leaves the old
+        // record intact.
+        var rec = try self.dupeReplicaRecord(status);
+        errdefer self.freeReplicaRecord(&rec);
+
+        for (self.replicas.items) |*existing| {
+            if (std.mem.eql(u8, existing.replica_id, status.replica_id)) {
+                self.freeReplicaRecord(existing);
+                existing.* = rec;
+                return;
+            }
+        }
+        try self.replicas.append(self.allocator, rec);
+    }
+
+    fn findDonorImpl(ptr: *anyopaque, arena: std.mem.Allocator, index_name: []const u8, generation: u64, after: u64) anyerror!?DonorInfo {
+        const self: *MemoryCoordinator = @ptrCast(@alignCast(ptr));
+        try self.mutex.lock();
+        defer self.mutex.unlock();
+
+        var best_addr: ?[]const u8 = null;
+        var best_fv: u64 = 0;
+        for (self.replicas.items) |rec| {
+            if (rec.last_seen.untilNow(.monotonic).toNanoseconds() > liveness_timeout.toNanoseconds()) continue; // dead
+            for (rec.lineages) |ls| {
+                if (ls.generation != generation) continue;
+                if (!std.mem.eql(u8, ls.index_name, index_name)) continue;
+                if (ls.file_version < after) continue; // a reader at `after` can't resume from here
+                if (best_addr == null or ls.file_version > best_fv) {
+                    best_addr = rec.advertise_addr;
+                    best_fv = ls.file_version;
+                }
+            }
+        }
+        const addr = best_addr orelse return null;
+        // Copy the addr into the caller's arena — the record may change after unlock.
+        return .{ .advertise_addr = try arena.dupe(u8, addr), .file_version = best_fv };
+    }
+
+    fn dupeReplicaRecord(self: *MemoryCoordinator, status: ReplicaStatus) !ReplicaRecord {
+        const id = try self.allocator.dupe(u8, status.replica_id);
+        errdefer self.allocator.free(id);
+        const addr = try self.allocator.dupe(u8, status.advertise_addr);
+        errdefer self.allocator.free(addr);
+        const lineages = try self.allocator.alloc(OwnedLineage, status.lineages.len);
+        var n: usize = 0;
+        errdefer {
+            for (lineages[0..n]) |l| self.allocator.free(l.index_name);
+            self.allocator.free(lineages);
+        }
+        for (status.lineages) |ls| {
+            lineages[n] = .{
+                .index_name = try self.allocator.dupe(u8, ls.index_name),
+                .generation = ls.generation,
+                .applied = ls.applied,
+                .file_version = ls.file_version,
+            };
+            n += 1;
+        }
+        return .{ .replica_id = id, .advertise_addr = addr, .lineages = lineages, .last_seen = zio.Timestamp.now(.monotonic) };
+    }
+
+    fn freeReplicaRecord(self: *MemoryCoordinator, rec: *ReplicaRecord) void {
+        self.allocator.free(rec.replica_id);
+        self.allocator.free(rec.advertise_addr);
+        for (rec.lineages) |l| self.allocator.free(l.index_name);
+        self.allocator.free(rec.lineages);
+    }
+
+    fn retentionFloorLocked(self: *MemoryCoordinator, index_name: []const u8, generation: u64) u64 {
+        for (self.retention.items) |r| {
+            if (r.generation == generation and std.mem.eql(u8, r.index_name, index_name)) return r.floor;
+        }
+        return 0;
+    }
+
+    // Test scaffolding: simulate the changelog having dropped seqs <= `floor` for a
+    // lineage (the PG impl derives this from real retention).
+    pub fn setRetentionFloor(self: *MemoryCoordinator, index_name: []const u8, generation: u64, floor: u64) !void {
+        try self.mutex.lock();
+        defer self.mutex.unlock();
+        for (self.retention.items) |*r| {
+            if (r.generation == generation and std.mem.eql(u8, r.index_name, index_name)) {
+                r.floor = floor;
+                return;
+            }
+        }
+        const name_copy = try self.allocator.dupe(u8, index_name);
+        errdefer self.allocator.free(name_copy);
+        try self.retention.append(self.allocator, .{ .index_name = name_copy, .generation = generation, .floor = floor });
     }
 
     // The generation of `name` if it's currently active (its latest meta op is a
@@ -544,4 +742,73 @@ test "MemoryCoordinator: meta feed create/delete/create, distinct generations, i
 
     // Deleting a name that isn't active is a no-op: returns the latest meta pos.
     try testing.expectEqual(other, try co.deleteIndex("does_not_exist"));
+}
+
+test "MemoryCoordinator: findDonor picks a live replica that can serve the reader" {
+    const rt = try zio.Runtime.init(testing.allocator, .{});
+    defer rt.deinit();
+
+    var cl = MemoryCoordinator.init(testing.allocator);
+    defer cl.deinit();
+    const co = cl.coordinator();
+
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // No replicas yet -> no donor.
+    try testing.expect((try co.findDonor(a, "main", 1, 0)) == null);
+
+    try co.reportStatus(.{ .replica_id = "r1", .advertise_addr = "http://r1", .lineages = &.{
+        .{ .index_name = "main", .generation = 1, .applied = 10, .file_version = 5 },
+    } });
+    try co.reportStatus(.{ .replica_id = "r2", .advertise_addr = "http://r2", .lineages = &.{
+        .{ .index_name = "main", .generation = 1, .applied = 20, .file_version = 15 },
+        .{ .index_name = "other", .generation = 3, .applied = 4, .file_version = 4 },
+    } });
+
+    // A reader at after=0: both qualify, prefer the higher checkpoint watermark (r2).
+    const d = (try co.findDonor(a, "main", 1, 0)).?;
+    try testing.expectEqualStrings("http://r2", d.advertise_addr);
+    try testing.expectEqual(@as(u64, 15), d.file_version);
+
+    // A reader past r1's watermark (after=10): only r2 (fv 15) can resume it.
+    try testing.expectEqualStrings("http://r2", (try co.findDonor(a, "main", 1, 10)).?.advertise_addr);
+    // Past everyone (after=20): no donor.
+    try testing.expect((try co.findDonor(a, "main", 1, 20)) == null);
+    // Wrong generation / name -> no donor.
+    try testing.expect((try co.findDonor(a, "main", 2, 0)) == null);
+    try testing.expect((try co.findDonor(a, "nope", 1, 0)) == null);
+
+    // A replica re-reporting replaces its prior status (no leak; new watermark wins).
+    try co.reportStatus(.{ .replica_id = "r1", .advertise_addr = "http://r1b", .lineages = &.{
+        .{ .index_name = "main", .generation = 1, .applied = 40, .file_version = 30 },
+    } });
+    const d3 = (try co.findDonor(a, "main", 1, 20)).?;
+    try testing.expectEqualStrings("http://r1b", d3.advertise_addr);
+    try testing.expectEqual(@as(u64, 30), d3.file_version);
+}
+
+test "MemoryCoordinator: read below the retention floor signals bootstrap" {
+    const rt = try zio.Runtime.init(testing.allocator, .{});
+    defer rt.deinit();
+
+    var cl = MemoryCoordinator.init(testing.allocator);
+    defer cl.deinit();
+    const co = cl.coordinator();
+
+    _ = try co.append("main", 1, &.{ ins(1, &.{10}), ins(2, &.{20}), ins(3, &.{30}) }, null);
+    try cl.setRetentionFloor("main", 1, 2); // seqs <= 2 conceptually dropped
+
+    var buf: [8]Entry = undefined;
+    const zero: zio.Timeout = .{ .duration = .fromMilliseconds(0) };
+    // A reader below the floor wants seqs that are gone -> must bootstrap.
+    try testing.expectError(error.BelowRetention, co.read("main", 1, 0, &buf, zero));
+    try testing.expectError(error.BelowRetention, co.read("main", 1, 1, &buf, zero));
+    // At the floor: the next wanted seq (3) is retained -> OK.
+    try testing.expectEqual(@as(usize, 1), try co.read("main", 1, 2, &buf, zero));
+    try testing.expectEqual(@as(u64, 3), buf[0].id);
+    // Another lineage is unaffected (its floor is 0).
+    _ = try co.append("main", 5, &.{ins(9, &.{40})}, null);
+    try testing.expectEqual(@as(usize, 1), try co.read("main", 5, 0, &buf, zero));
 }

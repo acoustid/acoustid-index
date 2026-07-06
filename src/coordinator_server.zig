@@ -19,6 +19,13 @@ const ReadResponse = changelog_mod.ReadResponse;
 const MetaReadResponse = changelog_mod.MetaReadResponse;
 const MetaCreateResponse = changelog_mod.MetaCreateResponse;
 const MetaDeleteResponse = changelog_mod.MetaDeleteResponse;
+const ReplicaStatus = changelog_mod.ReplicaStatus;
+const DonorResponse = changelog_mod.DonorResponse;
+const EmptyResponse = struct {
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
 
 const max_read_entries = 1024;
 
@@ -35,6 +42,26 @@ pub fn registerRoutes(server: *Server) void {
     r.post("/_index/:index", handleCreateIndex);
     r.delete("/_index/:index", handleDeleteIndex);
     r.get("/_meta", handleReadMeta);
+    r.post("/_status", handleStatus);
+    r.get("/_donor/:index/:gen", handleDonor);
+}
+
+fn handleStatus(co: *Service, req: *http.Request, res: *http.Response) !void {
+    const body = (req.body() catch null) orelse return fail(res, .bad_request, "missing body");
+    const status = msgpack.decodeFromSliceLeaky(ReplicaStatus, req.arena, body) catch
+        return fail(res, .bad_request, "bad body");
+    co.coordinator.reportStatus(status) catch |err|
+        return fail(res, statusFor(err), @errorName(err));
+    try respond(EmptyResponse{}, res);
+}
+
+fn handleDonor(co: *Service, req: *http.Request, res: *http.Response) !void {
+    const index = req.params.get("index") orelse return fail(res, .bad_request, "missing index");
+    const generation = genParam(req) orelse return fail(res, .bad_request, "bad generation");
+    const after = queryInt(req, "after") orelse 0;
+    const donor = co.coordinator.findDonor(req.arena, index, generation, after) catch |err|
+        return fail(res, statusFor(err), @errorName(err));
+    try respond(DonorResponse{ .donor = donor }, res);
 }
 
 fn handleCreateIndex(co: *Service, req: *http.Request, res: *http.Response) !void {

@@ -554,6 +554,8 @@ const WedgedReads = struct {
         .createIndex = createIndexImpl,
         .deleteIndex = deleteIndexImpl,
         .readMeta = readMetaImpl,
+        .reportStatus = reportStatusImpl,
+        .findDonor = findDonorImpl,
     };
     fn appendImpl(ptr: *anyopaque, name: []const u8, generation: u64, changes: []const Change, expected: ?u64) anyerror!u64 {
         const self: *WedgedReads = @ptrCast(@alignCast(ptr));
@@ -575,6 +577,14 @@ const WedgedReads = struct {
     fn readMetaImpl(ptr: *anyopaque, after: u64, out: []MetaOp, deadline: zio.Timeout) anyerror!usize {
         const self: *WedgedReads = @ptrCast(@alignCast(ptr));
         return self.inner.readMeta(after, out, deadline);
+    }
+    fn reportStatusImpl(ptr: *anyopaque, status: coordinator_mod.ReplicaStatus) anyerror!void {
+        const self: *WedgedReads = @ptrCast(@alignCast(ptr));
+        return self.inner.reportStatus(status);
+    }
+    fn findDonorImpl(ptr: *anyopaque, arena: std.mem.Allocator, name: []const u8, generation: u64, after: u64) anyerror!?coordinator_mod.DonorInfo {
+        const self: *WedgedReads = @ptrCast(@alignCast(ptr));
+        return self.inner.findDonor(arena, name, generation, after);
     }
 };
 

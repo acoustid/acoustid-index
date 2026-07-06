@@ -169,3 +169,39 @@ def test_index_delete_and_recreate_converges(cluster):
     assert not _search_has(p1, [1, 2, 3], 1, tries=5)
     _req(p2, "PUT", "/main/9", {"hashes": [7, 8, 9]})
     assert _search_has(p1, [7, 8, 9], 9)
+
+
+def test_coordinator_registry_endpoints(cluster):
+    """POST /_status and GET /_donor on the coordinator (msgpack). The replica
+    reporter (milestone 3c) and bootstrap (4) drive these end-to-end later."""
+    import msgpack
+
+    co, _p1, _p2 = cluster
+
+    def get_donor(after):
+        r = urllib.request.urlopen(
+            f"http://127.0.0.1:{co}/_donor/main/1?after={after}", timeout=5
+        )
+        return msgpack.unpackb(r.read(), raw=False)
+
+    # Nobody has reported yet -> DonorResponse{donor:null} (omit_nulls -> empty map).
+    assert get_donor(0).get("d") is None
+
+    # A replica holding (main, gen 1) checkpointed at file_version 5 (prefix keys:
+    # r=replica_id a=advertise_addr l=lineages; i=index_name g=generation a=applied
+    # f=file_version).
+    status = {
+        "r": "rX",
+        "a": "http://127.0.0.1:9999",
+        "l": [{"i": "main", "g": 1, "a": 10, "f": 5}],
+    }
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{co}/_status", data=msgpack.packb(status), method="POST"
+    )
+    assert urllib.request.urlopen(req, timeout=5).status == 200
+
+    # A reader at/below the watermark gets rX; past it, no donor.
+    d = get_donor(0)["d"]
+    assert d["a"] == "http://127.0.0.1:9999"
+    assert d["f"] == 5
+    assert get_donor(10).get("d") is None
