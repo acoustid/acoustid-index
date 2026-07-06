@@ -101,6 +101,7 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
     metrics.observeSearchSeconds(@as(f64, @floatFromInt(sw.read().toNanoseconds())) / 1_000_000_000.0);
 
     const results = collector.getResults();
+    if (results.len > 0) metrics.incSearchHit() else metrics.incSearchMiss();
     const out = try arena.alloc(api.SearchResult, results.len);
     for (results, 0..) |r, i| out[i] = .{ .id = r.id, .score = r.score };
     return .{ .results = out };

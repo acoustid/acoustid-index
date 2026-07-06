@@ -9,6 +9,8 @@ const SearchDuration = m.Histogram(f64, &.{ 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 
 
 const Metrics = struct {
     searches: m.Counter(u64),
+    search_hits: m.Counter(u64),
+    search_misses: m.Counter(u64),
     updates: m.Counter(u64),
     checkpoints: m.Counter(u64),
     memory_merges: m.Counter(u64),
@@ -24,6 +26,8 @@ var metrics = m.initializeNoop(Metrics);
 pub fn init(comptime opts: m.RegistryOpts) void {
     metrics = .{
         .searches = m.Counter(u64).init("fpindex_searches_total", .{}, opts),
+        .search_hits = m.Counter(u64).init("fpindex_search_hits_total", .{}, opts),
+        .search_misses = m.Counter(u64).init("fpindex_search_misses_total", .{}, opts),
         .updates = m.Counter(u64).init("fpindex_updates_total", .{}, opts),
         .checkpoints = m.Counter(u64).init("fpindex_checkpoints_total", .{}, opts),
         .memory_merges = m.Counter(u64).init("fpindex_memory_merges_total", .{}, opts),
@@ -34,6 +38,12 @@ pub fn init(comptime opts: m.RegistryOpts) void {
 
 pub fn incSearches() void {
     metrics.searches.incr();
+}
+pub fn incSearchHit() void {
+    metrics.search_hits.incr();
+}
+pub fn incSearchMiss() void {
+    metrics.search_misses.incr();
 }
 pub fn incUpdates() void {
     metrics.updates.incr();
