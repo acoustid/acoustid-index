@@ -9,6 +9,7 @@ const http = @import("dusty");
 
 const MultiIndex = @import("MultiIndex.zig");
 const metrics = @import("metrics.zig");
+const legacy = @import("legacy.zig");
 const Server = @import("server.zig").Server;
 const registerRoutes = @import("server.zig").registerRoutes;
 
@@ -37,6 +38,8 @@ const Config = struct {
     host: []const u8 = "127.0.0.1",
     port: u16 = 8080,
     checkpoint_threshold: usize = 100_000,
+    // Legacy line-protocol listener; 0 disables it.
+    legacy_port: u16 = 0,
 };
 
 fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !void {
@@ -68,16 +71,33 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
     const addr: http.Address = .{ .ip = try std.Io.net.IpAddress.parse(config.host, config.port) };
     std.log.info("fpindex-ng listening on http://{s}:{d} (dir={s})", .{ config.host, config.port, config.dir });
 
-    var task = try zio.spawn(Server.listen, .{ &server, addr });
-    defer task.cancel();
+    var http_task = try zio.spawn(Server.listen, .{ &server, addr });
+    defer http_task.cancel();
 
-    const result = try zio.select(.{ .task = &task, .sigint = &sigint, .sigterm = &sigterm });
-    switch (result) {
-        .task => |r| return r,
-        .sigint, .sigterm => {
-            std.log.info("shutting down", .{});
-            task.cancel();
-        },
+    if (config.legacy_port != 0) {
+        const legacy_addr = try zio.net.IpAddress.parseIp4(config.host, config.legacy_port);
+        var legacy_task = try zio.spawn(legacy.listen, .{ &multi_index, legacy_addr });
+        defer legacy_task.cancel();
+
+        const result = try zio.select(.{ .http = &http_task, .legacy = &legacy_task, .sigint = &sigint, .sigterm = &sigterm });
+        switch (result) {
+            .http => |r| return r,
+            .legacy => |r| return r,
+            .sigint, .sigterm => {
+                std.log.info("shutting down", .{});
+                http_task.cancel();
+                legacy_task.cancel();
+            },
+        }
+    } else {
+        const result = try zio.select(.{ .http = &http_task, .sigint = &sigint, .sigterm = &sigterm });
+        switch (result) {
+            .http => |r| return r,
+            .sigint, .sigterm => {
+                std.log.info("shutting down", .{});
+                http_task.cancel();
+            },
+        }
     }
 }
 
@@ -94,6 +114,8 @@ fn parseArgs(args: std.process.Args) !Config {
             config.port = try std.fmt.parseInt(u16, it.next() orelse return error.MissingArgument, 10);
         } else if (std.mem.eql(u8, arg, "--checkpoint-threshold")) {
             config.checkpoint_threshold = try std.fmt.parseInt(usize, it.next() orelse return error.MissingArgument, 10);
+        } else if (std.mem.eql(u8, arg, "--legacy-port")) {
+            config.legacy_port = try std.fmt.parseInt(u16, it.next() orelse return error.MissingArgument, 10);
         } else {
             std.log.warn("ignoring unknown argument '{s}'", .{arg});
         }

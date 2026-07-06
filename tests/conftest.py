@@ -30,6 +30,7 @@ class Server:
     def __init__(self):
         self.data_dir = tempfile.mkdtemp(prefix="fpindex-e2e-")
         self.port = _free_port()
+        self.legacy_port = _free_port()
         self.proc = None
 
     def get_url(self):
@@ -38,7 +39,8 @@ class Server:
     def start(self):
         assert self.proc is None
         self.proc = subprocess.Popen(
-            [BINARY, "--dir", self.data_dir, "--host", "127.0.0.1", "--port", str(self.port)],
+            [BINARY, "--dir", self.data_dir, "--host", "127.0.0.1",
+             "--port", str(self.port), "--legacy-port", str(self.legacy_port)],
         )
         self.wait_for_healthy()
 
