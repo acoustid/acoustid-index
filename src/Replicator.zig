@@ -37,8 +37,9 @@ const meta_batch = 64;
 // Only affects how long startup waits once the feed is drained — correctness does
 // not depend on catch-up completeness (the streaming phase continues from `after`).
 const meta_catchup_ms = 100;
-// Backoff between retries of a failed meta reconcile (transient errors only).
+// Backoff between retries of a failed meta reconcile / data apply (transient only).
 const reconcile_retry_ms = 1000;
+const apply_retry_ms = 1000;
 
 allocator: std.mem.Allocator,
 mi: *MultiIndex,
@@ -184,13 +185,32 @@ fn consumeLoop(c: *Consumer, start_version: u64) zio.Cancelable!void {
 
         for (buf[0..n], 0..) |e, i| changes[i] = e.change;
         const version = buf[n - 1].id; // coalesce the batch; version = max seq
-        self.mi.applyLog(c.name, c.generation, changes[0..n], null, version) catch |err| {
-            if (err == error.Canceled) return error.Canceled;
-            // Skip past the batch rather than spin on a persistently bad entry.
-            log.warn("apply failed for '{s}' at version {d}: {}", .{ c.name, version, err });
-        };
+        if (!try self.applyWithRetry(c, changes[0..n], version)) return; // lineage gone
         after = version;
         self.markApplied(c, version);
+    }
+}
+
+// Apply a batch, retrying transient failures with backoff so the batch is durably
+// applied BEFORE we advance the watermark / mark it applied — otherwise a failed
+// apply would falsely satisfy a writer's read-your-writes with a doc that never
+// entered the index. Returns false if this consumer is obsolete (its lineage was
+// deleted or rebuilt underneath it) and should stop.
+fn applyWithRetry(self: *Self, c: *Consumer, changes: []const Change, version: u64) zio.Cancelable!bool {
+    while (true) {
+        self.mi.applyLog(c.name, c.generation, changes, null, version) catch |err| switch (err) {
+            error.Canceled => return error.Canceled,
+            error.IndexNotFound, error.IndexGenerationMismatch => {
+                log.info("data consumer for '{s}' gen {d} stopping ({s})", .{ c.name, c.generation, @errorName(err) });
+                return false;
+            },
+            else => {
+                log.warn("apply failed for '{s}' at version {d} (retrying): {}", .{ c.name, version, err });
+                try zio.sleep(.fromMilliseconds(apply_retry_ms));
+                continue;
+            },
+        };
+        return true;
     }
 }
 
@@ -219,17 +239,25 @@ fn metaLoop(self: *Self) zio.Cancelable!void {
             };
             if (n == 0) break; // drained within the window -> caught up
             for (buf[0..n]) |op| {
+                // Fold must be complete before the convergence step below trusts it
+                // (a dropped op would look like an index the feed never mentioned),
+                // so retry rather than skip. `after` advances only on success.
+                try self.foldPutWithRetry(&folded, op);
                 after = op.pos;
-                self.foldPut(&folded, op) catch |err| {
-                    if (err == error.Canceled) return error.Canceled;
-                    log.warn("meta fold failed for '{s}': {}", .{ op.index_name, err });
-                };
             }
         }
+        // Reconcile the feed's active lineages (create/rebuild), then converge
+        // deletions: drop any local index the feed doesn't list as active (a
+        // leftover from a delete this node missed while down, or coordinator/disk
+        // divergence — otherwise it lingers as a searchable zombie with no consumer).
         var it = folded.iterator();
         while (it.next()) |e| {
             try self.reconcileWithRetry(e.key_ptr.*, e.value_ptr.kind, e.value_ptr.generation);
         }
+        self.dropStaleLocalIndexes(&folded) catch |err| {
+            if (err == error.Canceled) return error.Canceled;
+            log.warn("failed to drop stale local indexes: {}", .{err});
+        };
         self.markMetaApplied(after);
     }
 
@@ -279,6 +307,38 @@ fn foldPut(self: *Self, folded: *std.StringHashMapUnmanaged(FoldedOp), op: MetaO
     const gop = try folded.getOrPut(self.allocator, op.index_name);
     if (!gop.found_existing) gop.key_ptr.* = try self.allocator.dupe(u8, op.index_name);
     gop.value_ptr.* = .{ .kind = op.kind, .generation = op.pos };
+}
+
+fn foldPutWithRetry(self: *Self, folded: *std.StringHashMapUnmanaged(FoldedOp), op: MetaOp) zio.Cancelable!void {
+    while (true) {
+        self.foldPut(folded, op) catch |err| {
+            if (err == error.Canceled) return error.Canceled;
+            log.warn("meta fold failed for '{s}' (retrying): {}", .{ op.index_name, err });
+            try zio.sleep(.fromMilliseconds(reconcile_retry_ms));
+            continue;
+        };
+        return;
+    }
+}
+
+// Drop every local index the folded feed state doesn't list as active (i.e. its
+// latest meta op is not a create). Converges this node to the coordinator registry.
+fn dropStaleLocalIndexes(self: *Self, folded: *const std.StringHashMapUnmanaged(FoldedOp)) !void {
+    const names = try self.mi.indexNames(self.allocator);
+    defer {
+        for (names) |n| self.allocator.free(n);
+        self.allocator.free(names);
+    }
+    for (names) |name| {
+        if (folded.get(name)) |f| {
+            if (f.kind == .create) continue; // active in the feed -> keep
+        }
+        log.info("dropping local index '{s}' absent from the meta feed", .{name});
+        self.mi.deleteIndexLocal(name) catch |err| {
+            if (err == error.Canceled) return err;
+            log.warn("failed to drop stale local index '{s}': {}", .{ name, err });
+        };
+    }
 }
 
 pub fn waitMetaApplied(self: *Self, pos: u64) !void {
@@ -349,6 +409,43 @@ test "replicated create+update flows through the coordinator; RYW + search see i
     const s2 = try mi.search(a, "other", .{ .query = &q2 });
     try std.testing.expectEqual(@as(usize, 1), s2.results.len);
     try std.testing.expectEqual(@as(u32, 42), s2.results[0].id);
+}
+
+test "meta consumer drops a local index absent from the meta feed" {
+    const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{ .executors = .exact(2) });
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_replicator_orphan";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var cl = MemoryCoordinator.init(std.testing.allocator);
+    defer cl.deinit();
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+
+    // A local index the coordinator never learned about (standalone create, before
+    // replication starts) — the zombie case.
+    _ = try mi.createIndex("orphan", .{});
+    try std.testing.expect(try mi.checkIndexExists("orphan"));
+
+    // Start replication against an empty coordinator: catch-up must converge by
+    // dropping the orphan (it isn't active in the meta feed).
+    try mi.startReplication(cl.coordinator());
+
+    var i: usize = 0;
+    while (i < 300) : (i += 1) {
+        if (!try mi.checkIndexExists("orphan")) break;
+        try zio.sleep(.fromMilliseconds(10));
+    }
+    try std.testing.expect(!try mi.checkIndexExists("orphan"));
 }
 
 test "applyLog rejects a stale generation" {

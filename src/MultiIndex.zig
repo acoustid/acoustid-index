@@ -317,6 +317,22 @@ pub fn checkIndexExists(self: *Self, name: []const u8) !bool {
     return !ref.being_deleted;
 }
 
+/// Snapshot of the current local index names (owned: caller frees each string and
+/// the slice). Used by the meta consumer to converge deletions — drop any local
+/// index the coordinator's registry no longer lists.
+pub fn indexNames(self: *Self, allocator: std.mem.Allocator) ![][]const u8 {
+    try self.lock.lock();
+    defer self.lock.unlock();
+    var names: std.ArrayListUnmanaged([]const u8) = .empty;
+    errdefer {
+        for (names.items) |n| allocator.free(n);
+        names.deinit(allocator);
+    }
+    var it = self.indexes.keyIterator();
+    while (it.next()) |k| try names.append(allocator, try allocator.dupe(u8, k.*));
+    return names.toOwnedSlice(allocator);
+}
+
 pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexRequest) !api.CreateIndexResponse {
     if (!isValidName(name)) return error.InvalidIndexName;
     if (self.replication) |repl| return self.createIndexReplicated(repl, name, request);
