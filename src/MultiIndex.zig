@@ -15,6 +15,8 @@ const api = @import("api.zig");
 const Index = @import("Index.zig");
 const Change = @import("change.zig").Change;
 const Metadata = @import("change.zig").Metadata;
+const Replicator = @import("Replicator.zig");
+const Changelog = @import("changelog.zig").Changelog;
 const SearchResults = @import("common.zig").SearchResults;
 const metrics = @import("metrics.zig");
 const log = std.log.scoped(.multi_index);
@@ -41,12 +43,31 @@ checkpoint_threshold: usize = 100_000,
 sync: bool = true,
 // Max file-segment loads in flight across all indexes during open(); 0 = no limit.
 load_concurrency: usize = 0,
+// Set in replicated mode: writes go through the log, a consumer applies them.
+replication: ?*Replicator = null,
 
 pub fn init(allocator: std.mem.Allocator, dir: zio.Dir) Self {
     return .{ .allocator = allocator, .dir = dir };
 }
 
+/// Enter replicated mode: writes append to `changelog` and a per-index consumer
+/// applies them back. Call after open(), before serving. Borrows the changelog.
+pub fn startReplication(self: *Self, changelog: Changelog) !void {
+    const repl = try self.allocator.create(Replicator);
+    errdefer self.allocator.destroy(repl);
+    repl.* = Replicator.init(self.allocator, self, changelog);
+    errdefer repl.deinit();
+    try repl.start();
+    self.replication = repl;
+}
+
 pub fn deinit(self: *Self) void {
+    // Stop consumers before tearing down the indexes they apply to.
+    if (self.replication) |repl| {
+        repl.deinit();
+        self.allocator.destroy(repl);
+        self.replication = null;
+    }
     var it = self.indexes.iterator();
     while (it.next()) |entry| {
         entry.value_ptr.*.index.deinit();
@@ -210,6 +231,9 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
 
 pub fn update(self: *Self, arena: std.mem.Allocator, name: []const u8, request: api.UpdateRequest) !api.UpdateResponse {
     _ = arena;
+    // Replicated mode: the write goes to the log; the consumer applies it.
+    if (self.replication) |repl| return repl.update(name, request);
+
     const index = try self.getIndex(name);
     defer self.releaseIndex(index);
     metrics.incUpdates();
@@ -310,10 +334,22 @@ pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexReques
     errdefer self.allocator.free(name_copy);
 
     try self.indexes.put(self.allocator, name_copy, ref);
+
+    // In replicated mode, start consuming the log for this index. Only touches
+    // the Replicator lock + spawns, so it's safe under the manager lock.
+    if (self.replication) |repl| {
+        repl.addConsumer(name, ref.index.version) catch |err| {
+            log.warn("failed to start replication consumer for '{s}': {}", .{ name, err });
+        };
+    }
     return .{ .version = ref.index.version, .ready = true, .generation = request.generation orelse 0 };
 }
 
 pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexRequest) !api.DeleteIndexResponse {
+    // Stop the consumer first (before holding the manager lock) so its in-flight
+    // apply can finish and its borrow drains for the wait below.
+    if (self.replication) |repl| repl.removeConsumer(name);
+
     try self.lock.lock();
     defer self.lock.unlock();
 

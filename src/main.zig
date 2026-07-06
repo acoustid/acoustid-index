@@ -157,4 +157,5 @@ test {
     _ = @import("filefmt.zig");
     _ = @import("Index.zig");
     _ = @import("changelog.zig");
+    _ = @import("Replicator.zig");
 }
