@@ -156,4 +156,5 @@ test {
     _ = @import("segment_merge_policy.zig");
     _ = @import("filefmt.zig");
     _ = @import("Index.zig");
+    _ = @import("changelog.zig");
 }
