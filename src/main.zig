@@ -219,4 +219,5 @@ test {
     _ = @import("Replicator.zig");
     _ = @import("coordinator_server.zig");
     _ = @import("RemoteCoordinator.zig");
+    _ = @import("index_redirect.zig");
 }
