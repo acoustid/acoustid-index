@@ -8,13 +8,23 @@ Ground-up rewrite on Zig 0.16 with [zio](../zio) (async runtime), [dusty](../dus
 for replication (file-backed standalone, or PostgreSQL for a cluster). See
 `notes/design-notes-2026-07.md` for the architecture and `CLAUDE.md` for the plan.
 
-Status: early. Walking skeleton — HTTP server with `/_health`.
+Status: single-node feature-complete (parity with the previous version bar the
+cluster). Replication (PG changelog) is next.
 
 ## Build
 
     zig build              # -> ./zig-out/bin/fpindex
     zig build run          # run it
     zig build unit-tests   # unit tests
+
+## Integration tests (pytest)
+
+The suite in `tests/` launches the binary as a subprocess and drives the HTTP API.
+
+    python3 -m venv tests/venv
+    tests/venv/bin/pip install -r tests/requirements.txt
+    source tests/venv/bin/activate
+    zig build e2e-tests    # or: pytest -v tests/
 
 ## Try it
 
