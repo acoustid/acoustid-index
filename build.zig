@@ -7,6 +7,7 @@ pub fn build(b: *std.Build) void {
     const zio_dep = b.dependency("zio", .{ .target = target, .optimize = optimize });
     const dusty_dep = b.dependency("dusty", .{ .target = target, .optimize = optimize });
     const msgpack_dep = b.dependency("msgpack", .{ .target = target, .optimize = optimize });
+    const metrics_dep = b.dependency("metrics", .{ .target = target, .optimize = optimize });
 
     // Inject the real zio module into dusty, replacing dusty's built-in zio stub.
     // Without this, request timeouts panic (the stub's AutoCancel.set() @panics).
@@ -23,6 +24,7 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("zio", zio_dep.module("zio"));
     exe.root_module.addImport("dusty", dusty_dep.module("dusty"));
     exe.root_module.addImport("msgpack", msgpack_dep.module("msgpack"));
+    exe.root_module.addImport("metrics", metrics_dep.module("metrics"));
 
     b.installArtifact(exe);
 

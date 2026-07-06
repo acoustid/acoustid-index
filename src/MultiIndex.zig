@@ -12,6 +12,7 @@ const zio = @import("zio");
 const api = @import("api.zig");
 const Index = @import("Index.zig");
 const SearchResults = @import("common.zig").SearchResults;
+const metrics = @import("metrics.zig");
 const log = std.log.scoped(.multi_index);
 
 const Self = @This();
@@ -71,6 +72,7 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
     defer self.lock.unlockShared();
 
     const index = self.indexes.get(name) orelse return error.IndexNotFound;
+    metrics.incSearches();
 
     const limit = @max(@min(request.limit, api.max_search_limit), api.min_search_limit);
     var collector = SearchResults.init(arena, .{
@@ -91,10 +93,12 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
     deadline.set(.fromMilliseconds(timeout_ms));
     defer deadline.clear();
 
+    var sw = zio.Stopwatch.start();
     reader.search(request.query, &collector) catch |err| {
         if (err == error.Canceled and deadline.check(error.Canceled)) return error.SearchTimeout;
         return err;
     };
+    metrics.observeSearchSeconds(@as(f64, @floatFromInt(sw.read().toNanoseconds())) / 1_000_000_000.0);
 
     const results = collector.getResults();
     const out = try arena.alloc(api.SearchResult, results.len);
@@ -108,8 +112,25 @@ pub fn update(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
     defer self.lock.unlockShared();
 
     const index = self.indexes.get(name) orelse return error.IndexNotFound;
+    metrics.incUpdates();
     const version = try index.update(request.changes, request.metadata, request.expected_version);
     return .{ .version = version };
+}
+
+/// Render metrics (global counters + a per-index docs gauge) in Prometheus text.
+pub fn writeMetrics(self: *Self, w: *std.Io.Writer) !void {
+    try metrics.writeGlobal(w);
+
+    try self.lock.lockShared();
+    defer self.lock.unlockShared();
+
+    try w.writeAll("# HELP fpindex_docs Number of documents in an index\n# TYPE fpindex_docs gauge\n");
+    var it = self.indexes.iterator();
+    while (it.next()) |entry| {
+        var reader = try entry.value_ptr.*.acquireReader();
+        defer reader.deinit();
+        try w.print("fpindex_docs{{index=\"{s}\"}} {d}\n", .{ entry.key_ptr.*, reader.numDocs() });
+    }
 }
 
 pub fn checkIndexExists(self: *Self, name: []const u8) !bool {

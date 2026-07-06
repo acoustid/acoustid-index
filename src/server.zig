@@ -153,9 +153,9 @@ fn optionalBody(comptime T: type, req: *http.Request, res: *http.Response, defau
 
 // --- system ---
 
-fn handleMetrics(_: *MultiIndex, _: *http.Request, res: *http.Response) !void {
-    // TODO: Prometheus metrics.
-    res.body = "";
+fn handleMetrics(mi: *MultiIndex, _: *http.Request, res: *http.Response) !void {
+    try mi.writeMetrics(res.writer());
+    try res.header("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
 }
 
 fn handleHealth(_: *MultiIndex, _: *http.Request, res: *http.Response) !void {

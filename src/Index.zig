@@ -19,6 +19,7 @@ const SegmentInfo = @import("segment.zig").SegmentInfo;
 const SegmentMerger = @import("segment_merger.zig").SegmentMerger;
 const TieredMergePolicy = @import("segment_merge_policy.zig").TieredMergePolicy;
 const SearchResults = @import("common.zig").SearchResults;
+const metrics = @import("metrics.zig");
 const SharedPtr = @import("shared_ptr.zig").SharedPtr;
 const KeepOrDelete = @import("common.zig").KeepOrDelete;
 const DocInfo = @import("common.zig").DocInfo;
@@ -533,6 +534,7 @@ fn mergeMemory(self: *Self) !bool {
     try self.installSnapshot(new_file, new_memory, self.version, self.file_version);
     installed = true;
 
+    metrics.incMemoryMerges();
     log.info("merged {} memory segments -> {x}-{x} ({} items)", .{ n, merged.value.info.version, merged.value.info.merges, merged.value.getSize() });
     return true;
 }
@@ -595,6 +597,7 @@ fn checkpoint(self: *Self) !bool {
         log.warn("oplog truncate failed: {}", .{err});
     };
 
+    metrics.incCheckpoints();
     log.info("checkpointed to file segment {x}-{x} ({} items)", .{ info.version, info.merges, fseg.value.num_items });
     return true;
 }
@@ -667,6 +670,7 @@ fn mergeFiles(self: *Self) !bool {
     try self.installSnapshot(new_file, new_memory, self.version, self.file_version);
     installed = true;
 
+    metrics.incFileMerges();
     log.info("merged {} file segments -> {x}-{x} ({} items)", .{ n, info.version, info.merges, fseg.value.num_items });
     return true;
 }

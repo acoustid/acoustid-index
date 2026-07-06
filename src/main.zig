@@ -8,6 +8,7 @@ const http = @import("dusty");
 // panic). Re-enable once that's fixed.
 
 const MultiIndex = @import("MultiIndex.zig");
+const metrics = @import("metrics.zig");
 const Server = @import("server.zig").Server;
 const registerRoutes = @import("server.zig").registerRoutes;
 
@@ -106,6 +107,8 @@ pub fn main(init: std.process.Init.Minimal) !void {
     const allocator = root_allocator.allocator();
 
     const config = try parseArgs(init.args);
+
+    metrics.init(.{});
 
     // Multiple executors so searches, updates, and merges spread across cores.
     // The index is thread-safe: reads work on a refcounted snapshot, the segment
