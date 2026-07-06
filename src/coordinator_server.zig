@@ -12,9 +12,12 @@ const msgpack = @import("msgpack");
 const changelog_mod = @import("Coordinator.zig");
 const Coordinator = changelog_mod.Coordinator;
 const Entry = changelog_mod.Entry;
+const MetaOp = changelog_mod.MetaOp;
 const AppendRequest = changelog_mod.AppendRequest;
 const AppendResponse = changelog_mod.AppendResponse;
 const ReadResponse = changelog_mod.ReadResponse;
+const MetaReadResponse = changelog_mod.MetaReadResponse;
+const MetaCreateResponse = changelog_mod.MetaCreateResponse;
 
 const max_read_entries = 1024;
 
@@ -28,6 +31,35 @@ pub fn registerRoutes(server: *Server) void {
     const r = &server.router;
     r.post("/_changelog/:index", handleAppend);
     r.get("/_changelog/:index", handleRead);
+    r.post("/_index/:index", handleCreateIndex);
+    r.delete("/_index/:index", handleDeleteIndex);
+    r.get("/_meta", handleReadMeta);
+}
+
+fn handleCreateIndex(co: *Service, req: *http.Request, res: *http.Response) !void {
+    const index = req.params.get("index") orelse return fail(res, .bad_request, "missing index");
+    const generation = co.coordinator.createIndex(index) catch |err|
+        return fail(res, statusFor(err), @errorName(err));
+    try respond(MetaCreateResponse{ .generation = generation }, res);
+}
+
+fn handleDeleteIndex(co: *Service, req: *http.Request, res: *http.Response) !void {
+    const index = req.params.get("index") orelse return fail(res, .bad_request, "missing index");
+    co.coordinator.deleteIndex(index) catch |err|
+        return fail(res, statusFor(err), @errorName(err));
+    res.status = .no_content;
+}
+
+fn handleReadMeta(co: *Service, req: *http.Request, res: *http.Response) !void {
+    const after = queryInt(req, "after") orelse 0;
+    const max: usize = @intCast(@min(queryInt(req, "max") orelse 256, max_read_entries));
+    const timeout_ms = queryInt(req, "timeout_ms") orelse 0;
+
+    const buf = try req.arena.alloc(MetaOp, max);
+    const deadline: zio.Timeout = if (timeout_ms == 0) .none else .{ .duration = .fromMilliseconds(timeout_ms) };
+    const n = co.coordinator.readMeta(after, buf, deadline) catch |err|
+        return fail(res, statusFor(err), @errorName(err));
+    try respond(MetaReadResponse{ .ops = buf[0..n] }, res);
 }
 
 fn handleAppend(co: *Service, req: *http.Request, res: *http.Response) !void {

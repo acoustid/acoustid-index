@@ -16,9 +16,12 @@ const changelog_mod = @import("Coordinator.zig");
 const Coordinator = changelog_mod.Coordinator;
 const Entry = changelog_mod.Entry;
 const Change = @import("change.zig").Change;
+const MetaOp = changelog_mod.MetaOp;
 const AppendRequest = changelog_mod.AppendRequest;
 const AppendResponse = changelog_mod.AppendResponse;
 const ReadResponse = changelog_mod.ReadResponse;
+const MetaReadResponse = changelog_mod.MetaReadResponse;
+const MetaCreateResponse = changelog_mod.MetaCreateResponse;
 
 const Self = @This();
 const long_poll_ms = 20_000;
@@ -28,9 +31,10 @@ io: std.Io,
 base_url: []const u8, // e.g. "http://127.0.0.1:9000"
 mutex: zio.Mutex = .init,
 read_arenas: std.StringHashMapUnmanaged(*std.heap.ArenaAllocator) = .empty,
+meta_arena: std.heap.ArenaAllocator, // single meta consumer -> one arena
 
 pub fn init(allocator: std.mem.Allocator, io: std.Io, base_url: []const u8) Self {
-    return .{ .allocator = allocator, .io = io, .base_url = base_url };
+    return .{ .allocator = allocator, .io = io, .base_url = base_url, .meta_arena = std.heap.ArenaAllocator.init(allocator) };
 }
 
 pub fn deinit(self: *Self) void {
@@ -41,13 +45,20 @@ pub fn deinit(self: *Self) void {
         self.allocator.free(e.key_ptr.*);
     }
     self.read_arenas.deinit(self.allocator);
+    self.meta_arena.deinit();
 }
 
 pub fn coordinator(self: *Self) Coordinator {
     return .{ .ptr = self, .vtable = &vtable };
 }
 
-const vtable: Coordinator.VTable = .{ .append = appendImpl, .read = readImpl };
+const vtable: Coordinator.VTable = .{
+    .append = appendImpl,
+    .read = readImpl,
+    .createIndex = createIndexImpl,
+    .deleteIndex = deleteIndexImpl,
+    .readMeta = readMetaImpl,
+};
 
 fn appendImpl(ptr: *anyopaque, index_name: []const u8, changes: []const Change, expected: ?u64) anyerror!u64 {
     const self: *Self = @ptrCast(@alignCast(ptr));
@@ -91,6 +102,61 @@ fn readImpl(ptr: *anyopaque, index_name: []const u8, after: u64, out: []Entry, d
     const rres = try msgpack.decodeFromSliceLeaky(ReadResponse, ra, body);
     const n = @min(rres.entries.len, out.len);
     for (rres.entries[0..n], 0..) |e, i| out[i] = e;
+    return n;
+}
+
+fn createIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!u64 {
+    const self: *Self = @ptrCast(@alignCast(ptr));
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const url = try std.fmt.allocPrint(a, "{s}/_index/{s}", .{ self.base_url, name });
+    var client = http.Client.init(self.allocator, self.io, .{});
+    defer client.deinit();
+    var resp = try client.fetch(url, .{ .method = .post });
+    defer resp.deinit();
+    if (resp.status() != .ok) return statusToError(resp.status());
+
+    const body = (try resp.body()) orelse return error.EmptyResponse;
+    const cres = try msgpack.decodeFromSliceLeaky(MetaCreateResponse, a, body);
+    return cres.generation;
+}
+
+fn deleteIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!void {
+    const self: *Self = @ptrCast(@alignCast(ptr));
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
+
+    const url = try std.fmt.allocPrint(arena.allocator(), "{s}/_index/{s}", .{ self.base_url, name });
+    var client = http.Client.init(self.allocator, self.io, .{});
+    defer client.deinit();
+    var resp = try client.fetch(url, .{ .method = .delete });
+    defer resp.deinit();
+    const s = resp.status();
+    if (s != .no_content and s != .ok) return statusToError(s);
+}
+
+fn readMetaImpl(ptr: *anyopaque, after: u64, out: []MetaOp, deadline: zio.Timeout) anyerror!usize {
+    const self: *Self = @ptrCast(@alignCast(ptr));
+    _ = deadline; // consumer loops; each call is one long-poll window
+
+    _ = self.meta_arena.reset(.retain_capacity);
+    const ra = self.meta_arena.allocator();
+
+    const url = try std.fmt.allocPrint(ra, "{s}/_meta?after={d}&max={d}&timeout_ms={d}", .{
+        self.base_url, after, out.len, long_poll_ms,
+    });
+    var client = http.Client.init(self.allocator, self.io, .{});
+    defer client.deinit();
+    var resp = try client.fetch(url, .{ .method = .get });
+    defer resp.deinit();
+    if (resp.status() != .ok) return statusToError(resp.status());
+
+    const body = (try resp.body()) orelse return 0;
+    const mres = try msgpack.decodeFromSliceLeaky(MetaReadResponse, ra, body);
+    const n = @min(mres.ops.len, out.len);
+    for (mres.ops[0..n], 0..) |op, i| out[i] = op;
     return n;
 }
 

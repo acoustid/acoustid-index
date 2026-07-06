@@ -61,6 +61,41 @@ pub const ReadResponse = struct {
     }
 };
 
+/// An index-lifecycle op on the (never-truncated) meta feed. `pos` orders the
+/// feed and, for a create, IS the index's generation — a lineage identity
+/// orthogonal to data positions, so create/delete/create is unambiguous even when
+/// the recreate's `start_position` lands on the old lineage's last data id.
+/// `start_position` is the data-feed position after which this lineage's data
+/// begins (create only).
+pub const MetaOp = struct {
+    pos: u64,
+    kind: Kind,
+    index_name: []const u8,
+    start_position: u64 = 0,
+
+    pub const Kind = enum(u8) { create, delete };
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+pub const MetaReadResponse = struct {
+    ops: []MetaOp,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+pub const MetaCreateResponse = struct {
+    generation: u64,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
 /// Runtime-dispatched handle to a changelog implementation.
 pub const Coordinator = struct {
     ptr: *anyopaque,
@@ -78,6 +113,17 @@ pub const Coordinator = struct {
         /// `out.len`), and return how many were written. Returns 0 only on
         /// deadline. Filled entries are valid until the next `read()`.
         read: *const fn (ptr: *anyopaque, index_name: []const u8, after: u64, out: []Entry, deadline: zio.Timeout) anyerror!usize,
+
+        // Meta feed (index lifecycle) — never truncated.
+        /// Record an index create; returns its generation (the create op's meta
+        /// position). Idempotent: if the index is currently active, returns the
+        /// existing generation without appending a duplicate.
+        createIndex: *const fn (ptr: *anyopaque, name: []const u8) anyerror!u64,
+        /// Record an index delete. No-op if the index isn't currently active.
+        deleteIndex: *const fn (ptr: *anyopaque, name: []const u8) anyerror!void,
+        /// Block until a meta op with pos > `after` exists (or `deadline`), fill
+        /// `out` in pos order, return the count. Ops are valid until the next call.
+        readMeta: *const fn (ptr: *anyopaque, after: u64, out: []MetaOp, deadline: zio.Timeout) anyerror!usize,
     };
 
     pub fn append(self: Coordinator, index_name: []const u8, changes: []const Change, expected: ?u64) !u64 {
@@ -86,6 +132,18 @@ pub const Coordinator = struct {
 
     pub fn read(self: Coordinator, index_name: []const u8, after: u64, out: []Entry, deadline: zio.Timeout) !usize {
         return self.vtable.read(self.ptr, index_name, after, out, deadline);
+    }
+
+    pub fn createIndex(self: Coordinator, name: []const u8) !u64 {
+        return self.vtable.createIndex(self.ptr, name);
+    }
+
+    pub fn deleteIndex(self: Coordinator, name: []const u8) !void {
+        return self.vtable.deleteIndex(self.ptr, name);
+    }
+
+    pub fn readMeta(self: Coordinator, after: u64, out: []MetaOp, deadline: zio.Timeout) !usize {
+        return self.vtable.readMeta(self.ptr, after, out, deadline);
     }
 };
 
@@ -97,11 +155,21 @@ pub const MemoryCoordinator = struct {
     cond: zio.Condition = .init,
     rows: std.ArrayListUnmanaged(Row) = .empty,
     next_id: u64 = 1,
+    // Meta feed (index lifecycle), never truncated.
+    meta_ops: std.ArrayListUnmanaged(MetaEntry) = .empty,
+    next_meta_pos: u64 = 1,
 
     const Row = struct {
         id: u64,
         index_name: []const u8, // owned
         change: Change, // insert hashes owned
+    };
+
+    const MetaEntry = struct {
+        pos: u64,
+        kind: MetaOp.Kind,
+        index_name: []const u8, // owned
+        start_position: u64,
     };
 
     pub fn init(allocator: std.mem.Allocator) MemoryCoordinator {
@@ -111,6 +179,8 @@ pub const MemoryCoordinator = struct {
     pub fn deinit(self: *MemoryCoordinator) void {
         for (self.rows.items) |*row| self.freeRow(row);
         self.rows.deinit(self.allocator);
+        for (self.meta_ops.items) |op| self.allocator.free(op.index_name);
+        self.meta_ops.deinit(self.allocator);
         self.* = undefined;
     }
 
@@ -118,7 +188,13 @@ pub const MemoryCoordinator = struct {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    const vtable: Coordinator.VTable = .{ .append = appendImpl, .read = readImpl };
+    const vtable: Coordinator.VTable = .{
+        .append = appendImpl,
+        .read = readImpl,
+        .createIndex = createIndexImpl,
+        .deleteIndex = deleteIndexImpl,
+        .readMeta = readMetaImpl,
+    };
 
     fn appendImpl(ptr: *anyopaque, index_name: []const u8, changes: []const Change, expected: ?u64) anyerror!u64 {
         const self: *MemoryCoordinator = @ptrCast(@alignCast(ptr));
@@ -190,6 +266,76 @@ pub const MemoryCoordinator = struct {
     fn freeRow(self: *MemoryCoordinator, row: *Row) void {
         self.allocator.free(row.index_name);
         freeChange(self.allocator, row.change);
+    }
+
+    // The generation of the index if it's currently active (latest meta op is a
+    // create), else null.
+    fn currentGenerationLocked(self: *MemoryCoordinator, name: []const u8) ?u64 {
+        var gen: ?u64 = null;
+        for (self.meta_ops.items) |op| {
+            if (!std.mem.eql(u8, op.index_name, name)) continue;
+            gen = if (op.kind == .create) op.pos else null;
+        }
+        return gen;
+    }
+
+    fn createIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!u64 {
+        const self: *MemoryCoordinator = @ptrCast(@alignCast(ptr));
+        try self.mutex.lock();
+        defer self.mutex.unlock();
+        if (self.currentGenerationLocked(name)) |gen| return gen; // already active
+        const pos = self.next_meta_pos;
+        const name_copy = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(name_copy);
+        try self.meta_ops.append(self.allocator, .{
+            .pos = pos,
+            .kind = .create,
+            .index_name = name_copy,
+            .start_position = self.next_id - 1, // current data-feed max
+        });
+        self.next_meta_pos += 1;
+        self.cond.broadcast();
+        return pos;
+    }
+
+    fn deleteIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!void {
+        const self: *MemoryCoordinator = @ptrCast(@alignCast(ptr));
+        try self.mutex.lock();
+        defer self.mutex.unlock();
+        if (self.currentGenerationLocked(name) == null) return; // not active
+        const name_copy = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(name_copy);
+        try self.meta_ops.append(self.allocator, .{
+            .pos = self.next_meta_pos,
+            .kind = .delete,
+            .index_name = name_copy,
+            .start_position = 0,
+        });
+        self.next_meta_pos += 1;
+        self.cond.broadcast();
+    }
+
+    fn readMetaImpl(ptr: *anyopaque, after: u64, out: []MetaOp, deadline: zio.Timeout) anyerror!usize {
+        const self: *MemoryCoordinator = @ptrCast(@alignCast(ptr));
+        try self.mutex.lock();
+        defer self.mutex.unlock();
+        while (true) {
+            var n: usize = 0;
+            for (self.meta_ops.items) |op| { // stored in pos order
+                if (n == out.len) break;
+                if (op.pos <= after) continue;
+                out[n] = .{ .pos = op.pos, .kind = op.kind, .index_name = op.index_name, .start_position = op.start_position };
+                n += 1;
+            }
+            if (n > 0) return n;
+            switch (deadline) {
+                .none => try self.cond.wait(&self.mutex),
+                else => self.cond.timedWait(&self.mutex, deadline) catch |err| switch (err) {
+                    error.Timeout => return 0,
+                    else => |e| return e,
+                },
+            }
+        }
     }
 };
 
@@ -320,4 +466,37 @@ test "MemoryCoordinator: read blocks until a concurrent append wakes it" {
 
     try testing.expectEqual(@as(usize, 1), got);
     try testing.expectEqual(@as(u64, 1), first);
+}
+
+test "MemoryCoordinator: meta feed create/delete/create, distinct generations" {
+    const rt = try zio.Runtime.init(testing.allocator, .{});
+    defer rt.deinit();
+
+    var cl = MemoryCoordinator.init(testing.allocator);
+    defer cl.deinit();
+    const co = cl.coordinator();
+
+    const g1 = try co.createIndex("main");
+    try testing.expectEqual(g1, try co.createIndex("main")); // idempotent while active
+
+    _ = try co.append("main", &.{ins(1, &.{10})}, null); // data id 1 lands before the recreate
+
+    try co.deleteIndex("main");
+    const g2 = try co.createIndex("main");
+    try testing.expect(g2 != g1); // orthogonal lineage identity
+
+    var buf: [8]MetaOp = undefined;
+    const n = try co.readMeta(0, &buf, .{ .duration = .fromMilliseconds(0) });
+    try testing.expectEqual(@as(usize, 3), n);
+    try testing.expectEqual(MetaOp.Kind.create, buf[0].kind);
+    try testing.expectEqual(g1, buf[0].pos);
+    try testing.expectEqual(@as(u64, 0), buf[0].start_position);
+    try testing.expectEqual(MetaOp.Kind.delete, buf[1].kind);
+    try testing.expectEqual(MetaOp.Kind.create, buf[2].kind);
+    try testing.expectEqual(g2, buf[2].pos);
+    try testing.expectEqual(@as(u64, 1), buf[2].start_position); // recreate begins after data id 1
+
+    // A different index shares the meta position sequence.
+    const other = try co.createIndex("other");
+    try testing.expect(other > g2);
 }
