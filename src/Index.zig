@@ -1013,6 +1013,71 @@ test "snapshot archive round-trips manifest + file segments" {
     }
 }
 
+test "snapshot restores into a fresh dir and opens at the same version" {
+    const snapshot = @import("snapshot.zig");
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const src_path = "test_snap_restore_src";
+    const dst_path = "test_snap_restore_dst";
+    cleanupTestDir(cwd, src_path);
+    cleanupTestDir(cwd, dst_path);
+    try cwd.createDir(src_path, 0o755);
+    try cwd.createDir(dst_path, 0o755);
+    defer cleanupTestDir(cwd, src_path);
+    defer cleanupTestDir(cwd, dst_path);
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // Source with two file segments (threshold 1 -> checkpoint each update).
+    const src_dir = try cwd.openDir(src_path, .{ .iterate = true });
+    var src = try Self.open(std.testing.allocator, src_dir, 1, true, null);
+    _ = try src.update(&[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{ 100, 200, 300 } } }}, .{});
+    try src.runMaintenance();
+    _ = try src.update(&[_]Change{.{ .insert = .{ .id = 2, .hashes = &[_]u32{ 400, 500 } } }}, .{});
+    try src.runMaintenance();
+
+    var reader = try src.acquireReader();
+    const src_version = reader.snapshot.value.version;
+    var buf: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer buf.deinit();
+    try snapshot.writeSnapshot(&buf.writer, a, reader.snapshot.value, 7);
+    reader.deinit();
+    src.deinit();
+
+    const dst_dir = try cwd.openDir(dst_path, .{ .iterate = true });
+
+    // The manifest + segments go into the index's "data" subdir (Index.open reads them
+    // from there; the "oplog" WAL subdir is created empty on open).
+    const dst_data = try openOrCreateDir(dst_dir, "data");
+
+    // Wrong generation is rejected (and writes nothing — the check precedes any write).
+    var rw = std.Io.Reader.fixed(buf.written());
+    try std.testing.expectError(error.SnapshotGenerationMismatch, snapshot.restoreInto(dst_data, &rw, a, 8));
+
+    // Restore the right generation, then open: same version, data searchable.
+    var rr = std.Io.Reader.fixed(buf.written());
+    try snapshot.restoreInto(dst_data, &rr, a, 7);
+    dst_data.close();
+
+    var dst = try Self.open(std.testing.allocator, dst_dir, 100_000, true, null);
+    defer dst.deinit();
+    try std.testing.expectEqual(src_version, dst.version);
+
+    var results = SearchResults.init(a, .{});
+    defer results.deinit();
+    var dr = try dst.acquireReader();
+    defer dr.deinit();
+    var q = [_]u32{ 100, 200, 300 };
+    try dr.search(&q, &results);
+    const hits = results.getResults();
+    try std.testing.expectEqual(@as(usize, 1), hits.len);
+    try std.testing.expectEqual(@as(u32, 1), hits[0].id);
+}
+
 test "merged-away files are deleted even when a reader outlived the merge" {
     const rt = try zio.Runtime.init(std.testing.allocator, .{});
     defer rt.deinit();

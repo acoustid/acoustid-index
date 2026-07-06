@@ -12,8 +12,10 @@
 // from the header's SegmentInfos on restore.
 
 const std = @import("std");
+const zio = @import("zio");
 const msgpack = @import("msgpack");
 const filefmt = @import("filefmt.zig");
+const manifest = @import("manifest.zig");
 const SegmentInfo = @import("segment.zig").SegmentInfo;
 const Segments = @import("Index.zig").Segments;
 
@@ -76,4 +78,42 @@ pub fn parse(arena: std.mem.Allocator, bytes: []const u8) !Parsed {
         entries[i] = .{ .info = seg.info, .data = data };
     }
     return .{ .generation = header.generation, .entries = entries };
+}
+
+// Stream a snapshot from `r` into `dir` (an empty data dir): reconstruct + write the
+// manifest from the header, then stream each segment payload straight to its file (no
+// whole-archive buffering). Verifies the snapshot's generation is `expected_generation`
+// — the lineage the caller means to restore. The watermark isn't returned; the caller
+// opens the index, which derives its version from the restored manifest.
+pub fn restoreInto(dir: zio.Dir, r: *std.Io.Reader, arena: std.mem.Allocator, expected_generation: u64) !void {
+    const unpacker = msgpack.unpacker(r, arena);
+    const header = try unpacker.read(SnapshotHeader);
+    if (header.format != format_version) return error.UnsupportedSnapshotFormat;
+    if (header.generation != expected_generation) return error.SnapshotGenerationMismatch;
+
+    const infos = try arena.alloc(SegmentInfo, header.segments.len);
+    for (header.segments, 0..) |seg, i| infos[i] = seg.info;
+    try manifest.write(dir, arena, infos);
+
+    const scratch = try arena.alloc(u8, 128 * 1024);
+    for (header.segments) |seg| {
+        var name_buf: [filefmt.max_file_name_size]u8 = undefined;
+        const name = filefmt.buildSegmentFileName(&name_buf, seg.info);
+        try streamToFile(dir, name, r, seg.size, scratch);
+    }
+}
+
+fn streamToFile(dir: zio.Dir, name: []const u8, r: *std.Io.Reader, size: u64, scratch: []u8) !void {
+    const file = try dir.createFile(name, .{ .truncate = true });
+    defer file.close();
+    var remaining = size;
+    var off: u64 = 0;
+    while (remaining > 0) {
+        const want: usize = @intCast(@min(remaining, scratch.len));
+        try r.readSliceAll(scratch[0..want]);
+        var written: usize = 0;
+        while (written < want) written += try file.write(scratch[written..want], off + written);
+        off += want;
+        remaining -= want;
+    }
 }
