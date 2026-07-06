@@ -37,6 +37,8 @@ const meta_batch = 64;
 // Only affects how long startup waits once the feed is drained — correctness does
 // not depend on catch-up completeness (the streaming phase continues from `after`).
 const meta_catchup_ms = 100;
+// Backoff between retries of a failed meta reconcile (transient errors only).
+const reconcile_retry_ms = 1000;
 
 allocator: std.mem.Allocator,
 mi: *MultiIndex,
@@ -96,7 +98,13 @@ pub fn start(self: *Self) !void {
 pub fn addConsumer(self: *Self, name: []const u8, generation: u64, start_version: u64) !void {
     try self.mutex.lock();
     defer self.mutex.unlock();
-    if (self.consumers.contains(name)) return;
+    if (self.consumers.get(name)) |existing| {
+        // Idempotent per name. Callers must stop the old lineage's consumer (via
+        // removeConsumer in deleteIndexLocal) before starting a new generation, so
+        // an existing consumer here must be the same lineage.
+        std.debug.assert(existing.generation == generation);
+        return;
+    }
 
     const name_copy = try self.allocator.dupe(u8, name);
     errdefer self.allocator.free(name_copy);
@@ -215,10 +223,7 @@ fn metaLoop(self: *Self) zio.Cancelable!void {
         }
         var it = folded.iterator();
         while (it.next()) |e| {
-            self.reconcileOne(e.key_ptr.*, e.value_ptr.kind, e.value_ptr.generation) catch |err| {
-                if (err == error.Canceled) return error.Canceled;
-                log.warn("meta reconcile (catch-up) failed for '{s}': {}", .{ e.key_ptr.*, err });
-            };
+            try self.reconcileWithRetry(e.key_ptr.*, e.value_ptr.kind, e.value_ptr.generation);
         }
         self.markMetaApplied(after);
     }
@@ -233,10 +238,7 @@ fn metaLoop(self: *Self) zio.Cancelable!void {
             continue;
         };
         for (buf[0..n]) |op| {
-            self.reconcileOne(op.index_name, op.kind, op.pos) catch |err| {
-                if (err == error.Canceled) return error.Canceled;
-                log.warn("meta reconcile failed for '{s}' at pos {d}: {}", .{ op.index_name, op.pos, err });
-            };
+            try self.reconcileWithRetry(op.index_name, op.kind, op.pos);
             after = op.pos;
             self.markMetaApplied(op.pos);
         }
@@ -247,6 +249,24 @@ fn reconcileOne(self: *Self, name: []const u8, kind: MetaOp.Kind, generation: u6
     switch (kind) {
         .create => try self.mi.reconcileCreate(name, generation),
         .delete => try self.mi.deleteIndexLocal(name),
+    }
+}
+
+// Reconcile one op, retrying on transient failure with backoff. We must NOT advance
+// the meta watermark past a failed reconcile: the coordinator's create is
+// idempotent, so a client retry would return the same (already-applied) position
+// and find the index still missing — the op would never be revisited. Blocking here
+// until it succeeds (or shutdown cancels) keeps a transient error (ENOSPC, EMFILE,
+// OOM) from permanently stranding an index. Cancellation propagates out.
+fn reconcileWithRetry(self: *Self, name: []const u8, kind: MetaOp.Kind, generation: u64) zio.Cancelable!void {
+    while (true) {
+        self.reconcileOne(name, kind, generation) catch |err| {
+            if (err == error.Canceled) return error.Canceled;
+            log.warn("meta reconcile failed for '{s}' (retrying): {}", .{ name, err });
+            try zio.sleep(.fromMilliseconds(reconcile_retry_ms));
+            continue;
+        };
+        return;
     }
 }
 

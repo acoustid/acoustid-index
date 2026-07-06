@@ -174,7 +174,8 @@ fn timeoutMs(deadline: zio.Timeout) u64 {
     return switch (deadline) {
         .none => long_poll_ms,
         .duration => |d| d.toMilliseconds(),
-        .deadline => long_poll_ms, // not used on these paths
+        // Callers only ever pass .none (consumers) or .duration (meta catch-up).
+        .deadline => unreachable,
     };
 }
 
