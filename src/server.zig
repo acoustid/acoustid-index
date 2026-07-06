@@ -236,14 +236,15 @@ fn handleGetIndex(mi: *MultiIndex, req: *http.Request, res: *http.Response) !voi
 
 fn handlePutIndex(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
     const request = optionalBody(api.CreateIndexRequest, req, res, .{}) orelse return;
-    _ = mi.createIndex(indexName(req), request) catch |err| return sendError(req, res, err);
-    try sendEmpty(req, res);
+    const response = mi.createIndex(indexName(req), request) catch |err| return sendError(req, res, err);
+    if (!response.ready) res.status = .accepted; // 202 until ready
+    try respond(response, req, res);
 }
 
 fn handleDeleteIndex(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
     const request = optionalBody(api.DeleteIndexRequest, req, res, .{}) orelse return;
-    _ = mi.deleteIndex(indexName(req), request) catch |err| return sendError(req, res, err);
-    try sendEmpty(req, res);
+    const response = mi.deleteIndex(indexName(req), request) catch |err| return sendError(req, res, err);
+    try respond(response, req, res);
 }
 
 fn handleSnapshotExport(_: *MultiIndex, req: *http.Request, res: *http.Response) !void {

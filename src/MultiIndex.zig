@@ -88,7 +88,10 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
     // Bound the search: the segment scans hit maybeYield, so an expired timer
     // cancels the task there. check() tells our timeout apart from a real
     // (shutdown) cancellation, which still propagates.
-    const timeout_ms = if (request.timeout == 0) api.default_search_timeout else @min(request.timeout, api.max_search_timeout);
+    // Matches the old deadline: a request without a timeout defaults to
+    // default_search_timeout (the struct default), an explicit value is capped;
+    // an explicit 0 is passed through (near-immediate), as before.
+    const timeout_ms = @min(request.timeout, api.max_search_timeout);
     var deadline: zio.AutoCancel = .init;
     deadline.set(.fromMilliseconds(timeout_ms));
     defer deadline.clear();
