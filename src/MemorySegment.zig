@@ -4,7 +4,6 @@ const log = std.log;
 
 const common = @import("common.zig");
 const SearchResults = common.SearchResults;
-const KeepOrDelete = common.KeepOrDelete;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
 const SegmentStatus = @import("segment.zig").SegmentStatus;
 const Item = @import("segment.zig").Item;
@@ -36,9 +35,7 @@ pub fn init(allocator: std.mem.Allocator, opts: Options) Self {
     };
 }
 
-pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
-    _ = delete_file;
-
+pub fn deinit(self: *Self) void {
     self.metadata.deinit();
     self.docs.deinit(self.allocator);
     self.items.deinit(self.allocator);

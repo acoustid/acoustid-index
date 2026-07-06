@@ -22,7 +22,6 @@ const TieredMergePolicy = @import("segment_merge_policy.zig").TieredMergePolicy;
 const SearchResults = @import("common.zig").SearchResults;
 const metrics = @import("metrics.zig");
 const SharedPtr = @import("shared_ptr.zig").SharedPtr;
-const KeepOrDelete = @import("common.zig").KeepOrDelete;
 const DocInfo = @import("common.zig").DocInfo;
 const log = std.log.scoped(.index);
 
@@ -41,11 +40,13 @@ pub const Segments = struct {
     version: u64 = 0,
     file_version: u64 = 0,
 
-    // `delete` controls whether a segment whose refcount hits zero deletes its
-    // backing file (.delete for segments dropped by a merge, .keep on shutdown).
-    pub fn deinit(self: *Segments, delete: KeepOrDelete) void {
-        for (self.memory) |*s| s.release(self.allocator, MemorySegment.deinit, .{.delete});
-        for (self.file) |*s| s.release(self.allocator, FileSegment.deinit, .{delete});
+    // Drop every segment ref. A file whose last reference this releases is deleted
+    // iff the segment was retired by a merge (FileSegment.delete_on_destroy) — so
+    // shutdown keeps live segments and a merge deletes the ones it replaced, without
+    // any per-release keep/delete decision.
+    pub fn deinit(self: *Segments) void {
+        for (self.memory) |*s| s.release(self.allocator, MemorySegment.deinit, .{});
+        for (self.file) |*s| s.release(self.allocator, FileSegment.deinit, .{});
         self.allocator.free(self.memory);
         self.allocator.free(self.file);
         self.* = undefined;
@@ -144,14 +145,11 @@ pub const IndexReader = struct {
     snapshot: SharedPtr(Segments),
 
     pub fn deinit(self: *IndexReader) void {
-        // Release with .delete, same as the writer: the index always holds the
-        // current snapshot, so a reader can only ever be the LAST releaser of an
-        // already-superseded snapshot — whose only unreferenced (last-drop) segments
-        // are exactly the ones a merge/checkpoint replaced. Segments still live in the
-        // current snapshot have refcount > 0, so their .delete is a no-op. Releasing
-        // with .keep instead leaks those merged-away files whenever a search outlives
-        // the merge that superseded its snapshot.
-        self.snapshot.release(self.allocator, Segments.deinit, .{.delete});
+        // If this search outlived the merge that superseded its snapshot, it may be
+        // the last holder of a retired segment — deinit deletes that segment's file
+        // (delete_on_destroy), so the merge's cleanup completes here rather than
+        // leaking. Live segments aren't marked, so nothing live is touched.
+        self.snapshot.release(self.allocator, Segments.deinit, .{});
     }
 
     // `hashes` is sorted in place.
@@ -223,9 +221,9 @@ pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: us
     var file_list: std.ArrayListUnmanaged(FileRef) = .empty;
     var mem_list: std.ArrayListUnmanaged(MemoryRef) = .empty;
     errdefer {
-        for (file_list.items) |*s| s.release(allocator, FileSegment.deinit, .{.keep});
+        for (file_list.items) |*s| s.release(allocator, FileSegment.deinit, .{});
         file_list.deinit(allocator);
-        for (mem_list.items) |*s| s.release(allocator, MemorySegment.deinit, .{.delete});
+        for (mem_list.items) |*s| s.release(allocator, MemorySegment.deinit, .{});
         mem_list.deinit(allocator);
     }
 
@@ -326,7 +324,7 @@ fn loadFileSegment(load_sem: ?*zio.Semaphore, dir: zio.Dir, info: SegmentInfo, a
 
 fn loadFileSegmentInner(dir: zio.Dir, info: SegmentInfo, allocator: std.mem.Allocator, out_ref: *FileRef) !void {
     var ref = try FileRef.create(allocator, FileSegment.init(allocator));
-    errdefer ref.release(allocator, FileSegment.deinit, .{.keep});
+    errdefer ref.release(allocator, FileSegment.deinit, .{});
     try filefmt.readSegment(dir, info, ref.value);
     out_ref.* = ref;
 }
@@ -347,7 +345,7 @@ const ReplayCtx = struct {
     fn apply(self: *ReplayCtx, txn: Transaction) !void {
         if (txn.id <= self.file_version) return; // already in a file segment
         var ref = try MemoryRef.create(self.allocator, MemorySegment.init(self.allocator, .{}));
-        errdefer ref.release(self.allocator, MemorySegment.deinit, .{.delete});
+        errdefer ref.release(self.allocator, MemorySegment.deinit, .{});
         try ref.value.build(txn.changes);
         ref.value.info = .{ .version = txn.id, .merges = 0 };
         try self.mem_list.append(self.allocator, ref);
@@ -357,7 +355,7 @@ const ReplayCtx = struct {
 pub fn deinit(self: *Self) void {
     self.stop();
     self.oplog.deinit();
-    self.segments.release(self.allocator, Segments.deinit, .{.keep});
+    self.segments.release(self.allocator, Segments.deinit, .{});
     self.oplog_dir.close();
     self.data_dir.close();
     self.dir.close();
@@ -402,7 +400,7 @@ fn swapSnapshot(self: *Self, snap: SharedPtr(Segments)) void {
     self.segments = snap;
     self.segments_lock.unlock();
 
-    old.release(self.allocator, Segments.deinit, .{.delete});
+    old.release(self.allocator, Segments.deinit, .{});
     self.version = version;
     self.file_version = file_version;
 }
@@ -413,8 +411,8 @@ fn cloneRefs(comptime T: type, allocator: std.mem.Allocator, src: []SharedPtr(T)
     return dst;
 }
 
-fn releaseRefs(comptime T: type, allocator: std.mem.Allocator, refs: []SharedPtr(T), cleanup: KeepOrDelete) void {
-    for (refs) |*s| s.release(allocator, T.deinit, .{cleanup});
+fn releaseRefs(comptime T: type, allocator: std.mem.Allocator, refs: []SharedPtr(T)) void {
+    for (refs) |*s| s.release(allocator, T.deinit, .{});
     allocator.free(refs);
 }
 
@@ -432,7 +430,7 @@ pub fn update(self: *Self, changes: []const Change, options: Oplog.WriteOptions)
 
     var seg = try MemoryRef.create(self.allocator, MemorySegment.init(self.allocator, .{}));
     var seg_consumed = false;
-    errdefer if (!seg_consumed) seg.release(self.allocator, MemorySegment.deinit, .{.delete});
+    errdefer if (!seg_consumed) seg.release(self.allocator, MemorySegment.deinit, .{});
     try seg.value.build(changes);
 
     const version = try self.oplog.append(changes, options);
@@ -441,7 +439,7 @@ pub fn update(self: *Self, changes: []const Change, options: Oplog.WriteOptions)
     const cur = self.segments.value;
     const new_file = try cloneRefs(FileSegment, self.allocator, cur.file);
     var arrays_consumed = false;
-    errdefer if (!arrays_consumed) releaseRefs(FileSegment, self.allocator, new_file, .keep);
+    errdefer if (!arrays_consumed) releaseRefs(FileSegment, self.allocator, new_file);
 
     const new_memory = try self.allocator.alloc(MemoryRef, cur.memory.len + 1);
     // On a later failure new_memory is fully populated (the fill below is
@@ -449,7 +447,7 @@ pub fn update(self: *Self, changes: []const Change, options: Oplog.WriteOptions)
     // are shared (their .delete is a no-op until their real last drop); `seg` is the
     // uncommitted new segment and is deleted.
     errdefer if (!arrays_consumed) {
-        for (new_memory) |*s| s.release(self.allocator, MemorySegment.deinit, .{.delete});
+        for (new_memory) |*s| s.release(self.allocator, MemorySegment.deinit, .{});
         self.allocator.free(new_memory);
     };
     for (cur.memory, 0..) |s, i| new_memory[i] = s.acquire();
@@ -558,10 +556,10 @@ fn mergeMemory(self: *Self) !bool {
     try self.segments_lock.lockShared();
     var snap = self.segments.acquire();
     self.segments_lock.unlockShared();
-    // .delete: once this op commits, `snap` is the superseded snapshot; releasing it
-    // (when no reader still holds it) must delete its merged-away files. Shared
-    // segments have refcount > 0, so their .delete is a no-op — only Index.deinit keeps.
-    defer snap.release(self.allocator, Segments.deinit, .{.delete});
+    // Once this op commits, `snap` is the superseded snapshot; if no reader still
+    // holds it, this drop retires it. Any file segment the merge marked
+    // delete_on_destroy is deleted here on its last reference.
+    defer snap.release(self.allocator, Segments.deinit, .{});
 
     const src_mem = snap.value.memory;
     if (src_mem.len <= policy.calculateBudget(src_mem)) return false;
@@ -575,7 +573,7 @@ fn mergeMemory(self: *Self) !bool {
     var merged_placed = false;
     var committed = false;
     var arrays_consumed = false;
-    errdefer if (!merged_placed) merged.release(self.allocator, MemorySegment.deinit, .{.delete});
+    errdefer if (!merged_placed) merged.release(self.allocator, MemorySegment.deinit, .{});
     {
         var merger = try SegmentMerger(MemorySegment).init(self.allocator, n);
         defer merger.deinit();
@@ -598,7 +596,7 @@ fn mergeMemory(self: *Self) !bool {
     const new_memory = try self.allocator.alloc(MemoryRef, cur.memory.len - n + 1);
     var nm: usize = 0;
     errdefer if (!arrays_consumed) {
-        for (new_memory[0..nm]) |*s| s.release(self.allocator, MemorySegment.deinit, .{.delete});
+        for (new_memory[0..nm]) |*s| s.release(self.allocator, MemorySegment.deinit, .{});
         self.allocator.free(new_memory);
     };
     for (cur.memory[0..lo]) |s| {
@@ -614,11 +612,11 @@ fn mergeMemory(self: *Self) !bool {
     }
 
     const new_file = try cloneRefs(FileSegment, self.allocator, cur.file);
-    errdefer if (!arrays_consumed) releaseRefs(FileSegment, self.allocator, new_file, .keep);
+    errdefer if (!arrays_consumed) releaseRefs(FileSegment, self.allocator, new_file);
 
     var new_snap = try self.createSnapshot(new_file, new_memory, self.version, self.file_version);
     arrays_consumed = true;
-    errdefer if (!committed) new_snap.release(self.allocator, Segments.deinit, .{.delete});
+    errdefer if (!committed) new_snap.release(self.allocator, Segments.deinit, .{});
     self.swapSnapshot(new_snap);
     committed = true;
 
@@ -635,10 +633,10 @@ fn checkpoint(self: *Self) !bool {
     try self.segments_lock.lockShared();
     var snap = self.segments.acquire();
     self.segments_lock.unlockShared();
-    // .delete: once this op commits, `snap` is the superseded snapshot; releasing it
-    // (when no reader still holds it) must delete its merged-away files. Shared
-    // segments have refcount > 0, so their .delete is a no-op — only Index.deinit keeps.
-    defer snap.release(self.allocator, Segments.deinit, .{.delete});
+    // Once this op commits, `snap` is the superseded snapshot; if no reader still
+    // holds it, this drop retires it. Any file segment the merge marked
+    // delete_on_destroy is deleted here on its last reference.
+    defer snap.release(self.allocator, Segments.deinit, .{});
 
     const flush_count = snap.value.memory.len;
     if (flush_count == 0 or memorySize(snap.value.memory) <= self.checkpoint_threshold) return false;
@@ -647,7 +645,7 @@ fn checkpoint(self: *Self) !bool {
     var committed = false;
     var arrays_consumed = false;
     var fseg_placed = false;
-    errdefer if (!fseg_placed) fseg.release(self.allocator, FileSegment.deinit, .{.delete});
+    errdefer if (!fseg_placed) fseg.release(self.allocator, FileSegment.deinit, .{});
     const info = fseg.value.info;
 
     try self.write_lock.lock();
@@ -664,7 +662,7 @@ fn checkpoint(self: *Self) !bool {
     const new_file = try self.allocator.alloc(FileRef, cur.file.len + 1);
     var nf: usize = 0;
     errdefer if (!arrays_consumed) {
-        for (new_file[0..nf]) |*s| s.release(self.allocator, FileSegment.deinit, .{.delete});
+        for (new_file[0..nf]) |*s| s.release(self.allocator, FileSegment.deinit, .{});
         self.allocator.free(new_file);
     };
     for (cur.file) |s| {
@@ -676,14 +674,14 @@ fn checkpoint(self: *Self) !bool {
     fseg_placed = true;
 
     const new_memory = try cloneRefs(MemorySegment, self.allocator, kept);
-    errdefer if (!arrays_consumed) releaseRefs(MemorySegment, self.allocator, new_memory, .keep);
+    errdefer if (!arrays_consumed) releaseRefs(MemorySegment, self.allocator, new_memory);
 
     // Allocate the snapshot BEFORE the durable manifest write, so the manifest is the
     // last fallible step and the swap after it can't fail (no window where a committed
     // manifest points at state we then fail to install).
     var new_snap = try self.createSnapshot(new_file, new_memory, self.version, @max(self.file_version, info.getLastCommitId()));
     arrays_consumed = true;
-    errdefer if (!committed) new_snap.release(self.allocator, Segments.deinit, .{.delete});
+    errdefer if (!committed) new_snap.release(self.allocator, Segments.deinit, .{});
 
     try self.writeManifestFor(new_snap.value.file);
     self.swapSnapshot(new_snap);
@@ -703,9 +701,9 @@ fn checkpoint(self: *Self) !bool {
 
 // Merge a tiered-policy-selected range of file segments into one. Same phase
 // split: the merge is lock-free, only the swap holds the write lock. The
-// merged-away files are deleted when the old snapshot's last reference drops
-// (FileSegment.deinit(.delete)), so in-flight readers keep them until done.
-// Returns true if a merge ran.
+// merged-away segments are marked delete_on_destroy after the commit, so their
+// files are deleted when the last snapshot/reader referencing them drops (an
+// in-flight reader keeps them until done). Returns true if a merge ran.
 fn mergeFiles(self: *Self) !bool {
     const policy = TieredMergePolicy(FileRef, fileSegmentSize, fileSegmentFrozen){
         .min_segment_size = 100,
@@ -717,10 +715,10 @@ fn mergeFiles(self: *Self) !bool {
     try self.segments_lock.lockShared();
     var snap = self.segments.acquire();
     self.segments_lock.unlockShared();
-    // .delete: once this op commits, `snap` is the superseded snapshot; releasing it
-    // (when no reader still holds it) must delete its merged-away files. Shared
-    // segments have refcount > 0, so their .delete is a no-op — only Index.deinit keeps.
-    defer snap.release(self.allocator, Segments.deinit, .{.delete});
+    // Once this op commits, `snap` is the superseded snapshot; if no reader still
+    // holds it, this drop retires it. Any file segment the merge marked
+    // delete_on_destroy is deleted here on its last reference.
+    defer snap.release(self.allocator, Segments.deinit, .{});
 
     const src_file = snap.value.file;
     if (src_file.len <= policy.calculateBudget(src_file)) return false;
@@ -734,7 +732,7 @@ fn mergeFiles(self: *Self) !bool {
     var committed = false;
     var arrays_consumed = false;
     var fseg_placed = false;
-    errdefer if (!fseg_placed) fseg.release(self.allocator, FileSegment.deinit, .{.delete});
+    errdefer if (!fseg_placed) fseg.release(self.allocator, FileSegment.deinit, .{});
     const info = fseg.value.info;
 
     try self.write_lock.lock();
@@ -751,7 +749,7 @@ fn mergeFiles(self: *Self) !bool {
     const new_file = try self.allocator.alloc(FileRef, cur.file.len - n + 1);
     var nf: usize = 0;
     errdefer if (!arrays_consumed) {
-        for (new_file[0..nf]) |*s| s.release(self.allocator, FileSegment.deinit, .{.delete});
+        for (new_file[0..nf]) |*s| s.release(self.allocator, FileSegment.deinit, .{});
         self.allocator.free(new_file);
     };
     for (cur.file[0..lo]) |s| {
@@ -767,17 +765,23 @@ fn mergeFiles(self: *Self) !bool {
     }
 
     const new_memory = try cloneRefs(MemorySegment, self.allocator, cur.memory);
-    errdefer if (!arrays_consumed) releaseRefs(MemorySegment, self.allocator, new_memory, .keep);
+    errdefer if (!arrays_consumed) releaseRefs(MemorySegment, self.allocator, new_memory);
 
     // Allocate the snapshot BEFORE the durable manifest write (see checkpoint), so the
     // swap after the manifest is infallible.
     var new_snap = try self.createSnapshot(new_file, new_memory, self.version, self.file_version);
     arrays_consumed = true;
-    errdefer if (!committed) new_snap.release(self.allocator, Segments.deinit, .{.delete});
+    errdefer if (!committed) new_snap.release(self.allocator, Segments.deinit, .{});
 
     try self.writeManifestFor(new_snap.value.file);
     self.swapSnapshot(new_snap);
     committed = true;
+
+    // Retire the merged-away segments: mark them so their backing files are deleted
+    // when the last snapshot/reader referencing them drops. Done AFTER the commit, so
+    // a failed/rolled-back merge never marks a still-live segment for deletion. This
+    // is the ONLY place file segments are retired (checkpoint only adds one).
+    for (cur.file[lo..hi]) |s| s.value.delete_on_destroy = true;
 
     metrics.incFileMerges();
     log.info("merged {} file segments -> {x}-{x} ({} items)", .{ n, info.version, info.merges, fseg.value.num_items });
@@ -806,7 +810,7 @@ fn mergeToFileSegment(self: *Self, comptime Segment: type, sources: []SharedPtr(
     }
 
     var ref = try FileRef.create(self.allocator, FileSegment.init(self.allocator));
-    errdefer ref.release(self.allocator, FileSegment.deinit, .{.delete});
+    errdefer ref.release(self.allocator, FileSegment.deinit, .{});
     try filefmt.readSegment(self.data_dir, info, ref.value);
     return ref;
 }

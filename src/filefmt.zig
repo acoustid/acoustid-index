@@ -306,7 +306,7 @@ test "segment round-trip: write, read, search" {
     }
 
     var mem = MemorySegment.init(std.testing.allocator, .{});
-    defer mem.deinit(.delete);
+    defer mem.deinit();
     mem.info = info;
     try mem.build(&[_]Change{
         .{ .insert = .{ .id = 1, .hashes = &[_]u32{ 100, 200, 300 } } },
@@ -318,7 +318,7 @@ test "segment round-trip: write, read, search" {
     try writeSegment(dir, &mem_reader, std.testing.allocator);
 
     var seg = FileSegment.init(std.testing.allocator);
-    defer seg.deinit(.delete);
+    defer seg.deinit();
     try readSegment(dir, info, &seg);
 
     try std.testing.expectEqual(@as(usize, 2), seg.docs.count());

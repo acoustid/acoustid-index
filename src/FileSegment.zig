@@ -11,7 +11,6 @@ const assert = std.debug.assert;
 
 const common = @import("common.zig");
 const SearchResults = common.SearchResults;
-const KeepOrDelete = common.KeepOrDelete;
 const SegmentInfo = @import("segment.zig").SegmentInfo;
 const Metadata = @import("Metadata.zig");
 
@@ -32,7 +31,8 @@ const BlockCacheEntry = struct {
 };
 
 allocator: std.mem.Allocator,
-// Directory the segment file lives in; used to delete the file on deinit(.delete).
+// Directory the segment file lives in; used to delete the file on deinit when
+// delete_on_destroy is set.
 dir: zio.Dir = undefined,
 info: SegmentInfo = .{},
 metadata: Metadata,
@@ -46,17 +46,21 @@ num_items: usize = 0,
 num_blocks: usize = 0,
 // Owned aligned buffer holding the whole file; blocks/block_index slice into it.
 data: []align(64) u8 = &.{},
+// Set true (once, at retirement) when a merge supersedes this segment. Its backing
+// file is then deleted when the last reference drops — an intrinsic property of the
+// retired segment, not a decision made at each release site. Live segments are never
+// marked, so shutdown keeps their files.
+delete_on_destroy: bool = false,
 
 pub fn init(allocator: std.mem.Allocator) Self {
     return .{ .allocator = allocator, .metadata = Metadata.initOwned(allocator) };
 }
 
-// When `delete_file` is .delete (a segment dropped by a merge), delete the
-// backing file — this happens when the last reference is released, so an
-// in-flight reader keeps the file until it's done. Only loaded segments (with a
-// data buffer, hence a valid `dir`) have a file to delete.
-pub fn deinit(self: *Self, delete_file: KeepOrDelete) void {
-    if (delete_file == .delete and self.data.len > 0) {
+// Runs when the last reference is released (so an in-flight reader keeps the file
+// until done). Deletes the backing file iff this segment was retired by a merge.
+// Only loaded segments (with a data buffer, hence a valid `dir`) have a file.
+pub fn deinit(self: *Self) void {
+    if (self.delete_on_destroy and self.data.len > 0) {
         var buf: [64]u8 = undefined;
         const name = std.fmt.bufPrint(&buf, "{x:0>16}-{x:0>8}.data", .{ self.info.version, self.info.merges }) catch unreachable;
         self.dir.deleteFile(name) catch |err| {

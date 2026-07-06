@@ -21,10 +21,13 @@ pub fn RefCounter(comptime T: type) type {
         }
 
         // Decreases the reference count and returns true if it reached zero.
+        // Release on the decrement so every prior holder's writes (e.g. marking a
+        // segment delete_on_destroy) happen-before the acquire fence below, which the
+        // last releaser needs before it reads that state and destroys the object.
         pub fn decr(self: *Self) bool {
-            const prev_ref_count = self.refs.fetchSub(1, .monotonic);
+            const prev_ref_count = self.refs.fetchSub(1, .release);
             if (prev_ref_count == 1) {
-                _ = self.refs.load(.acquire);
+                _ = self.refs.load(.acquire); // acquire fence pairs with the releases above
                 return true;
             }
             return false;
