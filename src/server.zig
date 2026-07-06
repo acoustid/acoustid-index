@@ -54,6 +54,14 @@ const ErrorResponse = struct {
     }
 };
 
+// A struct (not `.{}`, which is a tuple -> JSON `[]`) so the empty body is an
+// object `{}` / empty msgpack map.
+const EmptyResponse = struct {
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
 // Format to decode the request body as: an explicit Content-Type wins; an
 // explicit but unsupported type is rejected; with no header we default to
 // msgpack when there's a body and JSON otherwise (matches the old server).
@@ -100,7 +108,7 @@ fn sendError(req: *http.Request, res: *http.Response, err: anyerror) void {
 }
 
 fn sendEmpty(req: *http.Request, res: *http.Response) !void {
-    try respond(.{}, req, res);
+    try respond(EmptyResponse{}, req, res);
 }
 
 /// Serialize `value` using the negotiated response format.

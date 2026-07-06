@@ -42,4 +42,13 @@ pub fn build(b: *std.Build) void {
     run_unit_tests.has_side_effects = true;
     const test_step = b.step("unit-tests", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
+
+    // Integration tests (pytest). conftest.py builds the binary and runs it as a
+    // subprocess; run inside the tests/ venv (see tests/requirements.txt).
+    const run_e2e = b.addSystemCommand(&.{ "python3", "-m", "pytest", "-v", "tests/" });
+    run_e2e.step.dependOn(b.getInstallStep());
+    run_e2e.has_side_effects = true;
+    if (b.args) |args| run_e2e.addArgs(args);
+    const e2e_step = b.step("e2e-tests", "Run integration tests (pytest)");
+    e2e_step.dependOn(&run_e2e.step);
 }

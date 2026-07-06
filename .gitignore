@@ -18,3 +18,7 @@ venv/
 
 # fetched package cache
 zig-pkg/
+
+# python
+__pycache__/
+.pytest_cache/
