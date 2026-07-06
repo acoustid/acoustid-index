@@ -7,7 +7,7 @@
         // Pinned to each dep's main commit so the build is self-contained for CI
         // and fresh clones. Re-pin after landing changes upstream.
         .zio = .{
-            .url = "git+https://github.com/lalinsky/zio.git#0be4a5d6a4f7a53a9826505abcc3fc7dd0204ac4",
+            .url = "git+https://github.com/lalinsky/zio.git#a9f14d2deb2184e01a76b97ddd31b2353754c7b0",
             .hash = "zio-0.15.0-xHbVVNRRIQDKB7pq7ZCKnjNGaT0GLtA7r6G3Tr30W3b5",
         },
         .dusty = .{
