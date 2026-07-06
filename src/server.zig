@@ -94,7 +94,7 @@ fn decodeAs(comptime T: type, ct: http.ContentType, bytes: []const u8, arena: st
 
 fn sendError(req: *http.Request, res: *http.Response, err: anyerror) void {
     res.status = switch (err) {
-        error.BadRequest, error.InvalidIndexName, error.GenerationNotAllowed => .bad_request,
+        error.BadRequest, error.InvalidIndexName, error.GenerationNotAllowed, error.InvalidFingerprintId => .bad_request,
         error.IndexNotFound, error.FingerprintNotFound => .not_found,
         error.IndexNotReady, error.SearchTimeout, error.ReplicationTimeout, error.CoordinatorError => .service_unavailable,
         error.VersionMismatch, error.IndexAlreadyExists, error.OlderIndexAlreadyExists, error.NewerIndexAlreadyExists => .conflict,

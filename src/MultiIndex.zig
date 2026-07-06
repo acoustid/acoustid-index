@@ -271,6 +271,18 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
 }
 
 pub fn update(self: *Self, arena: std.mem.Allocator, name: []const u8, request: api.UpdateRequest) !api.UpdateResponse {
+    // Fingerprint id 0 is reserved: `min_doc_id == 0` is the "unset" sentinel in
+    // segments (a doc with id 0 would be invisible to minDocId and skew the delta
+    // base), so reject it at the ingest boundary rather than corrupt a segment.
+    for (request.changes) |change| {
+        const id = switch (change) {
+            .insert => |op| op.id,
+            .delete => |op| op.id,
+            .set_metadata => continue,
+        };
+        if (id == 0) return error.InvalidFingerprintId;
+    }
+
     // Fold any metadata into the change stream (as a trailing set_metadata op) once,
     // so both the replicated and local paths carry it identically through the log.
     const changes = try foldMetadata(arena, request.changes, request.metadata);

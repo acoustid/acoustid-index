@@ -742,6 +742,35 @@ test "standalone createIndex honors the generation" {
     try std.testing.expectEqual(@as(u64, 10), (try mi.createIndex("main", .{})).generation);
 }
 
+test "update rejects fingerprint id 0" {
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_reject_id_zero";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    _ = try mi.createIndex("main", .{});
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var h = [_]u32{ 1, 2, 3 };
+    // id 0 is reserved (the min_doc_id sentinel) — rejected for both insert and delete.
+    try std.testing.expectError(error.InvalidFingerprintId, mi.update(a, "main", .{ .changes = &[_]Change{.{ .insert = .{ .id = 0, .hashes = &h } }} }));
+    try std.testing.expectError(error.InvalidFingerprintId, mi.update(a, "main", .{ .changes = &[_]Change{.{ .delete = .{ .id = 0 } }} }));
+    // A nonzero id is fine.
+    _ = try mi.update(a, "main", .{ .changes = &[_]Change{.{ .insert = .{ .id = 1, .hashes = &h } }} });
+}
+
 test "applyLog rejects a stale generation" {
     const common = @import("common.zig");
 
