@@ -227,19 +227,49 @@ pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: us
     const oplog_dir = try openOrCreateDir(dir, "oplog");
     errdefer oplog_dir.close();
 
-    // 1. Load file segments listed in the manifest.
+    // 1. Load file segments listed in the manifest, concurrently: readSegment is
+    //    IO-bound (reads the whole file via async IO), so overlapping the loads
+    //    keeps many reads in flight through io_uring. Each loader writes its own
+    //    slot, so results stay in manifest order.
     var file_version: u64 = 0;
     const infos = try manifest.read(data_dir, allocator);
     defer allocator.free(infos);
-    for (infos) |info| {
-        var ref = try FileRef.create(allocator, FileSegment.init(allocator));
-        {
-            errdefer ref.release(allocator, FileSegment.deinit, .{.keep});
-            try filefmt.readSegment(data_dir, info, ref.value);
+
+    const refs = try allocator.alloc(FileRef, infos.len);
+    defer allocator.free(refs);
+    const results = try allocator.alloc(anyerror!void, infos.len);
+    defer allocator.free(results);
+    for (results) |*r| r.* = error.SegmentNotLoaded; // sentinel for slots never spawned
+
+    // Reserve up front so collection can't fail (and leak) after the loads.
+    try file_list.ensureTotalCapacity(allocator, infos.len);
+
+    var fatal: ?anyerror = null;
+    {
+        var group: zio.Group = .init;
+        defer group.cancel(); // cancel+join any stragglers on early exit
+        for (infos, 0..) |info, i| {
+            group.spawn(loadFileSegment, .{ data_dir, info, allocator, &refs[i], &results[i] }) catch |err| {
+                fatal = err;
+                break;
+            };
         }
-        try file_list.append(allocator, ref);
-        file_version = @max(file_version, info.getLastCommitId());
+        group.wait() catch |err| {
+            fatal = fatal orelse err; // Canceled if startup is aborted
+        };
     }
+
+    // Collect every ref that actually loaded so the errdefer above frees them on
+    // failure; propagate the first error (spawn / cancel / per-segment).
+    for (results, refs, infos) |res, ref, info| {
+        if (res) |_| {
+            file_list.appendAssumeCapacity(ref);
+            file_version = @max(file_version, info.getLastCommitId());
+        } else |err| {
+            if (err != error.SegmentNotLoaded) fatal = fatal orelse err;
+        }
+    }
+    if (fatal) |err| return err;
 
     // 2. Open the oplog and replay only the tail (versions > file_version).
     var ctx = ReplayCtx{ .allocator = allocator, .mem_list = &mem_list, .file_version = file_version };
@@ -267,6 +297,19 @@ pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: us
         .file_version = file_version,
         .checkpoint_threshold = checkpoint_threshold,
     };
+}
+
+// Group-spawned; captures its result into out_res (void return keeps the group's
+// error flags clean — errors are collected by the caller instead).
+fn loadFileSegment(dir: zio.Dir, info: SegmentInfo, allocator: std.mem.Allocator, out_ref: *FileRef, out_res: *anyerror!void) void {
+    out_res.* = loadFileSegmentInner(dir, info, allocator, out_ref);
+}
+
+fn loadFileSegmentInner(dir: zio.Dir, info: SegmentInfo, allocator: std.mem.Allocator, out_ref: *FileRef) !void {
+    var ref = try FileRef.create(allocator, FileSegment.init(allocator));
+    errdefer ref.release(allocator, FileSegment.deinit, .{.keep});
+    try filefmt.readSegment(dir, info, ref.value);
+    out_ref.* = ref;
 }
 
 fn openOrCreateDir(parent: zio.Dir, name: []const u8) !zio.Dir {
