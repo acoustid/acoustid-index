@@ -85,6 +85,14 @@ pub const IndexStats = struct {
     max_doc_id: u32,
     num_segments: usize,
     num_docs: u32,
+
+    // Full field names (not the single-char prefix used elsewhere): the fields
+    // collide on their first character (min_/max_, num_segments/num_docs), so a
+    // one-char prefix can't disambiguate them. Declared explicitly rather than left
+    // to the default.
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .field_name } };
+    }
 };
 
 pub const GetIndexInfoResponse = struct {

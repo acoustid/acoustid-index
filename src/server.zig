@@ -200,6 +200,10 @@ fn handleUpdate(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void 
 
 const PutFingerprintRequest = struct {
     hashes: []u32,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
 };
 
 fn handleHeadFingerprint(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
