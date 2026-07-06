@@ -17,6 +17,8 @@ const Change = @import("change.zig").Change;
 const Metadata = @import("change.zig").Metadata;
 const Replicator = @import("Replicator.zig");
 const Coordinator = @import("Coordinator.zig").Coordinator;
+const index_redirect = @import("index_redirect.zig");
+const deleteDirTree = @import("common.zig").deleteDirTree;
 const SearchResults = @import("common.zig").SearchResults;
 const metrics = @import("metrics.zig");
 const log = std.log.scoped(.multi_index);
@@ -29,10 +31,19 @@ const Self = @This();
 // the manager lock, and deleteIndex waits for it to fall back to 1.
 const IndexRef = struct {
     index: Index,
+    generation: u64, // this index's lineage; persisted in the redirect + v<gen> dir
     references: usize = 1,
     being_deleted: bool = false,
     released: zio.Condition = .init,
 };
+
+fn openOrCreateDir(parent: zio.Dir, name: []const u8) !zio.Dir {
+    parent.createDir(name, 0o755) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+    return parent.openDir(name, .{ .iterate = true });
+}
 
 allocator: std.mem.Allocator,
 dir: zio.Dir,
@@ -167,7 +178,8 @@ pub fn open(self: *Self) !void {
             log.info("opened index '{s}' at version {d}", .{ name, ref.index.version });
         } else |err| {
             self.allocator.free(name);
-            if (err != error.IndexNotOpened) fatal = fatal orelse err;
+            // IndexNotOpened = never spawned; IndexSkipped = deleted/no-redirect dir.
+            if (err != error.IndexNotOpened and err != error.IndexSkipped) fatal = fatal orelse err;
         }
     }
     if (fatal) |err| return err;
@@ -180,12 +192,27 @@ fn openOneIndex(self: *Self, name: []const u8, load_sem: ?*zio.Semaphore, out_re
 }
 
 fn openOneIndexInner(self: *Self, name: []const u8, load_sem: ?*zio.Semaphore, out_ref: **IndexRef) !void {
-    const index_dir = try self.dir.openDir(name, .{ .iterate = true });
+    const name_dir = try self.dir.openDir(name, .{ .iterate = true });
+    var name_dir_open = true;
+    defer if (name_dir_open) name_dir.close();
+
+    const redirect = index_redirect.read(name_dir, self.allocator) catch |err| switch (err) {
+        error.FileNotFound => return error.IndexSkipped, // no redirect -> not a live index dir
+        else => return err,
+    };
+    defer self.allocator.free(redirect.name);
+    if (redirect.deleted) return error.IndexSkipped;
+
+    var buf: [index_redirect.max_data_dir_len]u8 = undefined;
+    const data_dir = try name_dir.openDir(redirect.dataDir(&buf), .{ .iterate = true });
+    name_dir.close();
+    name_dir_open = false;
+
     const ref = try self.allocator.create(IndexRef);
     errdefer self.allocator.destroy(ref);
-    ref.* = .{ .index = undefined };
-    ref.index = Index.open(self.allocator, index_dir, self.checkpoint_threshold, self.sync, load_sem) catch |err| {
-        index_dir.close();
+    ref.* = .{ .index = undefined, .generation = redirect.generation };
+    ref.index = Index.open(self.allocator, data_dir, self.checkpoint_threshold, self.sync, load_sem) catch |err| {
+        data_dir.close();
         return err;
     };
     errdefer ref.index.deinit();
@@ -307,24 +334,35 @@ pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexReques
     if (self.indexes.get(name)) |existing| {
         if (!existing.being_deleted) {
             if (request.expect_does_not_exist) return error.IndexAlreadyExists;
-            return .{ .version = existing.index.version, .ready = true, .generation = request.generation orelse 0 };
+            return .{ .version = existing.index.version, .ready = true, .generation = existing.generation };
         }
-        // being deleted: fall through and let the delete finish would be racy;
-        // for now treat a concurrently-deleting index as already existing.
         return error.IndexAlreadyExists;
     }
 
-    self.dir.createDir(name, 0o755) catch |err| switch (err) {
-        error.PathAlreadyExists => {}, // reuse an orphaned dir from a prior run
-        else => return err,
+    // New generation = one past any prior lineage's (from the redirect), so a
+    // recreate after delete is a physically separate v<gen> dir.
+    const name_dir = try openOrCreateDir(self.dir, name);
+    var name_dir_open = true;
+    defer if (name_dir_open) name_dir.close();
+
+    const generation: u64 = blk: {
+        const r = index_redirect.read(name_dir, self.allocator) catch |err| switch (err) {
+            error.FileNotFound => break :blk 1,
+            else => return err,
+        };
+        defer self.allocator.free(r.name);
+        break :blk r.generation + 1;
     };
 
-    const index_dir = try self.dir.openDir(name, .{ .iterate = true });
+    const data_dir = try self.createLineageDir(name_dir, name, generation);
+    name_dir.close();
+    name_dir_open = false;
+
     const ref = try self.allocator.create(IndexRef);
     errdefer self.allocator.destroy(ref);
-    ref.* = .{ .index = undefined };
-    ref.index = Index.open(self.allocator, index_dir, self.checkpoint_threshold, self.sync, null) catch |err| {
-        index_dir.close();
+    ref.* = .{ .index = undefined, .generation = generation };
+    ref.index = Index.open(self.allocator, data_dir, self.checkpoint_threshold, self.sync, null) catch |err| {
+        data_dir.close();
         return err;
     };
     errdefer ref.index.deinit();
@@ -332,7 +370,6 @@ pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexReques
 
     const name_copy = try self.allocator.dupe(u8, name);
     errdefer self.allocator.free(name_copy);
-
     try self.indexes.put(self.allocator, name_copy, ref);
 
     // In replicated mode, start consuming the log for this index. Only touches
@@ -342,7 +379,16 @@ pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexReques
             log.warn("failed to start replication consumer for '{s}': {}", .{ name, err });
         };
     }
-    return .{ .version = ref.index.version, .ready = true, .generation = request.generation orelse 0 };
+    return .{ .version = ref.index.version, .ready = true, .generation = generation };
+}
+
+// Write the redirect and open (creating) the generation's v<gen> data dir. The
+// returned dir has its own fd, so the caller may close name_dir afterward.
+fn createLineageDir(self: *Self, name_dir: zio.Dir, name: []const u8, generation: u64) !zio.Dir {
+    try index_redirect.write(name_dir, self.allocator, .{ .name = name, .generation = generation, .deleted = false });
+    var buf: [index_redirect.max_data_dir_len]u8 = undefined;
+    const dd = (index_redirect.IndexRedirect{ .name = name, .generation = generation }).dataDir(&buf);
+    return openOrCreateDir(name_dir, dd);
 }
 
 pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexRequest) !api.DeleteIndexResponse {
@@ -374,13 +420,27 @@ pub fn deleteIndex(self: *Self, name: []const u8, request: api.DeleteIndexReques
     }
 
     const kv = self.indexes.fetchRemove(name).?;
+    const gen = kv.value.generation;
     kv.value.index.deinit();
     self.allocator.destroy(kv.value);
     self.allocator.free(kv.key);
-    self.removeIndexDir(name) catch |err| {
-        log.warn("failed to remove index dir '{s}': {}", .{ name, err });
+    // Mark the redirect deleted and drop the generation's data dir; keep
+    // data/<name>/ + current so a recreate can bump to the next generation.
+    self.markDeleted(name, gen) catch |err| {
+        log.warn("failed to mark index '{s}' deleted: {}", .{ name, err });
     };
     return .{ .deleted = true };
+}
+
+fn markDeleted(self: *Self, name: []const u8, generation: u64) !void {
+    const name_dir = try self.dir.openDir(name, .{ .iterate = true });
+    defer name_dir.close();
+    try index_redirect.write(name_dir, self.allocator, .{ .name = name, .generation = generation, .deleted = true });
+    var buf: [index_redirect.max_data_dir_len]u8 = undefined;
+    const dd = (index_redirect.IndexRedirect{ .name = name, .generation = generation }).dataDir(&buf);
+    deleteDirTree(self.allocator, name_dir, dd) catch |err| {
+        log.warn("failed to remove data dir for '{s}': {}", .{ name, err });
+    };
 }
 
 // Delete the whole index dir (the oplog/ and data/ subdirs and their contents).
