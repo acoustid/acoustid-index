@@ -72,6 +72,49 @@ pub const Segments = struct {
         return null;
     }
 
+    pub fn numSegments(self: *const Segments) usize {
+        return self.file.len + self.memory.len;
+    }
+
+    // Sum of per-segment doc counts (approximate: counts tombstones and a doc
+    // present in several segments more than once). Matches the old semantics.
+    pub fn numDocs(self: *const Segments) u32 {
+        var n: u32 = 0;
+        for (self.file) |s| n += @intCast(s.value.docs.count());
+        for (self.memory) |s| n += @intCast(s.value.docs.count());
+        return n;
+    }
+
+    pub fn minDocId(self: *const Segments) u32 {
+        var result: u32 = 0;
+        for (self.file) |s| {
+            const m = s.value.min_doc_id;
+            if (m != 0 and (result == 0 or m < result)) result = m;
+        }
+        for (self.memory) |s| {
+            const m = s.value.min_doc_id;
+            if (m != 0 and (result == 0 or m < result)) result = m;
+        }
+        return result;
+    }
+
+    pub fn maxDocId(self: *const Segments) u32 {
+        var result: u32 = 0;
+        for (self.file) |s| result = @max(result, s.value.max_doc_id);
+        for (self.memory) |s| result = @max(result, s.value.max_doc_id);
+        return result;
+    }
+
+    // Merge every segment's metadata oldest -> newest (newest key wins), into a
+    // fresh owned map on `arena`, so it outlives the reader snapshot.
+    pub fn buildMetadata(self: *const Segments, arena: std.mem.Allocator) !Metadata {
+        var md = Metadata.initOwned(arena);
+        errdefer md.deinit();
+        for (self.file) |s| try md.update(s.value.metadata);
+        for (self.memory) |s| try md.update(s.value.metadata);
+        return md;
+    }
+
     // Newest -> oldest across both lists (globally descending version). Segments
     // are non-merged per version, so info.version is the doc's version.
     pub fn hasNewerVersion(self: *const Segments, id: u32, version: u64) bool {
@@ -119,6 +162,22 @@ pub const IndexReader = struct {
     /// tombstone (deleted) is reported as `.deleted = true`.
     pub fn getDocInfo(self: *const IndexReader, id: u32) ?DocInfo {
         return self.snapshot.value.getDocInfo(id);
+    }
+
+    pub fn numSegments(self: *const IndexReader) usize {
+        return self.snapshot.value.numSegments();
+    }
+    pub fn numDocs(self: *const IndexReader) u32 {
+        return self.snapshot.value.numDocs();
+    }
+    pub fn minDocId(self: *const IndexReader) u32 {
+        return self.snapshot.value.minDocId();
+    }
+    pub fn maxDocId(self: *const IndexReader) u32 {
+        return self.snapshot.value.maxDocId();
+    }
+    pub fn buildMetadata(self: *const IndexReader, arena: std.mem.Allocator) !Metadata {
+        return self.snapshot.value.buildMetadata(arena);
     }
 };
 
@@ -915,4 +974,45 @@ test "getDocInfo reports version and tombstones, across a checkpoint" {
         try std.testing.expect(!r.getDocInfo(6).?.deleted);
         try std.testing.expectEqual(@as(u64, 2), r.getDocInfo(6).?.version);
     }
+}
+
+test "index stats and metadata aggregation" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_index_stats";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+    var index = try Self.open(std.testing.allocator, dir, 100_000);
+    defer index.deinit();
+
+    var md1 = Metadata.initOwned(std.testing.allocator);
+    defer md1.deinit();
+    try md1.set("source", "unit");
+    try md1.set("rev", "1");
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 5, .hashes = &[_]u32{ 10, 20 } } }}, md1, null);
+
+    var md2 = Metadata.initOwned(std.testing.allocator);
+    defer md2.deinit();
+    try md2.set("rev", "2");
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 12, .hashes = &[_]u32{30} } }}, md2, null);
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var reader = try index.acquireReader();
+    defer reader.deinit();
+
+    try std.testing.expectEqual(@as(usize, 2), reader.numSegments());
+    try std.testing.expectEqual(@as(u32, 2), reader.numDocs());
+    try std.testing.expectEqual(@as(u32, 5), reader.minDocId());
+    try std.testing.expectEqual(@as(u32, 12), reader.maxDocId());
+
+    const md = try reader.buildMetadata(arena.allocator());
+    try std.testing.expectEqualStrings("unit", md.get("source").?);
+    try std.testing.expectEqualStrings("2", md.get("rev").?); // newest wins
 }

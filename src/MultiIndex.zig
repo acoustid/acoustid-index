@@ -162,11 +162,23 @@ fn removeIndexDir(self: *Self, name: []const u8) !void {
 }
 
 pub fn getIndexInfo(self: *Self, arena: std.mem.Allocator, name: []const u8) !api.GetIndexInfoResponse {
-    _ = self;
-    _ = arena;
-    _ = name;
-    // TODO: needs Metadata JSON serialization; wire with the info endpoints.
-    return error.NotImplemented;
+    try self.lock.lockShared();
+    defer self.lock.unlockShared();
+
+    const index = self.indexes.get(name) orelse return error.IndexNotFound;
+    var reader = try index.acquireReader();
+    defer reader.deinit();
+
+    return .{
+        .version = reader.version(),
+        .metadata = try reader.buildMetadata(arena),
+        .stats = .{
+            .min_doc_id = reader.minDocId(),
+            .max_doc_id = reader.maxDocId(),
+            .num_segments = reader.numSegments(),
+            .num_docs = reader.numDocs(),
+        },
+    };
 }
 
 pub fn getFingerprintInfo(self: *Self, arena: std.mem.Allocator, name: []const u8, id: u32) !api.GetFingerprintInfoResponse {
