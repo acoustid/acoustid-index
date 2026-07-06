@@ -45,11 +45,11 @@ const read_retry: zio.Duration = .fromMilliseconds(1000);
 // How often the meta loop retries parked (persistently-failing) reconciles while it
 // otherwise blocks waiting for new meta ops.
 const pending_retry: zio.Timeout = .{ .duration = .fromMilliseconds(1000) };
-// A write's read-your-writes wait gives up after this long without progress (the
-// consumer applying anything) — so a coordinator that dies after accepting the write
-// returns error.ReplicationTimeout (-> 503) instead of hanging the request forever.
+// A write's read-your-writes wait gives up this long after it starts if the write
+// still hasn't applied — so a coordinator that dies after accepting the write returns
+// error.ReplicationTimeout (-> 503) instead of hanging the request forever.
 // Overridable per-instance (`ryw_timeout` field); tests set it short.
-pub const default_ryw_timeout: zio.Timeout = .{ .duration = .fromMilliseconds(30_000) };
+pub const default_ryw_timeout: zio.Duration = .fromMilliseconds(30_000);
 
 allocator: std.mem.Allocator,
 mi: *MultiIndex,
@@ -60,7 +60,7 @@ meta_cond: zio.Condition = .init, // broadcast after each meta apply (create/del
 consumers: std.StringHashMapUnmanaged(*Consumer) = .empty,
 meta_applied: u64 = 0, // max meta pos reconciled (guarded by mutex)
 meta_task: ?zio.JoinHandle(zio.Cancelable!void) = null,
-ryw_timeout: zio.Timeout = default_ryw_timeout, // read/create/delete-your-writes deadline
+ryw_timeout: zio.Duration = default_ryw_timeout, // read/create/delete-your-writes budget
 
 const Consumer = struct {
     name: []const u8, // owned; also the map key
@@ -166,17 +166,26 @@ pub fn update(self: *Self, name: []const u8, changes: []const Change, expected_v
 fn waitApplied(self: *Self, name: []const u8, generation: u64, id: u64) !void {
     try self.mutex.lock();
     defer self.mutex.unlock();
+    // Absolute deadline, fixed up front: `cond` is broadcast on EVERY lineage's
+    // apply (markApplied), so a per-wait duration would be rearmed by unrelated
+    // wakeups and never fire on a busy multi-index node. `.deadline` is immune.
+    const deadline = self.rywDeadline();
     while (true) {
         const c = self.consumers.get(name) orelse return error.IndexNotFound;
         if (c.generation != generation) return error.IndexNotFound;
         if (c.applied >= id) return;
-        self.cond.timedWait(&self.mutex, self.ryw_timeout) catch |err| switch (err) {
-            // Each wait resets on any apply, so this fires only after a full window
-            // with NO progress — i.e. the consumer is wedged (coordinator down).
+        self.cond.timedWait(&self.mutex, deadline) catch |err| switch (err) {
             error.Timeout => return error.ReplicationTimeout,
             else => |e| return e, // Canceled -> shutdown
         };
     }
+}
+
+// An absolute monotonic deadline `ryw_timeout` from now, for the read/create/delete-
+// your-writes waits. Passing the same absolute deadline to every timedWait keeps a
+// shared-condition wakeup from rearming it.
+fn rywDeadline(self: *Self) zio.Timeout {
+    return .{ .deadline = zio.Timestamp.now(.monotonic).addDuration(self.ryw_timeout) };
 }
 
 fn markApplied(self: *Self, c: *Consumer, version: u64) void {
@@ -410,10 +419,11 @@ fn dropStaleLocalIndexes(self: *Self, folded: *const std.StringHashMapUnmanaged(
 pub fn waitMetaApplied(self: *Self, pos: u64) !void {
     try self.mutex.lock();
     defer self.mutex.unlock();
+    const deadline = self.rywDeadline();
     while (self.meta_applied < pos) {
-        self.meta_cond.timedWait(&self.mutex, self.ryw_timeout) catch |err| switch (err) {
-            // Fires only after a full window with no meta progress (the meta consumer
-            // is wedged, e.g. coordinator unreachable). A parked op advances the
+        self.meta_cond.timedWait(&self.mutex, deadline) catch |err| switch (err) {
+            // Fires only when the meta consumer makes no progress before the deadline
+            // (wedged, e.g. coordinator unreachable). A parked op advances the
             // watermark, so it never lands here.
             error.Timeout => return error.ReplicationTimeout,
             else => |e| return e, // Canceled -> shutdown
@@ -522,10 +532,12 @@ test "meta consumer drops a local index absent from the meta feed" {
     try std.testing.expect(!try mi.checkIndexExists("orphan"));
 }
 
-// Test coordinator: delegates everything to `inner` except data `read`, which always
-// fails — a coordinator reachable for writes/meta but wedged for data reads.
+// Test coordinator: delegates everything to `inner` except data `read`, which fails
+// for `only` (or every index when `only == null`) — a coordinator reachable for
+// writes/meta but wedged for (some) data reads.
 const WedgedReads = struct {
     inner: Coordinator,
+    only: ?[]const u8 = null,
 
     fn coordinator(self: *WedgedReads) Coordinator {
         return .{ .ptr = self, .vtable = &vtable };
@@ -542,8 +554,9 @@ const WedgedReads = struct {
         return self.inner.append(name, generation, changes, expected);
     }
     fn readImpl(ptr: *anyopaque, name: []const u8, generation: u64, after: u64, out: []Entry, deadline: zio.Timeout) anyerror!usize {
-        _ = .{ ptr, name, generation, after, out, deadline };
-        return error.CoordinatorError;
+        const self: *WedgedReads = @ptrCast(@alignCast(ptr));
+        if (self.only == null or std.mem.eql(u8, name, self.only.?)) return error.CoordinatorError;
+        return self.inner.read(name, generation, after, out, deadline);
     }
     fn createIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!u64 {
         const self: *WedgedReads = @ptrCast(@alignCast(ptr));
@@ -580,7 +593,7 @@ test "read-your-writes times out when the consumer can't apply" {
     var mi = MultiIndex.init(std.testing.allocator, dir);
     defer mi.deinit();
     try mi.startReplication(wedged.coordinator());
-    mi.replication.?.ryw_timeout = .{ .duration = .fromMilliseconds(300) };
+    mi.replication.?.ryw_timeout = .fromMilliseconds(300);
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -593,6 +606,65 @@ test "read-your-writes times out when the consumer can't apply" {
     var h = [_]u32{ 1, 2, 3 };
     const changes = [_]Change{.{ .insert = .{ .id = 1, .hashes = &h } }};
     try std.testing.expectError(error.ReplicationTimeout, mi.update(a, "main", .{ .changes = &changes }));
+}
+
+test "read-your-writes timeout is not rearmed by other lineages applying" {
+    const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{ .executors = .exact(3) });
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_replicator_ryw_shared_cond";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var cl = MemoryCoordinator.init(std.testing.allocator);
+    defer cl.deinit();
+    var wedged = WedgedReads{ .inner = cl.coordinator(), .only = "bad" }; // only "bad" reads fail
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    try mi.startReplication(wedged.coordinator());
+    mi.replication.?.ryw_timeout = .fromMilliseconds(400);
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    _ = try mi.createIndex("good", .{});
+    _ = try mi.createIndex("bad", .{});
+
+    // Keep "good" applying in the background: markApplied broadcasts the shared cond,
+    // which a per-wait timeout would treat as progress and rearm forever. The wait on
+    // "bad" (wedged) must still hit its absolute deadline.
+    var stop = std.atomic.Value(bool).init(false);
+    const Bg = struct {
+        fn run(m: *MultiIndex, s: *std.atomic.Value(bool)) void {
+            var ar = std.heap.ArenaAllocator.init(std.testing.allocator);
+            defer ar.deinit();
+            var id: u32 = 1;
+            while (!s.load(.acquire)) : (id += 1) {
+                _ = ar.reset(.retain_capacity);
+                var h = [_]u32{id};
+                const c = [_]Change{.{ .insert = .{ .id = id, .hashes = &h } }};
+                _ = m.update(ar.allocator(), "good", .{ .changes = &c }) catch return;
+                zio.sleep(.fromMilliseconds(20)) catch return;
+            }
+        }
+    };
+    var bg = try zio.spawn(Bg.run, .{ &mi, &stop });
+    defer {
+        stop.store(true, .release);
+        bg.cancel();
+    }
+
+    var h = [_]u32{ 7, 8, 9 };
+    const changes = [_]Change{.{ .insert = .{ .id = 7, .hashes = &h } }};
+    try std.testing.expectError(error.ReplicationTimeout, mi.update(a, "bad", .{ .changes = &changes }));
 }
 
 test "a poison meta op parks and does not wedge other indexes" {
