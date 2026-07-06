@@ -22,6 +22,8 @@ dir: zio.Dir,
 lock: zio.RwLock = .init,
 indexes: std.StringHashMapUnmanaged(*Index) = .empty,
 checkpoint_threshold: usize = 100_000,
+// Whether index oplogs fsync each append (false when an upstream owns durability).
+sync: bool = true,
 
 pub fn init(allocator: std.mem.Allocator, dir: zio.Dir) Self {
     return .{ .allocator = allocator, .dir = dir };
@@ -55,7 +57,7 @@ pub fn open(self: *Self) !void {
         const index_dir = try self.dir.openDir(name, .{ .iterate = true });
         const index = try self.allocator.create(Index);
         errdefer self.allocator.destroy(index);
-        index.* = Index.open(self.allocator, index_dir, self.checkpoint_threshold) catch |err| {
+        index.* = Index.open(self.allocator, index_dir, self.checkpoint_threshold, self.sync) catch |err| {
             index_dir.close();
             return err;
         };
@@ -117,7 +119,7 @@ pub fn update(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
 
     const index = self.indexes.get(name) orelse return error.IndexNotFound;
     metrics.incUpdates();
-    const version = try index.update(request.changes, request.metadata, request.expected_version);
+    const version = try index.update(request.changes, request.metadata, .{ .expected_version = request.expected_version });
     return .{ .version = version };
 }
 
@@ -162,7 +164,7 @@ pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexReques
     const index_dir = try self.dir.openDir(name, .{ .iterate = true });
     const index = try self.allocator.create(Index);
     errdefer self.allocator.destroy(index);
-    index.* = Index.open(self.allocator, index_dir, self.checkpoint_threshold) catch |err| {
+    index.* = Index.open(self.allocator, index_dir, self.checkpoint_threshold, self.sync) catch |err| {
         index_dir.close();
         return err;
     };

@@ -211,7 +211,7 @@ checkpoint_threshold: usize = 100_000,
 wake: zio.ResetEvent = .init,
 maintenance: ?zio.JoinHandle(zio.Cancelable!void) = null,
 
-pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: usize) !Self {
+pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: usize, sync: bool) !Self {
     var file_list: std.ArrayListUnmanaged(FileRef) = .empty;
     var mem_list: std.ArrayListUnmanaged(MemoryRef) = .empty;
     errdefer {
@@ -243,7 +243,7 @@ pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: us
 
     // 2. Open the oplog and replay only the tail (versions > file_version).
     var ctx = ReplayCtx{ .allocator = allocator, .mem_list = &mem_list, .file_version = file_version };
-    var oplog = try Oplog.open(allocator, oplog_dir, &ctx, ReplayCtx.apply);
+    var oplog = try Oplog.open(allocator, oplog_dir, sync, &ctx, ReplayCtx.apply);
     errdefer oplog.deinit();
 
     const version = @max(file_version, oplog.last_version);
@@ -348,7 +348,7 @@ fn releaseRefs(comptime T: type, allocator: std.mem.Allocator, refs: []SharedPtr
 // Writer path. Build the memory segment before the durable append so a build
 // failure never leaves the log ahead of memory; the oplog append is the commit
 // point.
-pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata, expected_version: ?u64) !u64 {
+pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata, options: Oplog.WriteOptions) !u64 {
     try self.write_lock.lock();
     defer self.write_lock.unlock();
 
@@ -362,7 +362,7 @@ pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata, expecte
     errdefer if (!seg_consumed) seg.release(self.allocator, MemorySegment.deinit, .{.delete});
     try seg.value.build(changes, metadata);
 
-    const version = try self.oplog.append(changes, metadata, expected_version);
+    const version = try self.oplog.append(changes, metadata, options);
     seg.value.info = .{ .version = version, .merges = 0 };
 
     const cur = self.segments.value;
@@ -728,11 +728,11 @@ test "checkpoint and reload" {
 
     {
         const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-        var index = try Self.open(std.testing.allocator, dir, 5);
+        var index = try Self.open(std.testing.allocator, dir, 5, true);
         defer index.deinit();
 
-        _ = try index.update(&ins1, null, null);
-        _ = try index.update(&ins2, null, null);
+        _ = try index.update(&ins1, null, .{});
+        _ = try index.update(&ins2, null, .{});
         try index.runMaintenance(); // flush memory -> file segment
 
         try std.testing.expectEqual(@as(usize, 1), index.segments.value.file.len);
@@ -750,7 +750,7 @@ test "checkpoint and reload" {
 
     {
         const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-        var index = try Self.open(std.testing.allocator, dir, 5);
+        var index = try Self.open(std.testing.allocator, dir, 5, true);
         defer index.deinit();
 
         try std.testing.expectEqual(@as(usize, 1), index.segments.value.file.len);
@@ -779,19 +779,19 @@ test "file segment merging bounds count and preserves deletes" {
     defer cleanupTestDir(cwd, dir_path);
 
     const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-    var index = try Self.open(std.testing.allocator, dir, 1);
+    var index = try Self.open(std.testing.allocator, dir, 1, true);
     defer index.deinit();
 
     var id: u32 = 1;
     while (id <= 30) : (id += 1) {
         const ins = [_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{ 100, id } } }};
-        _ = try index.update(&ins, null, null);
+        _ = try index.update(&ins, null, .{});
         try index.runMaintenance();
     }
     try std.testing.expect(index.segments.value.file.len < 30);
 
     const del = [_]Change{.{ .delete = .{ .id = 5 } }};
-    _ = try index.update(&del, null, null);
+    _ = try index.update(&del, null, .{});
 
     var results = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });
     defer results.deinit();
@@ -816,10 +816,10 @@ test "reader snapshot is stable across writes" {
     defer cleanupTestDir(cwd, dir_path);
 
     const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-    var index = try Self.open(std.testing.allocator, dir, 5);
+    var index = try Self.open(std.testing.allocator, dir, 5, true);
     defer index.deinit();
 
-    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{100} } }}, null, null);
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{100} } }}, null, .{});
 
     // Snapshot taken now sees only id 1.
     var reader = try index.acquireReader();
@@ -829,7 +829,7 @@ test "reader snapshot is stable across writes" {
     // new snapshots no longer reference; the old reader must stay valid.
     var id: u32 = 2;
     while (id <= 30) : (id += 1) {
-        _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{100} } }}, null, null);
+        _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{100} } }}, null, .{});
         try index.runMaintenance();
     }
 
@@ -859,13 +859,13 @@ test "memory merge consolidates memory segments without checkpointing" {
     defer cleanupTestDir(cwd, dir_path);
 
     const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-    var index = try Self.open(std.testing.allocator, dir, 100_000); // high threshold: no checkpoint
+    var index = try Self.open(std.testing.allocator, dir, 100_000, true); // high threshold: no checkpoint
     defer index.deinit();
 
     // 50 tiny updates stay well under the checkpoint threshold.
     var id: u32 = 1;
     while (id <= 50) : (id += 1) {
-        _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{id} } }}, null, null);
+        _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{id} } }}, null, .{});
         try index.runMaintenance();
     }
 
@@ -895,13 +895,13 @@ test "oplog truncation after checkpoint" {
 
     {
         const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-        var index = try Self.open(std.testing.allocator, dir, 10);
+        var index = try Self.open(std.testing.allocator, dir, 10, true);
         defer index.deinit();
         index.oplog.max_file_size = 80; // force frequent rotation
 
         var id: u32 = 1;
         while (id <= 40) : (id += 1) {
-            _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{ 100, id } } }}, null, null);
+            _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{ 100, id } } }}, null, .{});
             try index.runMaintenance();
         }
     }
@@ -921,7 +921,7 @@ test "oplog truncation after checkpoint" {
     // Reload from the truncated log + file segments; data intact.
     {
         const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-        var index = try Self.open(std.testing.allocator, dir, 10);
+        var index = try Self.open(std.testing.allocator, dir, 10, true);
         defer index.deinit();
 
         var results = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });
@@ -945,11 +945,11 @@ test "getDocInfo reports version and tombstones, across a checkpoint" {
     defer cleanupTestDir(cwd, dir_path);
 
     const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-    var index = try Self.open(std.testing.allocator, dir, 100_000);
+    var index = try Self.open(std.testing.allocator, dir, 100_000, true);
     defer index.deinit();
 
-    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 5, .hashes = &[_]u32{ 10, 20 } } }}, null, null);
-    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 6, .hashes = &[_]u32{ 10, 30 } } }}, null, null);
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 5, .hashes = &[_]u32{ 10, 20 } } }}, null, .{});
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 6, .hashes = &[_]u32{ 10, 30 } } }}, null, .{});
 
     {
         var r = try index.acquireReader();
@@ -961,7 +961,7 @@ test "getDocInfo reports version and tombstones, across a checkpoint" {
     }
 
     // Delete 5: newest segment wins, reported as a tombstone.
-    _ = try index.update(&[_]Change{.{ .delete = .{ .id = 5 } }}, null, null);
+    _ = try index.update(&[_]Change{.{ .delete = .{ .id = 5 } }}, null, .{});
     {
         var r = try index.acquireReader();
         defer r.deinit();
@@ -991,19 +991,19 @@ test "index stats and metadata aggregation" {
     defer cleanupTestDir(cwd, dir_path);
 
     const dir = try cwd.openDir(dir_path, .{ .iterate = true });
-    var index = try Self.open(std.testing.allocator, dir, 100_000);
+    var index = try Self.open(std.testing.allocator, dir, 100_000, true);
     defer index.deinit();
 
     var md1 = Metadata.initOwned(std.testing.allocator);
     defer md1.deinit();
     try md1.set("source", "unit");
     try md1.set("rev", "1");
-    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 5, .hashes = &[_]u32{ 10, 20 } } }}, md1, null);
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 5, .hashes = &[_]u32{ 10, 20 } } }}, md1, .{});
 
     var md2 = Metadata.initOwned(std.testing.allocator);
     defer md2.deinit();
     try md2.set("rev", "2");
-    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 12, .hashes = &[_]u32{30} } }}, md2, null);
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 12, .hashes = &[_]u32{30} } }}, md2, .{});
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -1019,4 +1019,62 @@ test "index stats and metadata aggregation" {
     const md = try reader.buildMetadata(arena.allocator());
     try std.testing.expectEqualStrings("unit", md.get("source").?);
     try std.testing.expectEqualStrings("2", md.get("rev").?); // newest wins
+}
+
+test "oplog recovers the valid prefix from a corrupt tail" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_oplog_torn";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    // Write 5 clean records.
+    {
+        const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+        var index = try Self.open(std.testing.allocator, dir, 100_000, true);
+        defer index.deinit();
+        var id: u32 = 1;
+        while (id <= 5) : (id += 1) {
+            _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{ 100, id } } }}, null, .{});
+        }
+        try std.testing.expectEqual(@as(u64, 5), index.version);
+    }
+
+    // Append a full but CRC-invalid framed record to the tail (a crash could leave
+    // exactly this: a complete-looking record whose bytes didn't all land).
+    {
+        var oplog_dir = try cwd.openDir(dir_path ++ "/oplog", .{ .iterate = true });
+        defer oplog_dir.close();
+        const name = "0000000000000001.xlog"; // first record's version = 1
+        const st = try oplog_dir.statPath(name);
+        const file = try oplog_dir.openFile(name, .{ .mode = .read_write });
+        defer file.close();
+
+        var junk: [12]u8 = undefined;
+        std.mem.writeInt(u32, junk[0..4], 4, .little); // payload_len = 4
+        std.mem.writeInt(u32, junk[4..8], 0xDEADBEEF, .little); // wrong crc
+        @memcpy(junk[8..12], "junk");
+        var written: usize = 0;
+        while (written < junk.len) written += try file.write(junk[written..], @as(u64, @intCast(st.size)) + written);
+        try file.sync(.{});
+    }
+
+    // Reopen: the torn tail is dropped, the 5 valid records recovered.
+    {
+        const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+        var index = try Self.open(std.testing.allocator, dir, 100_000, true);
+        defer index.deinit();
+        try std.testing.expectEqual(@as(u64, 5), index.version);
+
+        var results = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });
+        defer results.deinit();
+        var reader = try index.acquireReader();
+        defer reader.deinit();
+        var h = [_]u32{100};
+        try reader.search(&h, &results);
+        try std.testing.expectEqual(@as(usize, 5), results.getResults().len);
+    }
 }

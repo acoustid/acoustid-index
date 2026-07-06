@@ -1,12 +1,18 @@
-// Per-index write-ahead log. Transactions are appended (msgpack, fsync per
-// append) to rotating ".xlog" files named by their first commit id. The commit
-// id is the index version (log-position-as-version). On startup the files are
-// replayed in order; after a checkpoint, truncate() deletes files whose
-// transactions are all durable in file segments.
+// Per-index write-ahead log. Transactions are appended to rotating ".xlog" files
+// named by their first commit id. The commit id is the index version
+// (log-position-as-version). On startup the files are replayed in order; after a
+// checkpoint, truncate() deletes files whose transactions are all durable in file
+// segments.
+//
+// Each record is framed [u32 payload_len][u32 crc32(payload)][payload] so replay
+// can detect a torn/corrupt tail (a crash mid-append) and recover the valid
+// prefix instead of failing to open.
 //
 // This is the standalone/file-backed log. In cluster mode the same transactions
 // come from a PostgreSQL changelog instead; the append/replay shape is kept the
-// same so the apply path is shared.
+// same so the apply path is shared. `sync` controls whether appends fsync — true
+// when this log is the authoritative durable copy (standalone), false when an
+// upstream (PG) owns durability.
 //
 // All access is serialized by the owning Index's write lock, so the oplog needs
 // no internal lock.
@@ -25,9 +31,22 @@ const Self = @This();
 const file_suffix = ".xlog";
 const file_name_len = 16 + file_suffix.len;
 const default_max_file_size = 16 * 1024 * 1024;
+const record_header_size = 8; // u32 payload_len + u32 crc32
+const max_record_size = 64 * 1024 * 1024; // sanity bound for a framed payload
+
+pub const WriteOptions = struct {
+    // Optimistic concurrency: fail with error.VersionMismatch if the current
+    // version doesn't match.
+    expected_version: ?u64 = null,
+    // Apply at this externally-assigned version (replicated apply from an upstream
+    // log); null mints the next local version.
+    version: ?u64 = null,
+};
 
 allocator: std.mem.Allocator,
 dir: zio.Dir,
+// Whether each append fsyncs. See the file header.
+sync: bool = true,
 // Sorted first-commit-ids of the on-disk .xlog files.
 files: std.ArrayListUnmanaged(u64) = .empty,
 current_file: ?zio.File = null,
@@ -48,8 +67,8 @@ fn parseName(name: []const u8) ?u64 {
 
 /// Open the log in `dir` and replay existing transactions to `handler`
 /// (`fn(ctx, Transaction) !void`). The Transaction is only valid for the call.
-pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, ctx: anytype, handler: anytype) !Self {
-    var self = Self{ .allocator = allocator, .dir = dir };
+pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, sync: bool, ctx: anytype, handler: anytype) !Self {
+    var self = Self{ .allocator = allocator, .dir = dir, .sync = sync };
     errdefer self.files.deinit(allocator);
 
     var it = dir.iterate();
@@ -69,13 +88,47 @@ pub fn deinit(self: *Self) void {
     self.files.deinit(self.allocator);
 }
 
+const RecordResult = union(enum) {
+    record: Transaction,
+    clean_eof, // exactly at a record boundary with nothing after
+    torn, // incomplete or corrupt record (a crash mid-append can only tear the tail)
+};
+
+// Read one framed record. Real I/O / OOM errors propagate; a short or corrupt
+// record is reported as `.torn`, a clean boundary as `.clean_eof`.
+fn readRecord(reader: *std.Io.Reader, arena: std.mem.Allocator) !RecordResult {
+    // Distinguish a clean boundary (nothing left) from a torn header (1-7 bytes).
+    _ = reader.peekByte() catch |err| switch (err) {
+        error.EndOfStream => return .clean_eof,
+        else => return err,
+    };
+
+    const header = reader.takeArray(record_header_size) catch |err| switch (err) {
+        error.EndOfStream => return .torn, // partial header
+        else => return err,
+    };
+    const len = std.mem.readInt(u32, header[0..4], .little);
+    const crc = std.mem.readInt(u32, header[4..8], .little);
+    if (len == 0 or len > max_record_size) return .torn;
+
+    const payload = try arena.alloc(u8, len);
+    reader.readSliceAll(payload) catch |err| switch (err) {
+        error.EndOfStream => return .torn, // partial payload
+        else => return err,
+    };
+    if (std.hash.crc.Crc32.hash(payload) != crc) return .torn;
+
+    const txn = msgpack.decodeFromSliceLeaky(Transaction, arena, payload) catch return .torn;
+    return .{ .record = txn };
+}
+
 fn replay(self: *Self, ctx: anytype, handler: anytype) !void {
     var read_buf: [64 * 1024]u8 = undefined;
     var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
 
     var count: u64 = 0;
-    for (self.files.items) |start| {
+    files: for (self.files.items) |start| {
         var name_buf: [file_name_len]u8 = undefined;
         const name = buildName(&name_buf, start);
         const file = try self.dir.openFile(name, .{ .mode = .read_only });
@@ -84,13 +137,21 @@ fn replay(self: *Self, ctx: anytype, handler: anytype) !void {
         var reader = file.reader(&read_buf);
         while (true) {
             _ = arena.reset(.retain_capacity);
-            const txn = msgpack.decodeLeaky(Transaction, arena.allocator(), &reader.interface) catch |err| switch (err) {
-                error.EndOfStream => break,
-                else => return err,
-            };
-            self.last_version = @max(self.last_version, txn.id);
-            try handler(ctx, txn);
-            count += 1;
+            switch (try readRecord(&reader.interface, arena.allocator())) {
+                .record => |txn| {
+                    self.last_version = @max(self.last_version, txn.id);
+                    try handler(ctx, txn);
+                    count += 1;
+                },
+                .clean_eof => break, // this file ended cleanly; on to the next
+                .torn => {
+                    // A torn record can only be the tail (a crash mid-append writes
+                    // the last record; nothing follows it). Recover the prefix and
+                    // stop — a later append or the PG poller refills from here.
+                    log.warn("oplog: torn record in {s}, stopping replay at version {d}", .{ name, self.last_version });
+                    break :files;
+                },
+            }
         }
     }
     if (count > 0) {
@@ -120,14 +181,15 @@ fn getFile(self: *Self, version: u64) !zio.File {
     return file;
 }
 
-/// Append a transaction and fsync. Returns the assigned version. If
-/// `expected_version` is set and doesn't match the current version, fails with
-/// error.VersionMismatch and writes nothing.
-pub fn append(self: *Self, changes: []const Change, metadata: ?Metadata, expected_version: ?u64) !u64 {
-    if (expected_version) |expected| {
+/// Append a transaction (framed, fsync if `sync`). Returns the version: the one
+/// in `options.version` (replicated apply) or the next local one. With
+/// `options.expected_version` set and mismatched, fails with error.VersionMismatch
+/// and writes nothing.
+pub fn append(self: *Self, changes: []const Change, metadata: ?Metadata, options: WriteOptions) !u64 {
+    if (options.expected_version) |expected| {
         if (self.last_version != expected) return error.VersionMismatch;
     }
-    const version = self.last_version + 1;
+    const version = options.version orelse (self.last_version + 1);
 
     var w = std.Io.Writer.Allocating.init(self.allocator);
     defer w.deinit();
@@ -136,19 +198,29 @@ pub fn append(self: *Self, changes: []const Change, metadata: ?Metadata, expecte
         .changes = changes,
         .metadata = metadata,
     }, &w.writer);
-    const bytes = w.written();
+    const payload = w.written();
 
+    var header: [record_header_size]u8 = undefined;
+    std.mem.writeInt(u32, header[0..4], @intCast(payload.len), .little);
+    std.mem.writeInt(u32, header[4..8], std.hash.crc.Crc32.hash(payload), .little);
+
+    // getFile may rotate (resetting write_offset), so call it before writing.
     const file = try self.getFile(version);
+    try self.writeAll(file, &header);
+    try self.writeAll(file, payload);
+    if (self.sync) try file.sync(.{});
+
+    self.last_version = version;
+    return version;
+}
+
+fn writeAll(self: *Self, file: zio.File, bytes: []const u8) !void {
     var written: usize = 0;
     while (written < bytes.len) {
         written += try file.write(bytes[written..], self.write_offset + written);
     }
-    try file.sync(.{});
-
     self.write_offset += bytes.len;
     self.current_size += bytes.len;
-    self.last_version = version;
-    return version;
 }
 
 fn cmpVersion(v: u64, item: u64) std.math.Order {
