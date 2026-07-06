@@ -214,6 +214,14 @@ segments: SharedPtr(Segments),
 version: u64 = 0,
 file_version: u64 = 0,
 checkpoint_threshold: usize = 100_000,
+// Force a checkpoint once the oldest uncheckpointed write is this old, even below the
+// size threshold — bounds WAL growth and keeps file_version fresh (so it stays within
+// the coordinator's changelog retention for snapshot bootstrap). null disables it.
+checkpoint_age: ?zio.Duration = null,
+// When maintenance first saw the current uncheckpointed memory (null = none). Touched
+// only by checkpoint(), which runs solely on the maintenance coroutine, so it needs
+// no lock or atomic.
+pending_since: ?zio.Timestamp = null,
 
 // Background maintenance (checkpoint + file merges) runs on a dedicated per-index
 // coroutine so it never blocks the update path. `wake` is a level-triggered
@@ -506,7 +514,17 @@ pub fn stop(self: *Self) void {
 // (transient) errors are logged and the loop keeps going.
 fn maintenanceLoop(self: *Self) zio.Cancelable!void {
     while (true) {
-        try self.wake.wait();
+        // Block for the next update; when age-based checkpointing is on, also wake on
+        // a timer so a pending batch gets flushed even without new writes (the age
+        // trigger then fires within [age, 2*age] of the first write).
+        if (self.checkpoint_age) |age| {
+            self.wake.timedWait(.{ .duration = age }) catch |err| switch (err) {
+                error.Timeout => {},
+                error.Canceled => return error.Canceled,
+            };
+        } else {
+            try self.wake.wait();
+        }
         self.wake.reset(); // reset before processing so a set() during the pass isn't lost
         self.runMaintenance() catch |err| switch (err) {
             error.Canceled => return error.Canceled,
@@ -652,7 +670,20 @@ fn checkpoint(self: *Self) !bool {
     defer snap.release(self.allocator, Segments.deinit, .{});
 
     const flush_count = snap.value.memory.len;
-    if (flush_count == 0 or memorySize(snap.value.memory) <= self.checkpoint_threshold) return false;
+    if (flush_count == 0) {
+        self.pending_since = null; // nothing pending
+        return false;
+    }
+    // Start the age clock the first time maintenance sees this uncheckpointed batch.
+    if (self.pending_since == null) self.pending_since = zio.Timestamp.now(.monotonic);
+
+    // Flush when memory is large enough, or when the oldest pending write has aged out.
+    const over_threshold = memorySize(snap.value.memory) > self.checkpoint_threshold;
+    const aged = if (self.checkpoint_age) |age|
+        self.pending_since.?.untilNow(.monotonic).toNanoseconds() >= age.toNanoseconds()
+    else
+        false;
+    if (!over_threshold and !aged) return false;
 
     var fseg = try self.mergeToFileSegment(MemorySegment, snap.value.memory, snap.value);
     var committed = false;
@@ -699,6 +730,10 @@ fn checkpoint(self: *Self) !bool {
     try self.writeManifestFor(new_snap.value.file);
     self.swapSnapshot(new_snap);
     committed = true;
+
+    // Restart the age clock: cleared if nothing is left pending, else stamped now for
+    // the segments that arrived during the flush (their real age is ~the flush time).
+    self.pending_since = if (kept.len == 0) null else zio.Timestamp.now(.monotonic);
 
     // Transactions up to file_version are now durable in file segments; drop the
     // oplog files entirely below it. (After the manifest commit, so a crash in
@@ -893,6 +928,43 @@ test "duplicate query hashes score consistently across memory and file segments"
         try reader.search(&q, &r);
         try std.testing.expectEqual(@as(u32, 1), r.hits.get(1).?.score);
     }
+}
+
+test "age-based checkpoint flushes a small pending batch" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{ .executors = .exact(2) });
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_index_age_checkpoint";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+    // High size threshold so only the age trigger can flush.
+    var index = try Self.open(std.testing.allocator, dir, 100_000, true, null);
+    index.checkpoint_age = .fromMilliseconds(50);
+    defer index.deinit();
+    try index.start(); // run the background maintenance loop (the age timer lives here)
+
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{ 100, 200 } } }}, .{});
+
+    // The tiny batch is far below the size threshold, so only the aged-out trigger
+    // flushes it (within ~2*age). Read the file count via a reader — the maintenance
+    // coroutine swaps segments concurrently.
+    var i: usize = 0;
+    const flushed = while (i < 100) : (i += 1) {
+        var r = try index.acquireReader();
+        const file_len = r.snapshot.value.file.len;
+        r.deinit();
+        if (file_len == 1) break true;
+        try zio.sleep(.fromMilliseconds(20));
+    } else false;
+    try std.testing.expect(flushed);
+
+    var r = try index.acquireReader();
+    defer r.deinit();
+    try std.testing.expectEqual(@as(usize, 0), r.snapshot.value.memory.len);
 }
 
 test "merged-away files are deleted even when a reader outlived the merge" {

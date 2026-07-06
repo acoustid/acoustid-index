@@ -51,6 +51,9 @@ dir: zio.Dir,
 lock: zio.Mutex = .init,
 indexes: std.StringHashMapUnmanaged(*IndexRef) = .empty,
 checkpoint_threshold: usize = 100_000,
+// Force a checkpoint once the oldest uncheckpointed write is this old (see Index);
+// null disables it. Default 60s.
+checkpoint_age: ?zio.Duration = .fromMilliseconds(60_000),
 // Whether index oplogs fsync each append (false when an upstream owns durability).
 sync: bool = true,
 // Max file-segment loads in flight across all indexes during open(); 0 = no limit.
@@ -230,6 +233,7 @@ fn openOneIndexInner(self: *Self, name: []const u8, load_sem: ?*zio.Semaphore, o
         return err;
     };
     errdefer ref.index.deinit();
+    ref.index.checkpoint_age = self.checkpoint_age;
     try ref.index.start();
     out_ref.* = ref;
 }
@@ -456,6 +460,7 @@ fn installNewLineage(self: *Self, name: []const u8, generation: u64) !*IndexRef 
         return err;
     };
     errdefer ref.index.deinit();
+    ref.index.checkpoint_age = self.checkpoint_age;
     try ref.index.start();
 
     const name_copy = try self.allocator.dupe(u8, name);

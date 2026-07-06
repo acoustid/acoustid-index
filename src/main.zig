@@ -41,6 +41,9 @@ const Config = struct {
     host: []const u8 = "127.0.0.1",
     port: u16 = 8080,
     checkpoint_threshold: usize = 100_000,
+    // Force a checkpoint once the oldest uncheckpointed write is this old (ms); 0
+    // disables age-based checkpointing. Keeps file_version fresh for snapshot bootstrap.
+    checkpoint_age_ms: u64 = 60_000,
     // Legacy line-protocol listener; 0 disables it.
     legacy_port: u16 = 0,
     // Max file-segment loads in flight across all indexes at startup; 0 = no limit.
@@ -80,6 +83,7 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
 
     var multi_index = MultiIndex.init(allocator, data_dir);
     multi_index.checkpoint_threshold = config.checkpoint_threshold;
+    multi_index.checkpoint_age = if (config.checkpoint_age_ms == 0) null else .fromMilliseconds(config.checkpoint_age_ms);
     multi_index.load_concurrency = config.load_concurrency;
     defer multi_index.deinit();
     try multi_index.open();
@@ -177,6 +181,8 @@ fn parseArgs(args: std.process.Args) !Config {
             config.port = try std.fmt.parseInt(u16, it.next() orelse return error.MissingArgument, 10);
         } else if (std.mem.eql(u8, arg, "--checkpoint-threshold")) {
             config.checkpoint_threshold = try std.fmt.parseInt(usize, it.next() orelse return error.MissingArgument, 10);
+        } else if (std.mem.eql(u8, arg, "--checkpoint-age-ms")) {
+            config.checkpoint_age_ms = try std.fmt.parseInt(u64, it.next() orelse return error.MissingArgument, 10);
         } else if (std.mem.eql(u8, arg, "--legacy-port")) {
             config.legacy_port = try std.fmt.parseInt(u16, it.next() orelse return error.MissingArgument, 10);
         } else if (std.mem.eql(u8, arg, "--load-concurrency")) {
