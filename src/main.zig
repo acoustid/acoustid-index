@@ -10,6 +10,9 @@ const http = @import("dusty");
 const MultiIndex = @import("MultiIndex.zig");
 const metrics = @import("metrics.zig");
 const legacy = @import("legacy.zig");
+const coordinator = @import("coordinator.zig");
+const MemoryChangelog = @import("changelog.zig").MemoryChangelog;
+const RemoteChangelog = @import("RemoteChangelog.zig");
 const Server = @import("server.zig").Server;
 const registerRoutes = @import("server.zig").registerRoutes;
 
@@ -42,10 +45,16 @@ const Config = struct {
     legacy_port: u16 = 0,
     // Max file-segment loads in flight across all indexes at startup; 0 = no limit.
     load_concurrency: usize = 0,
+    // Run as the changelog coordinator (serves append/read) instead of an index.
+    coordinator: bool = false,
+    // Replica mode: consume the changelog from this coordinator URL.
+    coordinator_url: ?[]const u8 = null,
 };
 
 fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !void {
     const io = rt.io();
+
+    if (config.coordinator) return runCoordinator(allocator, io, config);
 
     const cwd = zio.Dir.cwd();
     const data_dir = cwd.openDir(config.dir, .{ .iterate = true }) catch |err| switch (err) {
@@ -55,11 +64,25 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
         },
         else => return err,
     };
+
+    // In replica mode the changelog must outlive the index manager (its consumers
+    // borrow it), so create it first — LIFO defers then tear mi down before it.
+    var remote: ?RemoteChangelog = if (config.coordinator_url) |url|
+        RemoteChangelog.init(allocator, io, url)
+    else
+        null;
+    defer if (remote) |*r| r.deinit();
+
     var multi_index = MultiIndex.init(allocator, data_dir);
     multi_index.checkpoint_threshold = config.checkpoint_threshold;
     multi_index.load_concurrency = config.load_concurrency;
     defer multi_index.deinit();
     try multi_index.open();
+
+    if (remote) |*r| {
+        try multi_index.startReplication(r.changelog());
+        std.log.info("replicating from coordinator {s}", .{config.coordinator_url.?});
+    }
 
     var server = Server.init(allocator, io, .{}, &multi_index);
     defer server.deinit();
@@ -79,7 +102,7 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
 
     if (config.legacy_port != 0) {
         const legacy_addr = try zio.net.IpAddress.parseIp4(config.host, config.legacy_port);
-        var legacy_task = try zio.spawn(legacy.listen, .{ &multi_index, legacy_addr });
+        var legacy_task = try zio.spawn(legacy.listen, .{ &multi_index, legacy_addr, config.coordinator_url != null });
         defer legacy_task.cancel();
 
         const result = try zio.select(.{ .http = &http_task, .legacy = &legacy_task, .sigint = &sigint, .sigterm = &sigterm });
@@ -104,6 +127,38 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
     }
 }
 
+// Run as the changelog coordinator: an HTTP server exposing append/read of an
+// in-memory changelog for replicas to consume. No index, no data dir.
+fn runCoordinator(allocator: std.mem.Allocator, io: std.Io, config: Config) !void {
+    var mc = MemoryChangelog.init(allocator);
+    defer mc.deinit();
+    var co = coordinator.Coordinator{ .changelog = mc.changelog() };
+
+    var server = coordinator.Server.init(allocator, io, .{}, &co);
+    defer server.deinit();
+    coordinator.registerRoutes(&server);
+
+    var sigint = try zio.Signal.init(.interrupt);
+    defer sigint.deinit();
+    var sigterm = try zio.Signal.init(.terminate);
+    defer sigterm.deinit();
+
+    const addr: http.Address = .{ .ip = try std.Io.net.IpAddress.parse(config.host, config.port) };
+    std.log.info("fpindex coordinator listening on http://{s}:{d}", .{ config.host, config.port });
+
+    var http_task = try zio.spawn(coordinator.Server.listen, .{ &server, addr });
+    defer http_task.cancel();
+
+    const result = try zio.select(.{ .http = &http_task, .sigint = &sigint, .sigterm = &sigterm });
+    switch (result) {
+        .http => |r| return r,
+        .sigint, .sigterm => {
+            std.log.info("shutting down", .{});
+            http_task.cancel();
+        },
+    }
+}
+
 fn parseArgs(args: std.process.Args) !Config {
     var config = Config{};
     var it = std.process.Args.Iterator.init(args);
@@ -121,6 +176,10 @@ fn parseArgs(args: std.process.Args) !Config {
             config.legacy_port = try std.fmt.parseInt(u16, it.next() orelse return error.MissingArgument, 10);
         } else if (std.mem.eql(u8, arg, "--load-concurrency")) {
             config.load_concurrency = try std.fmt.parseInt(usize, it.next() orelse return error.MissingArgument, 10);
+        } else if (std.mem.eql(u8, arg, "--coordinator")) {
+            config.coordinator = true;
+        } else if (std.mem.eql(u8, arg, "--coordinator-url")) {
+            config.coordinator_url = it.next() orelse return error.MissingArgument;
         } else {
             std.log.warn("ignoring unknown argument '{s}'", .{arg});
         }
@@ -158,4 +217,6 @@ test {
     _ = @import("Index.zig");
     _ = @import("changelog.zig");
     _ = @import("Replicator.zig");
+    _ = @import("coordinator.zig");
+    _ = @import("RemoteChangelog.zig");
 }

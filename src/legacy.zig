@@ -17,7 +17,7 @@ const write_buf_size = 64 * 1024;
 
 /// Accept loop. Ensures the "main" index exists, then serves connections until
 /// cancelled (shutdown cancels the connection group).
-pub fn listen(mi: *MultiIndex, addr: zio.net.IpAddress) !void {
+pub fn listen(mi: *MultiIndex, addr: zio.net.IpAddress, read_only: bool) !void {
     _ = try mi.createIndex(index_name, .{});
 
     // reuse_address sets SO_REUSEADDR + SO_REUSEPORT (zio), so the port rebinds
@@ -32,12 +32,13 @@ pub fn listen(mi: *MultiIndex, addr: zio.net.IpAddress) !void {
     while (true) {
         const stream = try server.accept(.{});
         errdefer stream.close();
-        try group.spawn(handleConnection, .{ mi, stream });
+        try group.spawn(handleConnection, .{ mi, stream, read_only });
     }
 }
 
 const Session = struct {
     alloc: std.mem.Allocator,
+    read_only: bool = false, // replica: reject writes, allow searches
 
     // Ephemeral, per-connection tuning (C++ Session attributes).
     max_results: u32 = 500,
@@ -69,7 +70,7 @@ const Session = struct {
 
 const Response = union(enum) { ok: []const u8, err: []const u8 };
 
-fn handleConnection(mi: *MultiIndex, stream: zio.net.Stream) void {
+fn handleConnection(mi: *MultiIndex, stream: zio.net.Stream, read_only: bool) void {
     defer stream.close();
     defer stream.shutdown(.both) catch {};
 
@@ -84,6 +85,7 @@ fn handleConnection(mi: *MultiIndex, stream: zio.net.Stream) void {
 
     var session = Session{
         .alloc = alloc,
+        .read_only = read_only,
         .attrs = Metadata.initOwned(alloc),
         .txn_arena = std.heap.ArenaAllocator.init(alloc),
     };
@@ -153,6 +155,9 @@ fn dispatch(mi: *MultiIndex, session: *Session, arena: std.mem.Allocator, line: 
     if (eql(cmd, "search")) return search(mi, session, arena, a);
     if (eql(cmd, "insert")) return insert(session, a);
     if (eql(cmd, "begin")) {
+        // Replicas are read-only over the legacy protocol; writes go via the
+        // changelog. Rejecting begin blocks every transactional write.
+        if (session.read_only) return .{ .err = "read-only replica" };
         if (session.in_txn) return .{ .err = "already in transaction" };
         session.clearTxn();
         session.in_txn = true;

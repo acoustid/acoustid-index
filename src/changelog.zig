@@ -19,6 +19,7 @@
 
 const std = @import("std");
 const zio = @import("zio");
+const msgpack = @import("msgpack");
 const Change = @import("change.zig").Change;
 
 /// One committed op in the shared, ordered log. `id` is the global position and
@@ -28,6 +29,36 @@ const Change = @import("change.zig").Change;
 pub const Entry = struct {
     id: u64,
     change: Change,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+// Wire messages for the changelog-over-HTTP protocol (replica <-> coordinator).
+pub const AppendRequest = struct {
+    changes: []Change,
+    expected: ?u64 = null,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+pub const AppendResponse = struct {
+    id: u64,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+pub const ReadResponse = struct {
+    entries: []Entry,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
 };
 
 /// Runtime-dispatched handle to a changelog implementation.
