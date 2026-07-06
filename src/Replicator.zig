@@ -143,15 +143,20 @@ pub fn update(self: *Self, name: []const u8, request: api.UpdateRequest) !api.Up
         break :blk c.generation;
     };
     const version = try self.coordinator.append(name, generation, request.changes, request.expected_version);
-    try self.waitApplied(name, version);
+    try self.waitApplied(name, generation, version);
     return .{ .version = version };
 }
 
-fn waitApplied(self: *Self, name: []const u8, id: u64) !void {
+// Wait until this node's consumer for `name` has applied up to `id`. `generation`
+// pins the wait to the lineage we appended to: if a delete+recreate swapped the
+// lineage in the meantime, the write landed on a now-dead feed, so we report it as
+// gone rather than falsely satisfying it against the new lineage's unrelated seqs.
+fn waitApplied(self: *Self, name: []const u8, generation: u64, id: u64) !void {
     try self.mutex.lock();
     defer self.mutex.unlock();
     while (true) {
         const c = self.consumers.get(name) orelse return error.IndexNotFound;
+        if (c.generation != generation) return error.IndexNotFound;
         if (c.applied >= id) return;
         try self.cond.wait(&self.mutex);
     }
@@ -179,7 +184,7 @@ fn consumeLoop(c: *Consumer, start_version: u64) zio.Cancelable!void {
 
         for (buf[0..n], 0..) |e, i| changes[i] = e.change;
         const version = buf[n - 1].id; // coalesce the batch; version = max seq
-        self.mi.applyLog(c.name, changes[0..n], null, version) catch |err| {
+        self.mi.applyLog(c.name, c.generation, changes[0..n], null, version) catch |err| {
             if (err == error.Canceled) return error.Canceled;
             // Skip past the batch rather than spin on a persistently bad entry.
             log.warn("apply failed for '{s}' at version {d}: {}", .{ c.name, version, err });
@@ -344,6 +349,32 @@ test "replicated create+update flows through the coordinator; RYW + search see i
     const s2 = try mi.search(a, "other", .{ .query = &q2 });
     try std.testing.expectEqual(@as(usize, 1), s2.results.len);
     try std.testing.expectEqual(@as(u32, 42), s2.results[0].id);
+}
+
+test "applyLog rejects a stale generation" {
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_applylog_gen";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    // Standalone (no replication) is enough to exercise the apply-path guard.
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    const created = try mi.createIndex("main", .{});
+
+    var h = [_]u32{ 1, 2, 3 };
+    const changes = [_]Change{.{ .insert = .{ .id = 1, .hashes = &h } }};
+    // The current generation applies; a stale one (an older lineage's consumer that
+    // should have been stopped) is rejected rather than misapplied.
+    try mi.applyLog("main", created.generation, &changes, null, 1);
+    try std.testing.expectError(error.IndexGenerationMismatch, mi.applyLog("main", created.generation + 1, &changes, null, 2));
 }
 
 test "replicated delete+recreate converges on the new lineage" {

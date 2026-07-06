@@ -100,6 +100,19 @@ fn getIndex(self: *Self, name: []const u8) !*Index {
     return &ref.index;
 }
 
+// Like getIndex, but rejects if the current lineage isn't `generation` — so a data
+// consumer never applies its lineage's ops to an index that was rebuilt to a newer
+// generation underneath it (the analog of the old cluster's expect_generation).
+fn getIndexForGeneration(self: *Self, name: []const u8, generation: u64) !*Index {
+    try self.lock.lock();
+    defer self.lock.unlock();
+    const ref = self.indexes.get(name) orelse return error.IndexNotFound;
+    if (ref.being_deleted) return error.IndexNotFound;
+    if (ref.generation != generation) return error.IndexGenerationMismatch;
+    ref.references += 1;
+    return &ref.index;
+}
+
 // Return a borrow. Uncancelable: it runs in defer cleanup and must always
 // complete (a leaked reference would deadlock deleteIndex forever).
 fn releaseIndex(self: *Self, index: *Index) void {
@@ -269,10 +282,12 @@ pub fn update(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
 }
 
 /// Apply changes at an externally-assigned version (the replicated consumer's
-/// apply path; version = changelog id). The external log owns ordering and
-/// durability, so this just stamps the version onto the local oplog + segments.
-pub fn applyLog(self: *Self, name: []const u8, changes: []const Change, metadata: ?Metadata, version: u64) !void {
-    const index = try self.getIndex(name);
+/// apply path; version = the lineage's per-feed seq). `generation` guards against
+/// applying to a lineage that was rebuilt underneath the consumer. The external log
+/// owns ordering and durability, so this just stamps the version onto the local
+/// oplog + segments.
+pub fn applyLog(self: *Self, name: []const u8, generation: u64, changes: []const Change, metadata: ?Metadata, version: u64) !void {
+    const index = try self.getIndexForGeneration(name, generation);
     defer self.releaseIndex(index);
     metrics.incUpdates();
     _ = try index.update(changes, metadata, .{ .version = version });
