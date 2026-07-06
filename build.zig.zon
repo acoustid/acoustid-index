@@ -4,11 +4,20 @@
     .fingerprint = 0x38793b7cf12ed7c9,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
-        // Local co-developed checkouts. Path deps so changes flow immediately
-        // during the rewrite; switch to git+pinned before any release.
-        .zio = .{ .path = "../zio" },
-        .dusty = .{ .path = "../dusty" },
-        .msgpack = .{ .path = "../msgpack.zig" },
+        // Pinned to each dep's main commit so the build is self-contained for CI
+        // and fresh clones. Re-pin after landing changes upstream.
+        .zio = .{
+            .url = "git+https://github.com/lalinsky/zio.git#14b0b7855a0549c5f557de604912bc7389bc88f7",
+            .hash = "zio-0.15.0-xHbVVEtRIQBXOyUJKs4E0huwPtR9Wzpe_6GHK5xOlOTX",
+        },
+        .dusty = .{
+            .url = "git+https://github.com/lalinsky/dusty.git#653d3de802259db4a4e0eb596dc9f0036677ddd2",
+            .hash = "dusty-0.1.0-Qdw7RiJ3GwAWyNj6mcahqoKACFvZBoWHu39JoW7dVcPA",
+        },
+        .msgpack = .{
+            .url = "git+https://github.com/lalinsky/msgpack.zig.git#bef66711e678d42feba0e979dd7e6986d5c5ce13",
+            .hash = "msgpack-0.7.0-ZOu9PLr5AQAA8D-J8UdE_EFy2bJVUtP0mzBY6aUAEoCV",
+        },
         .metrics = .{
             .url = "https://github.com/karlseguin/metrics.zig/archive/6de29b83a750a06c438d268543e0e3c3c1b309da.tar.gz",
             .hash = "metrics-0.0.0-W7G4eIegAQD4XxA9Co7Atbw59u_2zvxYf406AZuoAHPM",
