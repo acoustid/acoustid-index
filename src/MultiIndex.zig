@@ -117,6 +117,22 @@ fn getIndexForGeneration(self: *Self, name: []const u8, generation: u64) !*Index
     return &ref.index;
 }
 
+pub const SnapshotSource = struct {
+    reader: Index.IndexReader,
+    generation: u64,
+};
+
+// Acquire a consistent, pinned snapshot of `name` plus its lineage generation, for
+// streaming out via snapshot.writeSnapshot. The returned reader pins the file segments
+// independent of the index, so the caller can stream them without holding an index
+// reference (and even if the index is deleted meanwhile). Caller must reader.deinit().
+pub fn acquireSnapshot(self: *Self, name: []const u8) !SnapshotSource {
+    const index = try self.getIndex(name);
+    defer self.releaseIndex(index);
+    const ref: *IndexRef = @fieldParentPtr("index", index);
+    return .{ .reader = try index.acquireReader(), .generation = ref.generation };
+}
+
 // Return a borrow. Uncancelable: it runs in defer cleanup and must always
 // complete (a leaked reference would deadlock deleteIndex forever).
 fn releaseIndex(self: *Self, index: *Index) void {

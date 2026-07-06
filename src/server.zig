@@ -4,6 +4,7 @@ const msgpack = @import("msgpack");
 const api = @import("api.zig");
 const Change = @import("change.zig").Change;
 const MultiIndex = @import("MultiIndex.zig");
+const snapshot = @import("snapshot.zig");
 
 pub const Server = http.Server(MultiIndex);
 
@@ -262,7 +263,44 @@ fn handleDeleteIndex(mi: *MultiIndex, req: *http.Request, res: *http.Response) !
     try respond(response, req, res);
 }
 
-fn handleSnapshotExport(_: *MultiIndex, req: *http.Request, res: *http.Response) !void {
-    // TODO: snapshot export (bootstrap path).
-    sendError(req, res, error.NotImplemented);
+// Adapts snapshot.writeSnapshot's *std.Io.Writer onto dusty's chunked response. Zero
+// internal buffer, so each write (notably the large resident segment slices) is handed
+// straight to res.chunk -> the socket, never copied through an intermediate buffer.
+var chunk_no_buf: [0]u8 = .{};
+
+const ChunkedWriter = struct {
+    res: *http.Response,
+    interface: std.Io.Writer,
+
+    fn init(res: *http.Response) ChunkedWriter {
+        return .{ .res = res, .interface = .{ .buffer = &chunk_no_buf, .vtable = &.{ .drain = drain } } };
+    }
+
+    fn drain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
+        const self: *ChunkedWriter = @fieldParentPtr("interface", w);
+        var total: usize = 0;
+        for (data[0 .. data.len - 1]) |seg| {
+            self.res.chunk(seg) catch return error.WriteFailed;
+            total += seg.len;
+        }
+        const last = data[data.len - 1];
+        for (0..splat) |_| {
+            self.res.chunk(last) catch return error.WriteFailed;
+            total += last.len;
+        }
+        return w.consume(total);
+    }
+};
+
+fn handleSnapshotExport(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
+    // Acquire the pinned snapshot first: this is the only step that can fail before any
+    // bytes go out, so error reporting still works. Once chunking starts, a mid-stream
+    // failure just breaks the connection (the restorer retries another donor).
+    var src = mi.acquireSnapshot(indexName(req)) catch |err| return sendError(req, res, err);
+    defer src.reader.deinit();
+
+    res.header("Content-Type", "application/octet-stream") catch {};
+    var cw = ChunkedWriter.init(res);
+    try snapshot.writeSnapshot(&cw.interface, req.arena, src.reader.snapshot.value, src.generation);
+    try cw.interface.flush();
 }

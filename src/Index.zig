@@ -967,6 +967,52 @@ test "age-based checkpoint flushes a small pending batch" {
     try std.testing.expectEqual(@as(usize, 0), r.snapshot.value.memory.len);
 }
 
+test "snapshot archive round-trips manifest + file segments" {
+    const snapshot = @import("snapshot.zig");
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_index_snapshot";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+    var index = try Self.open(std.testing.allocator, dir, 1, true, null); // threshold 1 -> flush each
+    defer index.deinit();
+
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{ 100, 200, 300 } } }}, .{});
+    try index.runMaintenance();
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 2, .hashes = &[_]u32{ 150, 250 } } }}, .{});
+    try index.runMaintenance();
+
+    var reader = try index.acquireReader();
+    defer reader.deinit();
+    const segs = reader.snapshot.value;
+    try std.testing.expect(segs.file.len >= 1);
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var buf: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer buf.deinit();
+    try snapshot.writeSnapshot(&buf.writer, arena.allocator(), segs, 7);
+
+    const parsed = try snapshot.parse(arena.allocator(), buf.written());
+
+    // generation preserved, one entry per file segment (the manifest is reconstructed
+    // from the entries' infos, not shipped), and every segment's bytes survive verbatim
+    // (so a restore reproduces the file exactly).
+    try std.testing.expectEqual(@as(u64, 7), parsed.generation);
+    try std.testing.expectEqual(segs.file.len, parsed.entries.len);
+    for (segs.file, 0..) |s, i| {
+        try std.testing.expectEqual(s.value.info.version, parsed.entries[i].info.version);
+        try std.testing.expectEqual(s.value.info.merges, parsed.entries[i].info.merges);
+        try std.testing.expectEqualSlices(u8, s.value.data, parsed.entries[i].data);
+    }
+}
+
 test "merged-away files are deleted even when a reader outlived the merge" {
     const rt = try zio.Runtime.init(std.testing.allocator, .{});
     defer rt.deinit();
