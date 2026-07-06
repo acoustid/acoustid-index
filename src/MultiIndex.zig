@@ -360,26 +360,43 @@ pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexReques
     try self.lock.lock();
     defer self.lock.unlock();
 
+    // Already active: idempotent, but honor an optimistic `generation` — a mismatch
+    // is a conflict, same as the old version and as a caller can rely on in replicated
+    // mode. This keeps a `generation`-supplied create binary-compatible across modes.
     if (self.indexes.get(name)) |existing| {
         if (!existing.being_deleted) {
             if (request.expect_does_not_exist) return error.IndexAlreadyExists;
+            if (request.generation) |g| {
+                if (g < existing.generation) return error.OlderIndexAlreadyExists;
+                if (g > existing.generation) return error.NewerIndexAlreadyExists;
+            }
             return .{ .version = existing.index.version, .ready = true, .generation = existing.generation };
         }
         return error.IndexAlreadyExists;
     }
 
-    // New generation = one past any prior lineage's (from the redirect), so a
-    // recreate after delete is a physically separate v<gen> dir.
-    const generation: u64 = blk: {
+    // Not active. The last lineage's generation (from the redirect), if any.
+    const prior: ?u64 = blk: {
         const name_dir = openOrCreateDir(self.dir, name) catch |err| return err;
         defer name_dir.close();
         const r = index_redirect.read(name_dir, self.allocator) catch |err| switch (err) {
-            error.FileNotFound => break :blk 1,
+            error.FileNotFound => break :blk null,
             else => return err,
         };
         defer self.allocator.free(r.name);
-        break :blk r.generation + 1;
+        break :blk r.generation;
     };
+
+    // Generation to stamp: caller-supplied (must advance past any prior lineage — the
+    // same always-increasing rule the coordinator enforces in replicated mode), else
+    // auto-assigned one past the prior. Either way it lands in the redirect + v<gen>
+    // dir identically to how the replicated path stamps the coordinator's generation.
+    const generation: u64 = if (request.generation) |g| gen: {
+        if (prior) |p| {
+            if (g <= p) return error.OlderIndexAlreadyExists;
+        }
+        break :gen g;
+    } else if (prior) |p| p + 1 else 1;
 
     const ref = try self.installNewLineage(name, generation);
     return .{ .version = ref.index.version, .ready = true, .generation = generation };

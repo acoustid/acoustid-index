@@ -97,7 +97,7 @@ fn sendError(req: *http.Request, res: *http.Response, err: anyerror) void {
         error.BadRequest, error.InvalidIndexName => .bad_request,
         error.IndexNotFound, error.FingerprintNotFound => .not_found,
         error.IndexNotReady, error.SearchTimeout, error.ReplicationTimeout, error.CoordinatorError => .service_unavailable,
-        error.VersionMismatch, error.IndexAlreadyExists => .conflict,
+        error.VersionMismatch, error.IndexAlreadyExists, error.OlderIndexAlreadyExists, error.NewerIndexAlreadyExists => .conflict,
         error.UnsupportedMediaType => .unsupported_media_type,
         error.NotImplemented => .not_implemented,
         else => .internal_server_error,

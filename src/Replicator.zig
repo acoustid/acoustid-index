@@ -702,6 +702,40 @@ test "a poison meta op parks and does not wedge other indexes" {
     try std.testing.expect(try mi.checkIndexExists("good"));
 }
 
+test "standalone createIndex honors the generation" {
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_standalone_generation";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+
+    // Create at a specific generation (not auto-assigned), same as the coordinator
+    // would stamp in replicated mode.
+    try std.testing.expectEqual(@as(u64, 5), (try mi.createIndex("main", .{ .generation = 5 })).generation);
+    // Idempotent at the same generation; a mismatch on the active index conflicts.
+    try std.testing.expectEqual(@as(u64, 5), (try mi.createIndex("main", .{ .generation = 5 })).generation);
+    try std.testing.expectError(error.OlderIndexAlreadyExists, mi.createIndex("main", .{ .generation = 4 }));
+    try std.testing.expectError(error.NewerIndexAlreadyExists, mi.createIndex("main", .{ .generation = 6 }));
+
+    // After delete, a recreate must advance past the prior lineage.
+    _ = try mi.deleteIndex("main", .{});
+    try std.testing.expectError(error.OlderIndexAlreadyExists, mi.createIndex("main", .{ .generation = 5 }));
+    try std.testing.expectEqual(@as(u64, 9), (try mi.createIndex("main", .{ .generation = 9 })).generation);
+
+    // A null generation auto-assigns one past the prior.
+    _ = try mi.deleteIndex("main", .{});
+    try std.testing.expectEqual(@as(u64, 10), (try mi.createIndex("main", .{})).generation);
+}
+
 test "applyLog rejects a stale generation" {
     const common = @import("common.zig");
 
