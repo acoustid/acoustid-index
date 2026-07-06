@@ -81,7 +81,7 @@ pub fn buildFromMerger(self: *Self, merger: anytype) !void {
     }
 }
 
-pub fn build(self: *Self, changes: []const Change, metadata: ?Metadata) !void {
+pub fn build(self: *Self, changes: []const Change) !void {
     var num_docs: u32 = 0;
     var num_items: usize = 0;
     for (changes) |change| {
@@ -93,6 +93,7 @@ pub fn build(self: *Self, changes: []const Change, metadata: ?Metadata) !void {
             .delete => {
                 num_docs += 1;
             },
+            .set_metadata => {},
         }
     }
 
@@ -134,13 +135,18 @@ pub fn build(self: *Self, changes: []const Change, metadata: ?Metadata) !void {
                     }
                 }
             },
+            .set_metadata => {}, // applied in a forward pass below (last wins)
         }
     }
 
     std.sort.pdq(Item, self.items.items, {}, Item.lessThan);
 
-    if (metadata) |m| {
-        try self.metadata.update(m);
+    // Metadata is order-sensitive (last write wins), so apply it forward — unlike
+    // the doc loop above, which runs in reverse for first-occurrence-wins on ids.
+    for (changes) |change| {
+        if (change == .set_metadata) {
+            for (change.set_metadata.entries) |e| try self.metadata.set(e.key, e.value);
+        }
     }
 }
 

@@ -136,14 +136,14 @@ pub fn removeConsumer(self: *Self, name: []const u8) void {
 /// Write path in replicated mode: append to the active lineage's data feed, wait
 /// for the local consumer to apply up to the assigned seq (read-your-writes),
 /// return that seq as the version.
-pub fn update(self: *Self, name: []const u8, request: api.UpdateRequest) !api.UpdateResponse {
+pub fn update(self: *Self, name: []const u8, changes: []const Change, expected_version: ?u64) !api.UpdateResponse {
     const generation = blk: {
         try self.mutex.lock();
         defer self.mutex.unlock();
         const c = self.consumers.get(name) orelse return error.IndexNotFound;
         break :blk c.generation;
     };
-    const version = try self.coordinator.append(name, generation, request.changes, request.expected_version);
+    const version = try self.coordinator.append(name, generation, changes, expected_version);
     try self.waitApplied(name, generation, version);
     return .{ .version = version };
 }
@@ -198,7 +198,7 @@ fn consumeLoop(c: *Consumer, start_version: u64) zio.Cancelable!void {
 // deleted or rebuilt underneath it) and should stop.
 fn applyWithRetry(self: *Self, c: *Consumer, changes: []const Change, version: u64) zio.Cancelable!bool {
     while (true) {
-        self.mi.applyLog(c.name, c.generation, changes, null, version) catch |err| switch (err) {
+        self.mi.applyLog(c.name, c.generation, changes, version) catch |err| switch (err) {
             error.Canceled => return error.Canceled,
             error.IndexNotFound, error.IndexGenerationMismatch => {
                 log.info("data consumer for '{s}' gen {d} stopping ({s})", .{ c.name, c.generation, @errorName(err) });
@@ -470,8 +470,49 @@ test "applyLog rejects a stale generation" {
     const changes = [_]Change{.{ .insert = .{ .id = 1, .hashes = &h } }};
     // The current generation applies; a stale one (an older lineage's consumer that
     // should have been stopped) is rejected rather than misapplied.
-    try mi.applyLog("main", created.generation, &changes, null, 1);
-    try std.testing.expectError(error.IndexGenerationMismatch, mi.applyLog("main", created.generation + 1, &changes, null, 2));
+    try mi.applyLog("main", created.generation, &changes, 1);
+    try std.testing.expectError(error.IndexGenerationMismatch, mi.applyLog("main", created.generation + 1, &changes, 2));
+}
+
+test "replicated metadata update propagates through the coordinator" {
+    const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
+    const Metadata = @import("change.zig").Metadata;
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{ .executors = .exact(2) });
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_replicator_meta";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var cl = MemoryCoordinator.init(std.testing.allocator);
+    defer cl.deinit();
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    try mi.startReplication(cl.coordinator());
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    _ = try mi.createIndex("main", .{});
+
+    // Metadata rides the op stream: a metadata-only update goes through the log and
+    // is applied by the consumer (read-your-writes), then shows up in index info.
+    var md = Metadata.initOwned(std.testing.allocator);
+    defer md.deinit();
+    try md.set("foo", "bar");
+    try md.set("rev", "7");
+    _ = try mi.update(a, "main", .{ .changes = &[_]Change{}, .metadata = md });
+
+    const info = try mi.getIndexInfo(a, "main");
+    try std.testing.expectEqualStrings("bar", info.metadata.get("foo").?);
+    try std.testing.expectEqualStrings("7", info.metadata.get("rev").?);
 }
 
 test "replicated delete+recreate converges on the new lineage" {

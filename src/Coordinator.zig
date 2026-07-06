@@ -30,6 +30,7 @@ const std = @import("std");
 const zio = @import("zio");
 const msgpack = @import("msgpack");
 const Change = @import("change.zig").Change;
+const MetadataEntry = @import("change.zig").MetadataEntry;
 
 /// One committed op in a lineage's ordered data feed. `id` is the per-lineage seq
 /// and doubles as the index version. For an insert, `change.insert.hashes` is
@@ -352,6 +353,24 @@ fn dupeChange(allocator: std.mem.Allocator, change: Change) !Change {
     return switch (change) {
         .insert => |i| .{ .insert = .{ .id = i.id, .hashes = try allocator.dupe(u32, i.hashes) } },
         .delete => |d| .{ .delete = d },
+        .set_metadata => |sm| blk: {
+            const out = try allocator.alloc(MetadataEntry, sm.entries.len);
+            var n: usize = 0;
+            errdefer {
+                for (out[0..n]) |e| {
+                    allocator.free(e.key);
+                    allocator.free(e.value);
+                }
+                allocator.free(out);
+            }
+            for (sm.entries) |e| {
+                const k = try allocator.dupe(u8, e.key);
+                errdefer allocator.free(k);
+                out[n] = .{ .key = k, .value = try allocator.dupe(u8, e.value) };
+                n += 1;
+            }
+            break :blk .{ .set_metadata = .{ .entries = out } };
+        },
     };
 }
 
@@ -359,6 +378,13 @@ fn freeChange(allocator: std.mem.Allocator, change: Change) void {
     switch (change) {
         .insert => |i| allocator.free(i.hashes),
         .delete => {},
+        .set_metadata => |sm| {
+            for (sm.entries) |e| {
+                allocator.free(e.key);
+                allocator.free(e.value);
+            }
+            allocator.free(sm.entries);
+        },
     }
 }
 

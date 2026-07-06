@@ -8,6 +8,7 @@
 const std = @import("std");
 const zio = @import("zio");
 const Change = @import("change.zig").Change;
+const MetadataEntry = @import("change.zig").MetadataEntry;
 const Metadata = @import("Metadata.zig");
 const Transaction = @import("change.zig").Transaction;
 const MemorySegment = @import("MemorySegment.zig");
@@ -340,7 +341,7 @@ const ReplayCtx = struct {
         if (txn.id <= self.file_version) return; // already in a file segment
         var ref = try MemoryRef.create(self.allocator, MemorySegment.init(self.allocator, .{}));
         errdefer ref.release(self.allocator, MemorySegment.deinit, .{.delete});
-        try ref.value.build(txn.changes, txn.metadata);
+        try ref.value.build(txn.changes);
         ref.value.info = .{ .version = txn.id, .merges = 0 };
         try self.mem_list.append(self.allocator, ref);
     }
@@ -402,7 +403,7 @@ fn releaseRefs(comptime T: type, allocator: std.mem.Allocator, refs: []SharedPtr
 // Writer path. Build the memory segment before the durable append so a build
 // failure never leaves the log ahead of memory; the oplog append is the commit
 // point.
-pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata, options: Oplog.WriteOptions) !u64 {
+pub fn update(self: *Self, changes: []const Change, options: Oplog.WriteOptions) !u64 {
     try self.write_lock.lock();
     defer self.write_lock.unlock();
 
@@ -414,9 +415,9 @@ pub fn update(self: *Self, changes: []const Change, metadata: ?Metadata, options
     var seg = try MemoryRef.create(self.allocator, MemorySegment.init(self.allocator, .{}));
     var seg_consumed = false;
     errdefer if (!seg_consumed) seg.release(self.allocator, MemorySegment.deinit, .{.delete});
-    try seg.value.build(changes, metadata);
+    try seg.value.build(changes);
 
-    const version = try self.oplog.append(changes, metadata, options);
+    const version = try self.oplog.append(changes, options);
     seg.value.info = .{ .version = version, .merges = 0 };
 
     const cur = self.segments.value;
@@ -785,8 +786,8 @@ test "checkpoint and reload" {
         var index = try Self.open(std.testing.allocator, dir, 5, true, null);
         defer index.deinit();
 
-        _ = try index.update(&ins1, null, .{});
-        _ = try index.update(&ins2, null, .{});
+        _ = try index.update(&ins1, .{});
+        _ = try index.update(&ins2, .{});
         try index.runMaintenance(); // flush memory -> file segment
 
         try std.testing.expectEqual(@as(usize, 1), index.segments.value.file.len);
@@ -839,13 +840,13 @@ test "file segment merging bounds count and preserves deletes" {
     var id: u32 = 1;
     while (id <= 30) : (id += 1) {
         const ins = [_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{ 100, id } } }};
-        _ = try index.update(&ins, null, .{});
+        _ = try index.update(&ins, .{});
         try index.runMaintenance();
     }
     try std.testing.expect(index.segments.value.file.len < 30);
 
     const del = [_]Change{.{ .delete = .{ .id = 5 } }};
-    _ = try index.update(&del, null, .{});
+    _ = try index.update(&del, .{});
 
     var results = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });
     defer results.deinit();
@@ -873,7 +874,7 @@ test "reader snapshot is stable across writes" {
     var index = try Self.open(std.testing.allocator, dir, 5, true, null);
     defer index.deinit();
 
-    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{100} } }}, null, .{});
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{100} } }}, .{});
 
     // Snapshot taken now sees only id 1.
     var reader = try index.acquireReader();
@@ -883,7 +884,7 @@ test "reader snapshot is stable across writes" {
     // new snapshots no longer reference; the old reader must stay valid.
     var id: u32 = 2;
     while (id <= 30) : (id += 1) {
-        _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{100} } }}, null, .{});
+        _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{100} } }}, .{});
         try index.runMaintenance();
     }
 
@@ -919,7 +920,7 @@ test "memory merge consolidates memory segments without checkpointing" {
     // 50 tiny updates stay well under the checkpoint threshold.
     var id: u32 = 1;
     while (id <= 50) : (id += 1) {
-        _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{id} } }}, null, .{});
+        _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{id} } }}, .{});
         try index.runMaintenance();
     }
 
@@ -955,7 +956,7 @@ test "oplog truncation after checkpoint" {
 
         var id: u32 = 1;
         while (id <= 40) : (id += 1) {
-            _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{ 100, id } } }}, null, .{});
+            _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{ 100, id } } }}, .{});
             try index.runMaintenance();
         }
     }
@@ -1002,8 +1003,8 @@ test "getDocInfo reports version and tombstones, across a checkpoint" {
     var index = try Self.open(std.testing.allocator, dir, 100_000, true, null);
     defer index.deinit();
 
-    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 5, .hashes = &[_]u32{ 10, 20 } } }}, null, .{});
-    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 6, .hashes = &[_]u32{ 10, 30 } } }}, null, .{});
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 5, .hashes = &[_]u32{ 10, 20 } } }}, .{});
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 6, .hashes = &[_]u32{ 10, 30 } } }}, .{});
 
     {
         var r = try index.acquireReader();
@@ -1015,7 +1016,7 @@ test "getDocInfo reports version and tombstones, across a checkpoint" {
     }
 
     // Delete 5: newest segment wins, reported as a tombstone.
-    _ = try index.update(&[_]Change{.{ .delete = .{ .id = 5 } }}, null, .{});
+    _ = try index.update(&[_]Change{.{ .delete = .{ .id = 5 } }}, .{});
     {
         var r = try index.acquireReader();
         defer r.deinit();
@@ -1048,16 +1049,18 @@ test "index stats and metadata aggregation" {
     var index = try Self.open(std.testing.allocator, dir, 100_000, true, null);
     defer index.deinit();
 
-    var md1 = Metadata.initOwned(std.testing.allocator);
-    defer md1.deinit();
-    try md1.set("source", "unit");
-    try md1.set("rev", "1");
-    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 5, .hashes = &[_]u32{ 10, 20 } } }}, md1, .{});
+    _ = try index.update(&[_]Change{
+        .{ .insert = .{ .id = 5, .hashes = &[_]u32{ 10, 20 } } },
+        .{ .set_metadata = .{ .entries = &[_]MetadataEntry{
+            .{ .key = "source", .value = "unit" },
+            .{ .key = "rev", .value = "1" },
+        } } },
+    }, .{});
 
-    var md2 = Metadata.initOwned(std.testing.allocator);
-    defer md2.deinit();
-    try md2.set("rev", "2");
-    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 12, .hashes = &[_]u32{30} } }}, md2, .{});
+    _ = try index.update(&[_]Change{
+        .{ .insert = .{ .id = 12, .hashes = &[_]u32{30} } },
+        .{ .set_metadata = .{ .entries = &[_]MetadataEntry{.{ .key = "rev", .value = "2" }} } },
+    }, .{});
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -1092,7 +1095,7 @@ test "oplog recovers the valid prefix from a corrupt tail" {
         defer index.deinit();
         var id: u32 = 1;
         while (id <= 5) : (id += 1) {
-            _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{ 100, id } } }}, null, .{});
+            _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{ 100, id } } }}, .{});
         }
         try std.testing.expectEqual(@as(u64, 5), index.version);
     }

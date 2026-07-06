@@ -311,7 +311,7 @@ test "segment round-trip: write, read, search" {
     try mem.build(&[_]Change{
         .{ .insert = .{ .id = 1, .hashes = &[_]u32{ 100, 200, 300 } } },
         .{ .insert = .{ .id = 2, .hashes = &[_]u32{ 100, 200 } } },
-    }, null);
+    });
 
     var mem_reader = mem.reader();
     defer mem_reader.close();

@@ -131,6 +131,25 @@ def test_index_create_propagates(cluster):
     assert {h["id"] for h in _search(p2, [55555])} == {1, 2}
 
 
+def test_metadata_replicates(cluster):
+    _co, p1, p2 = cluster
+    _req(p1, "PUT", "/main")
+    assert _wait_index(p2, "main")
+
+    # Metadata-only update on p1 rides the op stream and replicates to p2.
+    _req(p1, "POST", "/main/_update", {"changes": [], "metadata": {"foo": "bar", "rev": "7"}})
+
+    def meta(port):
+        return _req(port, "GET", "/main").get("metadata", {})
+
+    assert meta(p1).get("foo") == "bar"  # read-your-writes on the writer
+    for _ in range(50):
+        if meta(p2).get("foo") == "bar" and meta(p2).get("rev") == "7":
+            break
+        time.sleep(0.1)
+    assert meta(p2) == {"foo": "bar", "rev": "7"}
+
+
 def test_index_delete_and_recreate_converges(cluster):
     _co, p1, p2 = cluster
     _req(p1, "PUT", "/main")

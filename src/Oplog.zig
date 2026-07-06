@@ -185,7 +185,7 @@ fn getFile(self: *Self, version: u64) !zio.File {
 /// in `options.version` (replicated apply) or the next local one. With
 /// `options.expected_version` set and mismatched, fails with error.VersionMismatch
 /// and writes nothing.
-pub fn append(self: *Self, changes: []const Change, metadata: ?Metadata, options: WriteOptions) !u64 {
+pub fn append(self: *Self, changes: []const Change, options: WriteOptions) !u64 {
     if (options.expected_version) |expected| {
         if (self.last_version != expected) return error.VersionMismatch;
     }
@@ -196,7 +196,6 @@ pub fn append(self: *Self, changes: []const Change, metadata: ?Metadata, options
     try msgpack.encode(Transaction{
         .id = version,
         .changes = changes,
-        .metadata = metadata,
     }, &w.writer);
     const payload = w.written();
 

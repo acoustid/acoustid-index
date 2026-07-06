@@ -15,6 +15,7 @@ const api = @import("api.zig");
 const Index = @import("Index.zig");
 const Change = @import("change.zig").Change;
 const Metadata = @import("change.zig").Metadata;
+const MetadataEntry = @import("change.zig").MetadataEntry;
 const Replicator = @import("Replicator.zig");
 const Coordinator = @import("Coordinator.zig").Coordinator;
 const index_redirect = @import("index_redirect.zig");
@@ -270,15 +271,34 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
 }
 
 pub fn update(self: *Self, arena: std.mem.Allocator, name: []const u8, request: api.UpdateRequest) !api.UpdateResponse {
-    _ = arena;
+    // Fold any metadata into the change stream (as a trailing set_metadata op) once,
+    // so both the replicated and local paths carry it identically through the log.
+    const changes = try foldMetadata(arena, request.changes, request.metadata);
+
     // Replicated mode: the write goes to the log; the consumer applies it.
-    if (self.replication) |repl| return repl.update(name, request);
+    if (self.replication) |repl| return repl.update(name, changes, request.expected_version);
 
     const index = try self.getIndex(name);
     defer self.releaseIndex(index);
     metrics.incUpdates();
-    const version = try index.update(request.changes, request.metadata, .{ .expected_version = request.expected_version });
+    const version = try index.update(changes, .{ .expected_version = request.expected_version });
     return .{ .version = version };
+}
+
+// Append a trailing set_metadata op when metadata is present, so metadata rides the
+// op stream instead of a side field (see change.zig). Entries and `changes`'
+// elements are borrowed (arena-lived); the coordinator deep-copies on append.
+fn foldMetadata(arena: std.mem.Allocator, changes: []const Change, metadata: ?Metadata) ![]const Change {
+    const md = metadata orelse return changes;
+    if (md.count() == 0) return changes;
+    const entries = try arena.alloc(MetadataEntry, md.count());
+    var it = md.entries.iterator();
+    var i: usize = 0;
+    while (it.next()) |e| : (i += 1) entries[i] = .{ .key = e.key_ptr.*, .value = e.value_ptr.* };
+    const out = try arena.alloc(Change, changes.len + 1);
+    @memcpy(out[0..changes.len], changes);
+    out[changes.len] = .{ .set_metadata = .{ .entries = entries } };
+    return out;
 }
 
 /// Apply changes at an externally-assigned version (the replicated consumer's
@@ -286,11 +306,11 @@ pub fn update(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
 /// applying to a lineage that was rebuilt underneath the consumer. The external log
 /// owns ordering and durability, so this just stamps the version onto the local
 /// oplog + segments.
-pub fn applyLog(self: *Self, name: []const u8, generation: u64, changes: []const Change, metadata: ?Metadata, version: u64) !void {
+pub fn applyLog(self: *Self, name: []const u8, generation: u64, changes: []const Change, version: u64) !void {
     const index = try self.getIndexForGeneration(name, generation);
     defer self.releaseIndex(index);
     metrics.incUpdates();
-    _ = try index.update(changes, metadata, .{ .version = version });
+    _ = try index.update(changes, .{ .version = version });
 }
 
 /// Render metrics (global counters + a per-index docs gauge) in Prometheus text.
