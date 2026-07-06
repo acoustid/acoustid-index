@@ -205,3 +205,48 @@ def test_coordinator_registry_endpoints(cluster):
     assert d["a"] == "http://127.0.0.1:9999"
     assert d["f"] == 5
     assert get_donor(10).get("d") is None
+
+
+def test_replica_status_reporter_registers_donor(tmp_path):
+    """End-to-end reporter path: a replica with --advertise-addr heartbeats the
+    coordinator, which can then hand it back as a snapshot donor."""
+    import msgpack
+
+    if not os.path.exists(BINARY):
+        subprocess.run(["zig", "build"], cwd=REPO_ROOT, check=True)
+
+    co, p1 = _free_port(), _free_port()
+    procs = []
+
+    def start(args):
+        procs.append(subprocess.Popen([BINARY] + args))
+
+    try:
+        start(["--coordinator", "--port", str(co)])
+        _wait(co, "/_changelog/x/1?after=0&max=1&timeout_ms=50")
+        url = f"http://127.0.0.1:{co}"
+        addr = f"http://127.0.0.1:{p1}"
+        start(["--port", str(p1), "--dir", str(tmp_path / "r1"), "--coordinator-url", url,
+               "--advertise-addr", addr, "--report-interval-ms", "200"])
+        _wait(p1, "/_health")
+
+        _req(p1, "PUT", "/main")  # first index -> generation 1
+
+        def donor():
+            r = urllib.request.urlopen(f"http://127.0.0.1:{co}/_donor/main/1?after=0", timeout=5)
+            return msgpack.unpackb(r.read(), raw=False).get("d")
+
+        found = None
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            found = donor()
+            if found is not None:
+                break
+            time.sleep(0.1)
+        assert found is not None, "replica never registered as a donor"
+        assert found["a"] == addr
+    finally:
+        for p in procs:
+            p.send_signal(signal.SIGKILL)
+        for p in procs:
+            p.wait()

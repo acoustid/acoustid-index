@@ -52,6 +52,11 @@ const Config = struct {
     coordinator: bool = false,
     // Replica mode: consume the changelog from this coordinator URL.
     coordinator_url: ?[]const u8 = null,
+    // Base URL other nodes fetch GET /:index/_snapshot from. When set (replica mode),
+    // this node heartbeats the coordinator so it can be picked as a snapshot donor.
+    advertise_addr: ?[]const u8 = null,
+    // How often (ms) the replica heartbeats the coordinator with its lineage watermarks.
+    report_interval_ms: u64 = 5_000,
 };
 
 // Bulk `_update` batches (and the coordinator's append bodies, which carry the same
@@ -85,6 +90,8 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
     multi_index.checkpoint_threshold = config.checkpoint_threshold;
     multi_index.checkpoint_age = if (config.checkpoint_age_ms == 0) null else .fromMilliseconds(config.checkpoint_age_ms);
     multi_index.load_concurrency = config.load_concurrency;
+    multi_index.advertise_addr = config.advertise_addr;
+    multi_index.report_interval = .fromMilliseconds(config.report_interval_ms);
     defer multi_index.deinit();
     try multi_index.open();
 
@@ -191,6 +198,10 @@ fn parseArgs(args: std.process.Args) !Config {
             config.coordinator = true;
         } else if (std.mem.eql(u8, arg, "--coordinator-url")) {
             config.coordinator_url = it.next() orelse return error.MissingArgument;
+        } else if (std.mem.eql(u8, arg, "--advertise-addr")) {
+            config.advertise_addr = it.next() orelse return error.MissingArgument;
+        } else if (std.mem.eql(u8, arg, "--report-interval-ms")) {
+            config.report_interval_ms = try std.fmt.parseInt(u64, it.next() orelse return error.MissingArgument, 10);
         } else {
             std.log.warn("ignoring unknown argument '{s}'", .{arg});
         }

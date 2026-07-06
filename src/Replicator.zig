@@ -52,6 +52,8 @@ const pending_retry: zio.Timeout = .{ .duration = .fromMilliseconds(1000) };
 // error.ReplicationTimeout (-> 503) instead of hanging the request forever.
 // Overridable per-instance (`ryw_timeout` field); tests set it short.
 pub const default_ryw_timeout: zio.Duration = .fromMilliseconds(30_000);
+// How often the status reporter heartbeats the coordinator (overridable per-instance).
+pub const default_report_interval: zio.Duration = .fromMilliseconds(5_000);
 
 allocator: std.mem.Allocator,
 mi: *MultiIndex,
@@ -63,6 +65,12 @@ consumers: std.StringHashMapUnmanaged(*Consumer) = .empty,
 meta_applied: u64 = 0, // max meta pos reconciled (guarded by mutex)
 meta_task: ?zio.JoinHandle(zio.Cancelable!void) = null,
 ryw_timeout: zio.Duration = default_ryw_timeout, // read/create/delete-your-writes budget
+// Peer-discovery heartbeat. When advertise_addr is set (the base URL other nodes fetch
+// GET /:index/_snapshot from), a reporter coroutine periodically tells the coordinator
+// what this node holds, so it can be picked as a snapshot donor. null disables it.
+advertise_addr: ?[]const u8 = null,
+report_interval: zio.Duration = default_report_interval,
+report_task: ?zio.JoinHandle(zio.Cancelable!void) = null,
 
 const Consumer = struct {
     name: []const u8, // owned; also the map key
@@ -83,7 +91,11 @@ pub fn init(allocator: std.mem.Allocator, mi: *MultiIndex, coordinator: Coordina
 }
 
 pub fn deinit(self: *Self) void {
-    // Stop the meta consumer first so it can't create/delete more indexes while we
+    // Stop the reporter first (it walks MultiIndex's indexes).
+    if (self.report_task) |*t| t.cancel(); // cancel + join
+    self.report_task = null;
+
+    // Stop the meta consumer next so it can't create/delete more indexes while we
     // tear the data consumers down.
     if (self.meta_task) |*t| t.cancel(); // cancel + join
     self.meta_task = null;
@@ -103,6 +115,29 @@ pub fn deinit(self: *Self) void {
 /// consumers are started by the reconcile path, not here.
 pub fn start(self: *Self) !void {
     self.meta_task = try zio.spawn(metaLoop, .{self});
+    if (self.advertise_addr != null) self.report_task = try zio.spawn(reportLoop, .{self});
+}
+
+// Periodically tell the coordinator what lineages this node holds and their watermarks,
+// so it can be discovered as a snapshot donor. Report failures are transient (the
+// coordinator may be briefly unreachable) — log and retry next tick.
+fn reportLoop(self: *Self) zio.Cancelable!void {
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
+    while (true) {
+        _ = arena.reset(.retain_capacity);
+        self.reportOnce(arena.allocator()) catch |err| {
+            if (err == error.Canceled) return error.Canceled;
+            log.warn("status report failed: {}", .{err});
+        };
+        try zio.sleep(self.report_interval);
+    }
+}
+
+fn reportOnce(self: *Self, arena: std.mem.Allocator) !void {
+    const addr = self.advertise_addr.?;
+    const lineages = try self.mi.collectLineageStatus(arena);
+    try self.coordinator.reportStatus(.{ .replica_id = addr, .advertise_addr = addr, .lineages = lineages });
 }
 
 /// Start a data consumer for the (`name`, `generation`) lineage beginning at
@@ -499,6 +534,53 @@ test "replicated create+update flows through the coordinator; RYW + search see i
     const s2 = try mi.search(a, "other", .{ .query = &q2 });
     try std.testing.expectEqual(@as(usize, 1), s2.results.len);
     try std.testing.expectEqual(@as(u32, 42), s2.results[0].id);
+}
+
+test "status reporter publishes local lineages so the coordinator can find a donor" {
+    const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{ .executors = .exact(2) });
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_replicator_reporter";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var cl = MemoryCoordinator.init(std.testing.allocator);
+    defer cl.deinit();
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    // Start without the reporter coroutine, then enable reportOnce manually so this
+    // test is deterministic (no background report racing the one below).
+    try mi.startReplication(cl.coordinator());
+    mi.replication.?.advertise_addr = "http://self:8080";
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const created = try mi.createIndex("main", .{});
+    var h = [_]u32{ 10, 20, 30 };
+    _ = try mi.update(a, "main", .{ .changes = &[_]Change{.{ .insert = .{ .id = 1, .hashes = &h } }} });
+
+    // No checkpoint yet (file_version 0), but a reader at after=0 can still be served
+    // (an empty snapshot resumed from 0). Report once, then the coordinator can pick us.
+    try mi.replication.?.reportOnce(a);
+    const donor = (try cl.coordinator().findDonor(a, "main", created.generation, 0)).?;
+    try std.testing.expectEqualStrings("http://self:8080", donor.advertise_addr);
+    try std.testing.expectEqual(@as(u64, 0), donor.file_version);
+
+    // collectLineageStatus reflects the applied version (1 after the update).
+    const st = try mi.collectLineageStatus(a);
+    try std.testing.expectEqual(@as(usize, 1), st.len);
+    try std.testing.expectEqualStrings("main", st[0].index_name);
+    try std.testing.expectEqual(created.generation, st[0].generation);
+    try std.testing.expectEqual(@as(u64, 1), st[0].applied);
 }
 
 test "meta consumer drops a local index absent from the meta feed" {

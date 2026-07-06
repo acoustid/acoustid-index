@@ -18,6 +18,7 @@ const Metadata = @import("change.zig").Metadata;
 const MetadataEntry = @import("change.zig").MetadataEntry;
 const Replicator = @import("Replicator.zig");
 const Coordinator = @import("Coordinator.zig").Coordinator;
+const LineageStatus = @import("Coordinator.zig").LineageStatus;
 const index_redirect = @import("index_redirect.zig");
 const deleteDirTree = @import("common.zig").deleteDirTree;
 const SearchResults = @import("common.zig").SearchResults;
@@ -60,6 +61,11 @@ sync: bool = true,
 load_concurrency: usize = 0,
 // Set in replicated mode: writes go through the log, a consumer applies them.
 replication: ?*Replicator = null,
+// Base URL other nodes fetch GET /:index/_snapshot from; enables the status reporter
+// (peer discovery) when set. Only meaningful in replicated mode.
+advertise_addr: ?[]const u8 = null,
+// How often the status reporter heartbeats the coordinator.
+report_interval: zio.Duration = Replicator.default_report_interval,
 
 pub fn init(allocator: std.mem.Allocator, dir: zio.Dir) Self {
     return .{ .allocator = allocator, .dir = dir };
@@ -71,9 +77,34 @@ pub fn startReplication(self: *Self, coordinator: Coordinator) !void {
     const repl = try self.allocator.create(Replicator);
     errdefer self.allocator.destroy(repl);
     repl.* = Replicator.init(self.allocator, self, coordinator);
+    repl.advertise_addr = self.advertise_addr;
+    repl.report_interval = self.report_interval;
     errdefer repl.deinit();
     try repl.start();
     self.replication = repl;
+}
+
+// Snapshot each active index's lineage watermarks for the status reporter. Reads a
+// pinned reader per index (consistent applied/file_version) under the lock; names are
+// copied into `arena`.
+pub fn collectLineageStatus(self: *Self, arena: std.mem.Allocator) ![]LineageStatus {
+    try self.lock.lock();
+    defer self.lock.unlock();
+    var list: std.ArrayListUnmanaged(LineageStatus) = .empty;
+    var it = self.indexes.iterator();
+    while (it.next()) |e| {
+        const ref = e.value_ptr.*;
+        if (ref.being_deleted) continue;
+        var r = try ref.index.acquireReader();
+        defer r.deinit();
+        try list.append(arena, .{
+            .index_name = try arena.dupe(u8, e.key_ptr.*),
+            .generation = ref.generation,
+            .applied = r.snapshot.value.version,
+            .file_version = r.snapshot.value.file_version,
+        });
+    }
+    return list.toOwnedSlice(arena);
 }
 
 pub fn deinit(self: *Self) void {
