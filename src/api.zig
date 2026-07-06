@@ -15,7 +15,12 @@ pub const SearchRequest = struct {
     query: []u32,
     timeout: u32 = default_search_timeout,
     limit: u32 = default_search_limit,
+    // Absolute score floor; null derives it from the query length.
+    min_score: ?u32 = null,
+    // Keep results scoring within this percent of the top score.
+    score_pct: u32 = 10,
 
+    // Keys via first-letter prefix: q, t, l, m, s (all distinct).
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
     }

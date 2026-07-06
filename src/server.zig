@@ -182,7 +182,10 @@ fn handleIndexHealth(mi: *MultiIndex, req: *http.Request, res: *http.Response) !
 // --- search / update ---
 
 fn handleSearch(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
-    const request = requireBody(api.SearchRequest, req, res) orelse return;
+    var request = requireBody(api.SearchRequest, req, res) orelse return;
+    // Sanitize untrusted request values (the legacy front-end passes trusted ones).
+    request.limit = @max(@min(request.limit, api.max_search_limit), api.min_search_limit);
+    request.timeout = @min(request.timeout, api.max_search_timeout);
     const response = mi.search(req.arena, indexName(req), request) catch |err| return sendError(req, res, err);
     try respond(response, req, res);
 }

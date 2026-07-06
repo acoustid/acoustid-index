@@ -69,6 +69,8 @@ pub fn open(self: *Self) !void {
     }
 }
 
+/// Search an index. Options ride in the request (limit, min_score, score_pct,
+/// timeout); callers sanitize untrusted values first. `timeout == 0` = no bound.
 pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: api.SearchRequest) !api.SearchResponse {
     try self.lock.lockShared();
     defer self.lock.unlockShared();
@@ -76,26 +78,19 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
     const index = self.indexes.get(name) orelse return error.IndexNotFound;
     metrics.incSearches();
 
-    const limit = @max(@min(request.limit, api.max_search_limit), api.min_search_limit);
     var collector = SearchResults.init(arena, .{
-        .max_results = limit,
-        .min_score = @intCast((request.query.len + 19) / 20),
-        .min_score_pct = 10,
+        .max_results = request.limit,
+        .min_score = request.min_score orelse @intCast((request.query.len + 19) / 20),
+        .min_score_pct = request.score_pct,
     });
-    // arena-backed; freed with the request arena.
-
     var reader = try index.acquireReader();
     defer reader.deinit();
 
-    // Bound the search: the segment scans hit maybeYield, so an expired timer
-    // cancels the task there. check() tells our timeout apart from a real
-    // (shutdown) cancellation, which still propagates.
-    // Matches the old deadline: a request without a timeout defaults to
-    // default_search_timeout (the struct default), an explicit value is capped;
-    // an explicit 0 is passed through (near-immediate), as before.
-    const timeout_ms = @min(request.timeout, api.max_search_timeout);
+    // The segment scans hit maybeYield, so an expired timer cancels the task
+    // there. check() tells our timeout apart from a real (shutdown) cancellation,
+    // which still propagates.
     var deadline: zio.AutoCancel = .init;
-    deadline.set(.fromMilliseconds(timeout_ms));
+    if (request.timeout != 0) deadline.set(.fromMilliseconds(request.timeout));
     defer deadline.clear();
 
     var sw = zio.Stopwatch.start();
