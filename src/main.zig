@@ -97,6 +97,8 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
 
     if (remote) |*r| {
         try multi_index.startReplication(r.coordinator());
+        // Give the replicator an HTTP client for donor snapshot fetches on bootstrap.
+        multi_index.replication.?.http_client = http.Client.init(allocator, io, .{});
         std.log.info("replicating from coordinator {s}", .{config.coordinator_url.?});
     }
 

@@ -23,6 +23,8 @@
 
 const std = @import("std");
 const zio = @import("zio");
+const http = @import("dusty");
+const snapshot = @import("snapshot.zig");
 const MultiIndex = @import("MultiIndex.zig");
 const coordinator_mod = @import("Coordinator.zig");
 const Coordinator = coordinator_mod.Coordinator;
@@ -71,6 +73,9 @@ ryw_timeout: zio.Duration = default_ryw_timeout, // read/create/delete-your-writ
 advertise_addr: ?[]const u8 = null,
 report_interval: zio.Duration = default_report_interval,
 report_task: ?zio.JoinHandle(zio.Cancelable!void) = null,
+// HTTP client for fetching snapshots from donor peers on bootstrap. Set by main (from
+// the runtime's io) once replication starts; null in tests that never bootstrap.
+http_client: ?http.Client = null,
 
 const Consumer = struct {
     name: []const u8, // owned; also the map key
@@ -108,6 +113,8 @@ pub fn deinit(self: *Self) void {
         self.allocator.destroy(c);
     }
     self.consumers.deinit(self.allocator);
+
+    if (self.http_client) |*c| c.deinit();
 }
 
 /// Start the meta consumer (called once after open(), before serving). It
@@ -581,6 +588,67 @@ test "status reporter publishes local lineages so the coordinator can find a don
     try std.testing.expectEqualStrings("main", st[0].index_name);
     try std.testing.expectEqual(created.generation, st[0].generation);
     try std.testing.expectEqual(@as(u64, 1), st[0].applied);
+}
+
+test "bootstrapLineage swaps an index's data from a donor snapshot" {
+    const Index = @import("Index.zig");
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // A donor snapshot (generation 1) with doc 99 in a file segment.
+    const donor_path = "test_bootstrap_donor";
+    common.deleteDirTree(std.testing.allocator, cwd, donor_path) catch {};
+    try cwd.createDir(donor_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, donor_path) catch {};
+
+    var buf: std.Io.Writer.Allocating = .init(a);
+    var donor_version: u64 = 0;
+    {
+        const ddir = try cwd.openDir(donor_path, .{ .iterate = true });
+        var donor = try Index.open(std.testing.allocator, ddir, 1, true, null); // threshold 1 -> checkpoint
+        defer donor.deinit();
+        _ = try donor.update(&[_]Change{.{ .insert = .{ .id = 99, .hashes = &[_]u32{ 7, 8, 9 } } }}, .{});
+        try donor.runMaintenance();
+        var dr = try donor.acquireReader();
+        defer dr.deinit();
+        donor_version = dr.snapshot.value.version;
+        try snapshot.writeSnapshot(&buf.writer, a, dr.snapshot.value, 1);
+    }
+
+    // A standalone index "main" (generation 1) holding a different doc.
+    const main_path = "test_bootstrap_main";
+    common.deleteDirTree(std.testing.allocator, cwd, main_path) catch {};
+    try cwd.createDir(main_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, main_path) catch {};
+    const mdir = try cwd.openDir(main_path, .{ .iterate = true });
+    var mi = MultiIndex.init(std.testing.allocator, mdir);
+    defer mi.deinit();
+    const created = try mi.createIndex("main", .{});
+    try std.testing.expectEqual(@as(u64, 1), created.generation);
+    _ = try mi.update(a, "main", .{ .changes = &[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{ 100, 200 } } }} });
+
+    var pre = [_]u32{ 7, 8, 9 };
+    try std.testing.expectEqual(@as(usize, 0), (try mi.search(a, "main", .{ .query = &pre })).results.len);
+
+    // Bootstrap main from the donor snapshot: it now serves the donor's data at the
+    // donor's version, and the old doc is gone.
+    var r = std.Io.Reader.fixed(buf.written());
+    try std.testing.expectEqual(donor_version, try mi.bootstrapLineage("main", 1, &r));
+
+    var q99 = [_]u32{ 7, 8, 9 };
+    const hit = try mi.search(a, "main", .{ .query = &q99 });
+    try std.testing.expectEqual(@as(usize, 1), hit.results.len);
+    try std.testing.expectEqual(@as(u32, 99), hit.results[0].id);
+
+    var q1 = [_]u32{ 100, 200 };
+    try std.testing.expectEqual(@as(usize, 0), (try mi.search(a, "main", .{ .query = &q1 })).results.len);
 }
 
 test "meta consumer drops a local index absent from the meta feed" {

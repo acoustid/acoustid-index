@@ -13,6 +13,7 @@ const std = @import("std");
 const zio = @import("zio");
 const api = @import("api.zig");
 const Index = @import("Index.zig");
+const snapshot = @import("snapshot.zig");
 const Change = @import("change.zig").Change;
 const Metadata = @import("change.zig").Metadata;
 const MetadataEntry = @import("change.zig").MetadataEntry;
@@ -560,6 +561,89 @@ fn createIndexLocal(self: *Self, name: []const u8, generation: u64) !void {
     // isolates it from prior lineages — no start_position). Safe under the manager
     // lock: addConsumer only touches the Replicator lock + spawns.
     if (self.replication) |repl| try repl.addConsumer(name, generation, ref.index.version);
+}
+
+const restore_tmp = "data.restore";
+
+/// Bootstrap the (`name`, `generation`) lineage from a donor snapshot streamed via
+/// `reader`: restore it into the lineage's data dir and reopen the index in place,
+/// returning the new version (the snapshot watermark). The ref — and thus the data
+/// consumer — survives; only the underlying Index is swapped, so the consumer resumes
+/// from the returned version. Called by the Replicator's consumer after a
+/// below-retention read.
+pub fn bootstrapLineage(self: *Self, name: []const u8, generation: u64, reader: *std.Io.Reader) !u64 {
+    var arena = std.heap.ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const name_dir = try self.dir.openDir(name, .{ .iterate = true });
+    defer name_dir.close();
+    const redirect = index_redirect.read(name_dir, self.allocator) catch return error.IndexNotFound;
+    defer self.allocator.free(redirect.name);
+    if (redirect.deleted or redirect.generation != generation) return error.IndexGenerationMismatch;
+
+    var vbuf: [index_redirect.max_data_dir_len]u8 = undefined;
+    const vdir_name = redirect.dataDir(&vbuf);
+    const vdir = try name_dir.openDir(vdir_name, .{ .iterate = true });
+    defer vdir.close();
+
+    // 1. Restore into a temp data dir (outside the lock — this streams the snapshot).
+    deleteDirTree(self.allocator, vdir, restore_tmp) catch {};
+    {
+        const restore_dir = try openOrCreateDir(vdir, restore_tmp);
+        defer restore_dir.close();
+        errdefer deleteDirTree(self.allocator, vdir, restore_tmp) catch {};
+        try snapshot.restoreInto(restore_dir, reader, a, generation);
+    }
+
+    // 2. Swap it in and reopen the index in place (under the lock, draining borrows).
+    return self.installBootstrap(name, generation, name_dir, vdir_name, vdir);
+}
+
+fn installBootstrap(self: *Self, name: []const u8, generation: u64, name_dir: zio.Dir, vdir_name: []const u8, vdir: zio.Dir) !u64 {
+    try self.lock.lock();
+    defer self.lock.unlock();
+
+    const ref = self.indexes.get(name) orelse return error.IndexNotFound;
+    if (ref.being_deleted or ref.generation != generation) return error.IndexGenerationMismatch;
+
+    // Block new borrows, drain outstanding ones (searches) — same as dropIndex.
+    ref.being_deleted = true;
+    while (ref.references > 1) {
+        ref.released.wait(&self.lock) catch |err| {
+            ref.being_deleted = false;
+            ref.released.broadcast();
+            return err;
+        };
+    }
+
+    // Close the live index, swap data <- data.restore, drop the stale WAL, reopen.
+    ref.index.deinit();
+    self.swapAndReopen(ref, name_dir, vdir_name, vdir) catch |err| {
+        // The Index is now deinit'd and unusable; remove it so nothing touches it and
+        // let the meta consumer rebuild the lineage.
+        const kv = self.indexes.fetchRemove(name).?;
+        self.allocator.free(kv.key);
+        self.allocator.destroy(kv.value);
+        return err;
+    };
+    ref.being_deleted = false;
+    ref.released.broadcast();
+    return ref.index.version;
+}
+
+fn swapAndReopen(self: *Self, ref: *IndexRef, name_dir: zio.Dir, vdir_name: []const u8, vdir: zio.Dir) !void {
+    deleteDirTree(self.allocator, vdir, "data") catch {};
+    try vdir.rename(restore_tmp, vdir, "data");
+    deleteDirTree(self.allocator, vdir, "oplog") catch {}; // Index.open recreates it empty
+
+    const data_dir = try name_dir.openDir(vdir_name, .{ .iterate = true });
+    ref.index = Index.open(self.allocator, data_dir, self.checkpoint_threshold, self.sync, null) catch |err| {
+        data_dir.close();
+        return err;
+    };
+    ref.index.checkpoint_age = self.checkpoint_age;
+    try ref.index.start();
 }
 
 /// Drop the local index for `name` (stop its data consumer, drain borrows, remove

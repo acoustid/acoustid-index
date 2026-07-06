@@ -536,7 +536,7 @@ fn maintenanceLoop(self: *Self) zio.Cancelable!void {
 // Cascade all pending work until nothing is left: consolidate memory segments,
 // flush memory to a file segment, then merge file segments. A concurrent update
 // may add work again, which re-signals the wake flag.
-fn runMaintenance(self: *Self) !void {
+pub fn runMaintenance(self: *Self) !void {
     while (true) {
         if (try self.mergeMemory()) continue;
         if (try self.checkpoint()) continue;
