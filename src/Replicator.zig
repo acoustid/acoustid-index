@@ -37,9 +37,11 @@ const meta_batch = 64;
 // Only affects how long startup waits once the feed is drained — correctness does
 // not depend on catch-up completeness (the streaming phase continues from `after`).
 const meta_catchup_ms = 100;
-// Backoff between retries of a failed meta reconcile / data apply (transient only).
+// Backoff between retries of a failed meta reconcile / data apply / feed read
+// (transient only), so a persistently-failing coordinator doesn't tight-spin.
 const reconcile_retry_ms = 1000;
 const apply_retry_ms = 1000;
+const read_retry_ms = 1000;
 
 allocator: std.mem.Allocator,
 mi: *MultiIndex,
@@ -179,6 +181,7 @@ fn consumeLoop(c: *Consumer, start_version: u64) zio.Cancelable!void {
         const n = self.coordinator.read(c.name, c.generation, after, &buf, .none) catch |err| {
             if (err == error.Canceled) return error.Canceled;
             log.warn("data read failed for '{s}' gen {d}: {}", .{ c.name, c.generation, err });
+            try zio.sleep(.fromMilliseconds(read_retry_ms));
             continue;
         };
         if (n == 0) continue;
@@ -201,7 +204,13 @@ fn applyWithRetry(self: *Self, c: *Consumer, changes: []const Change, version: u
         self.mi.applyLog(c.name, c.generation, changes, version) catch |err| switch (err) {
             error.Canceled => return error.Canceled,
             error.IndexNotFound, error.IndexGenerationMismatch => {
-                log.info("data consumer for '{s}' gen {d} stopping ({s})", .{ c.name, c.generation, @errorName(err) });
+                // Unreachable under the current invariant (deleteIndexLocal/rebuild
+                // always removeConsumer — cancel+join — before dropping/replacing a
+                // lineage, so a live consumer never sees its own index gone). Warn
+                // loudly if it ever fires: the Consumer stays in the map (we can't
+                // self-remove: removeConsumer joins this task), so a later addConsumer
+                // for the same name no-ops and the lineage silently stops replicating.
+                log.warn("data consumer for '{s}' gen {d} self-stopping on {s} (removeConsumer should have preceded this)", .{ c.name, c.generation, @errorName(err) });
                 return false;
             },
             else => {
@@ -235,6 +244,7 @@ fn metaLoop(self: *Self) zio.Cancelable!void {
             const n = self.coordinator.readMeta(after, &buf, .{ .duration = .fromMilliseconds(meta_catchup_ms) }) catch |err| {
                 if (err == error.Canceled) return error.Canceled;
                 log.warn("meta catch-up read failed: {}", .{err});
+                try zio.sleep(.fromMilliseconds(read_retry_ms));
                 continue;
             };
             if (n == 0) break; // drained within the window -> caught up
@@ -268,6 +278,7 @@ fn metaLoop(self: *Self) zio.Cancelable!void {
         const n = self.coordinator.readMeta(after, &buf, .none) catch |err| {
             if (err == error.Canceled) return error.Canceled;
             log.warn("meta stream read failed: {}", .{err});
+            try zio.sleep(.fromMilliseconds(read_retry_ms));
             continue;
         };
         for (buf[0..n]) |op| {
