@@ -22,7 +22,7 @@ const Coordinator = @import("Coordinator.zig").Coordinator;
 const LineageStatus = @import("Coordinator.zig").LineageStatus;
 const index_redirect = @import("index_redirect.zig");
 const deleteDirTree = @import("common.zig").deleteDirTree;
-const SearchResults = @import("common.zig").SearchResults;
+const SearchResultsPool = @import("common.zig").SearchResultsPool;
 const metrics = @import("metrics.zig");
 const log = std.log.scoped(.multi_index);
 
@@ -51,6 +51,9 @@ fn openOrCreateDir(parent: zio.Dir, name: []const u8) !zio.Dir {
 allocator: std.mem.Allocator,
 dir: zio.Dir,
 lock: zio.Mutex = .init,
+// Reused per-search result collectors (hit map + result list), pooled to keep
+// their capacity hot across queries. See common.SearchResultsPool.
+results_pool: SearchResultsPool,
 indexes: std.StringHashMapUnmanaged(*IndexRef) = .empty,
 checkpoint_threshold: usize = 100_000,
 // Force a checkpoint once the oldest uncheckpointed write is this old (see Index);
@@ -69,7 +72,7 @@ advertise_addr: ?[]const u8 = null,
 report_interval: zio.Duration = Replicator.default_report_interval,
 
 pub fn init(allocator: std.mem.Allocator, dir: zio.Dir) Self {
-    return .{ .allocator = allocator, .dir = dir };
+    return .{ .allocator = allocator, .dir = dir, .results_pool = SearchResultsPool.init(allocator) };
 }
 
 /// Enter replicated mode: writes append to `changelog` and a per-index consumer
@@ -122,6 +125,7 @@ pub fn deinit(self: *Self) void {
         self.allocator.free(entry.key_ptr.*);
     }
     self.indexes.deinit(self.allocator);
+    self.results_pool.deinit();
     self.dir.close();
 }
 
@@ -293,11 +297,12 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
     defer self.releaseIndex(index);
     metrics.incSearches();
 
-    var collector = SearchResults.init(arena, .{
+    const collector = try self.results_pool.acquire(.{
         .max_results = request.limit,
         .min_score = request.min_score orelse @intCast((request.query.len + 19) / 20),
         .min_score_pct = request.score_pct,
     });
+    defer self.results_pool.release(collector);
     var reader = try index.acquireReader();
     defer reader.deinit();
 
@@ -309,7 +314,7 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
     defer deadline.clear();
 
     var sw = zio.Stopwatch.start();
-    reader.search(request.query, &collector) catch |err| {
+    reader.search(request.query, collector) catch |err| {
         if (err == error.Canceled and deadline.check(error.Canceled)) return error.SearchTimeout;
         return err;
     };
