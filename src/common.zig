@@ -53,11 +53,29 @@ pub const SearchOptions = struct {
     min_score_pct: u32 = 10,
 };
 
+// Docid keys are dense, well-distributed integers, so AutoHashMap's default
+// (Wyhash over the key bytes) is pure overhead. std.HashMap masks the low bits of
+// the hash for the bucket and takes the top 7 bits for the fingerprint, so we need
+// entropy across the whole word: a splitmix64 finalizer gives that in a few
+// multiplies.
+pub const HitContext = struct {
+    pub fn hash(_: HitContext, key: u32) u64 {
+        var x: u64 = key;
+        x = (x ^ (x >> 30)) *% 0xbf58476d1ce4e5b9;
+        x = (x ^ (x >> 27)) *% 0x94d049bb133111eb;
+        return x ^ (x >> 31);
+    }
+    pub fn eql(_: HitContext, a: u32, b: u32) bool {
+        return a == b;
+    }
+};
+
 pub const SearchResults = struct {
     allocator: std.mem.Allocator,
     options: SearchOptions,
     results: std.ArrayListUnmanaged(SearchResult) = .empty,
-    hits: std.AutoHashMapUnmanaged(u32, Hit) = .{},
+    hits: std.HashMapUnmanaged(u32, Hit, HitContext, std.hash_map.default_max_load_percentage) = .{},
+    pool_next: ?*SearchResults = null, // intrusive free-list link, see SearchResultsPool
 
     const Hit = packed struct {
         version: u64,
@@ -74,6 +92,12 @@ pub const SearchResults = struct {
     pub fn deinit(self: *SearchResults) void {
         self.hits.deinit(self.allocator);
         self.results.deinit(self.allocator);
+    }
+
+    // Reset for reuse without giving back the map/list capacity (see SearchResultsPool).
+    pub fn clearRetainingCapacity(self: *SearchResults) void {
+        self.hits.clearRetainingCapacity();
+        self.results.clearRetainingCapacity();
     }
 
     pub fn incr(self: *SearchResults, id: u32, version: u64) !void {
@@ -133,5 +157,52 @@ pub const SearchResults = struct {
 
     pub fn getResults(self: *SearchResults) []SearchResult {
         return self.results.items;
+    }
+};
+
+// Reuses SearchResults across queries so the hit map keeps its capacity instead
+// of being reallocated and rehashed every search. Pooled entries own their memory
+// from a long-lived allocator (not a per-request arena) so it survives the
+// request. acquire() locks cancelably; release() runs from a defer, so it can't.
+pub const SearchResultsPool = struct {
+    allocator: std.mem.Allocator,
+    mutex: zio.Mutex = .init,
+    free: ?*SearchResults = null,
+
+    pub fn init(allocator: std.mem.Allocator) SearchResultsPool {
+        return .{ .allocator = allocator };
+    }
+
+    pub fn deinit(self: *SearchResultsPool) void {
+        var node = self.free;
+        while (node) |r| {
+            node = r.pool_next;
+            r.deinit();
+            self.allocator.destroy(r);
+        }
+    }
+
+    pub fn acquire(self: *SearchResultsPool, options: SearchOptions) !*SearchResults {
+        {
+            try self.mutex.lock();
+            defer self.mutex.unlock();
+            if (self.free) |r| {
+                self.free = r.pool_next;
+                r.pool_next = null;
+                r.options = options;
+                return r;
+            }
+        }
+        const r = try self.allocator.create(SearchResults);
+        r.* = SearchResults.init(self.allocator, options);
+        return r;
+    }
+
+    pub fn release(self: *SearchResultsPool, r: *SearchResults) void {
+        r.clearRetainingCapacity();
+        self.mutex.lockUncancelable();
+        defer self.mutex.unlock();
+        r.pool_next = self.free;
+        self.free = r;
     }
 };
