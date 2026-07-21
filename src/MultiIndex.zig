@@ -184,6 +184,10 @@ fn releaseIndex(self: *Self, index: *Index) void {
 /// semaphore (when load_concurrency > 0) caps the total file-segment loads in
 /// flight across all indexes.
 pub fn open(self: *Self) !void {
+    // 0. Start the search-collector sweeper (deinit cancels it). Before the early
+    //    return below, so an empty data dir still gets one.
+    try self.results_pool.start();
+
     // 1. Collect index names first: entry.name is only valid until the next
     //    it.next(), so we can't hold it across the concurrent opens.
     var names: std.ArrayListUnmanaged([]const u8) = .empty;
