@@ -73,6 +73,9 @@ pub const HitContext = struct {
 pub const SearchResults = struct {
     allocator: std.mem.Allocator,
     options: SearchOptions,
+    // Doubles as finish()'s scratch: it starts as every candidate and is compacted
+    // down to the top-k in place, so ranking needs no second array. Sized with the
+    // hit map rather than max_results, hence capped on reuse like the map is.
     results: std.ArrayListUnmanaged(SearchResult) = .empty,
     hits: std.HashMapUnmanaged(u32, Hit, HitContext, std.hash_map.default_max_load_percentage) = .{},
     pool_next: ?*SearchResults = null, // intrusive free-list link, see SearchResultsPool
@@ -96,16 +99,21 @@ pub const SearchResults = struct {
 
     // Reset for reuse, keeping the map/list capacity so the next query doesn't have
     // to grow them again. A query that touched an unusually large number of docs is
-    // the exception: past `max_hits_capacity` slots the map is given back rather
-    // than parked in the pool (see SearchResultsPool.max_retained_hits). `results`
-    // is bounded by api.max_search_limit, so it's always kept.
+    // the exception: past `max_hits_capacity` the memory is given back rather than
+    // parked in the pool (see SearchResultsPool.max_retained_hits). Both grow with
+    // the number of matched docs - `results` because finish() ranks in it - so both
+    // are capped.
     pub fn resetForReuse(self: *SearchResults, max_hits_capacity: u32) void {
         if (self.hits.capacity() > max_hits_capacity) {
             self.hits.clearAndFree(self.allocator);
         } else {
             self.hits.clearRetainingCapacity();
         }
-        self.results.clearRetainingCapacity();
+        if (self.results.capacity > max_hits_capacity) {
+            self.results.clearAndFree(self.allocator);
+        } else {
+            self.results.clearRetainingCapacity();
+        }
     }
 
     pub fn incr(self: *SearchResults, id: u32, version: u64) !void {
@@ -119,48 +127,45 @@ pub const SearchResults = struct {
     }
 
     pub fn finish(self: *SearchResults, collection: anytype) !void {
-        var ids = try std.ArrayListUnmanaged(u32).initCapacity(self.allocator, self.hits.count());
-        defer ids.deinit(self.allocator);
+        // Every doc over the absolute floor becomes a candidate, carrying its score
+        // so the sort is pure array work - the score used to live only in the map,
+        // which cost two probes per comparison.
+        self.results.clearRetainingCapacity();
+        try self.results.ensureTotalCapacity(self.allocator, self.hits.count());
 
         var min_score = self.options.min_score;
 
         var iter = self.hits.iterator();
         while (iter.next()) |entry| {
-            if (entry.value_ptr.*.score >= min_score) {
-                ids.appendAssumeCapacity(entry.key_ptr.*);
+            if (entry.value_ptr.score >= min_score) {
+                self.results.appendAssumeCapacity(.{ .id = entry.key_ptr.*, .score = entry.value_ptr.score });
             }
         }
 
-        std.sort.pdq(u32, ids.items, self, compareResults);
+        std.sort.pdq(SearchResult, self.results.items, {}, compareResults);
 
-        self.results.clearRetainingCapacity();
-        try self.results.ensureTotalCapacity(self.allocator, self.options.max_results);
-
-        for (ids.items) |id| {
-            if (self.results.items.len == self.options.max_results) {
-                break;
-            }
-            const hit = self.hits.get(id) orelse unreachable;
-            if (collection.hasNewerVersion(id, hit.version)) {
-                continue;
-            }
-            if (hit.score < min_score) {
-                break;
-            }
-            if (self.results.items.len == 0) {
-                min_score = @max(min_score, hit.score * self.options.min_score_pct / 100);
-            }
-            self.results.appendAssumeCapacity(.{
-                .id = id,
-                .score = hit.score,
-            });
+        // Take the top-k in place: `out` only advances when a candidate survives, so
+        // it never overtakes the read cursor and the survivors compact to the front.
+        // The map is probed only for the candidates actually examined, for their
+        // version - the rest of the sorted tail is never touched.
+        var out: usize = 0;
+        for (self.results.items) |candidate| {
+            if (out == self.options.max_results) break;
+            const hit = self.hits.get(candidate.id) orelse unreachable;
+            // A hit from a superseded version of the doc: skip it, but keep scanning.
+            if (collection.hasNewerVersion(candidate.id, hit.version)) continue;
+            // Sorted by score descending, so nothing further can clear the bar.
+            if (candidate.score < min_score) break;
+            // Relative cutoff, anchored on the best score that actually survived.
+            if (out == 0) min_score = @max(min_score, candidate.score * self.options.min_score_pct / 100);
+            self.results.items[out] = candidate;
+            out += 1;
         }
+        self.results.items.len = out;
     }
 
-    pub fn compareResults(self: *SearchResults, a: u32, b: u32) bool {
-        const a_hit = self.hits.get(a) orelse unreachable;
-        const b_hit = self.hits.get(b) orelse unreachable;
-        return a_hit.score > b_hit.score or (a_hit.score == b_hit.score and a < b);
+    fn compareResults(_: void, a: SearchResult, b: SearchResult) bool {
+        return a.score > b.score or (a.score == b.score and a.id < b.id);
     }
 
     pub fn getResults(self: *SearchResults) []SearchResult {
