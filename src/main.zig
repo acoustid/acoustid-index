@@ -57,6 +57,10 @@ const Config = struct {
     // re-resolved on every lookup, so a single URL naming a headless Service covers
     // the whole cluster and follows it as pods come and go. Unset disables bootstrap.
     peers: ?[]const u8 = null,
+    // Backstop for a whole snapshot transfer during bootstrap; 0 disables it. See
+    // Replicator.default_bootstrap_timeout — generous on purpose, raise it on a slow
+    // link rather than letting a wedged donor block a consumer forever.
+    bootstrap_timeout_ms: u64 = 30 * 60 * 1000,
 };
 
 // Bulk `_update` batches (and the coordinator's append bodies, which carry the same
@@ -101,6 +105,13 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
     };
     defer if (peer_urls) |urls| allocator.free(urls);
 
+    // Peers are only consulted when a replication consumer falls below retention, so
+    // without a coordinator they are never used. Say so rather than letting an
+    // operator believe bootstrap is configured.
+    if (peer_urls != null and remote == null) {
+        std.log.warn("--peers is set without --coordinator-url: this node is not replicating, so the peer list is unused", .{});
+    }
+
     var multi_index = MultiIndex.init(allocator, data_dir);
     multi_index.checkpoint_threshold = config.checkpoint_threshold;
     multi_index.checkpoint_age = if (config.checkpoint_age_ms == 0) null else .fromMilliseconds(config.checkpoint_age_ms);
@@ -112,6 +123,7 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
         try multi_index.startReplication(r.coordinator());
         const repl = multi_index.replication.?;
         repl.io = io; // for the donor snapshot fetch on bootstrap
+        if (config.bootstrap_timeout_ms != 0) repl.bootstrap_timeout = .fromMilliseconds(config.bootstrap_timeout_ms);
         if (peer_urls) |urls| {
             repl.peers = .{ .urls = urls, .io = io, .allocator = allocator };
             std.log.info("peer discovery over {d} configured URL(s)", .{urls.len});
@@ -235,6 +247,8 @@ fn parseArgs(args: std.process.Args) !Config {
             config.coordinator_url = it.next() orelse return error.MissingArgument;
         } else if (std.mem.eql(u8, arg, "--peers")) {
             config.peers = it.next() orelse return error.MissingArgument;
+        } else if (std.mem.eql(u8, arg, "--bootstrap-timeout-ms")) {
+            config.bootstrap_timeout_ms = try std.fmt.parseInt(u64, it.next() orelse return error.MissingArgument, 10);
         } else {
             std.log.warn("ignoring unknown argument '{s}'", .{arg});
         }

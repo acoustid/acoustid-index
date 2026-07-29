@@ -59,6 +59,14 @@ pub const default_ryw_timeout: zio.Duration = .fromMilliseconds(30_000);
 // we transfer its snapshot. Only ever waits when the answer is yes and the feed is
 // idle — BelowRetention comes back immediately — so this just bounds that idle case.
 const resume_probe: zio.Timeout = .{ .duration = .fromMilliseconds(500) };
+// Backstop for a whole snapshot transfer. A donor that accepts the connection and then
+// wedges — mid-tar, no RST — would otherwise block this consumer forever, and dusty's
+// client has no timeout of its own. Deliberately generous: a snapshot is the entire
+// index, so this must not fire on a slow-but-working transfer. It converts a hung
+// donor into "try the next one", which is what makes the ranked donor list useful.
+// NOT an idle timeout, which would be the better shape but needs a progress hook
+// through the restore reader; raise --bootstrap-timeout-ms on a slow link.
+pub const default_bootstrap_timeout: zio.Duration = .fromMilliseconds(30 * 60 * 1000);
 
 allocator: std.mem.Allocator,
 mi: *MultiIndex,
@@ -76,6 +84,7 @@ ryw_timeout: zio.Duration = default_ryw_timeout, // read/create/delete-your-writ
 peers: ?peers_mod = null,
 // Runtime io, for the snapshot fetch's HTTP client. Set by main alongside `peers`.
 io: ?std.Io = null,
+bootstrap_timeout: zio.Duration = default_bootstrap_timeout,
 
 const Consumer = struct {
     name: []const u8, // owned; also the map key
@@ -271,6 +280,25 @@ fn canResumeFrom(self: *Self, c: *Consumer, file_version: u64) !bool {
 }
 
 fn fetchFrom(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: peers_mod.Donor) !u64 {
+    // Covers the fetch AND the restore that streams the body: a donor can wedge at any
+    // point, and the restore is where most of the time goes.
+    var deadline: zio.AutoCancel = .init;
+    defer deadline.clear();
+    deadline.set(.{ .duration = self.bootstrap_timeout });
+
+    return self.fetchFromInner(arena, c, donor) catch |err| {
+        // Our own deadline, not a shutdown: report it as a donor failure so the caller
+        // moves on to the next candidate. A real cancel must stay error.Canceled and
+        // unwind the consumer.
+        if (err == error.Canceled and deadline.check(error.Canceled)) {
+            log.warn("snapshot transfer from {s} for '{s}' gen {d} timed out", .{ donor.base_url, c.name, c.generation });
+            return error.SnapshotTimeout;
+        }
+        return err;
+    };
+}
+
+fn fetchFromInner(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: peers_mod.Donor) !u64 {
     const url = try std.fmt.allocPrint(arena, "{s}/{s}/_snapshot", .{ donor.base_url, c.name });
 
     // A client per fetch: dusty's connection pool has no locking, and two indexes can
@@ -1140,4 +1168,54 @@ test "replicated delete+recreate converges on the new lineage" {
     const s2 = try mi.search(a, "main", .{ .query = &q2 });
     try std.testing.expectEqual(@as(usize, 1), s2.results.len);
     try std.testing.expectEqual(@as(u32, 2), s2.results[0].id);
+}
+
+test "a donor that wedges mid-transfer is given up on, not waited for" {
+    const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{ .executors = .exact(2) });
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_replicator_wedged_donor";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var cl = MemoryCoordinator.init(std.testing.allocator);
+    defer cl.deinit();
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    try mi.startReplication(cl.coordinator());
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    _ = try mi.createIndex("main", .{});
+
+    const repl = mi.replication.?;
+    repl.io = rt.io();
+    repl.bootstrap_timeout = .fromMilliseconds(300);
+    const c = repl.consumers.get("main").?;
+
+    // A listener we never accept on: the connection completes out of the backlog and
+    // the response never comes — the stall a liveness check cannot see.
+    var addr = try zio.net.IpAddress.parseIp4("127.0.0.1", 0);
+    var listener = try addr.listen(.{ .reuse_address = true });
+    defer listener.close();
+    const url = try std.fmt.allocPrint(a, "http://{f}", .{listener.socket.address.ip});
+
+    var sw = zio.Stopwatch.start();
+    const err = repl.fetchFrom(a, c, .{ .base_url = url, .file_version = 1 });
+    const elapsed_ms = @divTrunc(sw.read().toNanoseconds(), std.time.ns_per_ms);
+
+    // Reported as a donor failure, NOT error.Canceled: the caller must move on to the
+    // next candidate rather than unwinding the consumer as if we were shutting down.
+    try std.testing.expectError(error.SnapshotTimeout, err);
+    try std.testing.expect(elapsed_ms >= 250); // it really stalled
+    try std.testing.expect(elapsed_ms < 3000); // and the bound ended it
 }
