@@ -60,11 +60,11 @@ pub const Change = union(enum) {
 // no upstream and the two are equal. See SegmentInfo for why they are separate.
 pub const Transaction = struct {
     id: u64,
-    version: u64 = 0,
-    // Whether `version` came from an upstream feed rather than being minted locally.
-    // Replay uses it to restore the oplog's sticky external_versions flag, so the rule
-    // holds across a restart that happens before the next checkpoint.
-    external: bool = false,
+    // The upstream position, or null when this commit was minted locally (standalone),
+    // in which case the version is the commit id. Optional rather than a value plus an
+    // "is it external" flag: the two can't then disagree, and replay recovers the
+    // upstream-fed marker from the same field.
+    version: ?u64 = null,
     changes: []const Change,
 
     pub fn msgpackFormat() msgpack.StructFormat {

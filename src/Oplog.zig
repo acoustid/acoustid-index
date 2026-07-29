@@ -59,9 +59,10 @@ current_size: usize = 0,
 write_offset: u64 = 0,
 last_commit_id: u64 = 0,
 last_version: u64 = 0,
-// Sticky: set once a commit carries an upstream position, restored on replay and
-// from the manifest. Once set, a positionless write is refused. See append().
-external_versions: bool = false,
+// Whether any replayed transaction carried an upstream position. The Index combines
+// this with the manifest to decide whether the index is upstream-fed; the oplog itself
+// holds no policy.
+saw_external: bool = false,
 max_file_size: usize = default_max_file_size,
 
 fn buildName(buf: []u8, start: u64) []u8 {
@@ -148,8 +149,10 @@ fn replay(self: *Self, ctx: anytype, handler: anytype) !void {
             switch (try readRecord(&reader.interface, arena.allocator())) {
                 .record => |txn| {
                     self.last_commit_id = @max(self.last_commit_id, txn.id);
-                    self.last_version = @max(self.last_version, txn.version);
-                    if (txn.external) self.external_versions = true;
+                    // A locally-minted commit has no stored position: its version is
+                    // its commit id, which is the standalone identity.
+                    self.last_version = @max(self.last_version, txn.version orelse txn.id);
+                    if (txn.version != null) self.saw_external = true;
                     try handler(ctx, txn);
                     count += 1;
                 },
@@ -205,13 +208,6 @@ pub fn append(self: *Self, changes: []const Change, options: WriteOptions) !Comm
     if (options.expected_version) |expected| {
         if (self.last_version != expected) return error.VersionMismatch;
     }
-    // Once an index has taken a position from an upstream feed, every later commit
-    // needs one too. Minting a local version on top of upstream ones would invent a
-    // position the upstream never issued — and this node advertises that number as a
-    // watermark, so a peer bootstrapping from it would resume the feed at a position
-    // that does not exist and skip whatever really sits there.
-    if (self.external_versions and options.version == null) return error.VersionRequired;
-
     // Commit ids are always minted locally and densely. They used to be overridden
     // with the upstream position, which broke the density SegmentInfo.merge asserts
     // on as soon as a consumer coalesced a batch (one commit spanning many positions).
@@ -233,8 +229,9 @@ pub fn append(self: *Self, changes: []const Change, options: WriteOptions) !Comm
     defer w.deinit();
     try msgpack.encode(Transaction{
         .id = commit_id,
-        .version = version,
-        .external = options.version != null,
+        // Stored as given: null for a local commit, so replay can tell the two apart
+        // without a second field that could contradict this one.
+        .version = options.version,
         .changes = changes,
     }, &w.writer);
     const payload = w.written();
@@ -251,7 +248,7 @@ pub fn append(self: *Self, changes: []const Change, options: WriteOptions) !Comm
 
     self.last_commit_id = commit_id;
     self.last_version = version;
-    if (options.version != null) self.external_versions = true;
+    if (options.version != null) self.saw_external = true;
     return .{ .commit_id = commit_id, .version = version };
 }
 

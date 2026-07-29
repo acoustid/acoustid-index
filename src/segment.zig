@@ -8,16 +8,22 @@ const msgpack = @import("msgpack");
 // the sequence without gaps, which is what `merge` asserts on below and what
 // `contains` reasons about.
 //
-// `version` is the EXTERNAL position in the upstream changelog that this
-// segment's contents are complete up to. It is deliberately NOT the commit id: one
-// commit can cover many log positions (a consumer coalesces a batch and applies it
-// as one write) and many commits can share one log position (a bootstrap loads a
-// whole table snapshot taken at a single position). Conflating them forced the
-// external, arbitrarily-spaced position into a field that must be dense.
+// `version` is the EXTERNAL position in the upstream changelog that this segment's
+// contents are complete up to — the number everything outside the index means by
+// "version", including the API. It is deliberately NOT the commit id: one commit can
+// cover many positions (a consumer coalesces a batch and applies it as one write) and
+// many commits can share one position (a bootstrap loads a whole table snapshot taken
+// at a single position). Conflating them forced the external, arbitrarily-spaced
+// position into a field that must be dense.
+//
+// null means the contents were never given an upstream position — written locally in
+// standalone mode, where a commit's version IS its commit id, so `effectiveVersion`
+// falls back to that. A non-null version on ANY segment is also what marks the whole
+// index as upstream-fed; there is no separate flag to keep in sync. See Index.update.
 pub const SegmentInfo = struct {
     commit_id: u64 = 0,
     merges: u64 = 0,
-    version: u64 = 0,
+    version: ?u64 = null,
 
     pub fn contains(self: SegmentInfo, other: SegmentInfo) bool {
         const start = self.commit_id;
@@ -34,14 +40,25 @@ pub const SegmentInfo = struct {
         return .{
             .commit_id = @min(self.commit_id, other.commit_id),
             .merges = self.merges + other.merges + 1,
-            // `other` is the internally-adjacent later segment, so its position is
-            // the newer one; @max states that without relying on the ordering.
-            .version = @max(self.version, other.version),
+            // `other` is the internally-adjacent later segment, so its position is the
+            // newer one. Keep whichever side has a position at all: a merge of local
+            // and upstream-fed segments stays marked as upstream-fed.
+            .version = if (other.version) |b|
+                if (self.version) |a| @max(a, b) else b
+            else
+                self.version,
         };
     }
 
     pub fn getLastCommitId(self: SegmentInfo) u64 {
         return self.commit_id + self.merges;
+    }
+
+    /// The version to report for this segment. With no upstream position the commit id
+    /// is the version — they are identical for an index that has only ever been
+    /// standalone, which is exactly when `version` is null.
+    pub fn effectiveVersion(self: SegmentInfo) u64 {
+        return self.version orelse self.getLastCommitId();
     }
 
     pub fn msgpackFormat() msgpack.StructFormat {

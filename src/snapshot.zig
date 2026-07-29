@@ -36,9 +36,6 @@ pub const SnapshotHeader = struct {
     format: u32 = format_version,
     generation: u64,
     segments: []SegmentEntry,
-    // Carried so a restored index keeps the donor's "fed by an upstream" marker
-    // instead of the restorer having to guess it. See Oplog.append.
-    external_versions: bool = false,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
@@ -54,11 +51,7 @@ pub fn writeSnapshot(w: *std.Io.Writer, arena: std.mem.Allocator, segs: *const S
 
     var hbuf: std.Io.Writer.Allocating = .init(arena);
     defer hbuf.deinit();
-    try msgpack.encode(SnapshotHeader{
-        .generation = generation,
-        .segments = entries,
-        .external_versions = segs.external_versions,
-    }, &hbuf.writer);
+    try msgpack.encode(SnapshotHeader{ .generation = generation, .segments = entries }, &hbuf.writer);
     try w.writeAll(hbuf.written());
 
     for (segs.file) |s| {
@@ -100,7 +93,9 @@ pub fn restoreInto(dir: zio.Dir, r: *std.Io.Reader, arena: std.mem.Allocator, ex
 
     const infos = try arena.alloc(SegmentInfo, header.segments.len);
     for (header.segments, 0..) |seg, i| infos[i] = seg.info;
-    try manifest.write(dir, arena, .{ .segments = infos, .external_versions = header.external_versions });
+    // The segments carry their own versions, so a restored index inherits the donor's
+    // upstream-fed state without the snapshot needing to say so separately.
+    try manifest.write(dir, arena, infos);
 
     const scratch = try arena.alloc(u8, 128 * 1024);
     for (header.segments) |seg| {
