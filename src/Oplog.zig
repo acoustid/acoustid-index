@@ -1,8 +1,10 @@
 // Per-index write-ahead log. Transactions are appended to rotating ".xlog" files
-// named by their first commit id. The commit id is the index version
-// (log-position-as-version). On startup the files are replayed in order; after a
-// checkpoint, truncate() deletes files whose transactions are all durable in file
-// segments.
+// named by their first commit id. Commit ids are minted here, one per transaction,
+// and are dense — segments tile them, which SegmentInfo.merge asserts on. Each
+// transaction also carries the upstream changelog `version` it corresponds to; the
+// two are NOT the same number (see SegmentInfo). On startup the files are replayed in
+// order; after a checkpoint, truncate() deletes files whose transactions are all
+// durable in file segments.
 //
 // Each record is framed [u32 payload_len][u32 crc32(payload)][payload] so replay
 // can detect a torn/corrupt tail (a crash mid-append) and recover the valid
@@ -35,11 +37,13 @@ const record_header_size = 8; // u32 payload_len + u32 crc32
 const max_record_size = 64 * 1024 * 1024; // sanity bound for a framed payload
 
 pub const WriteOptions = struct {
-    // Optimistic concurrency: fail with error.VersionMismatch if the current
-    // version doesn't match.
+    // Optimistic concurrency: fail with error.VersionMismatch if the index is not at
+    // this version. Only reachable in standalone mode (a replicated apply never sets
+    // it), where a commit's version is its own commit id.
     expected_version: ?u64 = null,
-    // Apply at this externally-assigned version (replicated apply from an upstream
-    // log); null mints the next local version.
+    // The upstream changelog position this commit corresponds to (replicated apply).
+    // null means there is no upstream — standalone writes take the commit id itself,
+    // so the two coincide exactly as they did before they were separated.
     version: ?u64 = null,
 };
 
@@ -53,6 +57,7 @@ current_file: ?zio.File = null,
 current_start: u64 = 0,
 current_size: usize = 0,
 write_offset: u64 = 0,
+last_commit_id: u64 = 0,
 last_version: u64 = 0,
 max_file_size: usize = default_max_file_size,
 
@@ -139,7 +144,8 @@ fn replay(self: *Self, ctx: anytype, handler: anytype) !void {
             _ = arena.reset(.retain_capacity);
             switch (try readRecord(&reader.interface, arena.allocator())) {
                 .record => |txn| {
-                    self.last_version = @max(self.last_version, txn.id);
+                    self.last_commit_id = @max(self.last_commit_id, txn.id);
+                    self.last_version = @max(self.last_version, txn.version);
                     try handler(ctx, txn);
                     count += 1;
                 },
@@ -148,20 +154,20 @@ fn replay(self: *Self, ctx: anytype, handler: anytype) !void {
                     // A torn record can only be the tail (a crash mid-append writes
                     // the last record; nothing follows it). Recover the prefix and
                     // stop — a later append or the PG poller refills from here.
-                    log.warn("oplog: torn record in {s}, stopping replay at version {d}", .{ name, self.last_version });
+                    log.warn("oplog: torn record in {s}, stopping replay at commit_id {d}", .{ name, self.last_commit_id });
                     break :files;
                 },
             }
         }
     }
     if (count > 0) {
-        log.info("replayed {d} transactions, version {d}", .{ count, self.last_version });
+        log.info("replayed {d} transactions, commit_id {d}", .{ count, self.last_commit_id });
     }
 }
 
-// Current append file, rotating to a new one (named by `version`) when full or
+// Current append file, rotating to a new one (named by `commit_id`) when full or
 // on the first append after open.
-fn getFile(self: *Self, version: u64) !zio.File {
+fn getFile(self: *Self, commit_id: u64) !zio.File {
     if (self.current_file) |file| {
         if (self.current_size < self.max_file_size) return file;
         file.close();
@@ -169,32 +175,43 @@ fn getFile(self: *Self, version: u64) !zio.File {
     }
 
     var name_buf: [file_name_len]u8 = undefined;
-    const name = buildName(&name_buf, version);
+    const name = buildName(&name_buf, commit_id);
     const file = try self.dir.createFile(name, .{ .truncate = true });
     errdefer file.close();
-    try self.files.append(self.allocator, version);
+    try self.files.append(self.allocator, commit_id);
 
     self.current_file = file;
-    self.current_start = version;
+    self.current_start = commit_id;
     self.current_size = 0;
     self.write_offset = 0;
     return file;
 }
 
-/// Append a transaction (framed, fsync if `sync`). Returns the version: the one
-/// in `options.version` (replicated apply) or the next local one. With
-/// `options.expected_version` set and mismatched, fails with error.VersionMismatch
-/// and writes nothing.
-pub fn append(self: *Self, changes: []const Change, options: WriteOptions) !u64 {
+/// The identity of a committed transaction: its dense internal commit id and the
+/// upstream changelog position it covers.
+pub const Commit = struct {
+    commit_id: u64,
+    version: u64,
+};
+
+/// Append a transaction (framed, fsync if `sync`). Returns the minted commit id and
+/// the version it carries. With `options.expected_version` set and mismatched,
+/// fails with error.VersionMismatch and writes nothing.
+pub fn append(self: *Self, changes: []const Change, options: WriteOptions) !Commit {
     if (options.expected_version) |expected| {
         if (self.last_version != expected) return error.VersionMismatch;
     }
-    const version = options.version orelse (self.last_version + 1);
+    // Commit ids are always minted locally and densely. They used to be overridden
+    // with the upstream position, which broke the density SegmentInfo.merge asserts
+    // on as soon as a consumer coalesced a batch (one commit spanning many positions).
+    const commit_id = self.last_commit_id + 1;
+    const version = options.version orelse commit_id;
 
     var w = std.Io.Writer.Allocating.init(self.allocator);
     defer w.deinit();
     try msgpack.encode(Transaction{
-        .id = version,
+        .id = commit_id,
+        .version = version,
         .changes = changes,
     }, &w.writer);
     const payload = w.written();
@@ -204,13 +221,14 @@ pub fn append(self: *Self, changes: []const Change, options: WriteOptions) !u64 
     std.mem.writeInt(u32, header[4..8], std.hash.crc.Crc32.hash(payload), .little);
 
     // getFile may rotate (resetting write_offset), so call it before writing.
-    const file = try self.getFile(version);
+    const file = try self.getFile(commit_id);
     try self.writeAll(file, &header);
     try self.writeAll(file, payload);
     if (self.sync) try file.sync(.{});
 
+    self.last_commit_id = commit_id;
     self.last_version = version;
-    return version;
+    return .{ .commit_id = commit_id, .version = version };
 }
 
 fn writeAll(self: *Self, file: zio.File, bytes: []const u8) !void {
@@ -226,12 +244,12 @@ fn cmpVersion(v: u64, item: u64) std.math.Order {
     return std.math.order(v, item);
 }
 
-/// Delete oplog files whose transactions are all below `version` (now durable in
-/// file segments). Keeps the file that spans `version` and all newer files.
-pub fn truncate(self: *Self, version: u64) !void {
-    // First file whose start >= version; keep the one before it (it may span
-    // `version`), so files strictly before that are safe to delete.
-    var keep_from = std.sort.lowerBound(u64, self.files.items, version, cmpVersion);
+/// Delete oplog files whose transactions are all below `commit_id` (now durable in
+/// file segments). Keeps the file that spans `commit_id` and all newer files.
+pub fn truncate(self: *Self, commit_id: u64) !void {
+    // First file whose start >= commit_id; keep the one before it (it may span
+    // `commit_id`), so files strictly before that are safe to delete.
+    var keep_from = std.sort.lowerBound(u64, self.files.items, commit_id, cmpVersion);
     if (keep_from > 0) keep_from -= 1;
 
     var deleted: usize = 0;
@@ -248,6 +266,6 @@ pub fn truncate(self: *Self, version: u64) !void {
         const remaining = self.files.items.len - deleted;
         std.mem.copyForwards(u64, self.files.items[0..remaining], self.files.items[deleted..]);
         self.files.shrinkRetainingCapacity(remaining);
-        log.info("truncated {d} oplog files below version {d}", .{ deleted, version });
+        log.info("truncated {d} oplog files below commit_id {d}", .{ deleted, commit_id });
     }
 }

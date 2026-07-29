@@ -62,7 +62,7 @@ pub fn init(allocator: std.mem.Allocator) Self {
 pub fn deinit(self: *Self) void {
     if (self.delete_on_destroy and self.data.len > 0) {
         var buf: [64]u8 = undefined;
-        const name = std.fmt.bufPrint(&buf, "{x:0>16}-{x:0>8}.data", .{ self.info.version, self.info.merges }) catch unreachable;
+        const name = std.fmt.bufPrint(&buf, "{x:0>16}-{x:0>8}.data", .{ self.info.commit_id, self.info.merges }) catch unreachable;
         self.dir.deleteFile(name) catch |err| {
             if (err != error.FileNotFound) log.warn("failed to delete segment file {s}: {}", .{ name, err });
         };
@@ -165,7 +165,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !
 
             const matched = block_reader.searchHash(hash);
             for (matched) |docid| {
-                try results.incr(docid, self.info.version);
+                try results.incr(docid, self.info.commit_id);
             }
 
             num_blocks += 1;

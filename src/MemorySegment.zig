@@ -47,7 +47,7 @@ pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !
         try zio.maybeYield();
         const matches = std.sort.equalRange(Item, items, Item{ .hash = hash, .id = 0 }, Item.orderByHash);
         for (matches[0]..matches[1]) |i| {
-            try results.incr(items[i].id, self.info.version);
+            try results.incr(items[i].id, self.info.commit_id);
         }
         items = items[matches[1]..];
     }

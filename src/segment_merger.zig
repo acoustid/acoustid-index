@@ -1,6 +1,6 @@
-// k-way merge of several segments into one. For each doc, the newest version
+// k-way merge of several segments into one. For each doc, the newest commit_id
 // wins (docs shadowed by a segment newer than their own are skipped, resolved
-// via the collection's hasNewerVersion); deleted docs keep a tombstone in the
+// via the collection's hasNewerCommit); deleted docs keep a tombstone in the
 // merged docs map so they keep shadowing older versions. The result is a reader
 // (read/advance + `.segment`) that filefmt.writeSegment can consume directly.
 
@@ -81,7 +81,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
             self.sources.appendAssumeCapacity(.{ .reader = source.reader() });
         }
 
-        /// `collection` must expose `hasNewerVersion(doc_id, version) bool`.
+        /// `collection` must expose `hasNewerCommit(doc_id, commit_id) bool`.
         pub fn prepare(self: *Self, collection: anytype) !void {
             const sources = self.sources.items;
             if (sources.len == 0) return error.NoSources;
@@ -112,7 +112,7 @@ pub fn SegmentMerger(comptime Segment: type) type {
                     docs_found += 1;
                     const doc_id = entry.key_ptr.*;
                     const doc_status = entry.value_ptr.*;
-                    if (!collection.hasNewerVersion(doc_id, segment.info.version)) {
+                    if (!collection.hasNewerCommit(doc_id, segment.info.commit_id)) {
                         try self.segment.docs.put(self.allocator, doc_id, doc_status);
                         docs_added += 1;
                         if (self.segment.min_doc_id == 0 or doc_id < self.segment.min_doc_id) self.segment.min_doc_id = doc_id;

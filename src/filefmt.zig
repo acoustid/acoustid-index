@@ -43,20 +43,24 @@ const segment_align: std.mem.Alignment = .fromByteUnits(64);
 
 pub fn buildSegmentFileName(buf: []u8, info: SegmentInfo) []u8 {
     assert(buf.len == max_file_name_size);
-    return std.fmt.bufPrint(buf, segment_file_name_fmt, .{ info.version, info.merges }) catch unreachable;
+    return std.fmt.bufPrint(buf, segment_file_name_fmt, .{ info.commit_id, info.merges }) catch unreachable;
 }
 
 pub fn isSegmentFileName(name: []const u8) bool {
     return parseSegmentFileName(name) != null;
 }
 
+/// Parse a segment file name back into its identity. The name encodes only the
+/// commit-id interval, so `version` comes back as 0 — this is a name check
+/// (see isSegmentFile), NOT a source of segment info. The manifest and the file
+/// header are; both carry the position.
 pub fn parseSegmentFileName(name: []const u8) ?SegmentInfo {
     if (!std.mem.endsWith(u8, name, segment_file_suffix)) return null;
     const s = name[0 .. name.len - segment_file_suffix.len];
     if (s.len != 25 or s[16] != '-') return null;
-    const version = std.fmt.parseUnsigned(u64, s[0..16], 16) catch return null;
+    const commit_id = std.fmt.parseUnsigned(u64, s[0..16], 16) catch return null;
     const merges = std.fmt.parseUnsigned(u32, s[17..25], 16) catch return null;
-    return SegmentInfo{ .version = version, .merges = merges };
+    return SegmentInfo{ .commit_id = commit_id, .merges = merges };
 }
 
 pub const SegmentFileHeader = struct {
@@ -298,7 +302,7 @@ test "segment round-trip: write, read, search" {
     const dir_path = "test_segment_roundtrip";
     cwd.createDir(dir_path, 0o755) catch {};
     var dir = try cwd.openDir(dir_path, .{});
-    const info: SegmentInfo = .{ .version = 1, .merges = 0 };
+    const info: SegmentInfo = .{ .commit_id = 1, .merges = 0 };
     defer {
         deleteSegmentFile(dir, info) catch {};
         dir.close();
@@ -322,7 +326,7 @@ test "segment round-trip: write, read, search" {
     try readSegment(dir, info, &seg);
 
     try std.testing.expectEqual(@as(usize, 2), seg.docs.count());
-    try std.testing.expectEqual(@as(u64, 1), seg.info.version);
+    try std.testing.expectEqual(@as(u64, 1), seg.info.commit_id);
     try std.testing.expectEqual(@as(usize, 5), seg.num_items);
 
     var results = SearchResults.init(std.testing.allocator, .{ .max_results = 10, .min_score = 1 });

@@ -375,10 +375,13 @@ fn foldMetadata(arena: std.mem.Allocator, changes: []const Change, metadata: ?Me
 }
 
 /// Apply changes at an externally-assigned version (the replicated consumer's
-/// apply path; version = the lineage's per-feed seq). `generation` guards against
-/// applying to a lineage that was rebuilt underneath the consumer. The external log
-/// owns ordering and durability, so this just stamps the version onto the local
-/// oplog + segments.
+/// apply path; `version` = the lineage's per-feed seq). `generation` guards
+/// against applying to a lineage that was rebuilt underneath the consumer. The
+/// external log owns ordering and durability, so this just records the position
+/// against a locally-minted commit.
+///
+/// Note a batch may coalesce many feed entries into one commit, which is exactly why
+/// the position cannot double as the commit id.
 pub fn applyLog(self: *Self, name: []const u8, generation: u64, changes: []const Change, version: u64) !void {
     const index = try self.getIndexForGeneration(name, generation);
     defer self.releaseIndex(index);
