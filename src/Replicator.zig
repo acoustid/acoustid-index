@@ -31,6 +31,7 @@ const Coordinator = coordinator_mod.Coordinator;
 const Entry = coordinator_mod.Entry;
 const MetaOp = coordinator_mod.MetaOp;
 const Change = @import("change.zig").Change;
+const peers_mod = @import("peers.zig");
 const api = @import("api.zig");
 const log = std.log.scoped(.replicator);
 
@@ -54,8 +55,10 @@ const pending_retry: zio.Timeout = .{ .duration = .fromMilliseconds(1000) };
 // error.ReplicationTimeout (-> 503) instead of hanging the request forever.
 // Overridable per-instance (`ryw_timeout` field); tests set it short.
 pub const default_ryw_timeout: zio.Duration = .fromMilliseconds(30_000);
-// How often the status reporter heartbeats the coordinator (overridable per-instance).
-pub const default_report_interval: zio.Duration = .fromMilliseconds(5_000);
+// Deadline for the "can I resume from this watermark?" read that vets a donor before
+// we transfer its snapshot. Only ever waits when the answer is yes and the feed is
+// idle — BelowRetention comes back immediately — so this just bounds that idle case.
+const resume_probe: zio.Timeout = .{ .duration = .fromMilliseconds(500) };
 
 allocator: std.mem.Allocator,
 mi: *MultiIndex,
@@ -67,15 +70,12 @@ consumers: std.StringHashMapUnmanaged(*Consumer) = .empty,
 meta_applied: u64 = 0, // max meta pos reconciled (guarded by mutex)
 meta_task: ?zio.JoinHandle(zio.Cancelable!void) = null,
 ryw_timeout: zio.Duration = default_ryw_timeout, // read/create/delete-your-writes budget
-// Peer-discovery heartbeat. When advertise_addr is set (the base URL other nodes fetch
-// GET /:index/_snapshot from), a reporter coroutine periodically tells the coordinator
-// what this node holds, so it can be picked as a snapshot donor. null disables it.
-advertise_addr: ?[]const u8 = null,
-report_interval: zio.Duration = default_report_interval,
-report_task: ?zio.JoinHandle(zio.Cancelable!void) = null,
-// HTTP client for fetching snapshots from donor peers on bootstrap. Set by main (from
-// the runtime's io) once replication starts; null in tests that never bootstrap.
-http_client: ?http.Client = null,
+// Where snapshot donors are looked up when a consumer falls below retention. Set by
+// main once replication starts; null (the default, for tests that never bootstrap)
+// makes a bootstrap attempt fail with error.NoPeersConfigured.
+peers: ?peers_mod = null,
+// Runtime io, for the snapshot fetch's HTTP client. Set by main alongside `peers`.
+io: ?std.Io = null,
 
 const Consumer = struct {
     name: []const u8, // owned; also the map key
@@ -96,11 +96,7 @@ pub fn init(allocator: std.mem.Allocator, mi: *MultiIndex, coordinator: Coordina
 }
 
 pub fn deinit(self: *Self) void {
-    // Stop the reporter first (it walks MultiIndex's indexes).
-    if (self.report_task) |*t| t.cancel(); // cancel + join
-    self.report_task = null;
-
-    // Stop the meta consumer next so it can't create/delete more indexes while we
+    // Stop the meta consumer first so it can't create/delete more indexes while we
     // tear the data consumers down.
     if (self.meta_task) |*t| t.cancel(); // cancel + join
     self.meta_task = null;
@@ -113,8 +109,6 @@ pub fn deinit(self: *Self) void {
         self.allocator.destroy(c);
     }
     self.consumers.deinit(self.allocator);
-
-    if (self.http_client) |*c| c.deinit();
 }
 
 /// Start the meta consumer (called once after open(), before serving). It
@@ -122,29 +116,6 @@ pub fn deinit(self: *Self) void {
 /// consumers are started by the reconcile path, not here.
 pub fn start(self: *Self) !void {
     self.meta_task = try zio.spawn(metaLoop, .{self});
-    if (self.advertise_addr != null) self.report_task = try zio.spawn(reportLoop, .{self});
-}
-
-// Periodically tell the coordinator what lineages this node holds and their watermarks,
-// so it can be discovered as a snapshot donor. Report failures are transient (the
-// coordinator may be briefly unreachable) — log and retry next tick.
-fn reportLoop(self: *Self) zio.Cancelable!void {
-    var arena = std.heap.ArenaAllocator.init(self.allocator);
-    defer arena.deinit();
-    while (true) {
-        _ = arena.reset(.retain_capacity);
-        self.reportOnce(arena.allocator()) catch |err| {
-            if (err == error.Canceled) return error.Canceled;
-            log.warn("status report failed: {}", .{err});
-        };
-        try zio.sleep(self.report_interval);
-    }
-}
-
-fn reportOnce(self: *Self, arena: std.mem.Allocator) !void {
-    const addr = self.advertise_addr.?;
-    const lineages = try self.mi.collectLineageStatus(arena);
-    try self.coordinator.reportStatus(.{ .replica_id = addr, .advertise_addr = addr, .lineages = lineages });
 }
 
 /// Start a data consumer for the (`name`, `generation`) lineage beginning at
@@ -239,23 +210,79 @@ fn markApplied(self: *Self, c: *Consumer, version: u64) void {
     self.cond.broadcast();
 }
 
-// Fetch a snapshot of (c.name, c.generation) from a donor the coordinator points us at
-// and swap it into the local index, returning the version to resume from. The donor is
-// picked for freshness, so its watermark clears the retention floor that triggered this.
+// Fetch a snapshot of (c.name, c.generation) from a peer and swap it into the local
+// index, returning the version to resume from. Donors come back freshest first.
+//
+// Each candidate's watermark is checked against the SOURCE before we fetch from it:
+// a snapshot only helps if the log can still serve the tail above it, and the log is
+// the only thing that knows its own retention floor. Downloading first and finding out
+// afterwards costs a full index transfer per attempt — the expensive way to learn
+// something one cheap read answers. See canResumeFrom.
+//
+// Walking the list matters for the other failure: the freshest peer can fail to SERVE
+// (mid-bootstrap itself, failing disk, connection reset mid-tar), and retrying would
+// rank that same peer first every time — one sick peer would otherwise wedge bootstrap
+// for good.
 fn bootstrapConsumer(self: *Self, c: *Consumer, after: u64) !u64 {
     var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
     const a = arena.allocator();
 
-    const donor = (try self.coordinator.findDonor(a, c.name, c.generation, after)) orelse return error.NoDonor;
-    const client = if (self.http_client) |*cl| cl else return error.NoHttpClient;
+    const p = self.peers orelse return error.NoPeersConfigured;
+    const donors = try p.findDonors(a, c.name, c.generation, after);
+    if (donors.len == 0) return error.NoDonor;
 
-    const url = try std.fmt.allocPrint(a, "{s}/{s}/_snapshot", .{ donor.advertise_addr, c.name });
+    var last_err: anyerror = error.NoDonor;
+    for (donors) |donor| {
+        if (!try self.canResumeFrom(c, donor.file_version)) {
+            // Donors are sorted by file_version descending and the floor is the same
+            // for all of them, so if this one is too old every one after it is too.
+            // Stop rather than re-asking the coordinator once per peer.
+            log.err(
+                "no peer can seed '{s}' gen {d}: freshest watermark {d} is below the log's retention floor — the cluster cannot self-heal, it needs a rebuild from source",
+                .{ c.name, c.generation, donor.file_version },
+            );
+            return error.AllDonorsBelowRetention;
+        }
+        return self.fetchFrom(a, c, donor) catch |err| {
+            if (err == error.Canceled) return error.Canceled;
+            log.warn("donor {s} failed for '{s}' gen {d}: {}", .{ donor.base_url, c.name, c.generation, err });
+            last_err = err;
+            continue;
+        };
+    }
+    return last_err;
+}
+
+// Would the log still serve us the tail above `file_version`? A read at that position
+// answers definitively and immediately: the retention floor is checked before the feed
+// blocks, so this never waits for new entries. 0 entries (deadline) means "resumable,
+// nothing new yet", which is a perfectly good answer.
+//
+// Errors other than BelowRetention propagate: if the log is unreachable there is no
+// point pulling a snapshot we could not resume from anyway.
+fn canResumeFrom(self: *Self, c: *Consumer, file_version: u64) !bool {
+    var probe: [1]Entry = undefined;
+    _ = self.coordinator.read(c.name, c.generation, file_version, &probe, resume_probe) catch |err| {
+        if (err == error.BelowRetention) return false;
+        return err;
+    };
+    return true;
+}
+
+fn fetchFrom(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: peers_mod.Donor) !u64 {
+    const url = try std.fmt.allocPrint(arena, "{s}/{s}/_snapshot", .{ donor.base_url, c.name });
+
+    // A client per fetch: dusty's connection pool has no locking, and two indexes can
+    // bootstrap concurrently. Same reason peers.zig builds one per probe.
+    var client = http.Client.init(self.allocator, self.io orelse return error.NoIo, .{});
+    defer client.deinit();
+
     var resp = try client.fetch(url, .{ .method = .get });
     defer resp.deinit();
     if (resp.status() != .ok) return error.SnapshotFetchFailed;
 
-    log.info("bootstrapping '{s}' gen {d} from {s} (watermark {d})", .{ c.name, c.generation, donor.advertise_addr, donor.file_version });
+    log.info("bootstrapping '{s}' gen {d} from {s} (watermark {d})", .{ c.name, c.generation, donor.base_url, donor.file_version });
     return self.mi.bootstrapLineage(c.name, c.generation, resp.reader());
 }
 
@@ -577,7 +604,7 @@ test "replicated create+update flows through the coordinator; RYW + search see i
     try std.testing.expectEqual(@as(u32, 42), s2.results[0].id);
 }
 
-test "status reporter publishes local lineages so the coordinator can find a donor" {
+test "a donor watermark below the log's retention floor is rejected before any transfer" {
     const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
     const common = @import("common.zig");
 
@@ -585,7 +612,7 @@ test "status reporter publishes local lineages so the coordinator can find a don
     defer rt.deinit();
 
     const cwd = zio.Dir.cwd();
-    const dir_path = "test_replicator_reporter";
+    const dir_path = "test_replicator_resume_check";
     common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
     try cwd.createDir(dir_path, 0o755);
     defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
@@ -596,10 +623,52 @@ test "status reporter publishes local lineages so the coordinator can find a don
 
     var mi = MultiIndex.init(std.testing.allocator, dir);
     defer mi.deinit();
-    // Start without the reporter coroutine, then enable reportOnce manually so this
-    // test is deterministic (no background report racing the one below).
     try mi.startReplication(cl.coordinator());
-    mi.replication.?.advertise_addr = "http://self:8080";
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const created = try mi.createIndex("main", .{});
+    var h = [_]u32{ 10, 20, 30 };
+    for (0..4) |i| {
+        _ = try mi.update(a, "main", .{ .changes = &[_]Change{.{ .insert = .{ .id = @intCast(i + 1), .hashes = &h } }} });
+    }
+
+    // The log has dropped everything at or below seq 2.
+    try cl.coordinator().setRetentionFloor("main", created.generation, 2);
+
+    const repl = mi.replication.?;
+    const c = repl.consumers.get("main").?;
+
+    // A donor snapshot taken at 1 is useless: we would transfer the whole index and
+    // then immediately fail the same below-retention read that sent us here.
+    try std.testing.expect(!try repl.canResumeFrom(c, 1));
+    // At the floor and above, the log can still serve the tail.
+    try std.testing.expect(try repl.canResumeFrom(c, 2));
+    try std.testing.expect(try repl.canResumeFrom(c, 4));
+}
+
+test "peer status reports the lineage watermarks a donor is picked on" {
+    const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{ .executors = .exact(2) });
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_replicator_peer_status";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var cl = MemoryCoordinator.init(std.testing.allocator);
+    defer cl.deinit();
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    try mi.startReplication(cl.coordinator());
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -609,19 +678,16 @@ test "status reporter publishes local lineages so the coordinator can find a don
     var h = [_]u32{ 10, 20, 30 };
     _ = try mi.update(a, "main", .{ .changes = &[_]Change{.{ .insert = .{ .id = 1, .hashes = &h } }} });
 
-    // No checkpoint yet (file_version 0), but a reader at after=0 can still be served
-    // (an empty snapshot resumed from 0). Report once, then the coordinator can pick us.
-    try mi.replication.?.reportOnce(a);
-    const donor = (try cl.coordinator().findDonor(a, "main", created.generation, 0)).?;
-    try std.testing.expectEqualStrings("http://self:8080", donor.advertise_addr);
-    try std.testing.expectEqual(@as(u64, 0), donor.file_version);
+    // This is what a probing peer reads off GET /:index/_status and filters on.
+    const st = try mi.getPeerStatus("main");
+    try std.testing.expectEqual(created.generation, st.generation);
+    try std.testing.expectEqual(@as(u64, 1), st.version);
+    // No checkpoint yet, so nothing of this write is in a file segment: a snapshot
+    // from here would resume at 0, which is why file_version and not version is what
+    // donor selection keys on.
+    try std.testing.expectEqual(@as(u64, 0), st.file_version);
 
-    // collectLineageStatus reflects the applied version (1 after the update).
-    const st = try mi.collectLineageStatus(a);
-    try std.testing.expectEqual(@as(usize, 1), st.len);
-    try std.testing.expectEqualStrings("main", st[0].index_name);
-    try std.testing.expectEqual(created.generation, st[0].generation);
-    try std.testing.expectEqual(@as(u64, 1), st[0].applied);
+    try std.testing.expectError(error.IndexNotFound, mi.getPeerStatus("nope"));
 }
 
 test "bootstrapLineage swaps an index's data from a donor snapshot" {
@@ -738,8 +804,6 @@ const WedgedReads = struct {
         .createIndex = createIndexImpl,
         .deleteIndex = deleteIndexImpl,
         .readMeta = readMetaImpl,
-        .reportStatus = reportStatusImpl,
-        .findDonor = findDonorImpl,
         .setRetentionFloor = setRetentionFloorImpl,
     };
     fn appendImpl(ptr: *anyopaque, name: []const u8, generation: u64, changes: []const Change, expected: ?u64) anyerror!u64 {
@@ -762,14 +826,6 @@ const WedgedReads = struct {
     fn readMetaImpl(ptr: *anyopaque, after: u64, out: []MetaOp, deadline: zio.Timeout) anyerror!usize {
         const self: *WedgedReads = @ptrCast(@alignCast(ptr));
         return self.inner.readMeta(after, out, deadline);
-    }
-    fn reportStatusImpl(ptr: *anyopaque, status: coordinator_mod.ReplicaStatus) anyerror!void {
-        const self: *WedgedReads = @ptrCast(@alignCast(ptr));
-        return self.inner.reportStatus(status);
-    }
-    fn findDonorImpl(ptr: *anyopaque, arena: std.mem.Allocator, name: []const u8, generation: u64, after: u64) anyerror!?coordinator_mod.DonorInfo {
-        const self: *WedgedReads = @ptrCast(@alignCast(ptr));
-        return self.inner.findDonor(arena, name, generation, after);
     }
     fn setRetentionFloorImpl(ptr: *anyopaque, name: []const u8, generation: u64, floor: u64) anyerror!void {
         const self: *WedgedReads = @ptrCast(@alignCast(ptr));

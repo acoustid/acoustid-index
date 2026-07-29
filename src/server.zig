@@ -32,6 +32,7 @@ pub fn registerRoutes(server: *Server) void {
     r.delete("/:index", handleDeleteIndex);
 
     r.get("/:index/_snapshot", handleSnapshotExport);
+    r.get("/:index/_status", handlePeerStatus);
 }
 
 // --- helpers ---
@@ -291,6 +292,14 @@ const ChunkedWriter = struct {
         return w.consume(total);
     }
 };
+
+// What this node holds for an index, so a bootstrapping peer can decide whether to
+// fetch a snapshot from here. The peer-facing half of peers.findDonor; deliberately
+// cheap, since every bootstrapping node probes every peer.
+fn handlePeerStatus(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
+    const response = mi.getPeerStatus(indexName(req)) catch |err| return sendError(req, res, err);
+    try respond(response, req, res);
+}
 
 fn handleSnapshotExport(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
     // Acquire the pinned snapshot first: this is the only step that can fail before any

@@ -52,11 +52,11 @@ const Config = struct {
     coordinator: bool = false,
     // Replica mode: consume the changelog from this coordinator URL.
     coordinator_url: ?[]const u8 = null,
-    // Base URL other nodes fetch GET /:index/_snapshot from. When set (replica mode),
-    // this node heartbeats the coordinator so it can be picked as a snapshot donor.
-    advertise_addr: ?[]const u8 = null,
-    // How often (ms) the replica heartbeats the coordinator with its lineage watermarks.
-    report_interval_ms: u64 = 5_000,
+    // Comma-separated peer base URLs ("http://host:port") to look for snapshot donors
+    // among when this node falls below the changelog's retention floor. Hostnames are
+    // re-resolved on every lookup, so a single URL naming a headless Service covers
+    // the whole cluster and follows it as pods come and go. Unset disables bootstrap.
+    peers: ?[]const u8 = null,
 };
 
 // Bulk `_update` batches (and the coordinator's append bodies, which carry the same
@@ -86,19 +86,38 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
         null;
     defer if (remote) |*r| r.deinit();
 
+    // Declared before the index manager so its `defer` runs after multi_index.deinit()
+    // — the replication consumers borrow these URLs until they are joined.
+    // An all-separator value ("", ",") yields no URLs; treat that as unconfigured so it
+    // takes the "cannot bootstrap" warning rather than silently claiming 0 peers.
+    const peer_urls: ?[]const []const u8 = blk: {
+        const spec = config.peers orelse break :blk null;
+        const urls = try splitPeers(allocator, spec);
+        if (urls.len == 0) {
+            allocator.free(urls);
+            break :blk null;
+        }
+        break :blk urls;
+    };
+    defer if (peer_urls) |urls| allocator.free(urls);
+
     var multi_index = MultiIndex.init(allocator, data_dir);
     multi_index.checkpoint_threshold = config.checkpoint_threshold;
     multi_index.checkpoint_age = if (config.checkpoint_age_ms == 0) null else .fromMilliseconds(config.checkpoint_age_ms);
     multi_index.load_concurrency = config.load_concurrency;
-    multi_index.advertise_addr = config.advertise_addr;
-    multi_index.report_interval = .fromMilliseconds(config.report_interval_ms);
     defer multi_index.deinit();
     try multi_index.open();
 
     if (remote) |*r| {
         try multi_index.startReplication(r.coordinator());
-        // Give the replicator an HTTP client for donor snapshot fetches on bootstrap.
-        multi_index.replication.?.http_client = http.Client.init(allocator, io, .{});
+        const repl = multi_index.replication.?;
+        repl.io = io; // for the donor snapshot fetch on bootstrap
+        if (peer_urls) |urls| {
+            repl.peers = .{ .urls = urls, .io = io, .allocator = allocator };
+            std.log.info("peer discovery over {d} configured URL(s)", .{urls.len});
+        } else {
+            std.log.warn("no --peers configured: this node cannot bootstrap from a snapshot", .{});
+        }
         std.log.info("replicating from coordinator {s}", .{config.coordinator_url.?});
     }
 
@@ -143,6 +162,20 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
             },
         }
     }
+}
+
+// Split a `--peers` value into base URLs. The slices point into argv, which outlives
+// the process; only the outer array is allocated.
+fn splitPeers(allocator: std.mem.Allocator, spec: []const u8) ![]const []const u8 {
+    var list: std.ArrayListUnmanaged([]const u8) = .empty;
+    errdefer list.deinit(allocator);
+    var it = std.mem.splitScalar(u8, spec, ',');
+    while (it.next()) |raw| {
+        const url = std.mem.trim(u8, raw, " \t");
+        if (url.len == 0) continue;
+        try list.append(allocator, url);
+    }
+    return list.toOwnedSlice(allocator);
 }
 
 // Run as the changelog coordinator: an HTTP server exposing append/read of an
@@ -200,10 +233,8 @@ fn parseArgs(args: std.process.Args) !Config {
             config.coordinator = true;
         } else if (std.mem.eql(u8, arg, "--coordinator-url")) {
             config.coordinator_url = it.next() orelse return error.MissingArgument;
-        } else if (std.mem.eql(u8, arg, "--advertise-addr")) {
-            config.advertise_addr = it.next() orelse return error.MissingArgument;
-        } else if (std.mem.eql(u8, arg, "--report-interval-ms")) {
-            config.report_interval_ms = try std.fmt.parseInt(u64, it.next() orelse return error.MissingArgument, 10);
+        } else if (std.mem.eql(u8, arg, "--peers")) {
+            config.peers = it.next() orelse return error.MissingArgument;
         } else {
             std.log.warn("ignoring unknown argument '{s}'", .{arg});
         }
@@ -245,4 +276,5 @@ test {
     _ = @import("coordinator_server.zig");
     _ = @import("RemoteCoordinator.zig");
     _ = @import("index_redirect.zig");
+    _ = @import("peers.zig");
 }
