@@ -54,8 +54,17 @@ pub const Change = union(enum) {
     }
 };
 
+// One durable commit in the oplog. `id` is the internal commit id (dense, minted
+// locally); `version` is the upstream changelog position it corresponds to,
+// which is what a restarted node resumes the feed from. In standalone mode there is
+// no upstream and the two are equal. See SegmentInfo for why they are separate.
 pub const Transaction = struct {
     id: u64,
+    // The upstream position, or null when this commit was minted locally (standalone),
+    // in which case the version is the commit id. Optional rather than a value plus an
+    // "is it external" flag: the two can't then disagree, and replay recovers the
+    // upstream-fed marker from the same field.
+    version: ?u64 = null,
     changes: []const Change,
 
     pub fn msgpackFormat() msgpack.StructFormat {

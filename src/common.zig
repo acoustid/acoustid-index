@@ -81,7 +81,9 @@ pub const SearchResults = struct {
     pool_next: ?*SearchResults = null, // intrusive free-list link, see SearchResultsPool
 
     const Hit = packed struct {
-        version: u64,
+        // The commit id of the segment this hit came from, NOT the external version:
+        // supersession is decided against segment identity. See SegmentInfo.
+        commit_id: u64,
         score: u32,
     };
 
@@ -116,12 +118,12 @@ pub const SearchResults = struct {
         }
     }
 
-    pub fn incr(self: *SearchResults, id: u32, version: u64) !void {
+    pub fn incr(self: *SearchResults, id: u32, commit_id: u64) !void {
         const r = try self.hits.getOrPut(self.allocator, id);
-        if (!r.found_existing or r.value_ptr.version < version) {
+        if (!r.found_existing or r.value_ptr.commit_id < commit_id) {
             r.value_ptr.score = 1;
-            r.value_ptr.version = version;
-        } else if (r.value_ptr.version == version) {
+            r.value_ptr.commit_id = commit_id;
+        } else if (r.value_ptr.commit_id == commit_id) {
             r.value_ptr.score += 1;
         }
     }
@@ -147,13 +149,13 @@ pub const SearchResults = struct {
         // Take the top-k in place: `out` only advances when a candidate survives, so
         // it never overtakes the read cursor and the survivors compact to the front.
         // The map is probed only for the candidates actually examined, for their
-        // version - the rest of the sorted tail is never touched.
+        // commit id - the rest of the sorted tail is never touched.
         var out: usize = 0;
         for (self.results.items) |candidate| {
             if (out == self.options.max_results) break;
             const hit = self.hits.get(candidate.id) orelse unreachable;
             // A hit from a superseded version of the doc: skip it, but keep scanning.
-            if (collection.hasNewerVersion(candidate.id, hit.version)) continue;
+            if (collection.hasNewerCommit(candidate.id, hit.commit_id)) continue;
             // Sorted by score descending, so nothing further can clear the bar.
             if (candidate.score < min_score) break;
             // Relative cutoff, anchored on the best score that actually survived.

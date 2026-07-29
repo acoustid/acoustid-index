@@ -38,7 +38,9 @@ pub fn read(dir: zio.Dir, allocator: std.mem.Allocator) ![]SegmentInfo {
     return try msgpack.decodeLeaky([]SegmentInfo, allocator, &reader);
 }
 
-/// Atomically replace the manifest with `segments`.
+/// Atomically replace the manifest with `segments`. Nothing index-level is stored:
+/// whether the index is upstream-fed is derivable from the segments themselves (any
+/// non-null SegmentInfo.version), so there is no separate flag to keep in sync.
 pub fn write(dir: zio.Dir, allocator: std.mem.Allocator, segments: []const SegmentInfo) !void {
     var w = std.Io.Writer.Allocating.init(allocator);
     defer w.deinit();

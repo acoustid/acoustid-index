@@ -31,14 +31,24 @@ const MemoryRef = SharedPtr(MemorySegment);
 const Self = @This();
 
 // Immutable snapshot of the index's segments. Refcounted via SharedPtr(Segments).
-// Both lists are ordered oldest -> newest by version; file segments are older
+// Both lists are ordered oldest -> newest by commit_id; file segments are older
 // than all memory segments.
 pub const Segments = struct {
     allocator: std.mem.Allocator,
     file: []FileRef,
     memory: []MemoryRef,
+    // Internal commit ids: `commit_id` is the newest committed, `file_commit_id` the
+    // newest durable in a file segment (what oplog replay filters on).
+    commit_id: u64 = 0,
+    file_commit_id: u64 = 0,
+    // The same two points expressed as upstream changelog positions: `version`
+    // is what a restarted node resumes from, `file_version` what a snapshot of
+    // this index resumes from (it carries file segments only). See SegmentInfo.
     version: u64 = 0,
     file_version: u64 = 0,
+    // Whether this index is fed by an upstream log; rides along so a snapshot taken
+    // from this reader carries it to whoever restores it. See Oplog.append.
+    external_versions: bool = false,
 
     // Drop every segment ref. A file whose last reference this releases is deleted
     // iff the segment was retired by a merge (FileSegment.delete_on_destroy) — so
@@ -52,16 +62,16 @@ pub const Segments = struct {
         self.* = undefined;
     }
 
-    // The newest segment that mentions `id` wins (segments partition the version
-    // space), giving the doc's current version and whether it's a tombstone.
-    // Returns null if no segment mentions the id at all.
+    // The newest segment that mentions `id` wins (segments partition the commit-id
+    // space), giving the version that doc was last written at and whether it's a
+    // tombstone. Returns null if no segment mentions the id at all.
     pub fn getDocInfo(self: *const Segments, id: u32) ?DocInfo {
         var i = self.memory.len;
         while (i > 0) {
             i -= 1;
             const seg = self.memory[i].value;
             if (id >= seg.min_doc_id and id <= seg.max_doc_id) {
-                if (seg.docs.get(id)) |alive| return .{ .version = seg.info.version, .deleted = !alive };
+                if (seg.docs.get(id)) |alive| return .{ .version = seg.info.effectiveVersion(), .deleted = !alive };
             }
         }
         var j = self.file.len;
@@ -69,7 +79,7 @@ pub const Segments = struct {
             j -= 1;
             const seg = self.file[j].value;
             if (id >= seg.min_doc_id and id <= seg.max_doc_id) {
-                if (seg.docs.get(id)) |alive| return .{ .version = seg.info.version, .deleted = !alive };
+                if (seg.docs.get(id)) |alive| return .{ .version = seg.info.effectiveVersion(), .deleted = !alive };
             }
         }
         return null;
@@ -118,21 +128,21 @@ pub const Segments = struct {
         return md;
     }
 
-    // Newest -> oldest across both lists (globally descending version). Segments
-    // are non-merged per version, so info.version is the doc's version.
-    pub fn hasNewerVersion(self: *const Segments, id: u32, version: u64) bool {
+    // Newest -> oldest across both lists (globally descending commit_id). Segments
+    // are non-merged per commit_id, so info.commit_id is the doc's commit_id.
+    pub fn hasNewerCommit(self: *const Segments, id: u32, commit_id: u64) bool {
         var i = self.memory.len;
         while (i > 0) {
             i -= 1;
             const seg = self.memory[i].value;
-            if (seg.info.version <= version) return false;
+            if (seg.info.commit_id <= commit_id) return false;
             if (id >= seg.min_doc_id and id <= seg.max_doc_id and seg.docs.contains(id)) return true;
         }
         var j = self.file.len;
         while (j > 0) {
             j -= 1;
             const seg = self.file[j].value;
-            if (seg.info.version <= version) return false;
+            if (seg.info.commit_id <= commit_id) return false;
             if (id >= seg.min_doc_id and id <= seg.max_doc_id and seg.docs.contains(id)) return true;
         }
         return false;
@@ -166,6 +176,8 @@ pub const IndexReader = struct {
         try results.finish(segs);
     }
 
+    /// The upstream changelog position this snapshot reflects — what callers, and the
+    /// API, mean by "the index version". Not the internal commit id; see SegmentInfo.
     pub fn version(self: *const IndexReader) u64 {
         return self.snapshot.value.version;
     }
@@ -211,6 +223,16 @@ write_lock: zio.Mutex = .init,
 segments: SharedPtr(Segments),
 
 // Writer-owned bookkeeping (stable under write_lock).
+// Internal: dense commit ids. `file_commit_id` is what oplog replay and truncation
+// key on. See SegmentInfo.
+commit_id: u64 = 0,
+file_commit_id: u64 = 0,
+// Derived at open from the segments and the replayed WAL, then kept up to date by
+// update(): true once anything in this index carries an upstream position.
+external_versions: bool = false,
+// External: upstream changelog positions. `version` is the resume point;
+// `file_version` is the watermark a snapshot of this index carries (file segments
+// only), so it is what a peer bootstrapping from here resumes at.
 version: u64 = 0,
 file_version: u64 = 0,
 checkpoint_threshold: usize = 100_000,
@@ -250,7 +272,12 @@ pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: us
     //    IO-bound (reads the whole file via async IO), so overlapping the loads
     //    keeps many reads in flight through io_uring. Each loader writes its own
     //    slot, so results stay in manifest order.
+    var file_commit_id: u64 = 0;
     var file_version: u64 = 0;
+    // Upstream-fed is derived, not stored: any segment carrying a position marks it.
+    // The manifest and the WAL cover each other — a checkpoint truncates the WAL only
+    // once its transactions are durable in a segment, which then carries the position.
+    var external_versions: bool = false;
     const infos = try manifest.read(data_dir, allocator);
     defer allocator.free(infos);
 
@@ -292,26 +319,44 @@ pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: us
     for (results, refs, infos) |res, ref, info| {
         if (res) |_| {
             file_list.appendAssumeCapacity(ref);
-            file_version = @max(file_version, info.getLastCommitId());
+            file_commit_id = @max(file_commit_id, info.getLastCommitId());
+            file_version = @max(file_version, info.effectiveVersion());
+            if (info.version != null) external_versions = true;
         } else |err| {
             if (err != error.SegmentNotLoaded) fatal = fatal orelse err;
         }
     }
     if (fatal) |err| return err;
 
-    // 2. Open the oplog and replay only the tail (versions > file_version).
-    var ctx = ReplayCtx{ .allocator = allocator, .mem_list = &mem_list, .file_version = file_version };
+    // 2. Open the oplog and replay only the tail (versions > file_commit_id).
+    var ctx = ReplayCtx{ .allocator = allocator, .mem_list = &mem_list, .file_commit_id = file_commit_id };
     var oplog = try Oplog.open(allocator, oplog_dir, sync, &ctx, ReplayCtx.apply);
     errdefer oplog.deinit();
+    if (ctx.external_versions) external_versions = true;
 
+    const commit_id = @max(file_commit_id, oplog.last_commit_id);
+    // The resume point: the newest position durable anywhere, in file segments or in
+    // the replayed WAL tail. Derived independently of the commit id, since the two
+    // no longer move together.
     const version = @max(file_version, oplog.last_version);
+
+    // The WAL can hold less than the index does: a bootstrap deletes it outright and
+    // restores segments carrying the donor's commit ids. Seed it from the recovered
+    // maxima, or the next append would mint commit id 1 on top of existing segments —
+    // breaking the dense tiling SegmentInfo.merge asserts on, and colliding with
+    // segment file names, which are built from the commit id.
+    oplog.last_commit_id = commit_id;
+    oplog.last_version = version;
 
     const segments = try SharedPtr(Segments).create(allocator, .{
         .allocator = allocator,
         .file = try file_list.toOwnedSlice(allocator),
         .memory = try mem_list.toOwnedSlice(allocator),
+        .commit_id = commit_id,
+        .file_commit_id = file_commit_id,
         .version = version,
         .file_version = file_version,
+        .external_versions = external_versions,
     });
 
     return .{
@@ -321,8 +366,11 @@ pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: us
         .oplog_dir = oplog_dir,
         .oplog = oplog,
         .segments = segments,
+        .commit_id = commit_id,
+        .file_commit_id = file_commit_id,
         .version = version,
         .file_version = file_version,
+        .external_versions = external_versions,
         .checkpoint_threshold = checkpoint_threshold,
     };
 }
@@ -353,14 +401,18 @@ fn openOrCreateDir(parent: zio.Dir, name: []const u8) !zio.Dir {
 const ReplayCtx = struct {
     allocator: std.mem.Allocator,
     mem_list: *std.ArrayListUnmanaged(MemoryRef),
-    file_version: u64,
+    file_commit_id: u64,
+    external_versions: bool = false,
 
     fn apply(self: *ReplayCtx, txn: Transaction) !void {
-        if (txn.id <= self.file_version) return; // already in a file segment
+        // Before the filter below: a checkpointed transaction still tells us this
+        // index has an upstream, even though its data already sits in a segment.
+        if (txn.version != null) self.external_versions = true;
+        if (txn.id <= self.file_commit_id) return; // already in a file segment
         var ref = try MemoryRef.create(self.allocator, MemorySegment.init(self.allocator, .{}));
         errdefer ref.release(self.allocator, MemorySegment.deinit, .{});
         try ref.value.build(txn.changes);
-        ref.value.info = .{ .version = txn.id, .merges = 0 };
+        ref.value.info = .{ .commit_id = txn.id, .merges = 0, .version = txn.version };
         try self.mem_list.append(self.allocator, ref);
     }
 };
@@ -388,23 +440,35 @@ pub fn acquireReader(self: *Self) !IndexReader {
 // callers do it BEFORE the durable manifest write — an OOM here commits nothing. On
 // success the snapshot OWNS `file` and `memory`; on failure it consumes neither, so
 // the caller's errdefers release them.
-fn createSnapshot(self: *Self, file: []FileRef, memory: []MemoryRef, version: u64, file_version: u64) !SharedPtr(Segments) {
+const Watermarks = struct {
+    commit_id: u64,
+    file_commit_id: u64,
+    version: u64,
+    file_version: u64,
+};
+
+fn createSnapshot(self: *Self, file: []FileRef, memory: []MemoryRef, w: Watermarks) !SharedPtr(Segments) {
     return SharedPtr(Segments).create(self.allocator, .{
         .allocator = self.allocator,
         .file = file,
         .memory = memory,
-        .version = version,
-        .file_version = file_version,
+        .commit_id = w.commit_id,
+        .file_commit_id = w.file_commit_id,
+        .version = w.version,
+        .file_version = w.file_version,
+        .external_versions = self.external_versions,
     });
 }
 
 // Swap a pre-built snapshot into place. Infallible — the allocation already happened
 // in createSnapshot and the lock is uncancelable — so it runs AFTER the durable
 // manifest write with no window where a committed manifest points at state we then
-// fail to install (this mirrors the old version's allocation-free commitUpdate).
+// fail to install (this mirrors the old commit_id's allocation-free commitUpdate).
 // Releases the superseded snapshot, deleting any segment file whose last reference it
-// held, and adopts the snapshot's version bookkeeping. Consumes `snap`.
+// held, and adopts the snapshot's commit_id bookkeeping. Consumes `snap`.
 fn swapSnapshot(self: *Self, snap: SharedPtr(Segments)) void {
+    const commit_id = snap.value.commit_id;
+    const file_commit_id = snap.value.file_commit_id;
     const version = snap.value.version;
     const file_version = snap.value.file_version;
 
@@ -414,6 +478,8 @@ fn swapSnapshot(self: *Self, snap: SharedPtr(Segments)) void {
     self.segments_lock.unlock();
 
     old.release(self.allocator, Segments.deinit, .{});
+    self.commit_id = commit_id;
+    self.file_commit_id = file_commit_id;
     self.version = version;
     self.file_version = file_version;
 }
@@ -455,13 +521,22 @@ pub fn update(self: *Self, changes: []const Change, options: Oplog.WriteOptions)
     zio.beginShield();
     defer zio.endShield();
 
+    // Once anything in this index carries an upstream position, every later commit
+    // needs one. Minting a local version on top of upstream ones would invent a
+    // position the upstream never issued — and this node advertises that number as a
+    // watermark, so a peer bootstrapping from it would resume the feed at a position
+    // that does not exist and skip whatever really sits there.
+    if (self.external_versions and options.version == null) return error.VersionRequired;
+
     var seg = try MemoryRef.create(self.allocator, MemorySegment.init(self.allocator, .{}));
     var seg_consumed = false;
     errdefer if (!seg_consumed) seg.release(self.allocator, MemorySegment.deinit, .{});
     try seg.value.build(changes);
 
-    const version = try self.oplog.append(changes, options);
-    seg.value.info = .{ .version = version, .merges = 0 };
+    const commit = try self.oplog.append(changes, options);
+    // `options.version`, not the resolved one: a local commit must leave this null, or
+    // the segment would look upstream-fed and poison an index that never had a feed.
+    seg.value.info = .{ .commit_id = commit.commit_id, .merges = 0, .version = options.version };
 
     const cur = self.segments.value;
     const new_file = try cloneRefs(FileSegment, self.allocator, cur.file);
@@ -481,7 +556,12 @@ pub fn update(self: *Self, changes: []const Change, options: Oplog.WriteOptions)
     new_memory[cur.memory.len] = seg;
     seg_consumed = true;
 
-    const snap = try self.createSnapshot(new_file, new_memory, version, self.file_version);
+    const snap = try self.createSnapshot(new_file, new_memory, .{
+        .commit_id = commit.commit_id,
+        .file_commit_id = self.file_commit_id,
+        .version = commit.version,
+        .file_version = self.file_version,
+    });
     arrays_consumed = true;
     self.swapSnapshot(snap);
 
@@ -489,8 +569,11 @@ pub fn update(self: *Self, changes: []const Change, options: Oplog.WriteOptions)
     // then file merge). Signal the coroutine; it decides what's actually needed.
     // Level-triggered, so it's safe even when the coroutine isn't running (tests
     // drive runMaintenance() synchronously instead).
+    if (options.version != null) self.external_versions = true;
     self.wake.set();
-    return version;
+    // The version, not the commit id: this is what callers see (an _update response, a
+    // read-your-writes wait) and it must be comparable with positions from the feed.
+    return commit.version;
 }
 
 /// Start the background maintenance coroutine. Call once the Index is at its
@@ -645,14 +728,19 @@ fn mergeMemory(self: *Self) !bool {
     const new_file = try cloneRefs(FileSegment, self.allocator, cur.file);
     errdefer if (!arrays_consumed) releaseRefs(FileSegment, self.allocator, new_file);
 
-    var new_snap = try self.createSnapshot(new_file, new_memory, self.version, self.file_version);
+    var new_snap = try self.createSnapshot(new_file, new_memory, .{
+        .commit_id = self.commit_id,
+        .file_commit_id = self.file_commit_id,
+        .version = self.version,
+        .file_version = self.file_version,
+    });
     arrays_consumed = true;
     errdefer if (!committed) new_snap.release(self.allocator, Segments.deinit, .{});
     self.swapSnapshot(new_snap);
     committed = true;
 
     metrics.incMemoryMerges();
-    log.info("merged {} memory segments -> {x}-{x} ({} items)", .{ n, merged.value.info.version, merged.value.info.merges, merged.value.getSize() });
+    log.info("merged {} memory segments -> {x}-{x} ({} items)", .{ n, merged.value.info.commit_id, merged.value.info.merges, merged.value.getSize() });
     return true;
 }
 
@@ -723,7 +811,14 @@ fn checkpoint(self: *Self) !bool {
     // Allocate the snapshot BEFORE the durable manifest write, so the manifest is the
     // last fallible step and the swap after it can't fail (no window where a committed
     // manifest points at state we then fail to install).
-    var new_snap = try self.createSnapshot(new_file, new_memory, self.version, @max(self.file_version, info.getLastCommitId()));
+    var new_snap = try self.createSnapshot(new_file, new_memory, .{
+        .commit_id = self.commit_id,
+        .file_commit_id = @max(self.file_commit_id, info.getLastCommitId()),
+        .version = self.version,
+        // The donor watermark: a snapshot taken now carries this segment, so a
+        // fetcher resumes from the position it covers.
+        .file_version = @max(self.file_version, info.effectiveVersion()),
+    });
     arrays_consumed = true;
     errdefer if (!committed) new_snap.release(self.allocator, Segments.deinit, .{});
 
@@ -735,15 +830,15 @@ fn checkpoint(self: *Self) !bool {
     // the segments that arrived during the flush (their real age is ~the flush time).
     self.pending_since = if (kept.len == 0) null else zio.Timestamp.now(.monotonic);
 
-    // Transactions up to file_version are now durable in file segments; drop the
+    // Transactions up to file_commit_id are now durable in file segments; drop the
     // oplog files entirely below it. (After the manifest commit, so a crash in
     // between just leaves redundant oplog entries that replay skips.)
-    self.oplog.truncate(self.file_version) catch |err| {
+    self.oplog.truncate(self.file_commit_id) catch |err| {
         log.warn("oplog truncate failed: {}", .{err});
     };
 
     metrics.incCheckpoints();
-    log.info("checkpointed to file segment {x}-{x} ({} items)", .{ info.version, info.merges, fseg.value.num_items });
+    log.info("checkpointed to file segment {x}-{x} ({} items)", .{ info.commit_id, info.merges, fseg.value.num_items });
     return true;
 }
 
@@ -817,7 +912,12 @@ fn mergeFiles(self: *Self) !bool {
 
     // Allocate the snapshot BEFORE the durable manifest write (see checkpoint), so the
     // swap after the manifest is infallible.
-    var new_snap = try self.createSnapshot(new_file, new_memory, self.version, self.file_version);
+    var new_snap = try self.createSnapshot(new_file, new_memory, .{
+        .commit_id = self.commit_id,
+        .file_commit_id = self.file_commit_id,
+        .version = self.version,
+        .file_version = self.file_version,
+    });
     arrays_consumed = true;
     errdefer if (!committed) new_snap.release(self.allocator, Segments.deinit, .{});
 
@@ -832,12 +932,12 @@ fn mergeFiles(self: *Self) !bool {
     for (cur.file[lo..hi]) |s| s.value.delete_on_destroy = true;
 
     metrics.incFileMerges();
-    log.info("merged {} file segments -> {x}-{x} ({} items)", .{ n, info.version, info.merges, fseg.value.num_items });
+    log.info("merged {} file segments -> {x}-{x} ({} items)", .{ n, info.commit_id, info.merges, fseg.value.num_items });
     return true;
 }
 
 // Merge `sources` into a new on-disk file segment and load it back. `collection`
-// provides hasNewerVersion (the current snapshot). On error the written file is
+// provides hasNewerCommit (the current snapshot). On error the written file is
 // removed. Caller owns the returned ref.
 fn mergeToFileSegment(self: *Self, comptime Segment: type, sources: []SharedPtr(Segment), collection: anytype) !FileRef {
     var merger = try SegmentMerger(Segment).init(self.allocator, sources.len);
@@ -1007,13 +1107,13 @@ test "snapshot archive round-trips manifest + file segments" {
     try std.testing.expectEqual(@as(u64, 7), parsed.generation);
     try std.testing.expectEqual(segs.file.len, parsed.entries.len);
     for (segs.file, 0..) |s, i| {
-        try std.testing.expectEqual(s.value.info.version, parsed.entries[i].info.version);
+        try std.testing.expectEqual(s.value.info.commit_id, parsed.entries[i].info.commit_id);
         try std.testing.expectEqual(s.value.info.merges, parsed.entries[i].info.merges);
         try std.testing.expectEqualSlices(u8, s.value.data, parsed.entries[i].data);
     }
 }
 
-test "snapshot restores into a fresh dir and opens at the same version" {
+test "snapshot restores into a fresh dir and opens at the same commit_id" {
     const snapshot = @import("snapshot.zig");
     const rt = try zio.Runtime.init(std.testing.allocator, .{});
     defer rt.deinit();
@@ -1041,7 +1141,7 @@ test "snapshot restores into a fresh dir and opens at the same version" {
     try src.runMaintenance();
 
     var reader = try src.acquireReader();
-    const src_version = reader.snapshot.value.version;
+    const src_version = reader.snapshot.value.commit_id;
     var buf: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer buf.deinit();
     try snapshot.writeSnapshot(&buf.writer, a, reader.snapshot.value, 7);
@@ -1058,14 +1158,14 @@ test "snapshot restores into a fresh dir and opens at the same version" {
     var rw = std.Io.Reader.fixed(buf.written());
     try std.testing.expectError(error.SnapshotGenerationMismatch, snapshot.restoreInto(dst_data, &rw, a, 8));
 
-    // Restore the right generation, then open: same version, data searchable.
+    // Restore the right generation, then open: same commit_id, data searchable.
     var rr = std.Io.Reader.fixed(buf.written());
     try snapshot.restoreInto(dst_data, &rr, a, 7);
     dst_data.close();
 
     var dst = try Self.open(std.testing.allocator, dst_dir, 100_000, true, null);
     defer dst.deinit();
-    try std.testing.expectEqual(src_version, dst.version);
+    try std.testing.expectEqual(src_version, dst.commit_id);
 
     var results = SearchResults.init(a, .{});
     defer results.deinit();
@@ -1158,7 +1258,7 @@ test "checkpoint and reload" {
 
         try std.testing.expectEqual(@as(usize, 1), index.segments.value.file.len);
         try std.testing.expectEqual(@as(usize, 0), index.segments.value.memory.len);
-        try std.testing.expectEqual(@as(u64, 2), index.version);
+        try std.testing.expectEqual(@as(u64, 2), index.commit_id);
 
         var results = SearchResults.init(std.testing.allocator, .{ .max_results = 10, .min_score = 1 });
         defer results.deinit();
@@ -1445,7 +1545,7 @@ test "oplog recovers the valid prefix from a corrupt tail" {
         while (id <= 5) : (id += 1) {
             _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{ 100, id } } }}, .{});
         }
-        try std.testing.expectEqual(@as(u64, 5), index.version);
+        try std.testing.expectEqual(@as(u64, 5), index.commit_id);
     }
 
     // Append a full but CRC-invalid framed record to the tail (a crash could leave
@@ -1453,7 +1553,7 @@ test "oplog recovers the valid prefix from a corrupt tail" {
     {
         var oplog_dir = try cwd.openDir(dir_path ++ "/oplog", .{ .iterate = true });
         defer oplog_dir.close();
-        const name = "0000000000000001.xlog"; // first record's version = 1
+        const name = "0000000000000001.xlog"; // first record's commit_id = 1
         const st = try oplog_dir.statPath(name);
         const file = try oplog_dir.openFile(name, .{ .mode = .read_write });
         defer file.close();
@@ -1472,7 +1572,7 @@ test "oplog recovers the valid prefix from a corrupt tail" {
         const dir = try cwd.openDir(dir_path, .{ .iterate = true });
         var index = try Self.open(std.testing.allocator, dir, 100_000, true, null);
         defer index.deinit();
-        try std.testing.expectEqual(@as(u64, 5), index.version);
+        try std.testing.expectEqual(@as(u64, 5), index.commit_id);
 
         var results = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });
         defer results.deinit();
@@ -1481,5 +1581,253 @@ test "oplog recovers the valid prefix from a corrupt tail" {
         var h = [_]u32{100};
         try reader.search(&h, &results);
         try std.testing.expectEqual(@as(usize, 5), results.getResults().len);
+    }
+}
+
+test "coalesced batches keep commit ids dense while positions jump" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_index_coalesced";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+    var index = try Self.open(std.testing.allocator, dir, 100_000, true, null); // no checkpoint
+    defer index.deinit();
+
+    // A consumer coalesces a run of feed entries into one apply, so positions jump by
+    // the batch size. Before commit ids and positions were separated this fed a
+    // non-dense value into SegmentInfo.commit_id and merging tripped its adjacency
+    // assertion (`commit_id + merges + 1 == other.commit_id`).
+    var pos: u64 = 0;
+    var id: u32 = 1;
+    while (id <= 50) : (id += 1) {
+        pos += 10;
+        _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{id} } }}, .{ .version = pos });
+        try index.runMaintenance(); // merges memory segments
+    }
+
+    try std.testing.expect(index.segments.value.memory.len < 50); // merging happened
+    try std.testing.expectEqual(@as(u64, 500), index.version); // external position
+    try std.testing.expectEqual(@as(u64, 50), index.commit_id); // dense internal ids
+
+    // The merged segments still tile the commit-id sequence without gaps.
+    var expected: u64 = 1;
+    for (index.segments.value.memory) |seg| {
+        try std.testing.expectEqual(expected, seg.value.info.commit_id);
+        expected = seg.value.info.getLastCommitId() + 1;
+    }
+    try std.testing.expectEqual(@as(u64, 51), expected);
+
+    // And every doc is still searchable.
+    var results = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });
+    defer results.deinit();
+    var reader = try index.acquireReader();
+    defer reader.deinit();
+    var h = [_]u32{25};
+    try reader.search(&h, &results);
+    try std.testing.expectEqual(@as(usize, 1), results.getResults().len);
+}
+
+test "version survives checkpoint and restart, and drives the donor watermark" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_index_logpos_restart";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    var checkpointed_at: u64 = 0;
+    {
+        const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+        var index = try Self.open(std.testing.allocator, dir, 10, true, null);
+        defer index.deinit();
+
+        // Write until something has been checkpointed into a file segment.
+        var pos: u64 = 0;
+        var id: u32 = 1;
+        while (id <= 40) : (id += 1) {
+            pos += 7; // positions jump; commit ids stay dense
+            _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{ 100, id } } }}, .{ .version = pos });
+            try index.runMaintenance();
+        }
+        try std.testing.expect(index.segments.value.file.len > 0);
+
+        // The donor watermark is a real position, and never ahead of the resume point.
+        checkpointed_at = index.file_version;
+        try std.testing.expect(checkpointed_at > 0);
+        try std.testing.expect(checkpointed_at <= index.version);
+        try std.testing.expectEqual(@as(u64, 280), index.version);
+        try std.testing.expectEqual(@as(u64, 40), index.commit_id); // dense commit ids
+
+        // A write that stays in memory moves the resume point but NOT the watermark a
+        // snapshot would hand a fetcher — a snapshot carries file segments only.
+        _ = try index.update(&[_]Change{.{ .insert = .{ .id = 99, .hashes = &[_]u32{999} } }}, .{ .version = 5000 });
+        try std.testing.expectEqual(@as(u64, 5000), index.version);
+        try std.testing.expectEqual(checkpointed_at, index.file_version);
+    }
+
+    // Reopen: the position comes back from the manifest plus the replayed WAL tail,
+    // derived independently of the commit ids.
+    {
+        const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+        var index = try Self.open(std.testing.allocator, dir, 10, true, null);
+        defer index.deinit();
+        try std.testing.expectEqual(@as(u64, 5000), index.version);
+        try std.testing.expectEqual(@as(u64, 41), index.commit_id);
+        try std.testing.expectEqual(checkpointed_at, index.file_version);
+
+        // Doc 99 was memory-only, so it comes back through oplog replay. Its position
+        // must survive that: replay rebuilds the segment info by hand, and dropping
+        // the position there silently reports every replayed doc as position 0.
+        var reader = try index.acquireReader();
+        defer reader.deinit();
+        try std.testing.expectEqual(@as(u64, 5000), reader.getDocInfo(99).?.version);
+    }
+}
+
+test "versions never go backwards, and an upstream-fed index stays upstream-fed" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_index_version_monotonic";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    {
+        const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+        var index = try Self.open(std.testing.allocator, dir, 100_000, true, null);
+        defer index.deinit();
+
+        _ = try index.update(&[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{1} } }}, .{ .version = 500 });
+
+        // Backwards is refused and writes nothing.
+        try std.testing.expectError(error.VersionWentBackwards, index.update(
+            &[_]Change{.{ .insert = .{ .id = 2, .hashes = &[_]u32{2} } }},
+            .{ .version = 499 },
+        ));
+        try std.testing.expectEqual(@as(u64, 500), index.version);
+        try std.testing.expectEqual(@as(u64, 1), index.commit_id);
+
+        // Equal is allowed: a bootstrap loads a whole snapshot taken at one position,
+        // so many commits legitimately share it.
+        _ = try index.update(&[_]Change{.{ .insert = .{ .id = 3, .hashes = &[_]u32{3} } }}, .{ .version = 500 });
+        try std.testing.expectEqual(@as(u64, 500), index.version);
+        try std.testing.expectEqual(@as(u64, 2), index.commit_id);
+
+        // And a positionless write is now refused outright: minting a local version on
+        // top of upstream ones would invent a position the upstream never issued.
+        try std.testing.expectError(error.VersionRequired, index.update(
+            &[_]Change{.{ .insert = .{ .id = 4, .hashes = &[_]u32{4} } }},
+            .{},
+        ));
+    }
+
+    // The marker is sticky across a restart.
+    {
+        const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+        var index = try Self.open(std.testing.allocator, dir, 1, true, null);
+        defer index.deinit();
+        try std.testing.expectError(error.VersionRequired, index.update(
+            &[_]Change{.{ .insert = .{ .id = 5, .hashes = &[_]u32{5} } }},
+            .{},
+        ));
+
+        // Checkpoint everything, which truncates the WAL that carried the marker...
+        _ = try index.update(&[_]Change{.{ .insert = .{ .id = 6, .hashes = &[_]u32{6} } }}, .{ .version = 900 });
+        var i: usize = 0;
+        while (i < 5) : (i += 1) try index.runMaintenance();
+        try std.testing.expect(index.segments.value.file.len > 0);
+    }
+
+    // ...and it still survives, because the manifest carries it too.
+    {
+        const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+        var index = try Self.open(std.testing.allocator, dir, 1, true, null);
+        defer index.deinit();
+        try std.testing.expectError(error.VersionRequired, index.update(
+            &[_]Change{.{ .insert = .{ .id = 7, .hashes = &[_]u32{7} } }},
+            .{},
+        ));
+    }
+}
+
+test "a standalone index mints its own versions and is not poisoned" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_index_standalone_versions";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+    var index = try Self.open(std.testing.allocator, dir, 100_000, true, null);
+    defer index.deinit();
+
+    // With no upstream, version and commit id coincide exactly as before the split.
+    var id: u32 = 1;
+    while (id <= 3) : (id += 1) {
+        const v = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{id} } }}, .{});
+        try std.testing.expectEqual(@as(u64, id), v);
+    }
+    try std.testing.expectEqual(index.commit_id, index.version);
+}
+
+test "a restored index continues commit ids instead of restarting them" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_index_restored_commit_ids";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    var restored_commit_id: u64 = 0;
+    {
+        const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+        var index = try Self.open(std.testing.allocator, dir, 1, true, null);
+        defer index.deinit();
+        var id: u32 = 1;
+        while (id <= 20) : (id += 1) {
+            _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{id} } }}, .{});
+            try index.runMaintenance();
+        }
+        try std.testing.expect(index.segments.value.file.len > 0);
+        restored_commit_id = index.commit_id;
+    }
+
+    // A peer bootstrap swaps in restored segments and deletes the WAL outright
+    // (MultiIndex.swapAndReopen), so the oplog comes back empty while the segments
+    // carry commit ids from the donor.
+    {
+        var dir = try cwd.openDir(dir_path, .{ .iterate = true });
+        defer dir.close();
+        @import("common.zig").deleteDirTree(std.testing.allocator, dir, "oplog") catch {};
+    }
+
+    {
+        const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+        var index = try Self.open(std.testing.allocator, dir, 100_000, true, null);
+        defer index.deinit();
+        try std.testing.expectEqual(restored_commit_id, index.commit_id);
+
+        // The next commit must continue the sequence. Restarting at 1 would collide
+        // with the restored segments' ids and break their dense tiling.
+        _ = try index.update(&[_]Change{.{ .insert = .{ .id = 99, .hashes = &[_]u32{99} } }}, .{});
+        try std.testing.expectEqual(restored_commit_id + 1, index.commit_id);
+
+        // And merging still holds, which is what the tiling exists for.
+        var i: usize = 0;
+        while (i < 5) : (i += 1) try index.runMaintenance();
     }
 }
