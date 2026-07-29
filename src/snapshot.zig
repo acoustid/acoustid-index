@@ -1,7 +1,9 @@
 // Node-to-node snapshot: an index's file segments + a manifest, with NO WAL and NO
 // in-memory segments. It's how a new or behind replica bootstraps without replaying the
 // whole changelog (see notes/bootstrap-design.md): restore it, then resume the tail
-// from the coordinator at the embedded watermark (= max segment commit_id).
+// from the coordinator at the embedded watermark — the max segment `version`, which is
+// the external feed position. The segments also carry their internal commit ids, which
+// order them locally but mean nothing to the coordinator.
 //
 // Wire form: a single msgpack `SnapshotHeader` (self-delimiting, so the reader lands
 // exactly on the first payload byte), then each file segment's raw bytes concatenated
@@ -84,7 +86,8 @@ pub fn parse(arena: std.mem.Allocator, bytes: []const u8) !Parsed {
 // manifest from the header, then stream each segment payload straight to its file (no
 // whole-archive buffering). Verifies the snapshot's generation is `expected_generation`
 // — the lineage the caller means to restore. The watermark isn't returned; the caller
-// opens the index, which derives its commit_id from the restored manifest.
+// opens the index, which derives both the resume position and the commit ids from the
+// restored manifest.
 pub fn restoreInto(dir: zio.Dir, r: *std.Io.Reader, arena: std.mem.Allocator, expected_generation: u64) !void {
     const unpacker = msgpack.unpacker(r, arena);
     const header = try unpacker.read(SnapshotHeader);
@@ -93,8 +96,6 @@ pub fn restoreInto(dir: zio.Dir, r: *std.Io.Reader, arena: std.mem.Allocator, ex
 
     const infos = try arena.alloc(SegmentInfo, header.segments.len);
     for (header.segments, 0..) |seg, i| infos[i] = seg.info;
-    // The segments carry their own versions, so a restored index inherits the donor's
-    // upstream-fed state without the snapshot needing to say so separately.
     try manifest.write(dir, arena, infos);
 
     const scratch = try arena.alloc(u8, 128 * 1024);

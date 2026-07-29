@@ -332,7 +332,7 @@ pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: us
     var ctx = ReplayCtx{ .allocator = allocator, .mem_list = &mem_list, .file_commit_id = file_commit_id };
     var oplog = try Oplog.open(allocator, oplog_dir, sync, &ctx, ReplayCtx.apply);
     errdefer oplog.deinit();
-    if (oplog.saw_external) external_versions = true;
+    if (ctx.external_versions) external_versions = true;
 
     const commit_id = @max(file_commit_id, oplog.last_commit_id);
     // The resume point: the newest position durable anywhere, in file segments or in
@@ -402,14 +402,16 @@ const ReplayCtx = struct {
     allocator: std.mem.Allocator,
     mem_list: *std.ArrayListUnmanaged(MemoryRef),
     file_commit_id: u64,
+    external_versions: bool = false,
 
     fn apply(self: *ReplayCtx, txn: Transaction) !void {
+        // Before the filter below: a checkpointed transaction still tells us this
+        // index has an upstream, even though its data already sits in a segment.
+        if (txn.version != null) self.external_versions = true;
         if (txn.id <= self.file_commit_id) return; // already in a file segment
         var ref = try MemoryRef.create(self.allocator, MemorySegment.init(self.allocator, .{}));
         errdefer ref.release(self.allocator, MemorySegment.deinit, .{});
         try ref.value.build(txn.changes);
-        // Carry the position too: it is not derivable from the commit id, and losing
-        // it here would silently reset a replayed segment's position to 0.
         ref.value.info = .{ .commit_id = txn.id, .merges = 0, .version = txn.version };
         try self.mem_list.append(self.allocator, ref);
     }
@@ -1435,7 +1437,7 @@ test "oplog truncation after checkpoint" {
     }
 }
 
-test "getDocInfo reports commit_id and tombstones, across a checkpoint" {
+test "getDocInfo reports version and tombstones, across a checkpoint" {
     const rt = try zio.Runtime.init(std.testing.allocator, .{});
     defer rt.deinit();
 

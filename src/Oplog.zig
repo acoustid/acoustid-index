@@ -59,10 +59,6 @@ current_size: usize = 0,
 write_offset: u64 = 0,
 last_commit_id: u64 = 0,
 last_version: u64 = 0,
-// Whether any replayed transaction carried an upstream position. The Index combines
-// this with the manifest to decide whether the index is upstream-fed; the oplog itself
-// holds no policy.
-saw_external: bool = false,
 max_file_size: usize = default_max_file_size,
 
 fn buildName(buf: []u8, start: u64) []u8 {
@@ -152,7 +148,6 @@ fn replay(self: *Self, ctx: anytype, handler: anytype) !void {
                     // A locally-minted commit has no stored position: its version is
                     // its commit id, which is the standalone identity.
                     self.last_version = @max(self.last_version, txn.version orelse txn.id);
-                    if (txn.version != null) self.saw_external = true;
                     try handler(ctx, txn);
                     count += 1;
                 },
@@ -161,14 +156,14 @@ fn replay(self: *Self, ctx: anytype, handler: anytype) !void {
                     // A torn record can only be the tail (a crash mid-append writes
                     // the last record; nothing follows it). Recover the prefix and
                     // stop — a later append or the PG poller refills from here.
-                    log.warn("oplog: torn record in {s}, stopping replay at commit_id {d}", .{ name, self.last_commit_id });
+                    log.warn("oplog: torn record in {s}, stopping replay at commit {d}", .{ name, self.last_commit_id });
                     break :files;
                 },
             }
         }
     }
     if (count > 0) {
-        log.info("replayed {d} transactions, commit_id {d}", .{ count, self.last_commit_id });
+        log.info("replayed {d} transactions, commit {d}", .{ count, self.last_commit_id });
     }
 }
 
@@ -248,7 +243,6 @@ pub fn append(self: *Self, changes: []const Change, options: WriteOptions) !Comm
 
     self.last_commit_id = commit_id;
     self.last_version = version;
-    if (options.version != null) self.saw_external = true;
     return .{ .commit_id = commit_id, .version = version };
 }
 
@@ -287,6 +281,6 @@ pub fn truncate(self: *Self, commit_id: u64) !void {
         const remaining = self.files.items.len - deleted;
         std.mem.copyForwards(u64, self.files.items[0..remaining], self.files.items[deleted..]);
         self.files.shrinkRetainingCapacity(remaining);
-        log.info("truncated {d} oplog files below commit_id {d}", .{ deleted, commit_id });
+        log.info("truncated {d} oplog files below commit {d}", .{ deleted, commit_id });
     }
 }
