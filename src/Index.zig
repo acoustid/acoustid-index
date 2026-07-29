@@ -46,6 +46,9 @@ pub const Segments = struct {
     // this index resumes from (it carries file segments only). See SegmentInfo.
     version: u64 = 0,
     file_version: u64 = 0,
+    // Whether this index is fed by an upstream log; rides along so a snapshot taken
+    // from this reader carries it to whoever restores it. See Oplog.append.
+    external_versions: bool = false,
 
     // Drop every segment ref. A file whose last reference this releases is deleted
     // iff the segment was retired by a merge (FileSegment.delete_on_destroy) — so
@@ -268,7 +271,8 @@ pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: us
     //    slot, so results stay in manifest order.
     var file_commit_id: u64 = 0;
     var file_version: u64 = 0;
-    const infos = try manifest.read(data_dir, allocator);
+    const loaded = try manifest.read(data_dir, allocator);
+    const infos = loaded.segments;
     defer allocator.free(infos);
 
     const refs = try allocator.alloc(FileRef, infos.len);
@@ -321,6 +325,11 @@ pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: us
     var ctx = ReplayCtx{ .allocator = allocator, .mem_list = &mem_list, .file_commit_id = file_commit_id };
     var oplog = try Oplog.open(allocator, oplog_dir, sync, &ctx, ReplayCtx.apply);
     errdefer oplog.deinit();
+    // Replay only sees transactions still in the WAL, and a checkpoint truncates it —
+    // so the sticky marker has to come back from the manifest too, or an index whose
+    // data is fully checkpointed would forget it had an upstream and start minting
+    // local versions on top of upstream ones.
+    if (loaded.external_versions) oplog.external_versions = true;
 
     const commit_id = @max(file_commit_id, oplog.last_commit_id);
     // The resume point: the newest position durable anywhere, in file segments or in
@@ -336,6 +345,7 @@ pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: us
         .file_commit_id = file_commit_id,
         .version = version,
         .file_version = file_version,
+        .external_versions = oplog.external_versions,
     });
 
     return .{
@@ -432,6 +442,7 @@ fn createSnapshot(self: *Self, file: []FileRef, memory: []MemoryRef, w: Watermar
         .file_commit_id = w.file_commit_id,
         .version = w.version,
         .file_version = w.file_version,
+        .external_versions = self.oplog.external_versions,
     });
 }
 
@@ -932,7 +943,11 @@ fn writeManifestFor(self: *Self, file: []const FileRef) !void {
     const infos = try self.allocator.alloc(SegmentInfo, file.len);
     defer self.allocator.free(infos);
     for (file, 0..) |seg, i| infos[i] = seg.value.info;
-    try manifest.write(self.data_dir, self.allocator, infos);
+    try manifest.write(self.data_dir, self.allocator, .{
+        .segments = infos,
+        // Carried across checkpoints: the oplog that recorded it is truncated.
+        .external_versions = self.oplog.external_versions,
+    });
 }
 
 fn cleanupTestDir(cwd: zio.Dir, path: []const u8) void {
@@ -1654,4 +1669,95 @@ test "version survives checkpoint and restart, and drives the donor watermark" {
         defer reader.deinit();
         try std.testing.expectEqual(@as(u64, 5000), reader.getDocInfo(99).?.version);
     }
+}
+
+test "versions never go backwards, and an upstream-fed index stays upstream-fed" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_index_version_monotonic";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    {
+        const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+        var index = try Self.open(std.testing.allocator, dir, 100_000, true, null);
+        defer index.deinit();
+
+        _ = try index.update(&[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{1} } }}, .{ .version = 500 });
+
+        // Backwards is refused and writes nothing.
+        try std.testing.expectError(error.VersionWentBackwards, index.update(
+            &[_]Change{.{ .insert = .{ .id = 2, .hashes = &[_]u32{2} } }},
+            .{ .version = 499 },
+        ));
+        try std.testing.expectEqual(@as(u64, 500), index.version);
+        try std.testing.expectEqual(@as(u64, 1), index.commit_id);
+
+        // Equal is allowed: a bootstrap loads a whole snapshot taken at one position,
+        // so many commits legitimately share it.
+        _ = try index.update(&[_]Change{.{ .insert = .{ .id = 3, .hashes = &[_]u32{3} } }}, .{ .version = 500 });
+        try std.testing.expectEqual(@as(u64, 500), index.version);
+        try std.testing.expectEqual(@as(u64, 2), index.commit_id);
+
+        // And a positionless write is now refused outright: minting a local version on
+        // top of upstream ones would invent a position the upstream never issued.
+        try std.testing.expectError(error.VersionRequired, index.update(
+            &[_]Change{.{ .insert = .{ .id = 4, .hashes = &[_]u32{4} } }},
+            .{},
+        ));
+    }
+
+    // The marker is sticky across a restart.
+    {
+        const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+        var index = try Self.open(std.testing.allocator, dir, 1, true, null);
+        defer index.deinit();
+        try std.testing.expectError(error.VersionRequired, index.update(
+            &[_]Change{.{ .insert = .{ .id = 5, .hashes = &[_]u32{5} } }},
+            .{},
+        ));
+
+        // Checkpoint everything, which truncates the WAL that carried the marker...
+        _ = try index.update(&[_]Change{.{ .insert = .{ .id = 6, .hashes = &[_]u32{6} } }}, .{ .version = 900 });
+        var i: usize = 0;
+        while (i < 5) : (i += 1) try index.runMaintenance();
+        try std.testing.expect(index.segments.value.file.len > 0);
+    }
+
+    // ...and it still survives, because the manifest carries it too.
+    {
+        const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+        var index = try Self.open(std.testing.allocator, dir, 1, true, null);
+        defer index.deinit();
+        try std.testing.expectError(error.VersionRequired, index.update(
+            &[_]Change{.{ .insert = .{ .id = 7, .hashes = &[_]u32{7} } }},
+            .{},
+        ));
+    }
+}
+
+test "a standalone index mints its own versions and is not poisoned" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_index_standalone_versions";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+    var index = try Self.open(std.testing.allocator, dir, 100_000, true, null);
+    defer index.deinit();
+
+    // With no upstream, version and commit id coincide exactly as before the split.
+    var id: u32 = 1;
+    while (id <= 3) : (id += 1) {
+        const v = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{id} } }}, .{});
+        try std.testing.expectEqual(@as(u64, id), v);
+    }
+    try std.testing.expectEqual(index.commit_id, index.version);
 }

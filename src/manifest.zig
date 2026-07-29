@@ -12,15 +12,27 @@ const log = std.log.scoped(.manifest);
 const manifest_file = "manifest";
 const manifest_tmp = "manifest.tmp";
 
-/// Read the manifest. Returns an owned slice (caller frees). Missing/empty
-/// manifest yields an empty slice.
-pub fn read(dir: zio.Dir, allocator: std.mem.Allocator) ![]SegmentInfo {
+/// What the manifest records beyond the segment list.
+pub const Manifest = struct {
+    segments: []SegmentInfo = &.{},
+    // Sticky marker that this index is fed by an upstream log; see Oplog.append.
+    // Durable here because the oplog is truncated at every checkpoint.
+    external_versions: bool = false,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+/// Read the manifest. Segments are owned (caller frees). Missing/empty manifest
+/// yields an empty one.
+pub fn read(dir: zio.Dir, allocator: std.mem.Allocator) !Manifest {
     const st = dir.statPath(manifest_file) catch |err| switch (err) {
-        error.FileNotFound => return &.{},
+        error.FileNotFound => return .{},
         else => return err,
     };
     const size: usize = @intCast(st.size);
-    if (size == 0) return &.{};
+    if (size == 0) return .{};
 
     const file = try dir.openFile(manifest_file, .{ .mode = .read_only });
     defer file.close();
@@ -35,14 +47,14 @@ pub fn read(dir: zio.Dir, allocator: std.mem.Allocator) ![]SegmentInfo {
     }
 
     var reader = std.Io.Reader.fixed(buf[0..off]);
-    return try msgpack.decodeLeaky([]SegmentInfo, allocator, &reader);
+    return try msgpack.decodeLeaky(Manifest, allocator, &reader);
 }
 
-/// Atomically replace the manifest with `segments`.
-pub fn write(dir: zio.Dir, allocator: std.mem.Allocator, segments: []const SegmentInfo) !void {
+/// Atomically replace the manifest.
+pub fn write(dir: zio.Dir, allocator: std.mem.Allocator, m: Manifest) !void {
     var w = std.Io.Writer.Allocating.init(allocator);
     defer w.deinit();
-    try msgpack.encode(segments, &w.writer);
+    try msgpack.encode(m, &w.writer);
     const bytes = w.written();
 
     const file = try dir.createFile(manifest_tmp, .{ .truncate = true });

@@ -61,6 +61,10 @@ pub const Change = union(enum) {
 pub const Transaction = struct {
     id: u64,
     version: u64 = 0,
+    // Whether `version` came from an upstream feed rather than being minted locally.
+    // Replay uses it to restore the oplog's sticky external_versions flag, so the rule
+    // holds across a restart that happens before the next checkpoint.
+    external: bool = false,
     changes: []const Change,
 
     pub fn msgpackFormat() msgpack.StructFormat {
