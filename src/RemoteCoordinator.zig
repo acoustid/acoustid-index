@@ -24,9 +24,6 @@ const ReadResponse = changelog_mod.ReadResponse;
 const MetaReadResponse = changelog_mod.MetaReadResponse;
 const MetaCreateResponse = changelog_mod.MetaCreateResponse;
 const MetaDeleteResponse = changelog_mod.MetaDeleteResponse;
-const ReplicaStatus = changelog_mod.ReplicaStatus;
-const DonorInfo = changelog_mod.DonorInfo;
-const DonorResponse = changelog_mod.DonorResponse;
 
 const Self = @This();
 // Cap on any single long-poll window (server side may still return sooner). Used
@@ -65,8 +62,6 @@ const vtable: Coordinator.VTable = .{
     .createIndex = createIndexImpl,
     .deleteIndex = deleteIndexImpl,
     .readMeta = readMetaImpl,
-    .reportStatus = reportStatusImpl,
-    .findDonor = findDonorImpl,
     .setRetentionFloor = setRetentionFloorImpl,
 };
 
@@ -170,43 +165,6 @@ fn readMetaImpl(ptr: *anyopaque, after: u64, out: []MetaOp, deadline: zio.Timeou
     const n = @min(mres.ops.len, out.len);
     for (mres.ops[0..n], 0..) |op, i| out[i] = op;
     return n;
-}
-
-fn reportStatusImpl(ptr: *anyopaque, status: ReplicaStatus) anyerror!void {
-    const self: *Self = @ptrCast(@alignCast(ptr));
-    var arena = std.heap.ArenaAllocator.init(self.allocator);
-    defer arena.deinit();
-    const a = arena.allocator();
-
-    var aw: std.Io.Writer.Allocating = .init(a);
-    try msgpack.encode(status, &aw.writer);
-    const url = try std.fmt.allocPrint(a, "{s}/_status", .{self.base_url});
-
-    var client = http.Client.init(self.allocator, self.io, .{});
-    defer client.deinit();
-    var resp = try client.fetch(url, .{ .method = .post, .body = aw.written() });
-    defer resp.deinit();
-    if (resp.status() != .ok) return statusToError(resp.status());
-}
-
-fn findDonorImpl(ptr: *anyopaque, arena: std.mem.Allocator, index_name: []const u8, generation: u64, after: u64) anyerror!?DonorInfo {
-    const self: *Self = @ptrCast(@alignCast(ptr));
-    var tmp = std.heap.ArenaAllocator.init(self.allocator);
-    defer tmp.deinit();
-    const a = tmp.allocator();
-
-    const url = try std.fmt.allocPrint(a, "{s}/_donor/{s}/{d}?after={d}", .{ self.base_url, index_name, generation, after });
-    var client = http.Client.init(self.allocator, self.io, .{});
-    defer client.deinit();
-    var resp = try client.fetch(url, .{ .method = .get });
-    defer resp.deinit();
-    if (resp.status() != .ok) return statusToError(resp.status());
-
-    const body = (try resp.body()) orelse return null;
-    const dres = try msgpack.decodeFromSliceLeaky(DonorResponse, a, body);
-    const d = dres.donor orelse return null;
-    // Copy the addr into the caller's arena; `tmp` (and the decoded body) is freed here.
-    return .{ .advertise_addr = try arena.dupe(u8, d.advertise_addr), .file_version = d.file_version };
 }
 
 fn setRetentionFloorImpl(ptr: *anyopaque, index_name: []const u8, generation: u64, floor: u64) anyerror!void {

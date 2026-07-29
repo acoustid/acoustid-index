@@ -43,31 +43,46 @@ refcount keeps the segments alive for the duration of the stream (guaranteed by 
 `delete_on_destroy` retirement rule). The response is tagged with the generation so the
 restorer can verify the lineage.
 
-## Coordinator as the peer registry
+## Peer discovery: a list, not a registry
 
-The coordinator is the rendezvous point — no separate node registry, no LB, no config peer
-list. It already sees which replicas are live from their long-poll read connections; each
-replica additionally sends a **periodic status heartbeat**:
+> Superseded 2026-07-29. This section previously put a replica registry on the
+> coordinator (`POST /_status` heartbeats, a `last_seen` table, `GET /_donor`). That is
+> removed — see below for why and for what replaced it.
 
-    POST /_status
-    { replica_id, advertise_addr,
-      indexes: [ { name, generation, applied, file_version }, … ] }
+Nodes find donors among themselves. Config is a list of peer base URLs
+(`--peers http://a:8080,http://b:8080`), and **hostnames are re-resolved on every donor
+lookup** — so one URL naming a Kubernetes headless Service covers the whole cluster and
+follows it as pods come and go. Two endpoints, both on the node's existing server:
 
-The coordinator keeps `replica_id → { advertise_addr, last_seen, per-lineage {applied,
-file_version} }`, expiring entries on a `last_seen` timeout. That single table serves:
+    GET /:index/_status     -> { generation, version, file_version }
+    GET /:index/_snapshot   -> tar (already there)
 
-1. **Donor discovery** — pick a live replica whose `file_version ≥ P` for `(name, gen)`.
-2. **The below-retention trigger** — when a replica's `read(after = V)` finds
-   `V < oldest_retained`, the coordinator replies "below retention → bootstrap from
-   `<addr>` at F." Trigger + donor in one round-trip.
-3. **Retention** — truncate below `min(file_version)` across live replicas. Retention
-   safety keys on **`file_version`, not `applied`** (a donor's snapshot resumes from
-   file_version). This is why a slow-to-checkpoint replica would pin retention — the
-   age-based checkpoint prevents that.
+A bootstrapping node probes every peer concurrently and takes the highest `file_version`
+that is **strictly greater than the position it is stuck at**. That single condition does
+two jobs: it guarantees forward progress (a snapshot at or below where we already are
+would re-trigger the same below-retention read), and it excludes the node from its own
+peer list for free — so no node identity, and no `--advertise-addr`, is needed anywhere.
 
-Chosen over a per-checkpoint callback (goes stale for a quiet index, gives no liveness on
-its own) and over piggybacking on the consume path (keeps the hot, per-lineage read path
-clean). Config gains `--advertise-addr host:port`.
+Why not the registry: it made the log implementation **stateful, and therefore a
+singleton**. Two coordinator/gateway instances behind a Service each see a different
+subset of the heartbeats, so they disagree about who can donate and — worse — each
+computes retention from a partial view. Keeping it would have meant putting the registry
+in PG: a heartbeat write per replica every few seconds, on the primary, purely for
+liveness. The log half is happily stateless; don't weld it to something that isn't.
+
+What this costs: donor selection no longer rides along on the below-retention read, so
+bootstrap takes one extra round trip on a path that runs approximately never. And
+retention can no longer key on `min(file_version)` across live replicas, because the log
+no longer knows the replicas — it becomes time-based. That is safe *because* bootstrap
+works: falling off the log stops being fatal and becomes recoverable, which demotes
+retention from a correctness mechanism to a tuning knob. Keep the window well past
+`--checkpoint-age-ms` (a live peer's `file_version` is at most that stale), and alert on
+`oldest_retained` vs each node's `file_version` rather than trying to enforce it.
+
+**Kubernetes trap:** a headless Service publishes only *Ready* endpoints. Node readiness
+must therefore mean "index open and serving", **not** "caught up with the log" — else a
+cold cluster restart deadlocks: nobody is ready, DNS is empty, nobody can find a donor,
+nobody becomes ready. Filter unsuitable donors on what `_status` reports, never via DNS.
 
 ## Trigger & flow
 
@@ -95,10 +110,14 @@ rebuild. Prevented almost entirely by synchronous replication.
 2. **Donor.** In-memory tar from a pinned reader; wire `GET /:index/_snapshot`
    (generation-tagged). Reference: old `acoustid/idx/src/snapshot.zig` (drop its WAL
    inclusion and blocking I/O; port to zio).
-3. **Coordinator registry.** `POST /_status` heartbeat + live-replica table, donor
-   selection, below-retention read response. Replica gains a status-reporter coroutine.
-   Wire into the `MemoryCoordinator` stub + `coordinator_server` + `RemoteCoordinator`;
-   real retention/selection policy lands in the eventual PG gateway.
+3. **Peer discovery — DONE (2026-07-29), replaces the old "coordinator registry".**
+   `peers.zig` (URL list, DNS re-resolved per lookup, concurrent probes, donor choice)
+   + `GET /:index/_status` + `--peers`. The registry, heartbeats and `GET /_donor` are
+   gone from `Coordinator`/`coordinator_server`/`RemoteCoordinator`. Each probe is
+   bounded by a `zio.AutoCancel` (`probe_timeout`, default 5s), so a peer that accepts
+   and then wedges costs the fan-out one timeout instead of hanging it.
 4. **Restorer + orchestration.** Fetch → temp-extract → verify → atomic rename into
    `v<gen>` → open → resume at F; per-index bootstrap off the below-retention trigger in
    the consumer; plus the `position > max(id)` refuse-and-rebuild guard.
+5. **Time-based retention** in the log implementation, now that it no longer has replica
+   positions to key on. Export `oldest_retained`.

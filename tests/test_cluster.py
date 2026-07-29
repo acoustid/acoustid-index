@@ -171,92 +171,33 @@ def test_index_delete_and_recreate_converges(cluster):
     assert _search_has(p1, [7, 8, 9], 9)
 
 
-def test_coordinator_registry_endpoints(cluster):
-    """POST /_status and GET /_donor on the coordinator (msgpack). The replica
-    reporter (milestone 3c) and bootstrap (4) drive these end-to-end later."""
-    import msgpack
+def test_peer_status_endpoint(cluster):
+    """GET /:index/_status is the whole peer-facing protocol: what a probing node
+    reads to decide whether this one can donate a snapshot."""
+    _co, p1, _p2 = cluster
 
-    co, _p1, _p2 = cluster
+    # Unknown index -> 404, so a peer that doesn't hold it simply isn't a donor.
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        _req(p1, "GET", "/nope/_status")
+    assert exc.value.code == 404
 
-    def get_donor(after):
-        r = urllib.request.urlopen(
-            f"http://127.0.0.1:{co}/_donor/main/1?after={after}", timeout=5
-        )
-        return msgpack.unpackb(r.read(), raw=False)
+    _req(p1, "PUT", "/main")
+    assert _wait_index(p1, "main")
+    _req(p1, "PUT", "/main/1", {"hashes": [10, 20, 30]})
+    assert _search_has(p1, [10, 20, 30], 1)
 
-    # Nobody has reported yet -> DonorResponse{donor:null} (omit_nulls -> empty map).
-    assert get_donor(0).get("d") is None
-
-    # A replica holding (main, gen 1) checkpointed at file_version 5 (prefix keys:
-    # r=replica_id a=advertise_addr l=lineages; i=index_name g=generation a=applied
-    # f=file_version).
-    status = {
-        "r": "rX",
-        "a": "http://127.0.0.1:9999",
-        "l": [{"i": "main", "g": 1, "a": 10, "f": 5}],
-    }
-    req = urllib.request.Request(
-        f"http://127.0.0.1:{co}/_status", data=msgpack.packb(status), method="POST"
-    )
-    assert urllib.request.urlopen(req, timeout=5).status == 200
-
-    # A reader at/below the watermark gets rX; past it, no donor.
-    d = get_donor(0)["d"]
-    assert d["a"] == "http://127.0.0.1:9999"
-    assert d["f"] == 5
-    assert get_donor(10).get("d") is None
-
-
-def test_replica_status_reporter_registers_donor(tmp_path):
-    """End-to-end reporter path: a replica with --advertise-addr heartbeats the
-    coordinator, which can then hand it back as a snapshot donor."""
-    import msgpack
-
-    if not os.path.exists(BINARY):
-        subprocess.run(["zig", "build"], cwd=REPO_ROOT, check=True)
-
-    co, p1 = _free_port(), _free_port()
-    procs = []
-
-    def start(args):
-        procs.append(subprocess.Popen([BINARY] + args))
-
-    try:
-        start(["--coordinator", "--port", str(co)])
-        _wait(co, "/_changelog/x/1?after=0&max=1&timeout_ms=50")
-        url = f"http://127.0.0.1:{co}"
-        addr = f"http://127.0.0.1:{p1}"
-        start(["--port", str(p1), "--dir", str(tmp_path / "r1"), "--coordinator-url", url,
-               "--advertise-addr", addr, "--report-interval-ms", "200"])
-        _wait(p1, "/_health")
-
-        _req(p1, "PUT", "/main")  # first index -> generation 1
-
-        def donor():
-            r = urllib.request.urlopen(f"http://127.0.0.1:{co}/_donor/main/1?after=0", timeout=5)
-            return msgpack.unpackb(r.read(), raw=False).get("d")
-
-        found = None
-        deadline = time.time() + 10
-        while time.time() < deadline:
-            found = donor()
-            if found is not None:
-                break
-            time.sleep(0.1)
-        assert found is not None, "replica never registered as a donor"
-        assert found["a"] == addr
-    finally:
-        for p in procs:
-            p.send_signal(signal.SIGKILL)
-        for p in procs:
-            p.wait()
+    st = _req(p1, "GET", "/main/_status")
+    assert st["generation"] >= 1
+    assert st["version"] >= 1
+    # Nothing checkpointed yet, so a snapshot from here resumes at 0. Donor selection
+    # keys on file_version rather than version for exactly this reason.
+    assert st["file_version"] == 0
 
 
 def test_new_node_bootstraps_from_peer(tmp_path):
     """A new node joins after the changelog is truncated past position 0: it can't
-    replay from scratch, so it fetches a snapshot from a live peer and resumes."""
-    import msgpack
-
+    replay from scratch, so it finds a donor among its configured peers, fetches a
+    snapshot and resumes from its watermark."""
     if not os.path.exists(BINARY):
         subprocess.run(["zig", "build"], cwd=REPO_ROOT, check=True)
 
@@ -266,9 +207,11 @@ def test_new_node_bootstraps_from_peer(tmp_path):
     def start(args):
         procs.append(subprocess.Popen([BINARY] + args))
 
-    def donor(after):
-        r = urllib.request.urlopen(f"http://127.0.0.1:{co}/_donor/main/1?after={after}", timeout=5)
-        return msgpack.unpackb(r.read(), raw=False).get("d")
+    def file_version(port):
+        try:
+            return _req(port, "GET", "/main/_status")["file_version"]
+        except Exception:
+            return 0
 
     try:
         start(["--coordinator", "--port", str(co)])
@@ -276,29 +219,31 @@ def test_new_node_bootstraps_from_peer(tmp_path):
         url = f"http://127.0.0.1:{co}"
 
         # r1 checkpoints each update (threshold 1) so it holds donatable file segments.
-        a1 = f"http://127.0.0.1:{p1}"
         start(["--port", str(p1), "--dir", str(tmp_path / "r1"), "--coordinator-url", url,
-               "--advertise-addr", a1, "--report-interval-ms", "200", "--checkpoint-threshold", "1"])
+               "--checkpoint-threshold", "1"])
         _wait(p1, "/_health")
         _req(p1, "PUT", "/main")
         _req(p1, "PUT", "/main/1", {"hashes": [10, 20, 30]})
         _req(p1, "PUT", "/main/2", {"hashes": [40, 50, 60]})
         assert _search_has(p1, [10, 20, 30], 1)
 
-        # Wait until r1 has checkpointed and advertised a donatable watermark.
+        # Wait until r1 has checkpointed, i.e. holds a segment worth donating.
         deadline = time.time() + 10
-        while time.time() < deadline and donor(1) is None:
+        while time.time() < deadline and file_version(p1) < 1:
             time.sleep(0.1)
-        assert donor(1) is not None, "r1 never advertised a donatable segment"
+        assert file_version(p1) >= 1, "r1 never checkpointed a donatable segment"
 
         # Truncate the changelog below r1's watermark: a fresh consumer at 0 must bootstrap.
         req = urllib.request.Request(f"http://127.0.0.1:{co}/_truncate/main/1?floor=1", method="POST")
         assert urllib.request.urlopen(req, timeout=5).status == 200
 
-        # New node joins: it can't replay from 0 (truncated) -> bootstraps from r1.
-        a2 = f"http://127.0.0.1:{p2}"
+        # New node joins: it can't replay from 0 (truncated), so it probes its peer
+        # list. r2 is in its own list on purpose — it must not pick itself, though
+        # note the unit tests in src/peers.zig are what actually pin that rule down
+        # (here r1 would win on freshness regardless).
+        peers = f"http://127.0.0.1:{p1},http://127.0.0.1:{p2}"
         start(["--port", str(p2), "--dir", str(tmp_path / "r2"), "--coordinator-url", url,
-               "--advertise-addr", a2, "--report-interval-ms", "200"])
+               "--peers", peers])
         _wait(p2, "/_health")
         assert _wait_index(p2, "main")
         assert _search_has(p2, [10, 20, 30], 1)

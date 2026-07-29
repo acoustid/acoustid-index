@@ -105,6 +105,21 @@ pub const GetIndexInfoResponse = struct {
     }
 };
 
+// What one node tells another about a lineage it holds, so a bootstrapping node can
+// pick a donor without a central registry. `file_version` is the watermark a snapshot
+// from this node would land the fetcher on (max segment version, from the manifest);
+// `version` is what it has applied, reported for observability only — a snapshot
+// carries file segments, not the tail. See peers.zig.
+pub const PeerStatusResponse = struct {
+    generation: u64,
+    version: u64,
+    file_version: u64,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
 pub const CreateIndexResponse = struct {
     version: u64,
     ready: bool,
