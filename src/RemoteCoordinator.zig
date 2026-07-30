@@ -26,9 +26,18 @@ const MetaCreateResponse = changelog_mod.MetaCreateResponse;
 const MetaDeleteResponse = changelog_mod.MetaDeleteResponse;
 
 const Self = @This();
-// Cap on any single long-poll window (server side may still return sooner). Used
-// when the caller passes `.none` (block indefinitely, in bounded windows).
-const long_poll: zio.Duration = .fromMilliseconds(20_000);
+
+// Floor on the gap between polls, so a server that reports 0 (or omits the field
+// entirely) cannot turn this into a busy loop. The server only sends 0 alongside a
+// full batch, which returns before any sleep — but the floor is what makes that a
+// property of this client rather than a promise the server has to keep.
+const min_poll_ms: u64 = 50;
+
+// Enough for any real feed URL: base_url and index name plus three u64s and ~30
+// characters of fixed text. bufPrint returns error.NoSpaceLeft if a base URL or
+// index name ever exceeds it, which consumeLoop logs and retries — a loud,
+// repeating failure naming its own cause, rather than a truncated request.
+const max_url_len = 512;
 
 allocator: std.mem.Allocator,
 io: std.Io,
@@ -93,20 +102,67 @@ fn readImpl(ptr: *anyopaque, index_name: []const u8, generation: u64, after: u64
     _ = arena.reset(.retain_capacity); // frees the previous read's entries
     const ra = arena.allocator();
 
-    const url = try std.fmt.allocPrint(ra, "{s}/_changelog/{s}/{d}?after={d}&max={d}&timeout_ms={d}", .{
-        self.base_url, index_name, generation, after, out.len, timeoutMs(deadline),
+    // On the stack, not in the arena: the loop below resets the arena between
+    // polls, and this outlives every one of them. Keeping it out of any allocator
+    // means there is no lifetime to get wrong.
+    var url_buf: [max_url_len]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, "{s}/_changelog/{s}/{d}?after={d}&max={d}", .{
+        self.base_url, index_name, generation, after, out.len,
     });
-    var client = http.Client.init(self.allocator, self.io, .{});
-    defer client.deinit();
-    var resp = try client.fetch(url, .{ .method = .get });
-    defer resp.deinit();
-    if (resp.status() != .ok) return statusToError(resp.status());
 
-    const body = (try resp.body()) orelse return 0;
-    const rres = try msgpack.decodeFromSliceLeaky(ReadResponse, ra, body);
-    const n = @min(rres.entries.len, out.len);
-    for (rres.entries[0..n], 0..) |e, i| out[i] = e;
-    return n;
+    // The server answers immediately rather than long-polling, so the blocking
+    // half of the vtable contract is implemented here: poll, and sleep for as
+    // long as the server asks between attempts, until there is something to
+    // return or the deadline passes. Nothing above this sees retry_after_ms.
+    const until = pollUntil(deadline);
+    while (true) {
+        var client = http.Client.init(self.allocator, self.io, .{});
+        defer client.deinit();
+        var resp = try client.fetch(url, .{ .method = .get });
+        defer resp.deinit();
+        if (resp.status() != .ok) return statusToError(resp.status());
+
+        const body = (try resp.body()) orelse return 0;
+        const rres = try msgpack.decodeFromSliceLeaky(ReadResponse, ra, body);
+        const n = @min(rres.entries.len, out.len);
+        if (n > 0) {
+            for (rres.entries[0..n], 0..) |e, i| out[i] = e;
+            return n;
+        }
+
+        // Nothing yet. Reclaim the empty response before waiting, or an
+        // indefinite poll would hold one dead ReadResponse per second for as long
+        // as it runs.
+        const nap = napFor(rres.retry_after_ms, until) orelse return 0;
+        _ = arena.reset(.retain_capacity);
+        // Sleep the server's hint, clamped to what is left of the deadline so a
+        // large hint cannot overshoot it.
+        try zio.sleep(nap);
+    }
+}
+
+/// Absolute point to stop polling at, or null for "no deadline" — `.none` means
+/// block indefinitely, and only task cancellation ends that.
+fn pollUntil(deadline: zio.Timeout) ?zio.Timestamp {
+    return switch (deadline) {
+        .none => null,
+        .duration => |d| zio.Timestamp.now(.monotonic).addDuration(d),
+        .deadline => |ts| ts,
+    };
+}
+
+/// How long to sleep before the next poll, or null if the deadline has passed.
+/// Never sleeps zero: a server hint of 0 means "there is probably more, come
+/// straight back", which only arrives with a full batch, and a full batch has
+/// already returned by the time this is called. Treating it as 0 here would spin.
+fn napFor(retry_after_ms: u64, until: ?zio.Timestamp) ?zio.Duration {
+    const wanted = zio.Duration.fromMilliseconds(@max(retry_after_ms, min_poll_ms));
+    const stop = until orelse return wanted;
+
+    const now = zio.Timestamp.now(.monotonic);
+    if (now.toNanoseconds() >= stop.toNanoseconds()) return null;
+    const left = now.durationTo(stop);
+    return if (left.toNanoseconds() < wanted.toNanoseconds()) left else wanted;
 }
 
 fn createIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!u64 {
@@ -151,20 +207,33 @@ fn readMetaImpl(ptr: *anyopaque, after: u64, out: []MetaOp, deadline: zio.Timeou
     _ = self.meta_arena.reset(.retain_capacity);
     const ra = self.meta_arena.allocator();
 
-    const url = try std.fmt.allocPrint(ra, "{s}/_meta?after={d}&max={d}&timeout_ms={d}", .{
-        self.base_url, after, out.len, timeoutMs(deadline),
+    // On the stack -- see readImpl.
+    var url_buf: [max_url_len]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, "{s}/_meta?after={d}&max={d}", .{
+        self.base_url, after, out.len,
     });
-    var client = http.Client.init(self.allocator, self.io, .{});
-    defer client.deinit();
-    var resp = try client.fetch(url, .{ .method = .get });
-    defer resp.deinit();
-    if (resp.status() != .ok) return statusToError(resp.status());
 
-    const body = (try resp.body()) orelse return 0;
-    const mres = try msgpack.decodeFromSliceLeaky(MetaReadResponse, ra, body);
-    const n = @min(mres.ops.len, out.len);
-    for (mres.ops[0..n], 0..) |op, i| out[i] = op;
-    return n;
+    // Same poll-and-sleep as readImpl; see there for why the server does not block.
+    const until = pollUntil(deadline);
+    while (true) {
+        var client = http.Client.init(self.allocator, self.io, .{});
+        defer client.deinit();
+        var resp = try client.fetch(url, .{ .method = .get });
+        defer resp.deinit();
+        if (resp.status() != .ok) return statusToError(resp.status());
+
+        const body = (try resp.body()) orelse return 0;
+        const mres = try msgpack.decodeFromSliceLeaky(MetaReadResponse, ra, body);
+        const n = @min(mres.ops.len, out.len);
+        if (n > 0) {
+            for (mres.ops[0..n], 0..) |op, i| out[i] = op;
+            return n;
+        }
+
+        const nap = napFor(mres.retry_after_ms, until) orelse return 0;
+        _ = self.meta_arena.reset(.retain_capacity);
+        try zio.sleep(nap);
+    }
 }
 
 fn setRetentionFloorImpl(ptr: *anyopaque, index_name: []const u8, generation: u64, floor: u64) anyerror!void {
@@ -185,19 +254,6 @@ fn setRetentionFloorImpl(ptr: *anyopaque, index_name: []const u8, generation: u6
 // maps to the max window; the consumer loops across windows. A `.duration` (e.g.
 // the meta catch-up's short deadline) is passed through so the server returns
 // promptly once the feed is drained.
-fn timeoutMs(deadline: zio.Timeout) u64 {
-    return switch (deadline) {
-        .none => long_poll.toMilliseconds(),
-        .duration => |d| d.toMilliseconds(),
-        // Callers only ever pass .none (consumers) or .duration (meta catch-up), but
-        // convert a deadline to its remaining ms (0 if already past) rather than
-        // relying on that with an `unreachable`.
-        .deadline => |ts| blk: {
-            const now = zio.Timestamp.now(.monotonic);
-            break :blk if (ts.toNanoseconds() > now.toNanoseconds()) now.durationTo(ts).toMilliseconds() else 0;
-        },
-    };
-}
 
 // One decode arena per index name (one consumer per name -> no concurrent use of
 // the same arena); the map itself is guarded by the mutex.
@@ -221,4 +277,45 @@ fn statusToError(status: http.Status) anyerror {
         .gone => error.BelowRetention, // truncated past the requested position -> bootstrap
         else => error.CoordinatorError,
     };
+}
+
+// The poll pacing is pure arithmetic with a real off-by-one in it (clamping the
+// sleep to a deadline), and it only misbehaves under timing that a live test
+// would not reproduce reliably. So it is tested directly.
+
+test "napFor: no deadline sleeps the server's hint" {
+    const nap = napFor(1000, null).?;
+    try std.testing.expectEqual(@as(u64, 1000), nap.toMilliseconds());
+}
+
+test "napFor: a zero hint still sleeps, so an empty answer cannot spin" {
+    const nap = napFor(0, null).?;
+    try std.testing.expectEqual(@as(u64, min_poll_ms), nap.toMilliseconds());
+}
+
+test "napFor: clamps to what is left of the deadline" {
+    // 100ms left, server asks for 1000 -> sleep the 100, not the 1000, or the
+    // read would overshoot the deadline it was given by 900ms.
+    const until = zio.Timestamp.now(.monotonic).addDuration(.fromMilliseconds(100));
+    const nap = napFor(1000, until).?;
+    try std.testing.expect(nap.toMilliseconds() <= 100);
+}
+
+test "napFor: past the deadline returns null, which reads as zero entries" {
+    const until = zio.Timestamp.now(.monotonic);
+    try std.testing.expect(napFor(1000, until) == null);
+}
+
+test "pollUntil: .none never expires" {
+    try std.testing.expect(pollUntil(.none) == null);
+}
+
+test "pollUntil: a duration becomes an absolute point, so polls do not restart the clock" {
+    const before = zio.Timestamp.now(.monotonic);
+    const until = pollUntil(.{ .duration = .fromMilliseconds(500) }).?;
+    try std.testing.expect(until.toNanoseconds() > before.toNanoseconds());
+}
+
+test "statusToError: 410 is what sends a stuck node to a peer snapshot" {
+    try std.testing.expectEqual(error.BelowRetention, statusToError(.gone));
 }

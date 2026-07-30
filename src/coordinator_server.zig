@@ -27,6 +27,17 @@ const EmptyResponse = struct {
 
 const max_read_entries = 1024;
 
+// This server does not long-poll. It reads whatever the coordinator has right now
+// and tells the client how long to wait before asking again, which is the same
+// protocol the PG-backed feed in acoustid-server speaks — so the two are
+// interchangeable behind RemoteCoordinator, and the client path under test here is
+// the one used against the real feed.
+const no_wait: zio.Timeout = .{ .duration = .fromMilliseconds(0) };
+const idle_retry_ms: u64 = 1000;
+// A full batch: more is probably queued, so coming straight back costs a round
+// trip and saves a wait.
+const busy_retry_ms: u64 = 0;
+
 pub const Service = struct {
     coordinator: Coordinator,
 };
@@ -69,13 +80,15 @@ fn handleDeleteIndex(co: *Service, req: *http.Request, res: *http.Response) !voi
 fn handleReadMeta(co: *Service, req: *http.Request, res: *http.Response) !void {
     const after = queryInt(req, "after") orelse 0;
     const max: usize = @intCast(@min(queryInt(req, "max") orelse 256, max_read_entries));
-    const timeout_ms = queryInt(req, "timeout_ms") orelse 0;
-
     const buf = try req.arena.alloc(MetaOp, max);
-    const deadline: zio.Timeout = .{ .duration = .fromMilliseconds(timeout_ms) };
-    const n = co.coordinator.readMeta(after, buf, deadline) catch |err|
+    // Answer with what is there now; the client paces itself on retry_after_ms.
+    // See Coordinator.ReadResponse.retry_after_ms for why nothing blocks here.
+    const n = co.coordinator.readMeta(after, buf, no_wait) catch |err|
         return fail(res, statusFor(err), @errorName(err));
-    try respond(MetaReadResponse{ .ops = buf[0..n] }, res);
+    try respond(MetaReadResponse{
+        .ops = buf[0..n],
+        .retry_after_ms = if (n == buf.len) busy_retry_ms else idle_retry_ms,
+    }, res);
 }
 
 fn handleAppend(co: *Service, req: *http.Request, res: *http.Response) !void {
@@ -94,13 +107,15 @@ fn handleRead(co: *Service, req: *http.Request, res: *http.Response) !void {
     const generation = genParam(req) orelse return fail(res, .bad_request, "bad generation");
     const after = queryInt(req, "after") orelse 0;
     const max: usize = @intCast(@min(queryInt(req, "max") orelse 256, max_read_entries));
-    const timeout_ms = queryInt(req, "timeout_ms") orelse 0;
-
     const buf = try req.arena.alloc(Entry, max);
-    const deadline: zio.Timeout = .{ .duration = .fromMilliseconds(timeout_ms) };
-    const n = co.coordinator.read(index, generation, after, buf, deadline) catch |err|
+    const n = co.coordinator.read(index, generation, after, buf, no_wait) catch |err|
         return fail(res, statusFor(err), @errorName(err));
-    try respond(ReadResponse{ .entries = buf[0..n] }, res);
+    try respond(ReadResponse{
+        .entries = buf[0..n],
+        // A full batch means there is probably more behind it, so do not make the
+        // consumer wait to find out; anything less means it is caught up.
+        .retry_after_ms = if (n == buf.len) busy_retry_ms else idle_retry_ms,
+    }, res);
 }
 
 fn genParam(req: *http.Request) ?u64 {
