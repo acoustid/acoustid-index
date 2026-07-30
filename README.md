@@ -31,8 +31,11 @@ speaking the same protocol (acoustid-server serves it from PostgreSQL).
 
 ### Docker
 
-`ghcr.io/acoustid/acoustid-index:main` is built from `main` on every push. It
-serves on 8080 and keeps data in the `/var/lib/fpindex` volume, as user 6081.
+`ghcr.io/acoustid/acoustid-index` is built from `main` on every push, tagged
+`:main`. Pushing a release tag `vY.M.p` publishes `:vY.M.p` and moves `:latest`
+onto it — `:latest` follows the most recently pushed tag, so tagging an older
+release after a newer one would move it backwards. It serves on 8080 and keeps
+data in the `/var/lib/fpindex` volume, as user 6081.
 
     docker run --security-opt seccomp=unconfined \
         -p 8080:8080 -v fpindex-data:/var/lib/fpindex \

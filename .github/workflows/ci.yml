@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
 
 jobs:
@@ -57,6 +58,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Default rules, which suit calver as-is: a branch push tags the image
+      # after the branch, a vY.M.p tag after the tag verbatim, and `latest=auto`
+      # moves `latest` on a tag push but never on a branch push. Adding semver
+      # patterns here would drop the `v` and choke on a zero-padded month.
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
