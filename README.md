@@ -53,7 +53,7 @@ and `Accept`.
 | Endpoint | Meaning |
 | --- | --- |
 | `GET /_health` | Process liveness. Always `200 OK` while the process runs. |
-| `GET /_metrics` | Prometheus metrics. |
+| `GET /_metrics` | Prometheus metrics. Process-wide counters and histograms, plus `fpindex_docs` and `fpindex_version` gauges labelled by index. |
 | `GET /:index/_health` | Index readiness: `200 OK` when serving, `503 LOADING` while the index is being filled by a bootstrap, `404` if it does not exist. |
 | `PUT /:index` | Create an index. Body: `{"expect_does_not_exist": bool, "generation": u64}` (both optional). Idempotent. |
 | `DELETE /:index` | Delete an index. Body: `{"expect_exists": bool}` (optional). |

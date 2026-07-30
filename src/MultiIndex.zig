@@ -387,7 +387,7 @@ pub fn applyLog(self: *Self, name: []const u8, generation: u64, changes: []const
     _ = try index.update(changes, .{ .version = version });
 }
 
-/// Render metrics (global counters + a per-index docs gauge) in Prometheus text.
+/// Render metrics (global counters + per-index gauges) in Prometheus text.
 /// Holds the manager lock across the (brief) scrape.
 pub fn writeMetrics(self: *Self, w: *std.Io.Writer) !void {
     try metrics.writeGlobal(w);
@@ -395,12 +395,23 @@ pub fn writeMetrics(self: *Self, w: *std.Io.Writer) !void {
     try self.lock.lock();
     defer self.lock.unlock();
 
+    // One pass per family: the text format wants every sample of a family under
+    // a single HELP/TYPE, so the families cannot be interleaved per index. The
+    // lock is held throughout, so the set of indexes is the same in each pass.
     try w.writeAll("# HELP fpindex_docs Number of documents in an index\n# TYPE fpindex_docs gauge\n");
-    var it = self.indexes.iterator();
-    while (it.next()) |entry| {
+    var docs_it = self.indexes.iterator();
+    while (docs_it.next()) |entry| {
         var reader = try entry.value_ptr.*.index.acquireReader();
         defer reader.deinit();
         try w.print("fpindex_docs{{index=\"{s}\"}} {d}\n", .{ entry.key_ptr.*, reader.numDocs() });
+    }
+
+    try w.writeAll("# HELP fpindex_version Last changelog position applied to an index\n# TYPE fpindex_version gauge\n");
+    var version_it = self.indexes.iterator();
+    while (version_it.next()) |entry| {
+        var reader = try entry.value_ptr.*.index.acquireReader();
+        defer reader.deinit();
+        try w.print("fpindex_version{{index=\"{s}\"}} {d}\n", .{ entry.key_ptr.*, reader.version() });
     }
 }
 
