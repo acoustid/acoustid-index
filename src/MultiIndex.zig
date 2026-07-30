@@ -287,6 +287,16 @@ fn openOneIndexInner(self: *Self, name: []const u8, load_sem: ?*zio.Semaphore, o
 pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: api.SearchRequest) !api.SearchResponse {
     const index = try self.getIndex(name);
     defer self.releaseIndex(index);
+
+    // While a bootstrap fills this index (initial seed or below-retention
+    // restore), refuse rather than answer: every result would be an
+    // honest-looking but empty or stale set. IndexNotReady -> 503, the same
+    // signal the health probe gives, so a caller that skipped the probe still
+    // cannot mistake a loading node for a miss. After getIndex, so a missing
+    // index keeps answering 404 rather than 503.
+    if (self.replication) |repl| {
+        if (repl.isBootstrapping(name)) return error.IndexNotReady;
+    }
     metrics.incSearches();
 
     const collector = try self.results_pool.acquire(.{
@@ -399,6 +409,27 @@ pub fn checkIndexExists(self: *Self, name: []const u8) !bool {
     defer self.lock.unlock();
     const ref = self.indexes.get(name) orelse return false;
     return !ref.being_deleted;
+}
+
+pub const IndexHealth = enum { ready, loading, missing };
+
+/// Per-index health: `loading` while the index exists but its consumer is filling
+/// it by bootstrap — the initial empty-lineage seed or a below-retention restore.
+/// Either way its answers would be honest-looking but empty or stale, so a search
+/// balancer must be able to tell. Global liveness (/_health) deliberately stays
+/// independent of this: peer discovery must keep finding nodes that are
+/// open-but-loading, or a cold cluster start deadlocks (see
+/// notes/bootstrap-design.md).
+pub fn indexHealth(self: *Self, name: []const u8) !IndexHealth {
+    try self.lock.lock();
+    defer self.lock.unlock();
+    const ref = self.indexes.get(name) orelse return .missing;
+    if (ref.being_deleted) return .missing;
+    // Same lock order as the reconcile paths: MultiIndex.lock -> Replicator.mutex.
+    if (self.replication) |repl| {
+        if (repl.isBootstrapping(name)) return .loading;
+    }
+    return .ready;
 }
 
 /// Snapshot of the current local index names (owned: caller frees each string and

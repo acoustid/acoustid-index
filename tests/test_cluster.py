@@ -53,7 +53,12 @@ def _req(port, method, path, body=None):
 
 
 def _search(port, query):
-    return _req(port, "POST", "/main/_search", {"query": query}).get("results", [])
+    try:
+        return _req(port, "POST", "/main/_search", {"query": query}).get("results", [])
+    except urllib.error.HTTPError as e:
+        if e.code == 503:  # still bootstrapping: refused, not empty — poll on
+            return []
+        raise
 
 
 def _search_has(port, query, want_id, tries=50):

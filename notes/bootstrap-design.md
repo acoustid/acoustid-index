@@ -134,6 +134,13 @@ Node side:
   Same reasoning caps the cold-start story: bring nodes up one at a time on first fill,
   since concurrently-started empty nodes cannot see each other as donors until one
   finishes.
+- **Health and search say so.** While a consumer fills its index by bootstrap — the
+  initial seed and a below-retention restore alike — `/:index/_health` answers 503
+  `LOADING` and `/:index/_search` refuses with 503 (`IndexNotReady`), instead of
+  returning honest-looking but empty or stale results. The flag is sticky across
+  failed bootstrap attempts, so the gap between retries never flashes OK. Global
+  `/_health` and `/:index/_status` stay independent of it — peer discovery must keep
+  finding open-but-loading nodes, per the Kubernetes trap above.
 
 ## Milestones
 
