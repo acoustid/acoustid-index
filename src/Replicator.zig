@@ -91,6 +91,11 @@ const Consumer = struct {
     generation: u64, // the lineage this consumer follows
     replicator: *Self,
     applied: u64, // max applied per-lineage seq (guarded by mutex)
+    // True while the consumer fills the index by bootstrap instead of the feed —
+    // the initial empty-lineage seed and a below-retention restore alike (guarded
+    // by mutex). Surfaced through per-index health so a search balancer keeps
+    // traffic off answers that would be honest-looking but empty or stale.
+    bootstrapping: bool = false,
     task: ?zio.JoinHandle(zio.Cancelable!void) = null,
 };
 
@@ -219,6 +224,22 @@ fn markApplied(self: *Self, c: *Consumer, version: u64) void {
     self.cond.broadcast();
 }
 
+fn setBootstrapping(self: *Self, c: *Consumer, value: bool) void {
+    self.mutex.lockUncancelable();
+    defer self.mutex.unlock();
+    c.bootstrapping = value;
+}
+
+/// Whether `name`'s consumer is currently filling the index by bootstrap (initial
+/// seed or below-retention restore). False for an unknown name — absence is
+/// reported by the index lookup, not here.
+pub fn isBootstrapping(self: *Self, name: []const u8) bool {
+    self.mutex.lockUncancelable();
+    defer self.mutex.unlock();
+    const c = self.consumers.get(name) orelse return false;
+    return c.bootstrapping;
+}
+
 // Fetch a snapshot of (c.name, c.generation) from a peer and swap it into the local
 // index, returning the version to resume from. Donors come back freshest first.
 //
@@ -279,6 +300,76 @@ fn canResumeFrom(self: *Self, c: *Consumer, file_version: u64) !bool {
     return true;
 }
 
+// An empty index must not replay a feed whose history starts later than its corpus:
+// the PG changelog begins at the migration, so a replay from 0 builds an index that
+// is silently missing every fingerprint older than the log — while being told
+// "caught up". Whether that hazard exists is the feed's own declaration:
+// openBootstrap is non-null exactly when history is incomplete from 0.
+//
+// Preference order:
+//   1. a peer snapshot — the corpus already built and inside the cluster is far
+//      cheaper than pulling a terabyte back out of the source database,
+//   2. the feed's bootstrap stream — one node pays this once per cluster, and the
+//      rest then find that node as a donor,
+//   3. plain replay from 0 — feeds with complete history (the file log, the memory
+//      coordinator before truncation) neither need nor offer the stream.
+//
+// Deliberately NOT wired into the below-retention path: a whole cluster falling off
+// the log at once would stampede the source with N corpus streams. That remedy stays
+// operator-driven — wipe one node, which makes it empty and lands it here.
+fn seedEmptyLineage(self: *Self, c: *Consumer) zio.Cancelable!u64 {
+    while (true) {
+        if (self.trySeed(c)) |position| {
+            if (position > 0) self.markApplied(c, position);
+            return position;
+        } else |err| {
+            if (err == error.Canceled) return error.Canceled;
+            log.warn("seeding empty lineage '{s}' gen {d} failed (retrying): {}", .{ c.name, c.generation, err });
+            try zio.sleep(read_retry);
+        }
+    }
+}
+
+fn trySeed(self: *Self, c: *Consumer) !u64 {
+    if (self.bootstrapConsumer(c, 0)) |v| {
+        return v;
+    } else |err| switch (err) {
+        error.Canceled => return error.Canceled,
+        // No peer can help; that is exactly what the source stream is for.
+        error.NoPeersConfigured, error.NoDonor, error.AllDonorsBelowRetention => {},
+        // A donor exists but its transfer failed — retrying peers is far cheaper
+        // than a corpus stream, so let the seed loop come back around.
+        else => |e| return e,
+    }
+
+    // Same backstop as a snapshot transfer: a source that accepts the connection
+    // and then wedges must not hang the consumer forever. Raise
+    // --bootstrap-timeout-ms for corpora that legitimately stream longer. It bounds
+    // only the stream: bootstrapLineageFromSource disarms it the moment the stream
+    // is drained, so the timer cannot fire into the install and destroy the
+    // lineage a slow-but-successful transfer just delivered.
+    var deadline: zio.AutoCancel = .init;
+    defer deadline.clear();
+    deadline.set(.{ .duration = self.bootstrap_timeout });
+
+    var stream = (self.coordinator.openBootstrap(c.name, c.generation) catch |err|
+        return seedTimeoutOr(&deadline, err)) orelse return 0;
+    defer stream.deinit();
+
+    // No position-0 shortcut here: a young changelog legitimately reports 0 while
+    // the stream carries the whole pre-migration corpus. Whether there is anything
+    // to install is decided by the stream's content, inside the build.
+    return self.mi.bootstrapLineageFromSource(c.name, c.generation, &stream, &deadline) catch |err|
+        seedTimeoutOr(&deadline, err);
+}
+
+// Our own transfer deadline, not a shutdown: report it as a seed failure so the
+// loop retries. A real cancel must stay error.Canceled and unwind the consumer.
+fn seedTimeoutOr(deadline: *zio.AutoCancel, err: anyerror) anyerror {
+    if (err == error.Canceled and deadline.check(error.Canceled)) return error.BootstrapTimeout;
+    return err;
+}
+
 fn fetchFrom(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: peers_mod.Donor) !u64 {
     // Covers the fetch AND the restore that streams the body: a donor can wedge at any
     // point, and the restore is where most of the time goes.
@@ -286,7 +377,7 @@ fn fetchFrom(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: peers_m
     defer deadline.clear();
     deadline.set(.{ .duration = self.bootstrap_timeout });
 
-    return self.fetchFromInner(arena, c, donor) catch |err| {
+    return self.fetchFromInner(arena, c, donor, &deadline) catch |err| {
         // Our own deadline, not a shutdown: report it as a donor failure so the caller
         // moves on to the next candidate. A real cancel must stay error.Canceled and
         // unwind the consumer.
@@ -298,7 +389,7 @@ fn fetchFrom(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: peers_m
     };
 }
 
-fn fetchFromInner(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: peers_mod.Donor) !u64 {
+fn fetchFromInner(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: peers_mod.Donor, deadline: *zio.AutoCancel) !u64 {
     const url = try std.fmt.allocPrint(arena, "{s}/{s}/_snapshot", .{ donor.base_url, c.name });
 
     // A client per fetch: dusty's connection pool has no locking, and two indexes can
@@ -311,7 +402,7 @@ fn fetchFromInner(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: pe
     if (resp.status() != .ok) return error.SnapshotFetchFailed;
 
     log.info("bootstrapping '{s}' gen {d} from {s} (watermark {d})", .{ c.name, c.generation, donor.base_url, donor.file_version });
-    return self.mi.bootstrapLineage(c.name, c.generation, resp.reader());
+    return self.mi.bootstrapLineage(c.name, c.generation, resp.reader(), deadline);
 }
 
 fn consumeLoop(c: *Consumer, start_version: u64) zio.Cancelable!void {
@@ -319,6 +410,11 @@ fn consumeLoop(c: *Consumer, start_version: u64) zio.Cancelable!void {
     var buf: [batch_size]Entry = undefined;
     var changes: [batch_size]Change = undefined;
     var after = start_version;
+    if (after == 0) after = blk: {
+        self.setBootstrapping(c, true);
+        defer self.setBootstrapping(c, false);
+        break :blk try self.seedEmptyLineage(c);
+    };
     while (true) {
         const n = self.coordinator.read(c.name, c.generation, after, &buf, .none) catch |err| {
             if (err == error.Canceled) return error.Canceled;
@@ -326,12 +422,17 @@ fn consumeLoop(c: *Consumer, start_version: u64) zio.Cancelable!void {
             // swap it in, and resume from its watermark. Retry on any bootstrap failure
             // (no donor yet, coordinator hiccup) — the next read re-signals.
             if (err == error.BelowRetention) {
+                // Below retention means the data is stale beyond what the feed can
+                // repair, so health reads loading for the WHOLE restore — sticky
+                // across failed attempts; the gap between retries must not flash OK.
+                self.setBootstrapping(c, true);
                 const f = self.bootstrapConsumer(c, after) catch |berr| {
                     if (berr == error.Canceled) return error.Canceled;
                     log.warn("bootstrap failed for '{s}' gen {d}: {}", .{ c.name, c.generation, berr });
                     try zio.sleep(read_retry);
                     continue;
                 };
+                self.setBootstrapping(c, false);
                 after = f;
                 self.markApplied(c, f);
                 continue;
@@ -768,7 +869,7 @@ test "bootstrapLineage swaps an index's data from a donor snapshot" {
     // Bootstrap main from the donor snapshot: it now serves the donor's data at the
     // donor's version, and the old doc is gone.
     var r = std.Io.Reader.fixed(buf.written());
-    try std.testing.expectEqual(donor_version, try mi.bootstrapLineage("main", 1, &r));
+    try std.testing.expectEqual(donor_version, try mi.bootstrapLineage("main", 1, &r, null));
 
     var q99 = [_]u32{ 7, 8, 9 };
     const hit = try mi.search(a, "main", .{ .query = &q99 });
@@ -777,6 +878,378 @@ test "bootstrapLineage swaps an index's data from a donor snapshot" {
 
     var q1 = [_]u32{ 100, 200 };
     try std.testing.expectEqual(@as(usize, 0), (try mi.search(a, "main", .{ .query = &q1 })).results.len);
+}
+
+test "bootstrapLineageFromSource builds, flushes and swaps in a corpus stream" {
+    const common = @import("common.zig");
+    const BootstrapStream = coordinator_mod.BootstrapStream;
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_bootstrap_source";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    _ = try mi.createIndex("main", .{ .generation = 1 });
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // A doc the swap must make disappear.
+    _ = try mi.update(a, "main", .{ .changes = &[_]Change{.{ .insert = .{ .id = 1, .hashes = &.{ 100, 200 } } }} });
+
+    const Fake = struct {
+        batches: []const []const Change,
+        i: usize = 0,
+        const vt: BootstrapStream.VTable = .{ .next = nextImpl, .deinit = deinitImpl };
+        fn nextImpl(ptr: *anyopaque) anyerror!?[]const Change {
+            const self: *@This() = @ptrCast(@alignCast(ptr));
+            if (self.i >= self.batches.len) return null;
+            self.i += 1;
+            return self.batches[self.i - 1];
+        }
+        fn deinitImpl(_: *anyopaque) void {}
+    };
+    var fake = Fake{ .batches = &.{
+        &.{.{ .insert = .{ .id = 7, .hashes = &.{ 7, 8, 9 } } }},
+        &.{.{ .insert = .{ .id = 8, .hashes = &.{ 10, 11 } } }},
+    } };
+    var stream = BootstrapStream{ .ptr = &fake, .vtable = &Fake.vt, .position = 42 };
+
+    try std.testing.expectEqual(@as(u64, 42), try mi.bootstrapLineageFromSource("main", 1, &stream, null));
+
+    // The streamed corpus is searchable; the pre-existing doc is gone with the swap.
+    var q = [_]u32{ 7, 8, 9 };
+    const hit = try mi.search(a, "main", .{ .query = &q });
+    try std.testing.expectEqual(@as(usize, 1), hit.results.len);
+    try std.testing.expectEqual(@as(u32, 7), hit.results[0].id);
+    var q_old = [_]u32{ 100, 200 };
+    try std.testing.expectEqual(@as(usize, 0), (try mi.search(a, "main", .{ .query = &q_old })).results.len);
+
+    // Fully flushed: the position is durable in file segments, so this node can
+    // immediately donate a snapshot covering it — which is how the rest of a
+    // cluster avoids paying for the source stream again.
+    const st = try mi.getPeerStatus("main");
+    try std.testing.expectEqual(@as(u64, 42), st.version);
+    try std.testing.expectEqual(@as(u64, 42), st.file_version);
+}
+
+test "a corpus streamed at position 0 still installs — the primary migration case" {
+    const common = @import("common.zig");
+    const BootstrapStream = coordinator_mod.BootstrapStream;
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_bootstrap_source_pos0";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    _ = try mi.createIndex("main", .{ .generation = 1 });
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // A changelog that went live next to an old corpus and has recorded nothing
+    // yet reports position 0 WITH a full stream. Skipping it on the position
+    // would replay from 0 and silently miss the entire corpus.
+    const Fake = struct {
+        served: bool = false,
+        const vt: BootstrapStream.VTable = .{ .next = nextImpl, .deinit = deinitImpl };
+        fn nextImpl(ptr: *anyopaque) anyerror!?[]const Change {
+            const self: *@This() = @ptrCast(@alignCast(ptr));
+            if (self.served) return null;
+            self.served = true;
+            return &.{.{ .insert = .{ .id = 7, .hashes = &.{ 7, 8, 9 } } }};
+        }
+        fn deinitImpl(_: *anyopaque) void {}
+    };
+    var fake = Fake{};
+    var stream = BootstrapStream{ .ptr = &fake, .vtable = &Fake.vt, .position = 0 };
+
+    try std.testing.expectEqual(@as(u64, 0), try mi.bootstrapLineageFromSource("main", 1, &stream, null));
+
+    var q = [_]u32{ 7, 8, 9 };
+    const hit = try mi.search(a, "main", .{ .query = &q });
+    try std.testing.expectEqual(@as(usize, 1), hit.results.len);
+    try std.testing.expectEqual(@as(u32, 7), hit.results[0].id);
+}
+
+test "a transfer deadline firing as the stream drains cannot destroy the install" {
+    const common = @import("common.zig");
+    const BootstrapStream = coordinator_mod.BootstrapStream;
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_bootstrap_deadline_install";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    _ = try mi.createIndex("main", .{ .generation = 1 });
+
+    var deadline: zio.AutoCancel = .init;
+    defer deadline.clear();
+
+    // Serves one batch, then arms the deadline to fire IMMEDIATELY while returning
+    // the terminator — the worst-case timing: the transfer just made it under the
+    // wire, and the timer would land inside the flush or the swap. That used to
+    // abort the install mid-way (dropping the whole lineage from the map); the
+    // deadline must instead be dead the moment the stream is drained.
+    const Fake = struct {
+        deadline: *zio.AutoCancel,
+        served: bool = false,
+        const vt: BootstrapStream.VTable = .{ .next = nextImpl, .deinit = deinitImpl };
+        fn nextImpl(ptr: *anyopaque) anyerror!?[]const Change {
+            const self: *@This() = @ptrCast(@alignCast(ptr));
+            if (!self.served) {
+                self.served = true;
+                return &.{.{ .insert = .{ .id = 7, .hashes = &.{ 7, 8, 9 } } }};
+            }
+            self.deadline.set(.{ .duration = .fromMilliseconds(0) });
+            return null;
+        }
+        fn deinitImpl(_: *anyopaque) void {}
+    };
+    var fake = Fake{ .deadline = &deadline };
+    var stream = BootstrapStream{ .ptr = &fake, .vtable = &Fake.vt, .position = 5 };
+
+    // Slow-but-successful must still install, not be destroyed at the finish line.
+    try std.testing.expectEqual(@as(u64, 5), try mi.bootstrapLineageFromSource("main", 1, &stream, &deadline));
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var q = [_]u32{ 7, 8, 9 };
+    const hit = try mi.search(arena.allocator(), "main", .{ .query = &q });
+    try std.testing.expectEqual(@as(usize, 1), hit.results.len);
+    try std.testing.expectEqual(@as(u32, 7), hit.results[0].id);
+}
+
+test "an empty node below a truncated log seeds from the source stream" {
+    const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{ .executors = .exact(2) });
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_replicator_source_seed";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var cl = MemoryCoordinator.init(std.testing.allocator);
+    defer cl.deinit();
+    const co = cl.coordinator();
+
+    // A populated lineage whose history is already unreadable from 0 — what a node
+    // joining an established cluster faces: a replay would 410 immediately, and
+    // without the stream (or a peer) it would wedge there forever.
+    const gen = try co.createIndex("main");
+    _ = try co.append("main", gen, &[_]Change{
+        .{ .insert = .{ .id = 1, .hashes = &.{ 10, 20 } } },
+        .{ .insert = .{ .id = 2, .hashes = &.{ 30, 40 } } },
+    }, null);
+    try cl.setRetentionFloor("main", gen, 2);
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    try mi.startReplication(co);
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // The meta consumer builds the index; its empty data consumer must fill it from
+    // the bootstrap stream (no peers are configured), not wedge on BelowRetention.
+    var q = [_]u32{ 10, 20 };
+    var found = false;
+    var i: usize = 0;
+    while (i < 300) : (i += 1) {
+        const r = mi.search(a, "main", .{ .query = &q }) catch {
+            try zio.sleep(.fromMilliseconds(10));
+            continue;
+        };
+        if (r.results.len == 1 and r.results[0].id == 1) {
+            found = true;
+            break;
+        }
+        try zio.sleep(.fromMilliseconds(10));
+    }
+    try std.testing.expect(found);
+
+    // The consumer resumed the feed above the stream's position: a later write
+    // flows through normally, proving it did not wedge or restart from 0.
+    _ = try mi.update(a, "main", .{ .changes = &[_]Change{.{ .insert = .{ .id = 3, .hashes = &.{ 50, 60 } } }} });
+    var q3 = [_]u32{ 50, 60 };
+    const s3 = try mi.search(a, "main", .{ .query = &q3 });
+    try std.testing.expectEqual(@as(usize, 1), s3.results.len);
+    try std.testing.expectEqual(@as(u32, 3), s3.results[0].id);
+
+    // The seed is over, so per-index health is back to ready.
+    try std.testing.expectEqual(MultiIndex.IndexHealth.ready, try mi.indexHealth("main"));
+}
+
+// Delegates everything except openBootstrap, which always fails — a feed that
+// declares bootstrap but cannot serve it, freezing an empty consumer in its seed
+// retry loop.
+const StuckBootstrap = struct {
+    inner: Coordinator,
+
+    fn coordinator(self: *StuckBootstrap) Coordinator {
+        return .{ .ptr = self, .vtable = &vtable };
+    }
+    const vtable: Coordinator.VTable = .{
+        .append = appendImpl,
+        .read = readImpl,
+        .createIndex = createIndexImpl,
+        .deleteIndex = deleteIndexImpl,
+        .readMeta = readMetaImpl,
+        .setRetentionFloor = setRetentionFloorImpl,
+        .openBootstrap = openBootstrapImpl,
+    };
+    fn appendImpl(ptr: *anyopaque, name: []const u8, generation: u64, changes: []const Change, expected: ?u64) anyerror!u64 {
+        const self: *StuckBootstrap = @ptrCast(@alignCast(ptr));
+        return self.inner.append(name, generation, changes, expected);
+    }
+    fn readImpl(ptr: *anyopaque, name: []const u8, generation: u64, after: u64, out: []Entry, deadline: zio.Timeout) anyerror!usize {
+        const self: *StuckBootstrap = @ptrCast(@alignCast(ptr));
+        return self.inner.read(name, generation, after, out, deadline);
+    }
+    fn createIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!u64 {
+        const self: *StuckBootstrap = @ptrCast(@alignCast(ptr));
+        return self.inner.createIndex(name);
+    }
+    fn deleteIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!u64 {
+        const self: *StuckBootstrap = @ptrCast(@alignCast(ptr));
+        return self.inner.deleteIndex(name);
+    }
+    fn readMetaImpl(ptr: *anyopaque, after: u64, out: []MetaOp, deadline: zio.Timeout) anyerror!usize {
+        const self: *StuckBootstrap = @ptrCast(@alignCast(ptr));
+        return self.inner.readMeta(after, out, deadline);
+    }
+    fn setRetentionFloorImpl(ptr: *anyopaque, name: []const u8, generation: u64, floor: u64) anyerror!void {
+        const self: *StuckBootstrap = @ptrCast(@alignCast(ptr));
+        return self.inner.setRetentionFloor(name, generation, floor);
+    }
+    fn openBootstrapImpl(_: *anyopaque, _: []const u8, _: u64) anyerror!coordinator_mod.BootstrapStream {
+        return error.CoordinatorError;
+    }
+};
+
+test "per-index health reads loading while the initial seed cannot complete" {
+    const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{ .executors = .exact(2) });
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_replicator_health_loading";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var cl = MemoryCoordinator.init(std.testing.allocator);
+    defer cl.deinit();
+    const gen = try cl.coordinator().createIndex("main");
+    _ = try cl.coordinator().append("main", gen, &[_]Change{.{ .insert = .{ .id = 1, .hashes = &.{ 1, 2, 3 } } }}, null);
+    try cl.setRetentionFloor("main", gen, 1); // replay from 0 impossible; only a bootstrap can seed
+
+    var stuck = StuckBootstrap{ .inner = cl.coordinator() };
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    try mi.startReplication(stuck.coordinator());
+
+    // The index reconciles into existence and its consumer parks in the seed retry
+    // loop. Health must say loading — the bare exists-check would say OK, and a
+    // search balancer would route queries to a node that answers all of them with
+    // an honest-looking empty result.
+    var i: usize = 0;
+    const loading = while (i < 300) : (i += 1) {
+        if ((try mi.indexHealth("main")) == .loading) break true;
+        try zio.sleep(.fromMilliseconds(10));
+    } else false;
+    try std.testing.expect(loading);
+
+    // Searches are refused outright while loading, not answered empty.
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var q = [_]u32{ 1, 2, 3 };
+    try std.testing.expectError(error.IndexNotReady, mi.search(arena.allocator(), "main", .{ .query = &q }));
+
+    try std.testing.expectEqual(MultiIndex.IndexHealth.missing, try mi.indexHealth("nope"));
+}
+
+test "per-index health reads loading during a below-retention restore too" {
+    const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{ .executors = .exact(2) });
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_replicator_health_restore";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var cl = MemoryCoordinator.init(std.testing.allocator);
+    defer cl.deinit();
+    const co = cl.coordinator();
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    try mi.startReplication(co);
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const created = try mi.createIndex("main", .{});
+    _ = try mi.update(a, "main", .{ .changes = &[_]Change{.{ .insert = .{ .id = 1, .hashes = &.{ 10, 20 } } }} });
+    try std.testing.expectEqual(MultiIndex.IndexHealth.ready, try mi.indexHealth("main"));
+
+    // Move the floor far past everything, then wake the parked read with one more
+    // append (which it still returns — the floor is checked on entry). The NEXT
+    // read lands below retention, and with no peers configured the restore can
+    // never complete: the consumer parks in the retry loop.
+    try co.setRetentionFloor("main", created.generation, 10);
+    _ = try co.append("main", created.generation, &[_]Change{.{ .insert = .{ .id = 2, .hashes = &.{ 30, 40 } } }}, null);
+
+    var i: usize = 0;
+    const loading = while (i < 300) : (i += 1) {
+        if ((try mi.indexHealth("main")) == .loading) break true;
+        try zio.sleep(.fromMilliseconds(10));
+    } else false;
+    try std.testing.expect(loading);
+
+    // The stale data must not serve while the restore is pending: a result set
+    // from below the retention floor is honest-looking and wrong. 503, not 404 —
+    // the index exists, it just cannot answer yet.
+    var q = [_]u32{ 10, 20 };
+    try std.testing.expectError(error.IndexNotReady, mi.search(a, "main", .{ .query = &q }));
 }
 
 test "meta consumer drops a local index absent from the meta feed" {
@@ -1154,6 +1627,15 @@ test "replicated delete+recreate converges on the new lineage" {
     _ = try mi.deleteIndex("main", .{});
     const c2 = try mi.createIndex("main", .{});
     try std.testing.expect(c2.generation > c1.generation);
+
+    // The new lineage's consumer runs its (empty) seed first, and searches are
+    // refused until it has decided there is nothing to load — so wait for ready
+    // rather than race it.
+    var i: usize = 0;
+    while (i < 300) : (i += 1) {
+        if ((try mi.indexHealth("main")) == .ready) break;
+        try zio.sleep(.fromMilliseconds(10));
+    }
 
     // The recreated index is empty — the old lineage's doc is gone (isolation is
     // the generation scope).
