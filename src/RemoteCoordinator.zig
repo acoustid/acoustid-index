@@ -68,6 +68,7 @@ const vtable: Coordinator.VTable = .{
     .deleteIndex = deleteIndexImpl,
     .readMeta = readMetaImpl,
     .setRetentionFloor = setRetentionFloorImpl,
+    .openBootstrap = openBootstrapImpl,
 };
 
 fn appendImpl(ptr: *anyopaque, index_name: []const u8, generation: u64, changes: []const Change, expected: ?u64) anyerror!u64 {
@@ -265,6 +266,80 @@ fn arenaFor(self: *Self, index_name: []const u8) !*std.heap.ArenaAllocator {
     return gop.value_ptr.*;
 }
 
+// ---- bootstrap (a node that has nothing) ----
+//
+// GET /_bootstrap/{index}/{generation} answers with one msgpack BootstrapHeader,
+// then arrays of Change decoded straight off the socket (msgpack values are
+// self-delimiting), terminated by an empty array. The terminator carries the
+// done-versus-died distinction: end-of-stream without it means the server died
+// mid-scan, and surfaces as the decode error rather than as a shorter corpus.
+
+const BootstrapCtx = struct {
+    allocator: std.mem.Allocator,
+    client: http.Client,
+    resp: http.ClientResponse,
+    arena: std.heap.ArenaAllocator,
+    done: bool = false,
+
+    const stream_vtable: changelog_mod.BootstrapStream.VTable = .{
+        .next = nextImpl,
+        .deinit = deinitImpl,
+    };
+
+    fn nextImpl(ptr: *anyopaque) anyerror!?[]const Change {
+        const self: *BootstrapCtx = @ptrCast(@alignCast(ptr));
+        if (self.done) return null;
+        _ = self.arena.reset(.retain_capacity); // frees the previous batch
+        const batch = try nextBatch(self.arena.allocator(), self.resp.reader());
+        if (batch == null) self.done = true;
+        return batch;
+    }
+
+    fn deinitImpl(ptr: *anyopaque) void {
+        const self: *BootstrapCtx = @ptrCast(@alignCast(ptr));
+        const allocator = self.allocator;
+        self.arena.deinit();
+        self.resp.deinit();
+        self.client.deinit();
+        allocator.destroy(self);
+    }
+};
+
+// One msgpack array per call. Null is ONLY the empty-array terminator; a stream
+// that just stops errors out of the decode instead, so truncation can never read
+// as completion.
+fn nextBatch(arena: std.mem.Allocator, r: *std.Io.Reader) anyerror!?[]Change {
+    const changes = try msgpack.decodeLeaky([]Change, arena, r);
+    if (changes.len == 0) return null;
+    return changes;
+}
+
+fn openBootstrapImpl(ptr: *anyopaque, index_name: []const u8, generation: u64) anyerror!changelog_mod.BootstrapStream {
+    const self: *Self = @ptrCast(@alignCast(ptr));
+
+    var url_buf: [max_url_len]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, "{s}/_bootstrap/{s}/{d}", .{ self.base_url, index_name, generation });
+
+    const ctx = try self.allocator.create(BootstrapCtx);
+    errdefer self.allocator.destroy(ctx);
+    ctx.* = .{
+        .allocator = self.allocator,
+        .client = http.Client.init(self.allocator, self.io, .{}),
+        .resp = undefined,
+        .arena = std.heap.ArenaAllocator.init(self.allocator),
+    };
+    errdefer ctx.arena.deinit();
+    errdefer ctx.client.deinit();
+    ctx.resp = try ctx.client.fetch(url, .{ .method = .get });
+    errdefer ctx.resp.deinit();
+    if (ctx.resp.status() != .ok) return statusToError(ctx.resp.status());
+
+    // The reader points into ctx.resp, so it is only taken now that ctx sits at
+    // its final heap address.
+    const header = try msgpack.decodeLeaky(changelog_mod.BootstrapHeader, ctx.arena.allocator(), ctx.resp.reader());
+    return .{ .ptr = ctx, .vtable = &BootstrapCtx.stream_vtable, .position = header.position };
+}
+
 fn statusToError(status: http.Status) anyerror {
     return switch (status) {
         .conflict => error.VersionMismatch,
@@ -323,4 +398,53 @@ test "statusToError: 403 is a permanent refusal, not a retryable outage" {
     // caller to try again later for something that can never succeed.
     try std.testing.expectEqual(error.FeedIsReadOnly, statusToError(.forbidden));
     try std.testing.expect(statusToError(.forbidden) != error.CoordinatorError);
+}
+
+// The bootstrap wire format, pinned against hand-written bytes rather than a
+// round-trip through our own encoder — a round-trip would pass just as happily if
+// every key were wrong. These are the exact bytes the Python feed emits
+// (acoustid-server, tests/future/fpindex/test_feed.py pins its half the same way).
+
+test "bootstrap wire: header, one array of changes, empty-array terminator" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const bytes = [_]u8{
+        0x81, 0xa1, 'p', 0x03, // header {"p": 3}
+        0x91, // array of 1 change:
+        0x81, 0xa1, 'i', // tagged union: {"i": Insert}
+        0x82, 0xa1, 'i', 0x2a, // {"i": 42,
+        0xa1, 'h', 0x93, 0x01, 0x02, 0x03, //  "h": [1, 2, 3]}
+        0x90, // terminator: empty array
+    };
+    var r = std.Io.Reader.fixed(&bytes);
+
+    const header = try msgpack.decodeLeaky(changelog_mod.BootstrapHeader, a, &r);
+    try std.testing.expectEqual(@as(u64, 3), header.position);
+
+    const batch = (try nextBatch(a, &r)).?;
+    try std.testing.expectEqual(@as(usize, 1), batch.len);
+    try std.testing.expectEqual(@as(u32, 42), batch[0].insert.id);
+    try std.testing.expectEqualSlices(u32, &.{ 1, 2, 3 }, batch[0].insert.hashes);
+
+    try std.testing.expectEqual(@as(?[]Change, null), try nextBatch(a, &r));
+}
+
+test "bootstrap wire: a stream that stops without the terminator is an error, not a shorter corpus" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // One full batch, then the connection dies: no 0x90.
+    const bytes = [_]u8{
+        0x91, 0x81, 0xa1, 'i', 0x82, 0xa1, 'i', 0x2a, 0xa1, 'h', 0x91, 0x07,
+    };
+    var r = std.Io.Reader.fixed(&bytes);
+
+    _ = (try nextBatch(a, &r)).?;
+    // Installing what arrived so far as "complete" is the one unrecoverable
+    // mistake here — the node would claim the stream's position while missing
+    // whatever never arrived, and the feed would never send it again.
+    try std.testing.expectError(error.EndOfStream, nextBatch(a, &r));
 }

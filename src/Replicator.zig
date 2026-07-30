@@ -279,6 +279,72 @@ fn canResumeFrom(self: *Self, c: *Consumer, file_version: u64) !bool {
     return true;
 }
 
+// An empty index must not replay a feed whose history starts later than its corpus:
+// the PG changelog begins at the migration, so a replay from 0 builds an index that
+// is silently missing every fingerprint older than the log — while being told
+// "caught up". Whether that hazard exists is the feed's own declaration:
+// openBootstrap is non-null exactly when history is incomplete from 0.
+//
+// Preference order:
+//   1. a peer snapshot — the corpus already built and inside the cluster is far
+//      cheaper than pulling a terabyte back out of the source database,
+//   2. the feed's bootstrap stream — one node pays this once per cluster, and the
+//      rest then find that node as a donor,
+//   3. plain replay from 0 — feeds with complete history (the file log, the memory
+//      coordinator before truncation) neither need nor offer the stream.
+//
+// Deliberately NOT wired into the below-retention path: a whole cluster falling off
+// the log at once would stampede the source with N corpus streams. That remedy stays
+// operator-driven — wipe one node, which makes it empty and lands it here.
+fn seedEmptyLineage(self: *Self, c: *Consumer) zio.Cancelable!u64 {
+    while (true) {
+        if (self.trySeed(c)) |position| {
+            if (position > 0) self.markApplied(c, position);
+            return position;
+        } else |err| {
+            if (err == error.Canceled) return error.Canceled;
+            log.warn("seeding empty lineage '{s}' gen {d} failed (retrying): {}", .{ c.name, c.generation, err });
+            try zio.sleep(read_retry);
+        }
+    }
+}
+
+fn trySeed(self: *Self, c: *Consumer) !u64 {
+    if (self.bootstrapConsumer(c, 0)) |v| {
+        return v;
+    } else |err| switch (err) {
+        error.Canceled => return error.Canceled,
+        // No peer can help; that is exactly what the source stream is for.
+        error.NoPeersConfigured, error.NoDonor, error.AllDonorsBelowRetention => {},
+        // A donor exists but its transfer failed — retrying peers is far cheaper
+        // than a corpus stream, so let the seed loop come back around.
+        else => |e| return e,
+    }
+
+    // Same backstop as a snapshot transfer: a source that accepts the connection
+    // and then wedges must not hang the consumer forever. Raise
+    // --bootstrap-timeout-ms for corpora that legitimately stream longer.
+    var deadline: zio.AutoCancel = .init;
+    defer deadline.clear();
+    deadline.set(.{ .duration = self.bootstrap_timeout });
+
+    var stream = (self.coordinator.openBootstrap(c.name, c.generation) catch |err|
+        return seedTimeoutOr(&deadline, err)) orelse return 0;
+    defer stream.deinit();
+    if (stream.position == 0) return 0; // nothing exists before the log; replay is right
+
+    log.info("bootstrapping '{s}' gen {d} from the source stream (position {d})", .{ c.name, c.generation, stream.position });
+    return self.mi.bootstrapLineageFromSource(c.name, c.generation, &stream) catch |err|
+        seedTimeoutOr(&deadline, err);
+}
+
+// Our own transfer deadline, not a shutdown: report it as a seed failure so the
+// loop retries. A real cancel must stay error.Canceled and unwind the consumer.
+fn seedTimeoutOr(deadline: *zio.AutoCancel, err: anyerror) anyerror {
+    if (err == error.Canceled and deadline.check(error.Canceled)) return error.BootstrapTimeout;
+    return err;
+}
+
 fn fetchFrom(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: peers_mod.Donor) !u64 {
     // Covers the fetch AND the restore that streams the body: a donor can wedge at any
     // point, and the restore is where most of the time goes.
@@ -319,6 +385,7 @@ fn consumeLoop(c: *Consumer, start_version: u64) zio.Cancelable!void {
     var buf: [batch_size]Entry = undefined;
     var changes: [batch_size]Change = undefined;
     var after = start_version;
+    if (after == 0) after = try self.seedEmptyLineage(c);
     while (true) {
         const n = self.coordinator.read(c.name, c.generation, after, &buf, .none) catch |err| {
             if (err == error.Canceled) return error.Canceled;
@@ -777,6 +844,130 @@ test "bootstrapLineage swaps an index's data from a donor snapshot" {
 
     var q1 = [_]u32{ 100, 200 };
     try std.testing.expectEqual(@as(usize, 0), (try mi.search(a, "main", .{ .query = &q1 })).results.len);
+}
+
+test "bootstrapLineageFromSource builds, flushes and swaps in a corpus stream" {
+    const common = @import("common.zig");
+    const BootstrapStream = coordinator_mod.BootstrapStream;
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_bootstrap_source";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    _ = try mi.createIndex("main", .{ .generation = 1 });
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // A doc the swap must make disappear.
+    _ = try mi.update(a, "main", .{ .changes = &[_]Change{.{ .insert = .{ .id = 1, .hashes = &.{ 100, 200 } } }} });
+
+    const Fake = struct {
+        batches: []const []const Change,
+        i: usize = 0,
+        const vt: BootstrapStream.VTable = .{ .next = nextImpl, .deinit = deinitImpl };
+        fn nextImpl(ptr: *anyopaque) anyerror!?[]const Change {
+            const self: *@This() = @ptrCast(@alignCast(ptr));
+            if (self.i >= self.batches.len) return null;
+            self.i += 1;
+            return self.batches[self.i - 1];
+        }
+        fn deinitImpl(_: *anyopaque) void {}
+    };
+    var fake = Fake{ .batches = &.{
+        &.{.{ .insert = .{ .id = 7, .hashes = &.{ 7, 8, 9 } } }},
+        &.{.{ .insert = .{ .id = 8, .hashes = &.{ 10, 11 } } }},
+    } };
+    var stream = BootstrapStream{ .ptr = &fake, .vtable = &Fake.vt, .position = 42 };
+
+    try std.testing.expectEqual(@as(u64, 42), try mi.bootstrapLineageFromSource("main", 1, &stream));
+
+    // The streamed corpus is searchable; the pre-existing doc is gone with the swap.
+    var q = [_]u32{ 7, 8, 9 };
+    const hit = try mi.search(a, "main", .{ .query = &q });
+    try std.testing.expectEqual(@as(usize, 1), hit.results.len);
+    try std.testing.expectEqual(@as(u32, 7), hit.results[0].id);
+    var q_old = [_]u32{ 100, 200 };
+    try std.testing.expectEqual(@as(usize, 0), (try mi.search(a, "main", .{ .query = &q_old })).results.len);
+
+    // Fully flushed: the position is durable in file segments, so this node can
+    // immediately donate a snapshot covering it — which is how the rest of a
+    // cluster avoids paying for the source stream again.
+    const st = try mi.getPeerStatus("main");
+    try std.testing.expectEqual(@as(u64, 42), st.version);
+    try std.testing.expectEqual(@as(u64, 42), st.file_version);
+}
+
+test "an empty node below a truncated log seeds from the source stream" {
+    const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{ .executors = .exact(2) });
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_replicator_source_seed";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var cl = MemoryCoordinator.init(std.testing.allocator);
+    defer cl.deinit();
+    const co = cl.coordinator();
+
+    // A populated lineage whose history is already unreadable from 0 — what a node
+    // joining an established cluster faces: a replay would 410 immediately, and
+    // without the stream (or a peer) it would wedge there forever.
+    const gen = try co.createIndex("main");
+    _ = try co.append("main", gen, &[_]Change{
+        .{ .insert = .{ .id = 1, .hashes = &.{ 10, 20 } } },
+        .{ .insert = .{ .id = 2, .hashes = &.{ 30, 40 } } },
+    }, null);
+    try cl.setRetentionFloor("main", gen, 2);
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    try mi.startReplication(co);
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // The meta consumer builds the index; its empty data consumer must fill it from
+    // the bootstrap stream (no peers are configured), not wedge on BelowRetention.
+    var q = [_]u32{ 10, 20 };
+    var found = false;
+    var i: usize = 0;
+    while (i < 300) : (i += 1) {
+        const r = mi.search(a, "main", .{ .query = &q }) catch {
+            try zio.sleep(.fromMilliseconds(10));
+            continue;
+        };
+        if (r.results.len == 1 and r.results[0].id == 1) {
+            found = true;
+            break;
+        }
+        try zio.sleep(.fromMilliseconds(10));
+    }
+    try std.testing.expect(found);
+
+    // The consumer resumed the feed above the stream's position: a later write
+    // flows through normally, proving it did not wedge or restart from 0.
+    _ = try mi.update(a, "main", .{ .changes = &[_]Change{.{ .insert = .{ .id = 3, .hashes = &.{ 50, 60 } } }} });
+    var q3 = [_]u32{ 50, 60 };
+    const s3 = try mi.search(a, "main", .{ .query = &q3 });
+    try std.testing.expectEqual(@as(usize, 1), s3.results.len);
+    try std.testing.expectEqual(@as(u32, 3), s3.results[0].id);
 }
 
 test "meta consumer drops a local index absent from the meta feed" {

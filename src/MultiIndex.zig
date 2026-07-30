@@ -19,6 +19,7 @@ const Metadata = @import("change.zig").Metadata;
 const MetadataEntry = @import("change.zig").MetadataEntry;
 const Replicator = @import("Replicator.zig");
 const Coordinator = @import("Coordinator.zig").Coordinator;
+const BootstrapStream = @import("Coordinator.zig").BootstrapStream;
 const index_redirect = @import("index_redirect.zig");
 const deleteDirTree = @import("common.zig").deleteDirTree;
 const SearchResultsPool = @import("common.zig").SearchResultsPool;
@@ -596,6 +597,79 @@ pub fn bootstrapLineage(self: *Self, name: []const u8, generation: u64, reader: 
     }
 
     // 2. Swap it in and reopen the index in place (under the lock, draining borrows).
+    return self.installBootstrap(name, generation, name_dir, vdir_name, vdir);
+}
+
+const bootstrap_build_tmp = "bootstrap.tmp";
+
+/// Bootstrap the (`name`, `generation`) lineage from the feed's own corpus stream
+/// (Coordinator.openBootstrap): build a staging index next to the live one, apply
+/// every batch at the stream's single position, flush it fully to disk, then swap it
+/// in through the same drain-and-reopen path a peer-snapshot restore uses. Returns
+/// the position the caller resumes the feed from.
+///
+/// Staging is what makes a mid-stream death safe. Applying into the live index and
+/// dying at 1% would leave a node claiming `position` with 1% of the data, resuming
+/// *after* it — and the missing 99% never arrives, because the feed only sends what
+/// is above `position`. A dead staging build is just a directory the next attempt
+/// deletes. The full flush matters for the same reason: the swap reopens from disk
+/// alone and discards the staging WAL, so anything not yet in a file segment would
+/// silently vanish from the installed index.
+pub fn bootstrapLineageFromSource(self: *Self, name: []const u8, generation: u64, stream: *BootstrapStream) !u64 {
+    const name_dir = try self.dir.openDir(name, .{ .iterate = true });
+    defer name_dir.close();
+    const redirect = index_redirect.read(name_dir, self.allocator) catch return error.IndexNotFound;
+    defer self.allocator.free(redirect.name);
+    if (redirect.deleted or redirect.generation != generation) return error.IndexGenerationMismatch;
+
+    var vbuf: [index_redirect.max_data_dir_len]u8 = undefined;
+    const vdir_name = redirect.dataDir(&vbuf);
+    const vdir = try name_dir.openDir(vdir_name, .{ .iterate = true });
+    defer vdir.close();
+
+    // 1. Build the staging index (outside the lock — this is the long part, and the
+    //    live index keeps serving searches meanwhile).
+    deleteDirTree(self.allocator, vdir, bootstrap_build_tmp) catch {}; // a prior attempt's corpse
+    var applied = false;
+    {
+        const build_dir = try openOrCreateDir(vdir, bootstrap_build_tmp);
+        errdefer deleteDirTree(self.allocator, vdir, bootstrap_build_tmp) catch {};
+
+        // sync=false: the stream's durability is the source's, and an interrupted
+        // build starts over either way. No start(): maintenance runs inline per
+        // batch, so no background coroutine races the final flush.
+        var staging = Index.open(self.allocator, build_dir, self.checkpoint_threshold, false, null) catch |err| {
+            build_dir.close();
+            return err;
+        };
+        defer staging.deinit(); // owns (and closes) build_dir
+
+        while (try stream.next()) |changes| {
+            if (changes.len == 0) continue;
+            _ = try staging.update(changes, .{ .version = stream.position });
+            try staging.runMaintenance();
+            applied = true;
+        }
+        if (applied) try staging.flush();
+    }
+
+    if (!applied) {
+        // The stream held nothing applicable, so there is nothing to install — and
+        // `position` is still the right place to resume: everything at or below it
+        // is, verifiably, nothing.
+        deleteDirTree(self.allocator, vdir, bootstrap_build_tmp) catch {};
+        return stream.position;
+    }
+
+    // 2. Move the staging data dir into the slot the snapshot restore uses, and
+    //    reuse its install path (block new borrows, drain, swap, reopen).
+    deleteDirTree(self.allocator, vdir, restore_tmp) catch {};
+    {
+        const build_dir = try vdir.openDir(bootstrap_build_tmp, .{ .iterate = true });
+        defer build_dir.close();
+        try build_dir.rename("data", vdir, restore_tmp);
+    }
+    deleteDirTree(self.allocator, vdir, bootstrap_build_tmp) catch {};
     return self.installBootstrap(name, generation, name_dir, vdir_name, vdir);
 }
 

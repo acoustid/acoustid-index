@@ -9,6 +9,7 @@ const http = @import("dusty");
 const msgpack = @import("msgpack");
 const changelog_mod = @import("Coordinator.zig");
 const Coordinator = changelog_mod.Coordinator;
+const Change = @import("change.zig").Change;
 const Entry = changelog_mod.Entry;
 const MetaOp = changelog_mod.MetaOp;
 const AppendRequest = changelog_mod.AppendRequest;
@@ -46,7 +47,37 @@ pub fn registerRoutes(server: *Server) void {
     r.put("/_index/:index", handleCreateIndex);
     r.delete("/_index/:index", handleDeleteIndex);
     r.get("/_meta", handleReadMeta);
+    r.get("/_bootstrap/:index/:gen", handleBootstrap);
     r.post("/_truncate/:index/:gen", handleTruncate);
+}
+
+fn handleBootstrap(co: *Service, req: *http.Request, res: *http.Response) !void {
+    const index = req.params.get("index") orelse return fail(res, .bad_request, "missing index");
+    const generation = genParam(req) orelse return fail(res, .bad_request, "bad generation");
+
+    var stream = (co.coordinator.openBootstrap(index, generation) catch |err|
+        return fail(res, statusFor(err), @errorName(err))) orelse
+        return fail(res, .not_found, "no bootstrap stream");
+    defer stream.deinit();
+
+    // Same wire shape as the PG feed: a msgpack header, then arrays of changes,
+    // terminated by an empty array. Chunked, so nothing buffers the whole corpus;
+    // a mid-stream failure just breaks the connection, which the client reads as
+    // truncation (no terminator) — never as completion.
+    try res.header("Content-Type", comptime http.ContentType.msgpack.toContentType());
+    var aw: std.Io.Writer.Allocating = .init(req.arena);
+    try msgpack.encode(changelog_mod.BootstrapHeader{ .position = stream.position }, &aw.writer);
+    try res.chunk(aw.written());
+
+    while (try stream.next()) |changes| {
+        if (changes.len == 0) continue; // the empty array is the terminator, nothing else
+        aw.clearRetainingCapacity();
+        try msgpack.encode(changes, &aw.writer);
+        try res.chunk(aw.written());
+    }
+    aw.clearRetainingCapacity();
+    try msgpack.encode(@as([]const Change, &.{}), &aw.writer);
+    try res.chunk(aw.written());
 }
 
 fn handleTruncate(co: *Service, req: *http.Request, res: *http.Response) !void {

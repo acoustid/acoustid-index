@@ -102,6 +102,39 @@ generation match) → atomically rename into `v<generation>` → open → resume
 Also: `position > max(id)` (PG lost an acked tail after async failover) → refuse to serve,
 rebuild. Prevented almost entirely by synchronous replication.
 
+## Source bootstrap (2026-07-30)
+
+Peer snapshots cover a node that is *behind*; nothing above covered the node that has
+*nothing* when the log itself is incomplete: the PG changelog starts at the migration,
+so replaying it from 0 builds an index silently missing every fingerprint that already
+existed — while being told "caught up". acoustid-server#242 adds
+`GET /_bootstrap/{index}/{generation}` for exactly this: a msgpack header carrying
+`position`, then arrays of `Change`, terminated by an empty array (the in-band
+done-versus-died signal; EOF without it is truncation, never completion).
+
+Node side:
+
+- **The capability is the feed's declaration.** `Coordinator.openBootstrap` is an
+  optional vtable op: implementing it says "my history starts later than my corpus, an
+  empty index must not replay from 0". The file log doesn't implement it; the memory
+  coordinator and `RemoteCoordinator` do (`coordinator_server` serves the same wire
+  shape as the PG feed, so the e2e suite exercises the real client path).
+- **An empty consumer seeds before its first read**, in preference order: peer snapshot
+  (the corpus already built inside the cluster beats pulling a terabyte from PG), then
+  the source stream, else plain replay from 0. One node pays for the stream once per
+  cluster; it flushes fully, so it immediately becomes a donor for the rest.
+- **Staging + swap, never in place.** The stream applies into `v<gen>/bootstrap.tmp` at
+  the single `position`, is fully flushed (`Index.flush`, threshold notwithstanding),
+  and installs through the same drain-and-swap path as a snapshot restore. Dying at 1%
+  leaves a tmp dir the next attempt deletes — not a node claiming `position` with 1% of
+  the data and a feed that will never re-send the rest.
+- **Deliberately not wired to the below-retention path.** A whole cluster falling off
+  the log would stampede the source with N corpus streams. That remedy stays
+  operator-driven: wipe one node — which makes it empty and lands it in the seed path.
+  Same reasoning caps the cold-start story: bring nodes up one at a time on first fill,
+  since concurrently-started empty nodes cannot see each other as donors until one
+  finishes.
+
 ## Milestones
 
 1. **Age-based checkpoint — DONE.** `Index.checkpoint_age` forces a flush once the oldest

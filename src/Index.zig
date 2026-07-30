@@ -622,10 +622,19 @@ fn maintenanceLoop(self: *Self) zio.Cancelable!void {
 pub fn runMaintenance(self: *Self) !void {
     while (true) {
         if (try self.mergeMemory()) continue;
-        if (try self.checkpoint()) continue;
+        if (try self.checkpoint(false)) continue;
         if (try self.mergeFiles()) continue;
         break;
     }
+}
+
+/// Flush every memory segment to a file segment regardless of threshold or age, so
+/// everything the index holds is durable on disk. A bootstrap build needs this before
+/// its staging directory is swapped in: the swap path reopens from disk alone, and
+/// whatever only lived in memory would silently vanish from the installed index.
+pub fn flush(self: *Self) !void {
+    while (try self.mergeMemory()) {}
+    _ = try self.checkpoint(true);
 }
 
 fn memorySize(memory: []const MemoryRef) usize {
@@ -748,7 +757,7 @@ fn mergeMemory(self: *Self) !bool {
 // write lock; only the manifest write + snapshot swap hold it, so updates keep
 // flowing. Updates that arrive during the merge stay in memory (they append to
 // the suffix; the flushed segments are the prefix). Returns true if it ran.
-fn checkpoint(self: *Self) !bool {
+fn checkpoint(self: *Self, force: bool) !bool {
     try self.segments_lock.lockShared();
     var snap = self.segments.acquire();
     self.segments_lock.unlockShared();
@@ -771,7 +780,7 @@ fn checkpoint(self: *Self) !bool {
         self.pending_since.?.untilNow(.monotonic).toNanoseconds() >= age.toNanoseconds()
     else
         false;
-    if (!over_threshold and !aged) return false;
+    if (!force and !over_threshold and !aged) return false;
 
     var fseg = try self.mergeToFileSegment(MemorySegment, snap.value.memory, snap.value);
     var committed = false;
@@ -1065,6 +1074,33 @@ test "age-based checkpoint flushes a small pending batch" {
     var r = try index.acquireReader();
     defer r.deinit();
     try std.testing.expectEqual(@as(usize, 0), r.snapshot.value.memory.len);
+}
+
+test "flush checkpoints a batch the threshold and age triggers would both skip" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_index_flush";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+    // High size threshold, no age trigger: nothing but flush() can checkpoint this.
+    var index = try Self.open(std.testing.allocator, dir, 100_000, true, null);
+    defer index.deinit();
+
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{ 100, 200 } } }}, .{ .version = 7 });
+    try index.flush();
+
+    var r = try index.acquireReader();
+    defer r.deinit();
+    try std.testing.expectEqual(@as(usize, 0), r.snapshot.value.memory.len);
+    try std.testing.expectEqual(@as(usize, 1), r.snapshot.value.file.len);
+    // The upstream position is now durable in a file segment — what a bootstrap
+    // install (which reopens from disk alone) resumes the feed from.
+    try std.testing.expectEqual(@as(u64, 7), r.snapshot.value.file_version);
 }
 
 test "snapshot archive round-trips manifest + file segments" {
