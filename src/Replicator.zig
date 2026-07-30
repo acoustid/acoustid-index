@@ -331,9 +331,10 @@ fn trySeed(self: *Self, c: *Consumer) !u64 {
     var stream = (self.coordinator.openBootstrap(c.name, c.generation) catch |err|
         return seedTimeoutOr(&deadline, err)) orelse return 0;
     defer stream.deinit();
-    if (stream.position == 0) return 0; // nothing exists before the log; replay is right
 
-    log.info("bootstrapping '{s}' gen {d} from the source stream (position {d})", .{ c.name, c.generation, stream.position });
+    // No position-0 shortcut here: a young changelog legitimately reports 0 while
+    // the stream carries the whole pre-migration corpus. Whether there is anything
+    // to install is decided by the stream's content, inside the build.
     return self.mi.bootstrapLineageFromSource(c.name, c.generation, &stream) catch |err|
         seedTimeoutOr(&deadline, err);
 }
@@ -905,6 +906,53 @@ test "bootstrapLineageFromSource builds, flushes and swaps in a corpus stream" {
     const st = try mi.getPeerStatus("main");
     try std.testing.expectEqual(@as(u64, 42), st.version);
     try std.testing.expectEqual(@as(u64, 42), st.file_version);
+}
+
+test "a corpus streamed at position 0 still installs — the primary migration case" {
+    const common = @import("common.zig");
+    const BootstrapStream = coordinator_mod.BootstrapStream;
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_bootstrap_source_pos0";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    _ = try mi.createIndex("main", .{ .generation = 1 });
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // A changelog that went live next to an old corpus and has recorded nothing
+    // yet reports position 0 WITH a full stream. Skipping it on the position
+    // would replay from 0 and silently miss the entire corpus.
+    const Fake = struct {
+        served: bool = false,
+        const vt: BootstrapStream.VTable = .{ .next = nextImpl, .deinit = deinitImpl };
+        fn nextImpl(ptr: *anyopaque) anyerror!?[]const Change {
+            const self: *@This() = @ptrCast(@alignCast(ptr));
+            if (self.served) return null;
+            self.served = true;
+            return &.{.{ .insert = .{ .id = 7, .hashes = &.{ 7, 8, 9 } } }};
+        }
+        fn deinitImpl(_: *anyopaque) void {}
+    };
+    var fake = Fake{};
+    var stream = BootstrapStream{ .ptr = &fake, .vtable = &Fake.vt, .position = 0 };
+
+    try std.testing.expectEqual(@as(u64, 0), try mi.bootstrapLineageFromSource("main", 1, &stream));
+
+    var q = [_]u32{ 7, 8, 9 };
+    const hit = try mi.search(a, "main", .{ .query = &q });
+    try std.testing.expectEqual(@as(usize, 1), hit.results.len);
+    try std.testing.expectEqual(@as(u32, 7), hit.results[0].id);
 }
 
 test "an empty node below a truncated log seeds from the source stream" {

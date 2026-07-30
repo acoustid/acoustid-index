@@ -627,10 +627,24 @@ pub fn bootstrapLineageFromSource(self: *Self, name: []const u8, generation: u64
     const vdir = try name_dir.openDir(vdir_name, .{ .iterate = true });
     defer vdir.close();
 
+    // Whether anything needs installing is a property of the stream's CONTENT, never
+    // of its position. Position 0 with a full corpus is not an edge case, it is the
+    // primary migration scenario: the changelog goes live alongside an old corpus
+    // and may not have recorded anything yet when the first node arrives. Peek past
+    // empty batches before building anything, so the common fresh-lineage case (an
+    // empty stream) costs no disk at all.
+    const first_batch = blk: {
+        while (try stream.next()) |changes| {
+            if (changes.len > 0) break :blk changes;
+        }
+        break :blk null;
+    } orelse return stream.position;
+
+    log.info("bootstrapping '{s}' gen {d} from a source stream at position {d}", .{ name, generation, stream.position });
+
     // 1. Build the staging index (outside the lock — this is the long part, and the
     //    live index keeps serving searches meanwhile).
     deleteDirTree(self.allocator, vdir, bootstrap_build_tmp) catch {}; // a prior attempt's corpse
-    var applied = false;
     {
         const build_dir = try openOrCreateDir(vdir, bootstrap_build_tmp);
         errdefer deleteDirTree(self.allocator, vdir, bootstrap_build_tmp) catch {};
@@ -644,21 +658,14 @@ pub fn bootstrapLineageFromSource(self: *Self, name: []const u8, generation: u64
         };
         defer staging.deinit(); // owns (and closes) build_dir
 
+        _ = try staging.update(first_batch, .{ .version = stream.position });
+        try staging.runMaintenance();
         while (try stream.next()) |changes| {
             if (changes.len == 0) continue;
             _ = try staging.update(changes, .{ .version = stream.position });
             try staging.runMaintenance();
-            applied = true;
         }
-        if (applied) try staging.flush();
-    }
-
-    if (!applied) {
-        // The stream held nothing applicable, so there is nothing to install — and
-        // `position` is still the right place to resume: everything at or below it
-        // is, verifiably, nothing.
-        deleteDirTree(self.allocator, vdir, bootstrap_build_tmp) catch {};
-        return stream.position;
+        try staging.flush();
     }
 
     // 2. Move the staging data dir into the slot the snapshot restore uses, and
