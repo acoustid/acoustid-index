@@ -418,8 +418,8 @@ pub const IndexHealth = enum { ready, loading, missing };
 /// Either way its answers would be honest-looking but empty or stale, so a search
 /// balancer must be able to tell. Global liveness (/_health) deliberately stays
 /// independent of this: peer discovery must keep finding nodes that are
-/// open-but-loading, or a cold cluster start deadlocks (see
-/// notes/bootstrap-design.md).
+/// open-but-loading, or a cold cluster start deadlocks — nobody is ready, DNS is
+/// empty, nobody can find a donor, nobody becomes ready.
 pub fn indexHealth(self: *Self, name: []const u8) !IndexHealth {
     try self.lock.lock();
     defer self.lock.unlock();

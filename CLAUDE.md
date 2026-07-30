@@ -7,12 +7,12 @@ ID + set of hashes; search = find IDs whose hash set intersects the query). Runs
 HTTP service. The old implementation lives at `../acoustid/idx` (git history is the
 reference/"answer key" for ported logic).
 
-**Design of record: `notes/design-notes-2026-07.md`.** Read it before touching
-replication, storage, or async questions — the architecture was decided there and
-should not be re-litigated. Update that file (and the memory pointer) if a decision
-changes.
+**`README.md` is the documentation** — architecture, replication, bootstrap, API,
+operations. Keep it current when behavior changes; it is reference documentation,
+not a diary — no design justifications there. The decisions below are settled and
+should not be re-litigated; the why lives in git and PR history.
 
-## Key decisions (see notes for the why)
+## Key decisions
 
 - **Stack**: Zig 0.16 + [zio](../zio) (async runtime, own project) + [dusty](../dusty)
   (HTTP, own project) + [msgpack.zig](../msgpack.zig). All local path deps for now.
@@ -35,8 +35,8 @@ changes.
   MemorySegment, segment lists / SharedPtr snapshots, manifest, the file-log impl.
 - Drop entirely: old server/httpz, NATS/ClusterMultiIndex, thread Scheduler/WaitGroup.
 
-Discipline: don't redesign while transplanting — improvements go into the notes, not
-into the port.
+Discipline: don't redesign while transplanting — keep improvements out of the port
+and raise them separately.
 
 ## Build and test
 
