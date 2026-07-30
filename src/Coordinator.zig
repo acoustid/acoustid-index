@@ -65,21 +65,16 @@ pub const AppendResponse = struct {
 
 pub const ReadResponse = struct {
     entries: []Entry,
-    /// How long the caller should wait before asking again. The server does NOT
-    /// block: it answers with whatever is available right now and paces the
-    /// consumer with this instead of holding the connection open for a long poll.
+    /// How long to wait before asking again. The server does not block; it answers
+    /// with whatever is available and paces the consumer with this.
     ///
-    /// Why the server does not block: any transaction touching the changelog
-    /// table locks every partition at plan time, before pruning, so a request
-    /// that waited with a transaction open would block retention's partition
-    /// drops — every drop attempt would collide and retention would quietly stop
-    /// progressing. Answering immediately removes the window entirely. It also
-    /// puts consumer pacing in one place, adjustable without redeploying nodes.
+    /// A blocking server would have to hold a transaction open, and any
+    /// transaction touching the changelog table locks every partition at plan
+    /// time — which would block retention's partition drops indefinitely.
     ///
-    /// The vtable contract above is unchanged — `read` still blocks until entries
-    /// exist or the deadline elapses. RemoteCoordinator honours it by polling and
-    /// sleeping for this long between attempts, so this field never reaches the
-    /// Replicator.
+    /// The vtable contract is unchanged: `read` still blocks until entries exist
+    /// or the deadline elapses. RemoteCoordinator implements that by polling and
+    /// sleeping this long, so the field never reaches the Replicator.
     retry_after_ms: u64 = 0,
 
     pub fn msgpackFormat() msgpack.StructFormat {

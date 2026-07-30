@@ -27,16 +27,12 @@ const MetaDeleteResponse = changelog_mod.MetaDeleteResponse;
 
 const Self = @This();
 
-// Floor on the gap between polls, so a server that reports 0 (or omits the field
-// entirely) cannot turn this into a busy loop. The server only sends 0 alongside a
-// full batch, which returns before any sleep — but the floor is what makes that a
-// property of this client rather than a promise the server has to keep.
+// Floor on the gap between polls, so a server reporting 0 — or omitting the
+// field — cannot turn this into a busy loop.
 const min_poll_ms: u64 = 50;
 
-// Enough for any real feed URL: base_url and index name plus three u64s and ~30
-// characters of fixed text. bufPrint returns error.NoSpaceLeft if a base URL or
-// index name ever exceeds it, which consumeLoop logs and retries — a loud,
-// repeating failure naming its own cause, rather than a truncated request.
+// Generous for any real feed URL; bufPrint fails loudly with NoSpaceLeft rather
+// than truncating if a base URL or index name ever exceeds it.
 const max_url_len = 512;
 
 allocator: std.mem.Allocator,
@@ -102,9 +98,8 @@ fn readImpl(ptr: *anyopaque, index_name: []const u8, generation: u64, after: u64
     _ = arena.reset(.retain_capacity); // frees the previous read's entries
     const ra = arena.allocator();
 
-    // On the stack, not in the arena: the loop below resets the arena between
-    // polls, and this outlives every one of them. Keeping it out of any allocator
-    // means there is no lifetime to get wrong.
+    // On the stack: the loop resets the arena between polls, and this outlives
+    // all of them.
     var url_buf: [max_url_len]u8 = undefined;
     const url = try std.fmt.bufPrint(&url_buf, "{s}/_changelog/{s}/{d}?after={d}&max={d}", .{
         self.base_url, index_name, generation, after, out.len,
@@ -174,10 +169,6 @@ fn createIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!u64 {
     const url = try std.fmt.allocPrint(a, "{s}/_index/{s}", .{ self.base_url, name });
     var client = http.Client.init(self.allocator, self.io, .{});
     defer client.deinit();
-    // PUT, not POST: the URI already names the index, so the client supplies the
-    // identity, and createIndex is documented idempotent -- an existing active
-    // name returns its generation without appending a duplicate op. That is PUT's
-    // defining property, and it pairs with the DELETE on the same path.
     var resp = try client.fetch(url, .{ .method = .put });
     defer resp.deinit();
     if (resp.status() != .ok) return statusToError(resp.status());
@@ -279,6 +270,9 @@ fn statusToError(status: http.Status) anyerror {
         .conflict => error.VersionMismatch,
         .not_found => error.IndexNotFound,
         .gone => error.BelowRetention, // truncated past the requested position -> bootstrap
+        // Not CoordinatorError: that maps to 503, and a read-only feed will never
+        // accept a write however many times it is retried.
+        .forbidden => error.FeedIsReadOnly,
         else => error.CoordinatorError,
     };
 }
@@ -322,4 +316,11 @@ test "pollUntil: a duration becomes an absolute point, so polls do not restart t
 
 test "statusToError: 410 is what sends a stuck node to a peer snapshot" {
     try std.testing.expectEqual(error.BelowRetention, statusToError(.gone));
+}
+
+test "statusToError: 403 is a permanent refusal, not a retryable outage" {
+    // Must not collapse into CoordinatorError: that maps to 503, which tells the
+    // caller to try again later for something that can never succeed.
+    try std.testing.expectEqual(error.FeedIsReadOnly, statusToError(.forbidden));
+    try std.testing.expect(statusToError(.forbidden) != error.CoordinatorError);
 }

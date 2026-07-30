@@ -1,9 +1,7 @@
 // The changelog coordinator: serves append/read of a backing Changelog over HTTP
-// (msgpack), so fpindex replicas consume the log without touching PG. dusty runs
-// each connection in its own coroutine, so the read handler can long-poll — park
-// in changelog.read up to the client's timeout — cheaply (a coroutine, not a
-// thread). Backed by a MemoryChangelog today; a PG-backed Changelog later, with
-// nothing here changing.
+// (msgpack), so fpindex replicas consume the log without touching PG. Reads do not
+// block — see the retry_after_ms note below. Backed by a MemoryCoordinator today;
+// acoustid-server serves the same protocol from PostgreSQL.
 
 const std = @import("std");
 const zio = @import("zio");
@@ -27,15 +25,11 @@ const EmptyResponse = struct {
 
 const max_read_entries = 1024;
 
-// This server does not long-poll. It reads whatever the coordinator has right now
-// and tells the client how long to wait before asking again, which is the same
-// protocol the PG-backed feed in acoustid-server speaks — so the two are
-// interchangeable behind RemoteCoordinator, and the client path under test here is
-// the one used against the real feed.
+// Reads answer with whatever is available and pace the client with
+// retry_after_ms, matching the PG-backed feed in acoustid-server so the two are
+// interchangeable behind RemoteCoordinator.
 const no_wait: zio.Timeout = .{ .duration = .fromMilliseconds(0) };
 const idle_retry_ms: u64 = 1000;
-// A full batch: more is probably queued, so coming straight back costs a round
-// trip and saves a wait.
 const busy_retry_ms: u64 = 0;
 
 pub const Service = struct {
@@ -48,10 +42,7 @@ pub fn registerRoutes(server: *Server) void {
     const r = &server.router;
     r.post("/_changelog/:index/:gen", handleAppend);
     r.get("/_changelog/:index/:gen", handleRead);
-    // PUT rather than POST: the path names the index, and createIndex is
-    // idempotent (an active name returns its existing generation without
-    // appending a duplicate op), which is exactly what PUT means. It also matches
-    // the DELETE below instead of sitting inconsistently next to it.
+    // PUT because createIndex is idempotent and the path names the index.
     r.put("/_index/:index", handleCreateIndex);
     r.delete("/_index/:index", handleDeleteIndex);
     r.get("/_meta", handleReadMeta);
@@ -85,8 +76,6 @@ fn handleReadMeta(co: *Service, req: *http.Request, res: *http.Response) !void {
     const after = queryInt(req, "after") orelse 0;
     const max: usize = @intCast(@min(queryInt(req, "max") orelse 256, max_read_entries));
     const buf = try req.arena.alloc(MetaOp, max);
-    // Answer with what is there now; the client paces itself on retry_after_ms.
-    // See Coordinator.ReadResponse.retry_after_ms for why nothing blocks here.
     const n = co.coordinator.readMeta(after, buf, no_wait) catch |err|
         return fail(res, statusFor(err), @errorName(err));
     try respond(MetaReadResponse{
@@ -116,8 +105,6 @@ fn handleRead(co: *Service, req: *http.Request, res: *http.Response) !void {
         return fail(res, statusFor(err), @errorName(err));
     try respond(ReadResponse{
         .entries = buf[0..n],
-        // A full batch means there is probably more behind it, so do not make the
-        // consumer wait to find out; anything less means it is caught up.
         .retry_after_ms = if (n == buf.len) busy_retry_ms else idle_retry_ms,
     }, res);
 }

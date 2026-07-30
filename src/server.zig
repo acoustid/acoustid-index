@@ -99,6 +99,8 @@ fn sendError(req: *http.Request, res: *http.Response, err: anyerror) void {
         error.BadRequest, error.InvalidIndexName, error.GenerationNotAllowed, error.InvalidFingerprintId => .bad_request,
         error.IndexNotFound, error.FingerprintNotFound => .not_found,
         error.IndexNotReady, error.SearchTimeout, error.ReplicationTimeout, error.CoordinatorError => .service_unavailable,
+        // Not 503 — retrying will never make a read-only feed accept a write.
+        error.FeedIsReadOnly => .forbidden,
         error.VersionMismatch, error.IndexAlreadyExists, error.OlderIndexAlreadyExists, error.NewerIndexAlreadyExists => .conflict,
         error.UnsupportedMediaType => .unsupported_media_type,
         error.NotImplemented => .not_implemented,
