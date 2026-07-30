@@ -2,14 +2,24 @@ name: CI
 
 on:
   push:
-    branches: [ng, main]
+    branches: [main]
+    tags: ['v*']
   pull_request:
+
+# The repository default is write-all, which every job here would otherwise
+# inherit while running code from the pull request.
+permissions:
+  contents: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Otherwise the token is left in .git/config, readable by the build
+          # and test code below. Nothing here pushes, so it is not needed.
+          persist-credentials: false
 
       - uses: mlugg/setup-zig@v2
         with:
@@ -30,3 +40,49 @@ jobs:
 
       - name: Integration tests
         run: zig build e2e-tests
+
+  docker:
+    # Pinned rather than ubuntu-latest: the release binary is copied into an
+    # ubuntu:24.04 image and links this runner's glibc, so the two must match.
+    runs-on: ubuntu-24.04
+    needs: test
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Build release binary
+        run: zig build --release=fast --summary all
+
+      - name: Log in to the Container registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Default rules, which suit calver as-is: a branch push tags the image
+      # after the branch, a vY.M.p tag after the tag verbatim, and `latest=auto`
+      # moves `latest` on a tag push but never on a branch push. Adding semver
+      # patterns here would drop the `v` and choke on a zero-padded month.
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

@@ -29,6 +29,27 @@ speaking the same protocol (acoustid-server serves it from PostgreSQL).
         --coordinator-url http://coordinator:9000 \
         --peers http://fpindex-headless:8080
 
+### Docker
+
+`ghcr.io/acoustid/acoustid-index` is built from `main` on every push, tagged
+`:main`. Pushing a release tag `vY.M.p` publishes `:vY.M.p` and moves `:latest`
+onto it — `:latest` follows the most recently pushed tag, so tagging an older
+release after a newer one would move it backwards. It serves on 8080 and keeps
+data in the `/var/lib/fpindex` volume, as user 6081.
+
+    docker run --security-opt seccomp=unconfined \
+        -p 8080:8080 -v fpindex-data:/var/lib/fpindex \
+        ghcr.io/acoustid/acoustid-index:main
+
+**`--security-opt seccomp=unconfined` is required.** Docker's default seccomp
+profile blocks `io_uring_setup`, which the async runtime needs; without it the
+server exits immediately with `error: PermissionDenied`. A custom profile that
+allows the `io_uring_*` syscalls works too. Kubernetes only hits this if the pod
+sets `seccompProfile: RuntimeDefault`.
+
+The image is built from a binary produced outside it (`zig build --release=fast`),
+so `docker build .` on a clean checkout fails until that has run.
+
 ## Configuration
 
 | Flag | Default | Meaning |
