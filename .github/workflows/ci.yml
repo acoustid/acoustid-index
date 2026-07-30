@@ -6,11 +6,20 @@ on:
     tags: ['v*']
   pull_request:
 
+# The repository default is write-all, which every job here would otherwise
+# inherit while running code from the pull request.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Otherwise the token is left in .git/config, readable by the build
+          # and test code below. Nothing here pushes, so it is not needed.
+          persist-credentials: false
 
       - uses: mlugg/setup-zig@v2
         with:
@@ -42,6 +51,8 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: mlugg/setup-zig@v2
         with:
