@@ -344,7 +344,10 @@ fn trySeed(self: *Self, c: *Consumer) !u64 {
 
     // Same backstop as a snapshot transfer: a source that accepts the connection
     // and then wedges must not hang the consumer forever. Raise
-    // --bootstrap-timeout-ms for corpora that legitimately stream longer.
+    // --bootstrap-timeout-ms for corpora that legitimately stream longer. It bounds
+    // only the stream: bootstrapLineageFromSource disarms it the moment the stream
+    // is drained, so the timer cannot fire into the install and destroy the
+    // lineage a slow-but-successful transfer just delivered.
     var deadline: zio.AutoCancel = .init;
     defer deadline.clear();
     deadline.set(.{ .duration = self.bootstrap_timeout });
@@ -356,7 +359,7 @@ fn trySeed(self: *Self, c: *Consumer) !u64 {
     // No position-0 shortcut here: a young changelog legitimately reports 0 while
     // the stream carries the whole pre-migration corpus. Whether there is anything
     // to install is decided by the stream's content, inside the build.
-    return self.mi.bootstrapLineageFromSource(c.name, c.generation, &stream) catch |err|
+    return self.mi.bootstrapLineageFromSource(c.name, c.generation, &stream, &deadline) catch |err|
         seedTimeoutOr(&deadline, err);
 }
 
@@ -374,7 +377,7 @@ fn fetchFrom(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: peers_m
     defer deadline.clear();
     deadline.set(.{ .duration = self.bootstrap_timeout });
 
-    return self.fetchFromInner(arena, c, donor) catch |err| {
+    return self.fetchFromInner(arena, c, donor, &deadline) catch |err| {
         // Our own deadline, not a shutdown: report it as a donor failure so the caller
         // moves on to the next candidate. A real cancel must stay error.Canceled and
         // unwind the consumer.
@@ -386,7 +389,7 @@ fn fetchFrom(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: peers_m
     };
 }
 
-fn fetchFromInner(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: peers_mod.Donor) !u64 {
+fn fetchFromInner(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: peers_mod.Donor, deadline: *zio.AutoCancel) !u64 {
     const url = try std.fmt.allocPrint(arena, "{s}/{s}/_snapshot", .{ donor.base_url, c.name });
 
     // A client per fetch: dusty's connection pool has no locking, and two indexes can
@@ -399,7 +402,7 @@ fn fetchFromInner(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: pe
     if (resp.status() != .ok) return error.SnapshotFetchFailed;
 
     log.info("bootstrapping '{s}' gen {d} from {s} (watermark {d})", .{ c.name, c.generation, donor.base_url, donor.file_version });
-    return self.mi.bootstrapLineage(c.name, c.generation, resp.reader());
+    return self.mi.bootstrapLineage(c.name, c.generation, resp.reader(), deadline);
 }
 
 fn consumeLoop(c: *Consumer, start_version: u64) zio.Cancelable!void {
@@ -866,7 +869,7 @@ test "bootstrapLineage swaps an index's data from a donor snapshot" {
     // Bootstrap main from the donor snapshot: it now serves the donor's data at the
     // donor's version, and the old doc is gone.
     var r = std.Io.Reader.fixed(buf.written());
-    try std.testing.expectEqual(donor_version, try mi.bootstrapLineage("main", 1, &r));
+    try std.testing.expectEqual(donor_version, try mi.bootstrapLineage("main", 1, &r, null));
 
     var q99 = [_]u32{ 7, 8, 9 };
     const hit = try mi.search(a, "main", .{ .query = &q99 });
@@ -920,7 +923,7 @@ test "bootstrapLineageFromSource builds, flushes and swaps in a corpus stream" {
     } };
     var stream = BootstrapStream{ .ptr = &fake, .vtable = &Fake.vt, .position = 42 };
 
-    try std.testing.expectEqual(@as(u64, 42), try mi.bootstrapLineageFromSource("main", 1, &stream));
+    try std.testing.expectEqual(@as(u64, 42), try mi.bootstrapLineageFromSource("main", 1, &stream, null));
 
     // The streamed corpus is searchable; the pre-existing doc is gone with the swap.
     var q = [_]u32{ 7, 8, 9 };
@@ -977,10 +980,65 @@ test "a corpus streamed at position 0 still installs — the primary migration c
     var fake = Fake{};
     var stream = BootstrapStream{ .ptr = &fake, .vtable = &Fake.vt, .position = 0 };
 
-    try std.testing.expectEqual(@as(u64, 0), try mi.bootstrapLineageFromSource("main", 1, &stream));
+    try std.testing.expectEqual(@as(u64, 0), try mi.bootstrapLineageFromSource("main", 1, &stream, null));
 
     var q = [_]u32{ 7, 8, 9 };
     const hit = try mi.search(a, "main", .{ .query = &q });
+    try std.testing.expectEqual(@as(usize, 1), hit.results.len);
+    try std.testing.expectEqual(@as(u32, 7), hit.results[0].id);
+}
+
+test "a transfer deadline firing as the stream drains cannot destroy the install" {
+    const common = @import("common.zig");
+    const BootstrapStream = coordinator_mod.BootstrapStream;
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_bootstrap_deadline_install";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    _ = try mi.createIndex("main", .{ .generation = 1 });
+
+    var deadline: zio.AutoCancel = .init;
+    defer deadline.clear();
+
+    // Serves one batch, then arms the deadline to fire IMMEDIATELY while returning
+    // the terminator — the worst-case timing: the transfer just made it under the
+    // wire, and the timer would land inside the flush or the swap. That used to
+    // abort the install mid-way (dropping the whole lineage from the map); the
+    // deadline must instead be dead the moment the stream is drained.
+    const Fake = struct {
+        deadline: *zio.AutoCancel,
+        served: bool = false,
+        const vt: BootstrapStream.VTable = .{ .next = nextImpl, .deinit = deinitImpl };
+        fn nextImpl(ptr: *anyopaque) anyerror!?[]const Change {
+            const self: *@This() = @ptrCast(@alignCast(ptr));
+            if (!self.served) {
+                self.served = true;
+                return &.{.{ .insert = .{ .id = 7, .hashes = &.{ 7, 8, 9 } } }};
+            }
+            self.deadline.set(.{ .duration = .fromMilliseconds(0) });
+            return null;
+        }
+        fn deinitImpl(_: *anyopaque) void {}
+    };
+    var fake = Fake{ .deadline = &deadline };
+    var stream = BootstrapStream{ .ptr = &fake, .vtable = &Fake.vt, .position = 5 };
+
+    // Slow-but-successful must still install, not be destroyed at the finish line.
+    try std.testing.expectEqual(@as(u64, 5), try mi.bootstrapLineageFromSource("main", 1, &stream, &deadline));
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var q = [_]u32{ 7, 8, 9 };
+    const hit = try mi.search(arena.allocator(), "main", .{ .query = &q });
     try std.testing.expectEqual(@as(usize, 1), hit.results.len);
     try std.testing.expectEqual(@as(u32, 7), hit.results[0].id);
 }

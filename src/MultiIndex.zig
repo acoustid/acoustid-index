@@ -601,8 +601,10 @@ const restore_tmp = "data.restore";
 /// returning the new version (the snapshot watermark). The ref — and thus the data
 /// consumer — survives; only the underlying Index is swapped, so the consumer resumes
 /// from the returned version. Called by the Replicator's consumer after a
-/// below-retention read.
-pub fn bootstrapLineage(self: *Self, name: []const u8, generation: u64, reader: *std.Io.Reader) !u64 {
+/// below-retention read. `transfer_deadline` is the caller's backstop on the
+/// transfer; it is disarmed the moment the snapshot is fully drained, so it can
+/// never abort the local swap (see disarmTransferDeadline).
+pub fn bootstrapLineage(self: *Self, name: []const u8, generation: u64, reader: *std.Io.Reader, transfer_deadline: ?*zio.AutoCancel) !u64 {
     var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
     const a = arena.allocator();
@@ -627,11 +629,34 @@ pub fn bootstrapLineage(self: *Self, name: []const u8, generation: u64, reader: 
         try snapshot.restoreInto(restore_dir, reader, a, generation);
     }
 
+    // The snapshot is fully drained; the donor can no longer wedge us. Disarm the
+    // transfer backstop before the local swap, which must always run to completion.
+    try disarmTransferDeadline(transfer_deadline);
+
     // 2. Swap it in and reopen the index in place (under the lock, draining borrows).
     return self.installBootstrap(name, generation, name_dir, vdir_name, vdir);
 }
 
 const bootstrap_build_tmp = "bootstrap.tmp";
+
+// Disarm a bootstrap transfer deadline once the remote stream is fully drained.
+// The deadline exists to bound a wedged transfer; everything after the last byte is
+// bounded local work (flush, rename, drain-and-swap) whose interruption costs the
+// lineage — installBootstrap's failure path drops it from the map, and the consumer
+// then wedges on IndexNotFound. clear() alone is not enough: it only stops a timer
+// that has not fired yet, and one that fired in the instant before leaves a
+// cancellation already pending on this task, which would otherwise surface at the
+// install's first suspension point. checkCancel() surfaces it HERE, where it is
+// still harmless, and check() consumes it. A real cancellation (shutdown, delete)
+// propagates unchanged — user cancellation has priority in check().
+fn disarmTransferDeadline(transfer_deadline: ?*zio.AutoCancel) !void {
+    const d = transfer_deadline orelse return;
+    d.clear();
+    zio.checkCancel() catch |err| {
+        if (err == error.Canceled and d.check(error.Canceled)) return;
+        return err;
+    };
+}
 
 /// Bootstrap the (`name`, `generation`) lineage from the feed's own corpus stream
 /// (Coordinator.openBootstrap): build a staging index next to the live one, apply
@@ -646,7 +671,12 @@ const bootstrap_build_tmp = "bootstrap.tmp";
 /// deletes. The full flush matters for the same reason: the swap reopens from disk
 /// alone and discards the staging WAL, so anything not yet in a file segment would
 /// silently vanish from the installed index.
-pub fn bootstrapLineageFromSource(self: *Self, name: []const u8, generation: u64, stream: *BootstrapStream) !u64 {
+///
+/// `transfer_deadline` is the caller's backstop on the stream; it is disarmed the
+/// moment the stream is fully drained, so a slow-but-successful transfer can never
+/// have its result destroyed by the timer firing into the flush or the swap (see
+/// disarmTransferDeadline).
+pub fn bootstrapLineageFromSource(self: *Self, name: []const u8, generation: u64, stream: *BootstrapStream, transfer_deadline: ?*zio.AutoCancel) !u64 {
     const name_dir = try self.dir.openDir(name, .{ .iterate = true });
     defer name_dir.close();
     const redirect = index_redirect.read(name_dir, self.allocator) catch return error.IndexNotFound;
@@ -669,7 +699,10 @@ pub fn bootstrapLineageFromSource(self: *Self, name: []const u8, generation: u64
             if (changes.len > 0) break :blk changes;
         }
         break :blk null;
-    } orelse return stream.position;
+    } orelse {
+        try disarmTransferDeadline(transfer_deadline); // drained: nothing to install
+        return stream.position;
+    };
 
     log.info("bootstrapping '{s}' gen {d} from a source stream at position {d}", .{ name, generation, stream.position });
 
@@ -696,6 +729,12 @@ pub fn bootstrapLineageFromSource(self: *Self, name: []const u8, generation: u64
             _ = try staging.update(changes, .{ .version = stream.position });
             try staging.runMaintenance();
         }
+
+        // The stream is fully drained; the source can no longer wedge us. Disarm
+        // the transfer backstop before the flush and the swap, which must always
+        // run to completion once the data has arrived.
+        try disarmTransferDeadline(transfer_deadline);
+
         try staging.flush();
     }
 
