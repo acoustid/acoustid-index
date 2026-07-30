@@ -48,7 +48,11 @@ pub fn registerRoutes(server: *Server) void {
     const r = &server.router;
     r.post("/_changelog/:index/:gen", handleAppend);
     r.get("/_changelog/:index/:gen", handleRead);
-    r.post("/_index/:index", handleCreateIndex);
+    // PUT rather than POST: the path names the index, and createIndex is
+    // idempotent (an active name returns its existing generation without
+    // appending a duplicate op), which is exactly what PUT means. It also matches
+    // the DELETE below instead of sitting inconsistently next to it.
+    r.put("/_index/:index", handleCreateIndex);
     r.delete("/_index/:index", handleDeleteIndex);
     r.get("/_meta", handleReadMeta);
     r.post("/_truncate/:index/:gen", handleTruncate);

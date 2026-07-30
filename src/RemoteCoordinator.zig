@@ -174,7 +174,11 @@ fn createIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!u64 {
     const url = try std.fmt.allocPrint(a, "{s}/_index/{s}", .{ self.base_url, name });
     var client = http.Client.init(self.allocator, self.io, .{});
     defer client.deinit();
-    var resp = try client.fetch(url, .{ .method = .post });
+    // PUT, not POST: the URI already names the index, so the client supplies the
+    // identity, and createIndex is documented idempotent -- an existing active
+    // name returns its generation without appending a duplicate op. That is PUT's
+    // defining property, and it pairs with the DELETE on the same path.
+    var resp = try client.fetch(url, .{ .method = .put });
     defer resp.deinit();
     if (resp.status() != .ok) return statusToError(resp.status());
 
