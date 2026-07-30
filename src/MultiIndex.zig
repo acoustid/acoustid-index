@@ -387,21 +387,25 @@ pub fn applyLog(self: *Self, name: []const u8, generation: u64, changes: []const
     _ = try index.update(changes, .{ .version = version });
 }
 
-/// Render metrics (global counters + a per-index docs gauge) in Prometheus text.
-/// Holds the manager lock across the (brief) scrape.
+/// Render metrics in Prometheus text. The per-index gauges are refreshed here,
+/// at scrape time, from one snapshot per index — they have no other writer, so
+/// they can't drift from the real index state. Holds the manager lock across
+/// the (brief) refresh.
 pub fn writeMetrics(self: *Self, w: *std.Io.Writer) !void {
-    try metrics.writeGlobal(w);
+    {
+        try self.lock.lock();
+        defer self.lock.unlock();
 
-    try self.lock.lock();
-    defer self.lock.unlock();
-
-    try w.writeAll("# HELP fpindex_docs Number of documents in an index\n# TYPE fpindex_docs gauge\n");
-    var it = self.indexes.iterator();
-    while (it.next()) |entry| {
-        var reader = try entry.value_ptr.*.index.acquireReader();
-        defer reader.deinit();
-        try w.print("fpindex_docs{{index=\"{s}\"}} {d}\n", .{ entry.key_ptr.*, reader.numDocs() });
+        var it = self.indexes.iterator();
+        while (it.next()) |entry| {
+            const name = entry.key_ptr.*;
+            var reader = try entry.value_ptr.*.index.acquireReader();
+            defer reader.deinit();
+            try metrics.setDocs(name, reader.numDocs());
+            try metrics.setVersion(name, reader.version());
+        }
     }
+    try metrics.write(w);
 }
 
 pub fn checkIndexExists(self: *Self, name: []const u8) !bool {
@@ -775,6 +779,7 @@ fn installBootstrap(self: *Self, name: []const u8, generation: u64, name_dir: zi
         const kv = self.indexes.fetchRemove(name).?;
         self.allocator.free(kv.key);
         self.allocator.destroy(kv.value);
+        metrics.removeIndex(name);
         return err;
     };
     ref.being_deleted = false;
@@ -833,6 +838,7 @@ fn dropIndex(self: *Self, name: []const u8) !DropResult {
     kv.value.index.deinit();
     self.allocator.destroy(kv.value);
     self.allocator.free(kv.key);
+    metrics.removeIndex(name);
     // Mark the redirect deleted and drop the generation's data dir; keep
     // data/<name>/ + current so a recreate can bump to the next generation.
     self.markDeleted(name, gen) catch |err| {

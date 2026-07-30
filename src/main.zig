@@ -71,6 +71,10 @@ const server_config: http.ServerConfig = .{ .request = .{ .max_body_size = 16 * 
 fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !void {
     const io = rt.io();
 
+    // Here rather than main() because the labelled vecs need an Io for their locks.
+    try metrics.init(allocator, io, .{});
+    defer metrics.deinit();
+
     if (config.coordinator) return runCoordinator(allocator, io, config);
 
     const cwd = zio.Dir.cwd();
@@ -262,8 +266,6 @@ pub fn main(init: std.process.Init.Minimal) !void {
     const allocator = root_allocator.allocator();
 
     const config = try parseArgs(init.args);
-
-    metrics.init(.{});
 
     // Multiple executors so searches, updates, and merges spread across cores.
     // The index is thread-safe: reads work on a refcounted snapshot, the segment
