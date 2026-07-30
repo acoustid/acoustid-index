@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ng, main]
+    branches: [main]
   pull_request:
 
 jobs:
@@ -30,3 +30,43 @@ jobs:
 
       - name: Integration tests
         run: zig build e2e-tests
+
+  docker:
+    # Pinned rather than ubuntu-latest: the release binary is copied into an
+    # ubuntu:24.04 image and links this runner's glibc, so the two must match.
+    runs-on: ubuntu-24.04
+    needs: test
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Build release binary
+        run: zig build --release=fast --summary all
+
+      - name: Log in to the Container registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
