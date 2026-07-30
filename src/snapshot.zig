@@ -1,6 +1,6 @@
 // Node-to-node snapshot: an index's file segments + a manifest, with NO WAL and NO
 // in-memory segments. It's how a new or behind replica bootstraps without replaying the
-// whole changelog (see notes/bootstrap-design.md): restore it, then resume the tail
+// whole changelog (see README.md, "Bootstrap"): restore it, then resume the tail
 // from the coordinator at the embedded watermark — the max segment `version`, which is
 // the external feed position. The segments also carry their internal commit ids, which
 // order them locally but mean nothing to the coordinator.
