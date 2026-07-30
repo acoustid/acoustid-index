@@ -297,7 +297,7 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
     if (self.replication) |repl| {
         if (repl.isBootstrapping(name)) return error.IndexNotReady;
     }
-    metrics.incSearches();
+    metrics.incSearches(name);
 
     const collector = try self.results_pool.acquire(.{
         .max_results = request.limit,
@@ -320,10 +320,10 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
         if (err == error.Canceled and deadline.check(error.Canceled)) return error.SearchTimeout;
         return err;
     };
-    metrics.observeSearchSeconds(@as(f64, @floatFromInt(sw.read().toNanoseconds())) / 1_000_000_000.0);
+    metrics.observeSearchSeconds(name, @as(f64, @floatFromInt(sw.read().toNanoseconds())) / 1_000_000_000.0);
 
     const results = collector.getResults();
-    if (results.len > 0) metrics.incSearchHit() else metrics.incSearchMiss();
+    if (results.len > 0) metrics.incSearchHit(name) else metrics.incSearchMiss(name);
     const out = try arena.alloc(api.SearchResult, results.len);
     for (results, 0..) |r, i| out[i] = .{ .id = r.id, .score = r.score };
     return .{ .results = out };
@@ -351,7 +351,7 @@ pub fn update(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
 
     const index = try self.getIndex(name);
     defer self.releaseIndex(index);
-    metrics.incUpdates();
+    metrics.incUpdates(name);
     const version = try index.update(changes, .{ .expected_version = request.expected_version });
     return .{ .version = version };
 }
@@ -383,7 +383,7 @@ fn foldMetadata(arena: std.mem.Allocator, changes: []const Change, metadata: ?Me
 pub fn applyLog(self: *Self, name: []const u8, generation: u64, changes: []const Change, version: u64) !void {
     const index = try self.getIndexForGeneration(name, generation);
     defer self.releaseIndex(index);
-    metrics.incUpdates();
+    metrics.incUpdates(name);
     _ = try index.update(changes, .{ .version = version });
 }
 
