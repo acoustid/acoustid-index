@@ -19,6 +19,7 @@ const Metadata = @import("change.zig").Metadata;
 const MetadataEntry = @import("change.zig").MetadataEntry;
 const Replicator = @import("Replicator.zig");
 const Coordinator = @import("Coordinator.zig").Coordinator;
+const BootstrapStream = @import("Coordinator.zig").BootstrapStream;
 const index_redirect = @import("index_redirect.zig");
 const deleteDirTree = @import("common.zig").deleteDirTree;
 const SearchResultsPool = @import("common.zig").SearchResultsPool;
@@ -286,6 +287,16 @@ fn openOneIndexInner(self: *Self, name: []const u8, load_sem: ?*zio.Semaphore, o
 pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: api.SearchRequest) !api.SearchResponse {
     const index = try self.getIndex(name);
     defer self.releaseIndex(index);
+
+    // While a bootstrap fills this index (initial seed or below-retention
+    // restore), refuse rather than answer: every result would be an
+    // honest-looking but empty or stale set. IndexNotReady -> 503, the same
+    // signal the health probe gives, so a caller that skipped the probe still
+    // cannot mistake a loading node for a miss. After getIndex, so a missing
+    // index keeps answering 404 rather than 503.
+    if (self.replication) |repl| {
+        if (repl.isBootstrapping(name)) return error.IndexNotReady;
+    }
     metrics.incSearches();
 
     const collector = try self.results_pool.acquire(.{
@@ -398,6 +409,27 @@ pub fn checkIndexExists(self: *Self, name: []const u8) !bool {
     defer self.lock.unlock();
     const ref = self.indexes.get(name) orelse return false;
     return !ref.being_deleted;
+}
+
+pub const IndexHealth = enum { ready, loading, missing };
+
+/// Per-index health: `loading` while the index exists but its consumer is filling
+/// it by bootstrap — the initial empty-lineage seed or a below-retention restore.
+/// Either way its answers would be honest-looking but empty or stale, so a search
+/// balancer must be able to tell. Global liveness (/_health) deliberately stays
+/// independent of this: peer discovery must keep finding nodes that are
+/// open-but-loading, or a cold cluster start deadlocks (see
+/// notes/bootstrap-design.md).
+pub fn indexHealth(self: *Self, name: []const u8) !IndexHealth {
+    try self.lock.lock();
+    defer self.lock.unlock();
+    const ref = self.indexes.get(name) orelse return .missing;
+    if (ref.being_deleted) return .missing;
+    // Same lock order as the reconcile paths: MultiIndex.lock -> Replicator.mutex.
+    if (self.replication) |repl| {
+        if (repl.isBootstrapping(name)) return .loading;
+    }
+    return .ready;
 }
 
 /// Snapshot of the current local index names (owned: caller frees each string and
@@ -569,8 +601,10 @@ const restore_tmp = "data.restore";
 /// returning the new version (the snapshot watermark). The ref — and thus the data
 /// consumer — survives; only the underlying Index is swapped, so the consumer resumes
 /// from the returned version. Called by the Replicator's consumer after a
-/// below-retention read.
-pub fn bootstrapLineage(self: *Self, name: []const u8, generation: u64, reader: *std.Io.Reader) !u64 {
+/// below-retention read. `transfer_deadline` is the caller's backstop on the
+/// transfer; it is disarmed the moment the snapshot is fully drained, so it can
+/// never abort the local swap (see disarmTransferDeadline).
+pub fn bootstrapLineage(self: *Self, name: []const u8, generation: u64, reader: *std.Io.Reader, transfer_deadline: ?*zio.AutoCancel) !u64 {
     var arena = std.heap.ArenaAllocator.init(self.allocator);
     defer arena.deinit();
     const a = arena.allocator();
@@ -595,7 +629,124 @@ pub fn bootstrapLineage(self: *Self, name: []const u8, generation: u64, reader: 
         try snapshot.restoreInto(restore_dir, reader, a, generation);
     }
 
+    // The snapshot is fully drained; the donor can no longer wedge us. Disarm the
+    // transfer backstop before the local swap, which must always run to completion.
+    try disarmTransferDeadline(transfer_deadline);
+
     // 2. Swap it in and reopen the index in place (under the lock, draining borrows).
+    return self.installBootstrap(name, generation, name_dir, vdir_name, vdir);
+}
+
+const bootstrap_build_tmp = "bootstrap.tmp";
+
+// Disarm a bootstrap transfer deadline once the remote stream is fully drained.
+// The deadline exists to bound a wedged transfer; everything after the last byte is
+// bounded local work (flush, rename, drain-and-swap) whose interruption costs the
+// lineage — installBootstrap's failure path drops it from the map, and the consumer
+// then wedges on IndexNotFound. clear() alone is not enough: it only stops a timer
+// that has not fired yet, and one that fired in the instant before leaves a
+// cancellation already pending on this task, which would otherwise surface at the
+// install's first suspension point. checkCancel() surfaces it HERE, where it is
+// still harmless, and check() consumes it. A real cancellation (shutdown, delete)
+// propagates unchanged — user cancellation has priority in check().
+fn disarmTransferDeadline(transfer_deadline: ?*zio.AutoCancel) !void {
+    const d = transfer_deadline orelse return;
+    d.clear();
+    zio.checkCancel() catch |err| {
+        if (err == error.Canceled and d.check(error.Canceled)) return;
+        return err;
+    };
+}
+
+/// Bootstrap the (`name`, `generation`) lineage from the feed's own corpus stream
+/// (Coordinator.openBootstrap): build a staging index next to the live one, apply
+/// every batch at the stream's single position, flush it fully to disk, then swap it
+/// in through the same drain-and-reopen path a peer-snapshot restore uses. Returns
+/// the position the caller resumes the feed from.
+///
+/// Staging is what makes a mid-stream death safe. Applying into the live index and
+/// dying at 1% would leave a node claiming `position` with 1% of the data, resuming
+/// *after* it — and the missing 99% never arrives, because the feed only sends what
+/// is above `position`. A dead staging build is just a directory the next attempt
+/// deletes. The full flush matters for the same reason: the swap reopens from disk
+/// alone and discards the staging WAL, so anything not yet in a file segment would
+/// silently vanish from the installed index.
+///
+/// `transfer_deadline` is the caller's backstop on the stream; it is disarmed the
+/// moment the stream is fully drained, so a slow-but-successful transfer can never
+/// have its result destroyed by the timer firing into the flush or the swap (see
+/// disarmTransferDeadline).
+pub fn bootstrapLineageFromSource(self: *Self, name: []const u8, generation: u64, stream: *BootstrapStream, transfer_deadline: ?*zio.AutoCancel) !u64 {
+    const name_dir = try self.dir.openDir(name, .{ .iterate = true });
+    defer name_dir.close();
+    const redirect = index_redirect.read(name_dir, self.allocator) catch return error.IndexNotFound;
+    defer self.allocator.free(redirect.name);
+    if (redirect.deleted or redirect.generation != generation) return error.IndexGenerationMismatch;
+
+    var vbuf: [index_redirect.max_data_dir_len]u8 = undefined;
+    const vdir_name = redirect.dataDir(&vbuf);
+    const vdir = try name_dir.openDir(vdir_name, .{ .iterate = true });
+    defer vdir.close();
+
+    // Whether anything needs installing is a property of the stream's CONTENT, never
+    // of its position. Position 0 with a full corpus is not an edge case, it is the
+    // primary migration scenario: the changelog goes live alongside an old corpus
+    // and may not have recorded anything yet when the first node arrives. Peek past
+    // empty batches before building anything, so the common fresh-lineage case (an
+    // empty stream) costs no disk at all.
+    const first_batch = blk: {
+        while (try stream.next()) |changes| {
+            if (changes.len > 0) break :blk changes;
+        }
+        break :blk null;
+    } orelse {
+        try disarmTransferDeadline(transfer_deadline); // drained: nothing to install
+        return stream.position;
+    };
+
+    log.info("bootstrapping '{s}' gen {d} from a source stream at position {d}", .{ name, generation, stream.position });
+
+    // 1. Build the staging index (outside the lock — this is the long part, and the
+    //    live index keeps serving searches meanwhile).
+    deleteDirTree(self.allocator, vdir, bootstrap_build_tmp) catch {}; // a prior attempt's corpse
+    {
+        const build_dir = try openOrCreateDir(vdir, bootstrap_build_tmp);
+        errdefer deleteDirTree(self.allocator, vdir, bootstrap_build_tmp) catch {};
+
+        // sync=false: the stream's durability is the source's, and an interrupted
+        // build starts over either way. No start(): maintenance runs inline per
+        // batch, so no background coroutine races the final flush.
+        var staging = Index.open(self.allocator, build_dir, self.checkpoint_threshold, false, null) catch |err| {
+            build_dir.close();
+            return err;
+        };
+        defer staging.deinit(); // owns (and closes) build_dir
+
+        _ = try staging.update(first_batch, .{ .version = stream.position });
+        try staging.runMaintenance();
+        while (try stream.next()) |changes| {
+            if (changes.len == 0) continue;
+            _ = try staging.update(changes, .{ .version = stream.position });
+            try staging.runMaintenance();
+        }
+
+        // The stream is fully drained; the source can no longer wedge us. Disarm
+        // the transfer backstop before the flush and the swap, which must always
+        // run to completion once the data has arrived.
+        try disarmTransferDeadline(transfer_deadline);
+
+        try staging.flush();
+    }
+
+    // 2. Move the staging data dir into the slot the snapshot restore uses, and
+    //    reuse its install path (block new borrows, drain, swap, reopen).
+    deleteDirTree(self.allocator, vdir, restore_tmp) catch {};
+    {
+        const build_dir = try vdir.openDir(bootstrap_build_tmp, .{ .iterate = true });
+        defer build_dir.close();
+        try build_dir.rename("data", vdir, restore_tmp);
+    }
+    deleteDirTree(self.allocator, vdir, bootstrap_build_tmp) catch {};
     return self.installBootstrap(name, generation, name_dir, vdir_name, vdir);
 }
 

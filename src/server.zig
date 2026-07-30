@@ -99,6 +99,8 @@ fn sendError(req: *http.Request, res: *http.Response, err: anyerror) void {
         error.BadRequest, error.InvalidIndexName, error.GenerationNotAllowed, error.InvalidFingerprintId => .bad_request,
         error.IndexNotFound, error.FingerprintNotFound => .not_found,
         error.IndexNotReady, error.SearchTimeout, error.ReplicationTimeout, error.CoordinatorError => .service_unavailable,
+        // Not 503 — retrying will never make a read-only feed accept a write.
+        error.FeedIsReadOnly => .forbidden,
         error.VersionMismatch, error.IndexAlreadyExists, error.OlderIndexAlreadyExists, error.NewerIndexAlreadyExists => .conflict,
         error.UnsupportedMediaType => .unsupported_media_type,
         error.NotImplemented => .not_implemented,
@@ -173,11 +175,18 @@ fn handleHealth(_: *MultiIndex, _: *http.Request, res: *http.Response) !void {
 }
 
 fn handleIndexHealth(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
-    const exists = mi.checkIndexExists(indexName(req)) catch |err| return sendError(req, res, err);
-    if (exists) {
-        res.body = "OK\n";
-    } else {
-        res.status = .not_found;
+    switch (mi.indexHealth(indexName(req)) catch |err| return sendError(req, res, err)) {
+        .ready => res.body = "OK\n",
+        // 503 + a distinct body: the index exists but is being filled by a
+        // bootstrap (initial seed or below-retention restore), and every search
+        // it answered would be honest-looking but empty or stale. Non-2xx keeps a
+        // search balancer's readiness probe from routing traffic here until the
+        // bootstrap installs.
+        .loading => {
+            res.status = .service_unavailable;
+            res.body = "LOADING\n";
+        },
+        .missing => res.status = .not_found,
     }
 }
 

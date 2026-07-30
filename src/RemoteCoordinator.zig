@@ -26,9 +26,14 @@ const MetaCreateResponse = changelog_mod.MetaCreateResponse;
 const MetaDeleteResponse = changelog_mod.MetaDeleteResponse;
 
 const Self = @This();
-// Cap on any single long-poll window (server side may still return sooner). Used
-// when the caller passes `.none` (block indefinitely, in bounded windows).
-const long_poll: zio.Duration = .fromMilliseconds(20_000);
+
+// Floor on the gap between polls, so a server reporting 0 — or omitting the
+// field — cannot turn this into a busy loop.
+const min_poll_ms: u64 = 50;
+
+// Generous for any real feed URL; bufPrint fails loudly with NoSpaceLeft rather
+// than truncating if a base URL or index name ever exceeds it.
+const max_url_len = 512;
 
 allocator: std.mem.Allocator,
 io: std.Io,
@@ -63,6 +68,7 @@ const vtable: Coordinator.VTable = .{
     .deleteIndex = deleteIndexImpl,
     .readMeta = readMetaImpl,
     .setRetentionFloor = setRetentionFloorImpl,
+    .openBootstrap = openBootstrapImpl,
 };
 
 fn appendImpl(ptr: *anyopaque, index_name: []const u8, generation: u64, changes: []const Change, expected: ?u64) anyerror!u64 {
@@ -93,20 +99,66 @@ fn readImpl(ptr: *anyopaque, index_name: []const u8, generation: u64, after: u64
     _ = arena.reset(.retain_capacity); // frees the previous read's entries
     const ra = arena.allocator();
 
-    const url = try std.fmt.allocPrint(ra, "{s}/_changelog/{s}/{d}?after={d}&max={d}&timeout_ms={d}", .{
-        self.base_url, index_name, generation, after, out.len, timeoutMs(deadline),
+    // On the stack: the loop resets the arena between polls, and this outlives
+    // all of them.
+    var url_buf: [max_url_len]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, "{s}/_changelog/{s}/{d}?after={d}&max={d}", .{
+        self.base_url, index_name, generation, after, out.len,
     });
-    var client = http.Client.init(self.allocator, self.io, .{});
-    defer client.deinit();
-    var resp = try client.fetch(url, .{ .method = .get });
-    defer resp.deinit();
-    if (resp.status() != .ok) return statusToError(resp.status());
 
-    const body = (try resp.body()) orelse return 0;
-    const rres = try msgpack.decodeFromSliceLeaky(ReadResponse, ra, body);
-    const n = @min(rres.entries.len, out.len);
-    for (rres.entries[0..n], 0..) |e, i| out[i] = e;
-    return n;
+    // The server answers immediately rather than long-polling, so the blocking
+    // half of the vtable contract is implemented here: poll, and sleep for as
+    // long as the server asks between attempts, until there is something to
+    // return or the deadline passes. Nothing above this sees retry_after_ms.
+    const until = pollUntil(deadline);
+    while (true) {
+        var client = http.Client.init(self.allocator, self.io, .{});
+        defer client.deinit();
+        var resp = try client.fetch(url, .{ .method = .get });
+        defer resp.deinit();
+        if (resp.status() != .ok) return statusToError(resp.status());
+
+        const body = (try resp.body()) orelse return 0;
+        const rres = try msgpack.decodeFromSliceLeaky(ReadResponse, ra, body);
+        const n = @min(rres.entries.len, out.len);
+        if (n > 0) {
+            for (rres.entries[0..n], 0..) |e, i| out[i] = e;
+            return n;
+        }
+
+        // Nothing yet. Reclaim the empty response before waiting, or an
+        // indefinite poll would hold one dead ReadResponse per second for as long
+        // as it runs.
+        const nap = napFor(rres.retry_after_ms, until) orelse return 0;
+        _ = arena.reset(.retain_capacity);
+        // Sleep the server's hint, clamped to what is left of the deadline so a
+        // large hint cannot overshoot it.
+        try zio.sleep(nap);
+    }
+}
+
+/// Absolute point to stop polling at, or null for "no deadline" — `.none` means
+/// block indefinitely, and only task cancellation ends that.
+fn pollUntil(deadline: zio.Timeout) ?zio.Timestamp {
+    return switch (deadline) {
+        .none => null,
+        .duration => |d| zio.Timestamp.now(.monotonic).addDuration(d),
+        .deadline => |ts| ts,
+    };
+}
+
+/// How long to sleep before the next poll, or null if the deadline has passed.
+/// Never sleeps zero: a server hint of 0 means "there is probably more, come
+/// straight back", which only arrives with a full batch, and a full batch has
+/// already returned by the time this is called. Treating it as 0 here would spin.
+fn napFor(retry_after_ms: u64, until: ?zio.Timestamp) ?zio.Duration {
+    const wanted = zio.Duration.fromMilliseconds(@max(retry_after_ms, min_poll_ms));
+    const stop = until orelse return wanted;
+
+    const now = zio.Timestamp.now(.monotonic);
+    if (now.toNanoseconds() >= stop.toNanoseconds()) return null;
+    const left = now.durationTo(stop);
+    return if (left.toNanoseconds() < wanted.toNanoseconds()) left else wanted;
 }
 
 fn createIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!u64 {
@@ -118,7 +170,7 @@ fn createIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!u64 {
     const url = try std.fmt.allocPrint(a, "{s}/_index/{s}", .{ self.base_url, name });
     var client = http.Client.init(self.allocator, self.io, .{});
     defer client.deinit();
-    var resp = try client.fetch(url, .{ .method = .post });
+    var resp = try client.fetch(url, .{ .method = .put });
     defer resp.deinit();
     if (resp.status() != .ok) return statusToError(resp.status());
 
@@ -151,20 +203,33 @@ fn readMetaImpl(ptr: *anyopaque, after: u64, out: []MetaOp, deadline: zio.Timeou
     _ = self.meta_arena.reset(.retain_capacity);
     const ra = self.meta_arena.allocator();
 
-    const url = try std.fmt.allocPrint(ra, "{s}/_meta?after={d}&max={d}&timeout_ms={d}", .{
-        self.base_url, after, out.len, timeoutMs(deadline),
+    // On the stack -- see readImpl.
+    var url_buf: [max_url_len]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, "{s}/_meta?after={d}&max={d}", .{
+        self.base_url, after, out.len,
     });
-    var client = http.Client.init(self.allocator, self.io, .{});
-    defer client.deinit();
-    var resp = try client.fetch(url, .{ .method = .get });
-    defer resp.deinit();
-    if (resp.status() != .ok) return statusToError(resp.status());
 
-    const body = (try resp.body()) orelse return 0;
-    const mres = try msgpack.decodeFromSliceLeaky(MetaReadResponse, ra, body);
-    const n = @min(mres.ops.len, out.len);
-    for (mres.ops[0..n], 0..) |op, i| out[i] = op;
-    return n;
+    // Same poll-and-sleep as readImpl; see there for why the server does not block.
+    const until = pollUntil(deadline);
+    while (true) {
+        var client = http.Client.init(self.allocator, self.io, .{});
+        defer client.deinit();
+        var resp = try client.fetch(url, .{ .method = .get });
+        defer resp.deinit();
+        if (resp.status() != .ok) return statusToError(resp.status());
+
+        const body = (try resp.body()) orelse return 0;
+        const mres = try msgpack.decodeFromSliceLeaky(MetaReadResponse, ra, body);
+        const n = @min(mres.ops.len, out.len);
+        if (n > 0) {
+            for (mres.ops[0..n], 0..) |op, i| out[i] = op;
+            return n;
+        }
+
+        const nap = napFor(mres.retry_after_ms, until) orelse return 0;
+        _ = self.meta_arena.reset(.retain_capacity);
+        try zio.sleep(nap);
+    }
 }
 
 fn setRetentionFloorImpl(ptr: *anyopaque, index_name: []const u8, generation: u64, floor: u64) anyerror!void {
@@ -185,19 +250,6 @@ fn setRetentionFloorImpl(ptr: *anyopaque, index_name: []const u8, generation: u6
 // maps to the max window; the consumer loops across windows. A `.duration` (e.g.
 // the meta catch-up's short deadline) is passed through so the server returns
 // promptly once the feed is drained.
-fn timeoutMs(deadline: zio.Timeout) u64 {
-    return switch (deadline) {
-        .none => long_poll.toMilliseconds(),
-        .duration => |d| d.toMilliseconds(),
-        // Callers only ever pass .none (consumers) or .duration (meta catch-up), but
-        // convert a deadline to its remaining ms (0 if already past) rather than
-        // relying on that with an `unreachable`.
-        .deadline => |ts| blk: {
-            const now = zio.Timestamp.now(.monotonic);
-            break :blk if (ts.toNanoseconds() > now.toNanoseconds()) now.durationTo(ts).toMilliseconds() else 0;
-        },
-    };
-}
 
 // One decode arena per index name (one consumer per name -> no concurrent use of
 // the same arena); the map itself is guarded by the mutex.
@@ -214,11 +266,185 @@ fn arenaFor(self: *Self, index_name: []const u8) !*std.heap.ArenaAllocator {
     return gop.value_ptr.*;
 }
 
+// ---- bootstrap (a node that has nothing) ----
+//
+// GET /_bootstrap/{index}/{generation} answers with one msgpack BootstrapHeader,
+// then arrays of Change decoded straight off the socket (msgpack values are
+// self-delimiting), terminated by an empty array. The terminator carries the
+// done-versus-died distinction: end-of-stream without it means the server died
+// mid-scan, and surfaces as the decode error rather than as a shorter corpus.
+
+const BootstrapCtx = struct {
+    allocator: std.mem.Allocator,
+    client: http.Client,
+    resp: http.ClientResponse,
+    arena: std.heap.ArenaAllocator,
+    done: bool = false,
+
+    const stream_vtable: changelog_mod.BootstrapStream.VTable = .{
+        .next = nextImpl,
+        .deinit = deinitImpl,
+    };
+
+    fn nextImpl(ptr: *anyopaque) anyerror!?[]const Change {
+        const self: *BootstrapCtx = @ptrCast(@alignCast(ptr));
+        if (self.done) return null;
+        _ = self.arena.reset(.retain_capacity); // frees the previous batch
+        const batch = try nextBatch(self.arena.allocator(), self.resp.reader());
+        if (batch == null) self.done = true;
+        return batch;
+    }
+
+    fn deinitImpl(ptr: *anyopaque) void {
+        const self: *BootstrapCtx = @ptrCast(@alignCast(ptr));
+        const allocator = self.allocator;
+        self.arena.deinit();
+        self.resp.deinit();
+        self.client.deinit();
+        allocator.destroy(self);
+    }
+};
+
+// One msgpack array per call. Null is ONLY the empty-array terminator; a stream
+// that just stops errors out of the decode instead, so truncation can never read
+// as completion.
+fn nextBatch(arena: std.mem.Allocator, r: *std.Io.Reader) anyerror!?[]Change {
+    const changes = try msgpack.decodeLeaky([]Change, arena, r);
+    if (changes.len == 0) return null;
+    return changes;
+}
+
+fn openBootstrapImpl(ptr: *anyopaque, index_name: []const u8, generation: u64) anyerror!changelog_mod.BootstrapStream {
+    const self: *Self = @ptrCast(@alignCast(ptr));
+
+    var url_buf: [max_url_len]u8 = undefined;
+    const url = try std.fmt.bufPrint(&url_buf, "{s}/_bootstrap/{s}/{d}", .{ self.base_url, index_name, generation });
+
+    const ctx = try self.allocator.create(BootstrapCtx);
+    errdefer self.allocator.destroy(ctx);
+    ctx.* = .{
+        .allocator = self.allocator,
+        .client = http.Client.init(self.allocator, self.io, .{}),
+        .resp = undefined,
+        .arena = std.heap.ArenaAllocator.init(self.allocator),
+    };
+    errdefer ctx.arena.deinit();
+    errdefer ctx.client.deinit();
+    ctx.resp = try ctx.client.fetch(url, .{ .method = .get });
+    errdefer ctx.resp.deinit();
+    if (ctx.resp.status() != .ok) return statusToError(ctx.resp.status());
+
+    // The reader points into ctx.resp, so it is only taken now that ctx sits at
+    // its final heap address.
+    const header = try msgpack.decodeLeaky(changelog_mod.BootstrapHeader, ctx.arena.allocator(), ctx.resp.reader());
+    return .{ .ptr = ctx, .vtable = &BootstrapCtx.stream_vtable, .position = header.position };
+}
+
 fn statusToError(status: http.Status) anyerror {
     return switch (status) {
         .conflict => error.VersionMismatch,
         .not_found => error.IndexNotFound,
         .gone => error.BelowRetention, // truncated past the requested position -> bootstrap
+        // Not CoordinatorError: that maps to 503, and a read-only feed will never
+        // accept a write however many times it is retried.
+        .forbidden => error.FeedIsReadOnly,
         else => error.CoordinatorError,
     };
+}
+
+// The poll pacing is pure arithmetic with a real off-by-one in it (clamping the
+// sleep to a deadline), and it only misbehaves under timing that a live test
+// would not reproduce reliably. So it is tested directly.
+
+test "napFor: no deadline sleeps the server's hint" {
+    const nap = napFor(1000, null).?;
+    try std.testing.expectEqual(@as(u64, 1000), nap.toMilliseconds());
+}
+
+test "napFor: a zero hint still sleeps, so an empty answer cannot spin" {
+    const nap = napFor(0, null).?;
+    try std.testing.expectEqual(@as(u64, min_poll_ms), nap.toMilliseconds());
+}
+
+test "napFor: clamps to what is left of the deadline" {
+    // 100ms left, server asks for 1000 -> sleep the 100, not the 1000, or the
+    // read would overshoot the deadline it was given by 900ms.
+    const until = zio.Timestamp.now(.monotonic).addDuration(.fromMilliseconds(100));
+    const nap = napFor(1000, until).?;
+    try std.testing.expect(nap.toMilliseconds() <= 100);
+}
+
+test "napFor: past the deadline returns null, which reads as zero entries" {
+    const until = zio.Timestamp.now(.monotonic);
+    try std.testing.expect(napFor(1000, until) == null);
+}
+
+test "pollUntil: .none never expires" {
+    try std.testing.expect(pollUntil(.none) == null);
+}
+
+test "pollUntil: a duration becomes an absolute point, so polls do not restart the clock" {
+    const before = zio.Timestamp.now(.monotonic);
+    const until = pollUntil(.{ .duration = .fromMilliseconds(500) }).?;
+    try std.testing.expect(until.toNanoseconds() > before.toNanoseconds());
+}
+
+test "statusToError: 410 is what sends a stuck node to a peer snapshot" {
+    try std.testing.expectEqual(error.BelowRetention, statusToError(.gone));
+}
+
+test "statusToError: 403 is a permanent refusal, not a retryable outage" {
+    // Must not collapse into CoordinatorError: that maps to 503, which tells the
+    // caller to try again later for something that can never succeed.
+    try std.testing.expectEqual(error.FeedIsReadOnly, statusToError(.forbidden));
+    try std.testing.expect(statusToError(.forbidden) != error.CoordinatorError);
+}
+
+// The bootstrap wire format, pinned against hand-written bytes rather than a
+// round-trip through our own encoder — a round-trip would pass just as happily if
+// every key were wrong. These are the exact bytes the Python feed emits
+// (acoustid-server, tests/future/fpindex/test_feed.py pins its half the same way).
+
+test "bootstrap wire: header, one array of changes, empty-array terminator" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const bytes = [_]u8{
+        0x81, 0xa1, 'p', 0x03, // header {"p": 3}
+        0x91, // array of 1 change:
+        0x81, 0xa1, 'i', // tagged union: {"i": Insert}
+        0x82, 0xa1, 'i', 0x2a, // {"i": 42,
+        0xa1, 'h', 0x93, 0x01, 0x02, 0x03, //  "h": [1, 2, 3]}
+        0x90, // terminator: empty array
+    };
+    var r = std.Io.Reader.fixed(&bytes);
+
+    const header = try msgpack.decodeLeaky(changelog_mod.BootstrapHeader, a, &r);
+    try std.testing.expectEqual(@as(u64, 3), header.position);
+
+    const batch = (try nextBatch(a, &r)).?;
+    try std.testing.expectEqual(@as(usize, 1), batch.len);
+    try std.testing.expectEqual(@as(u32, 42), batch[0].insert.id);
+    try std.testing.expectEqualSlices(u32, &.{ 1, 2, 3 }, batch[0].insert.hashes);
+
+    try std.testing.expectEqual(@as(?[]Change, null), try nextBatch(a, &r));
+}
+
+test "bootstrap wire: a stream that stops without the terminator is an error, not a shorter corpus" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // One full batch, then the connection dies: no 0x90.
+    const bytes = [_]u8{
+        0x91, 0x81, 0xa1, 'i', 0x82, 0xa1, 'i', 0x2a, 0xa1, 'h', 0x91, 0x07,
+    };
+    var r = std.Io.Reader.fixed(&bytes);
+
+    _ = (try nextBatch(a, &r)).?;
+    // Installing what arrived so far as "complete" is the one unrecoverable
+    // mistake here — the node would claim the stream's position while missing
+    // whatever never arrived, and the feed would never send it again.
+    try std.testing.expectError(error.EndOfStream, nextBatch(a, &r));
 }

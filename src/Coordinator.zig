@@ -65,6 +65,17 @@ pub const AppendResponse = struct {
 
 pub const ReadResponse = struct {
     entries: []Entry,
+    /// How long to wait before asking again. The server does not block; it answers
+    /// with whatever is available and paces the consumer with this.
+    ///
+    /// A blocking server would have to hold a transaction open, and any
+    /// transaction touching the changelog table locks every partition at plan
+    /// time — which would block retention's partition drops indefinitely.
+    ///
+    /// The vtable contract is unchanged: `read` still blocks until entries exist
+    /// or the deadline elapses. RemoteCoordinator implements that by polling and
+    /// sleeping this long, so the field never reaches the Replicator.
+    retry_after_ms: u64 = 0,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
@@ -89,6 +100,8 @@ pub const MetaOp = struct {
 
 pub const MetaReadResponse = struct {
     ops: []MetaOp,
+    /// As ReadResponse.retry_after_ms.
+    retry_after_ms: u64 = 0,
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
@@ -108,6 +121,45 @@ pub const MetaDeleteResponse = struct {
 
     pub fn msgpackFormat() msgpack.StructFormat {
         return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+/// First value in a bootstrap stream (see `openBootstrap`). `position` is the feed
+/// position the streamed state corresponds to, read before the first change; the
+/// consumer applies the whole stream at this one position and resumes the feed from it.
+pub const BootstrapHeader = struct {
+    position: u64,
+
+    pub fn msgpackFormat() msgpack.StructFormat {
+        return .{ .as_map = .{ .key = .{ .field_name_prefix = 1 } } };
+    }
+};
+
+/// A lineage's whole current state, streamed in batches — what `openBootstrap`
+/// returns. Exists for feeds whose history starts later than their corpus (the PG
+/// changelog begins at the migration), where replaying the data feed from 0 would
+/// build an index silently missing everything older.
+pub const BootstrapStream = struct {
+    ptr: *anyopaque,
+    vtable: *const VTable,
+    /// The feed position to resume from once the stream is applied.
+    position: u64,
+
+    pub const VTable = struct {
+        /// The next batch of changes, or null once the stream has properly ended.
+        /// A truncated stream is an error, never null — the transport must be able
+        /// to tell "done" from "died", or a partial corpus would install as
+        /// complete. Returned changes are valid until the next call.
+        next: *const fn (ptr: *anyopaque) anyerror!?[]const Change,
+        deinit: *const fn (ptr: *anyopaque) void,
+    };
+
+    pub fn next(self: *BootstrapStream) !?[]const Change {
+        return self.vtable.next(self.ptr);
+    }
+
+    pub fn deinit(self: *BootstrapStream) void {
+        self.vtable.deinit(self.ptr);
     }
 };
 
@@ -154,6 +206,15 @@ pub const Coordinator = struct {
         /// a `read(after < floor)` returns error.BelowRetention. The PG impl derives this
         /// from real retention; the stub takes it explicitly (admin/tests).
         setRetentionFloor: *const fn (ptr: *anyopaque, index_name: []const u8, generation: u64, floor: u64) anyerror!void,
+
+        /// Stream the lineage's whole current state, for a node that has nothing.
+        /// Optional: null declares the feed's history complete from 0, so an empty
+        /// index simply replays (the file log, the memory stub before truncation).
+        /// A feed that DOES implement this declares the opposite — its history
+        /// starts later than its corpus — and an empty index must bootstrap here
+        /// (or from a peer) instead of replaying, or it silently misses everything
+        /// older than the log. Caller must stream.deinit().
+        openBootstrap: ?*const fn (ptr: *anyopaque, index_name: []const u8, generation: u64) anyerror!BootstrapStream = null,
     };
 
     pub fn append(self: Coordinator, index_name: []const u8, generation: u64, changes: []const Change, expected: ?u64) !u64 {
@@ -178,6 +239,13 @@ pub const Coordinator = struct {
 
     pub fn setRetentionFloor(self: Coordinator, index_name: []const u8, generation: u64, floor: u64) !void {
         return self.vtable.setRetentionFloor(self.ptr, index_name, generation, floor);
+    }
+
+    /// Open a bootstrap stream, or null when this feed does not offer one (its
+    /// history is complete from 0 and replay is the bootstrap).
+    pub fn openBootstrap(self: Coordinator, index_name: []const u8, generation: u64) !?BootstrapStream {
+        const f = self.vtable.openBootstrap orelse return null;
+        return try f(self.ptr, index_name, generation);
     }
 };
 
@@ -240,11 +308,75 @@ pub const MemoryCoordinator = struct {
         .deleteIndex = deleteIndexImpl,
         .readMeta = readMetaImpl,
         .setRetentionFloor = setRetentionFloorImpl,
+        .openBootstrap = openBootstrapImpl,
     };
 
     fn setRetentionFloorImpl(ptr: *anyopaque, index_name: []const u8, generation: u64, floor: u64) anyerror!void {
         const self: *MemoryCoordinator = @ptrCast(@alignCast(ptr));
         return self.setRetentionFloor(index_name, generation, floor);
+    }
+
+    // The stub's bootstrap: the lineage's changes, copied out under the mutex at open
+    // (so later appends can't shift the borrowed slices), served in batches, at
+    // position = the lineage's current max seq. Deliberately ignores the retention
+    // floor — a bootstrap is the CURRENT state, which retention never touches; it is
+    // exactly what a reader stuck below the floor is sent here to get.
+    const MemoryBootstrapStream = struct {
+        allocator: std.mem.Allocator,
+        arena: std.heap.ArenaAllocator,
+        changes: []Change,
+        served: usize = 0,
+
+        const batch = 256;
+
+        const stream_vtable: BootstrapStream.VTable = .{
+            .next = nextImpl,
+            .deinit = deinitImpl,
+        };
+
+        fn nextImpl(ptr: *anyopaque) anyerror!?[]const Change {
+            const self: *MemoryBootstrapStream = @ptrCast(@alignCast(ptr));
+            if (self.served >= self.changes.len) return null;
+            const n = @min(batch, self.changes.len - self.served);
+            const out = self.changes[self.served .. self.served + n];
+            self.served += n;
+            return out;
+        }
+
+        fn deinitImpl(ptr: *anyopaque) void {
+            const self: *MemoryBootstrapStream = @ptrCast(@alignCast(ptr));
+            const allocator = self.allocator;
+            self.arena.deinit();
+            allocator.destroy(self);
+        }
+    };
+
+    fn openBootstrapImpl(ptr: *anyopaque, index_name: []const u8, generation: u64) anyerror!BootstrapStream {
+        const self: *MemoryCoordinator = @ptrCast(@alignCast(ptr));
+        try self.mutex.lock();
+        defer self.mutex.unlock();
+
+        const ctx = try self.allocator.create(MemoryBootstrapStream);
+        errdefer self.allocator.destroy(ctx);
+        ctx.* = .{
+            .allocator = self.allocator,
+            .arena = std.heap.ArenaAllocator.init(self.allocator),
+            .changes = &.{},
+        };
+        errdefer ctx.arena.deinit();
+        const a = ctx.arena.allocator();
+
+        var list: std.ArrayListUnmanaged(Change) = .empty;
+        var position: u64 = 0;
+        for (self.rows.items) |row| { // append order == per-lineage seq order
+            if (row.generation != generation) continue;
+            if (!std.mem.eql(u8, row.index_name, index_name)) continue;
+            try list.append(a, try dupeChange(a, row.change));
+            position = row.seq;
+        }
+        ctx.changes = list.items;
+
+        return .{ .ptr = ctx, .vtable = &MemoryBootstrapStream.stream_vtable, .position = position };
     }
 
     fn appendImpl(ptr: *anyopaque, index_name: []const u8, generation: u64, changes: []const Change, expected: ?u64) anyerror!u64 {
@@ -604,6 +736,40 @@ test "MemoryCoordinator: meta feed create/delete/create, distinct generations, i
 
     // Deleting a name that isn't active is a no-op: returns the latest meta pos.
     try testing.expectEqual(other, try co.deleteIndex("does_not_exist"));
+}
+
+test "MemoryCoordinator: bootstrap streams the whole lineage state, retention notwithstanding" {
+    const rt = try zio.Runtime.init(testing.allocator, .{});
+    defer rt.deinit();
+
+    var cl = MemoryCoordinator.init(testing.allocator);
+    defer cl.deinit();
+    const co = cl.coordinator();
+
+    _ = try co.append("main", 1, &.{ ins(1, &.{10}), ins(2, &.{20}), ins(3, &.{30}) }, null);
+    // The floor makes read(after=0) impossible — which is exactly when a node needs
+    // the bootstrap, so the bootstrap must not be subject to it: it streams current
+    // state, and retention only ever drops history.
+    try cl.setRetentionFloor("main", 1, 2);
+
+    var stream = (try co.openBootstrap("main", 1)).?;
+    defer stream.deinit();
+    try testing.expectEqual(@as(u64, 3), stream.position);
+
+    var ids: std.ArrayListUnmanaged(u32) = .empty;
+    defer ids.deinit(testing.allocator);
+    while (try stream.next()) |changes| {
+        for (changes) |change| try ids.append(testing.allocator, change.insert.id);
+    }
+    try testing.expectEqualSlices(u32, &.{ 1, 2, 3 }, ids.items);
+    try testing.expectEqual(@as(?[]const Change, null), try stream.next()); // stays ended
+
+    // A lineage with no data: position 0, nothing streamed — the caller's signal
+    // that there is nothing before the log and plain replay is correct.
+    var empty = (try co.openBootstrap("main", 9)).?;
+    defer empty.deinit();
+    try testing.expectEqual(@as(u64, 0), empty.position);
+    try testing.expectEqual(@as(?[]const Change, null), try empty.next());
 }
 
 test "MemoryCoordinator: read below the retention floor signals bootstrap" {

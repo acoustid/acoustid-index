@@ -53,7 +53,12 @@ def _req(port, method, path, body=None):
 
 
 def _search(port, query):
-    return _req(port, "POST", "/main/_search", {"query": query}).get("results", [])
+    try:
+        return _req(port, "POST", "/main/_search", {"query": query}).get("results", [])
+    except urllib.error.HTTPError as e:
+        if e.code == 503:  # still bootstrapping: refused, not empty — poll on
+            return []
+        raise
 
 
 def _search_has(port, query, want_id, tries=50):
@@ -248,6 +253,54 @@ def test_new_node_bootstraps_from_peer(tmp_path):
         assert _wait_index(p2, "main")
         assert _search_has(p2, [10, 20, 30], 1)
         assert _search_has(p2, [40, 50, 60], 2)
+    finally:
+        for p in procs:
+            p.send_signal(signal.SIGKILL)
+        for p in procs:
+            p.wait()
+
+
+def test_new_node_bootstraps_from_the_feeds_source_stream(tmp_path):
+    """A new node with NO peers joins after the changelog is truncated past 0: the
+    feed's own bootstrap stream (GET /_bootstrap — the same protocol acoustid-server
+    serves from PostgreSQL) fills it, and the feed resumes above the stream's
+    position."""
+    if not os.path.exists(BINARY):
+        subprocess.run(["zig", "build"], cwd=REPO_ROOT, check=True)
+
+    co, p1, p2 = _free_port(), _free_port(), _free_port()
+    procs = []
+
+    def start(args):
+        procs.append(subprocess.Popen([BINARY] + args))
+
+    try:
+        start(["--coordinator", "--port", str(co)])
+        _wait(co, "/_changelog/x/1?after=0&max=1&timeout_ms=50")
+        url = f"http://127.0.0.1:{co}"
+
+        start(["--port", str(p1), "--dir", str(tmp_path / "r1"), "--coordinator-url", url])
+        _wait(p1, "/_health")
+        _req(p1, "PUT", "/main")
+        _req(p1, "PUT", "/main/1", {"hashes": [10, 20, 30]})
+        _req(p1, "PUT", "/main/2", {"hashes": [40, 50, 60]})
+        assert _search_has(p1, [10, 20, 30], 1)
+
+        # Truncate below the corpus: a replay from 0 is now impossible, and with no
+        # peers configured the source stream is the only way in.
+        req = urllib.request.Request(f"http://127.0.0.1:{co}/_truncate/main/1?floor=1", method="POST")
+        assert urllib.request.urlopen(req, timeout=5).status == 200
+
+        start(["--port", str(p2), "--dir", str(tmp_path / "r2"), "--coordinator-url", url])
+        _wait(p2, "/_health")
+        assert _wait_index(p2, "main")
+        assert _search_has(p2, [10, 20, 30], 1)
+        assert _search_has(p2, [40, 50, 60], 2)
+
+        # And the feed resumed above the stream's position: a fresh write reaches
+        # the bootstrapped node through the normal consumer path.
+        _req(p1, "PUT", "/main/3", {"hashes": [70, 80, 90]})
+        assert _search_has(p2, [70, 80, 90], 3)
     finally:
         for p in procs:
             p.send_signal(signal.SIGKILL)

@@ -1,9 +1,7 @@
 // The changelog coordinator: serves append/read of a backing Changelog over HTTP
-// (msgpack), so fpindex replicas consume the log without touching PG. dusty runs
-// each connection in its own coroutine, so the read handler can long-poll — park
-// in changelog.read up to the client's timeout — cheaply (a coroutine, not a
-// thread). Backed by a MemoryChangelog today; a PG-backed Changelog later, with
-// nothing here changing.
+// (msgpack), so fpindex replicas consume the log without touching PG. Reads do not
+// block — see the retry_after_ms note below. Backed by a MemoryCoordinator today;
+// acoustid-server serves the same protocol from PostgreSQL.
 
 const std = @import("std");
 const zio = @import("zio");
@@ -11,6 +9,7 @@ const http = @import("dusty");
 const msgpack = @import("msgpack");
 const changelog_mod = @import("Coordinator.zig");
 const Coordinator = changelog_mod.Coordinator;
+const Change = @import("change.zig").Change;
 const Entry = changelog_mod.Entry;
 const MetaOp = changelog_mod.MetaOp;
 const AppendRequest = changelog_mod.AppendRequest;
@@ -27,6 +26,13 @@ const EmptyResponse = struct {
 
 const max_read_entries = 1024;
 
+// Reads answer with whatever is available and pace the client with
+// retry_after_ms, matching the PG-backed feed in acoustid-server so the two are
+// interchangeable behind RemoteCoordinator.
+const no_wait: zio.Timeout = .{ .duration = .fromMilliseconds(0) };
+const idle_retry_ms: u64 = 1000;
+const busy_retry_ms: u64 = 0;
+
 pub const Service = struct {
     coordinator: Coordinator,
 };
@@ -37,10 +43,41 @@ pub fn registerRoutes(server: *Server) void {
     const r = &server.router;
     r.post("/_changelog/:index/:gen", handleAppend);
     r.get("/_changelog/:index/:gen", handleRead);
-    r.post("/_index/:index", handleCreateIndex);
+    // PUT because createIndex is idempotent and the path names the index.
+    r.put("/_index/:index", handleCreateIndex);
     r.delete("/_index/:index", handleDeleteIndex);
     r.get("/_meta", handleReadMeta);
+    r.get("/_bootstrap/:index/:gen", handleBootstrap);
     r.post("/_truncate/:index/:gen", handleTruncate);
+}
+
+fn handleBootstrap(co: *Service, req: *http.Request, res: *http.Response) !void {
+    const index = req.params.get("index") orelse return fail(res, .bad_request, "missing index");
+    const generation = genParam(req) orelse return fail(res, .bad_request, "bad generation");
+
+    var stream = (co.coordinator.openBootstrap(index, generation) catch |err|
+        return fail(res, statusFor(err), @errorName(err))) orelse
+        return fail(res, .not_found, "no bootstrap stream");
+    defer stream.deinit();
+
+    // Same wire shape as the PG feed: a msgpack header, then arrays of changes,
+    // terminated by an empty array. Chunked, so nothing buffers the whole corpus;
+    // a mid-stream failure just breaks the connection, which the client reads as
+    // truncation (no terminator) — never as completion.
+    try res.header("Content-Type", comptime http.ContentType.msgpack.toContentType());
+    var aw: std.Io.Writer.Allocating = .init(req.arena);
+    try msgpack.encode(changelog_mod.BootstrapHeader{ .position = stream.position }, &aw.writer);
+    try res.chunk(aw.written());
+
+    while (try stream.next()) |changes| {
+        if (changes.len == 0) continue; // the empty array is the terminator, nothing else
+        aw.clearRetainingCapacity();
+        try msgpack.encode(changes, &aw.writer);
+        try res.chunk(aw.written());
+    }
+    aw.clearRetainingCapacity();
+    try msgpack.encode(@as([]const Change, &.{}), &aw.writer);
+    try res.chunk(aw.written());
 }
 
 fn handleTruncate(co: *Service, req: *http.Request, res: *http.Response) !void {
@@ -69,13 +106,13 @@ fn handleDeleteIndex(co: *Service, req: *http.Request, res: *http.Response) !voi
 fn handleReadMeta(co: *Service, req: *http.Request, res: *http.Response) !void {
     const after = queryInt(req, "after") orelse 0;
     const max: usize = @intCast(@min(queryInt(req, "max") orelse 256, max_read_entries));
-    const timeout_ms = queryInt(req, "timeout_ms") orelse 0;
-
     const buf = try req.arena.alloc(MetaOp, max);
-    const deadline: zio.Timeout = .{ .duration = .fromMilliseconds(timeout_ms) };
-    const n = co.coordinator.readMeta(after, buf, deadline) catch |err|
+    const n = co.coordinator.readMeta(after, buf, no_wait) catch |err|
         return fail(res, statusFor(err), @errorName(err));
-    try respond(MetaReadResponse{ .ops = buf[0..n] }, res);
+    try respond(MetaReadResponse{
+        .ops = buf[0..n],
+        .retry_after_ms = if (n == buf.len) busy_retry_ms else idle_retry_ms,
+    }, res);
 }
 
 fn handleAppend(co: *Service, req: *http.Request, res: *http.Response) !void {
@@ -94,13 +131,13 @@ fn handleRead(co: *Service, req: *http.Request, res: *http.Response) !void {
     const generation = genParam(req) orelse return fail(res, .bad_request, "bad generation");
     const after = queryInt(req, "after") orelse 0;
     const max: usize = @intCast(@min(queryInt(req, "max") orelse 256, max_read_entries));
-    const timeout_ms = queryInt(req, "timeout_ms") orelse 0;
-
     const buf = try req.arena.alloc(Entry, max);
-    const deadline: zio.Timeout = .{ .duration = .fromMilliseconds(timeout_ms) };
-    const n = co.coordinator.read(index, generation, after, buf, deadline) catch |err|
+    const n = co.coordinator.read(index, generation, after, buf, no_wait) catch |err|
         return fail(res, statusFor(err), @errorName(err));
-    try respond(ReadResponse{ .entries = buf[0..n] }, res);
+    try respond(ReadResponse{
+        .entries = buf[0..n],
+        .retry_after_ms = if (n == buf.len) busy_retry_ms else idle_retry_ms,
+    }, res);
 }
 
 fn genParam(req: *http.Request) ?u64 {
