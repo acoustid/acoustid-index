@@ -297,7 +297,7 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
     if (self.replication) |repl| {
         if (repl.isBootstrapping(name)) return error.IndexNotReady;
     }
-    metrics.incSearches();
+    metrics.incSearches(name);
 
     const collector = try self.results_pool.acquire(.{
         .max_results = request.limit,
@@ -320,10 +320,10 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
         if (err == error.Canceled and deadline.check(error.Canceled)) return error.SearchTimeout;
         return err;
     };
-    metrics.observeSearchSeconds(@as(f64, @floatFromInt(sw.read().toNanoseconds())) / 1_000_000_000.0);
+    metrics.observeSearchSeconds(name, @as(f64, @floatFromInt(sw.read().toNanoseconds())) / 1_000_000_000.0);
 
     const results = collector.getResults();
-    if (results.len > 0) metrics.incSearchHit() else metrics.incSearchMiss();
+    if (results.len > 0) metrics.incSearchHit(name) else metrics.incSearchMiss(name);
     const out = try arena.alloc(api.SearchResult, results.len);
     for (results, 0..) |r, i| out[i] = .{ .id = r.id, .score = r.score };
     return .{ .results = out };
@@ -351,7 +351,7 @@ pub fn update(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
 
     const index = try self.getIndex(name);
     defer self.releaseIndex(index);
-    metrics.incUpdates();
+    metrics.incUpdates(name);
     const version = try index.update(changes, .{ .expected_version = request.expected_version });
     return .{ .version = version };
 }
@@ -383,25 +383,29 @@ fn foldMetadata(arena: std.mem.Allocator, changes: []const Change, metadata: ?Me
 pub fn applyLog(self: *Self, name: []const u8, generation: u64, changes: []const Change, version: u64) !void {
     const index = try self.getIndexForGeneration(name, generation);
     defer self.releaseIndex(index);
-    metrics.incUpdates();
+    metrics.incUpdates(name);
     _ = try index.update(changes, .{ .version = version });
 }
 
-/// Render metrics (global counters + a per-index docs gauge) in Prometheus text.
-/// Holds the manager lock across the (brief) scrape.
+/// Render metrics in Prometheus text. The per-index gauges are refreshed here,
+/// at scrape time, from one snapshot per index — they have no other writer, so
+/// they can't drift from the real index state. Holds the manager lock across
+/// the (brief) refresh.
 pub fn writeMetrics(self: *Self, w: *std.Io.Writer) !void {
-    try metrics.writeGlobal(w);
+    {
+        try self.lock.lock();
+        defer self.lock.unlock();
 
-    try self.lock.lock();
-    defer self.lock.unlock();
-
-    try w.writeAll("# HELP fpindex_docs Number of documents in an index\n# TYPE fpindex_docs gauge\n");
-    var it = self.indexes.iterator();
-    while (it.next()) |entry| {
-        var reader = try entry.value_ptr.*.index.acquireReader();
-        defer reader.deinit();
-        try w.print("fpindex_docs{{index=\"{s}\"}} {d}\n", .{ entry.key_ptr.*, reader.numDocs() });
+        var it = self.indexes.iterator();
+        while (it.next()) |entry| {
+            const name = entry.key_ptr.*;
+            var reader = try entry.value_ptr.*.index.acquireReader();
+            defer reader.deinit();
+            try metrics.setDocs(name, reader.numDocs());
+            try metrics.setVersion(name, reader.version());
+        }
     }
+    try metrics.write(w);
 }
 
 pub fn checkIndexExists(self: *Self, name: []const u8) !bool {
@@ -775,6 +779,7 @@ fn installBootstrap(self: *Self, name: []const u8, generation: u64, name_dir: zi
         const kv = self.indexes.fetchRemove(name).?;
         self.allocator.free(kv.key);
         self.allocator.destroy(kv.value);
+        metrics.removeIndex(name);
         return err;
     };
     ref.being_deleted = false;
@@ -833,6 +838,7 @@ fn dropIndex(self: *Self, name: []const u8) !DropResult {
     kv.value.index.deinit();
     self.allocator.destroy(kv.value);
     self.allocator.free(kv.key);
+    metrics.removeIndex(name);
     // Mark the redirect deleted and drop the generation's data dir; keep
     // data/<name>/ + current so a recreate can bump to the next generation.
     self.markDeleted(name, gen) catch |err| {
