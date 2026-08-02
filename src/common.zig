@@ -159,7 +159,13 @@ pub const SearchResults = struct {
             // Sorted by score descending, so nothing further can clear the bar.
             if (candidate.score < min_score) break;
             // Relative cutoff, anchored on the best score that actually survived.
-            if (out == 0) min_score = @max(min_score, candidate.score * self.options.min_score_pct / 100);
+            // Round to the nearest score rather than truncating toward zero.
+            // Use u64 so an untrusted percentage cannot overflow before the
+            // cutoff is clamped back to a score's u32 range.
+            if (out == 0) {
+                const relative = (50 + @as(u64, candidate.score) * self.options.min_score_pct) / 100;
+                min_score = @max(min_score, @as(u32, @intCast(@min(relative, std.math.maxInt(u32)))));
+            }
             self.results.items[out] = candidate;
             out += 1;
         }

@@ -138,6 +138,18 @@ pub fn build(self: *Self, changes: []const Change) !void {
 
     std.sort.pdq(Item, self.items.items, {}, Item.lessThan);
 
+    // A fingerprint is a set of hashes: retain one posting for each (hash, id)
+    // pair. Besides preserving set-based scoring, this keeps duplicate input
+    // hashes from inflating a fingerprint's score.
+    var out: usize = 0;
+    for (self.items.items) |item| {
+        if (out == 0 or Item.order(self.items.items[out - 1], item) != .eq) {
+            self.items.items[out] = item;
+            out += 1;
+        }
+    }
+    self.items.items.len = out;
+
     // Metadata is order-sensitive (last write wins), so apply it forward — unlike
     // the doc loop above, which runs in reverse for first-occurrence-wins on ids.
     for (changes) |change| {
