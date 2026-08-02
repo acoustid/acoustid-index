@@ -120,6 +120,13 @@ fn handleConnection(mi: *MultiIndex, stream: zio.net.Stream, read_only: bool) vo
         idle.clear();
         const line = std.mem.trimEnd(u8, raw, "\r\n");
 
+        // Preserve the C++ listener's historical behavior: any line beginning
+        // with "quit" is acknowledged and then closes the connection.
+        if (std.mem.startsWith(u8, line, "quit")) {
+            reply(&writer.interface, "OK ", "") catch {};
+            return;
+        }
+
         _ = cmd_arena.reset(.retain_capacity);
         const resp = dispatch(mi, &session, cmd_arena.allocator(), line) catch |err| switch (err) {
             error.Canceled => return, // shutting down
