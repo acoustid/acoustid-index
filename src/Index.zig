@@ -1571,6 +1571,7 @@ test "oplog recovers the valid prefix from a corrupt tail" {
     cleanupTestDir(cwd, dir_path);
     try cwd.createDir(dir_path, 0o755);
     defer cleanupTestDir(cwd, dir_path);
+    var torn_file_size: u64 = 0;
 
     // Write 5 clean records.
     {
@@ -1601,14 +1602,31 @@ test "oplog recovers the valid prefix from a corrupt tail" {
         var written: usize = 0;
         while (written < junk.len) written += try file.write(junk[written..], @as(u64, @intCast(st.size)) + written);
         try file.sync(.{});
+        torn_file_size = st.size + junk.len;
     }
 
-    // Reopen: the torn tail is dropped, the 5 valid records recovered.
+    // Reopen, recover the valid prefix, and append another transaction.
     {
         const dir = try cwd.openDir(dir_path, .{ .iterate = true });
         var index = try Self.open(std.testing.allocator, dir, 100_000, true, null);
         defer index.deinit();
         try std.testing.expectEqual(@as(u64, 5), index.commit_id);
+
+        _ = try index.update(&[_]Change{.{ .insert = .{ .id = 6, .hashes = &[_]u32{ 100, 6 } } }}, .{});
+        try std.testing.expectEqual(@as(u64, 6), index.commit_id);
+
+        const oplog_dir = try cwd.openDir(dir_path ++ "/oplog", .{ .iterate = true });
+        defer oplog_dir.close();
+        const st = try oplog_dir.statPath("0000000000000001.xlog");
+        try std.testing.expectEqual(torn_file_size, st.size);
+    }
+
+    // The old torn tail no longer hides that append on the next restart.
+    {
+        const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+        var index = try Self.open(std.testing.allocator, dir, 100_000, true, null);
+        defer index.deinit();
+        try std.testing.expectEqual(@as(u64, 6), index.commit_id);
 
         var results = SearchResults.init(std.testing.allocator, .{ .max_results = 100, .min_score = 1 });
         defer results.deinit();
@@ -1616,7 +1634,7 @@ test "oplog recovers the valid prefix from a corrupt tail" {
         defer reader.deinit();
         var h = [_]u32{100};
         try reader.search(&h, &results);
-        try std.testing.expectEqual(@as(usize, 5), results.getResults().len);
+        try std.testing.expectEqual(@as(usize, 6), results.getResults().len);
     }
 }
 
