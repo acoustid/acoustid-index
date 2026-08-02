@@ -533,11 +533,6 @@ pub fn update(self: *Self, changes: []const Change, options: Oplog.WriteOptions)
     errdefer if (!seg_consumed) seg.release(self.allocator, MemorySegment.deinit, .{});
     try seg.value.build(changes);
 
-    const commit = try self.oplog.append(changes, options);
-    // `options.version`, not the resolved one: a local commit must leave this null, or
-    // the segment would look upstream-fed and poison an index that never had a feed.
-    seg.value.info = .{ .commit_id = commit.commit_id, .merges = 0, .version = options.version };
-
     const cur = self.segments.value;
     const new_file = try cloneRefs(FileSegment, self.allocator, cur.file);
     var arrays_consumed = false;
@@ -556,14 +551,29 @@ pub fn update(self: *Self, changes: []const Change, options: Oplog.WriteOptions)
     new_memory[cur.memory.len] = seg;
     seg_consumed = true;
 
-    const snap = try self.createSnapshot(new_file, new_memory, .{
-        .commit_id = commit.commit_id,
+    var snap = try self.createSnapshot(new_file, new_memory, .{
+        .commit_id = self.commit_id,
         .file_commit_id = self.file_commit_id,
-        .version = commit.version,
+        .version = self.version,
         .file_version = self.file_version,
     });
     arrays_consumed = true;
+    var snap_consumed = false;
+    errdefer if (!snap_consumed) snap.release(self.allocator, Segments.deinit, .{});
+
+    // Everything needed to publish the new state is allocated before the durable
+    // append. After this succeeds, only field assignments and the infallible snapshot
+    // swap remain, so an allocation failure cannot leave the WAL ahead of memory.
+    const commit = try self.oplog.append(changes, options);
+    // `options.version`, not the resolved one: a local commit must leave this null, or
+    // the segment would look upstream-fed and poison an index that never had a feed.
+    seg.value.info = .{ .commit_id = commit.commit_id, .merges = 0, .version = options.version };
+    snap.value.commit_id = commit.commit_id;
+    snap.value.version = commit.version;
+    snap.value.external_versions = self.external_versions or options.version != null;
+
     self.swapSnapshot(snap);
+    snap_consumed = true;
 
     // Any update may create maintenance work (memory merge, then checkpoint,
     // then file merge). Signal the coroutine; it decides what's actually needed.
@@ -995,6 +1005,52 @@ fn countDataFiles(cwd: zio.Dir, dir_path: []const u8) !usize {
         if (e.kind == .file and std.mem.endsWith(u8, e.name, ".data")) count += 1;
     }
     return count;
+}
+
+test "allocation failure cannot leave the WAL ahead of published segments" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_index_update_oom";
+    cleanupTestDir(cwd, dir_path);
+    defer cleanupTestDir(cwd, dir_path);
+
+    var saw_success = false;
+    var fail_index: usize = 0;
+    while (fail_index < 64 and !saw_success) : (fail_index += 1) {
+        cleanupTestDir(cwd, dir_path);
+        try cwd.createDir(dir_path, 0o755);
+
+        var update_succeeded = false;
+        {
+            const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+            var index = try Self.open(std.testing.allocator, dir, 100_000, true, null);
+            defer index.deinit();
+
+            var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = fail_index });
+            const allocator = failing.allocator();
+            index.allocator = allocator;
+            index.oplog.allocator = allocator;
+
+            if (index.update(&[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{ 10, 20 } } }}, .{})) |_| {
+                update_succeeded = true;
+            } else |_| {
+                try std.testing.expect(failing.has_induced_failure);
+            }
+        }
+
+        // An update that reported failure must not appear after replay. Once every
+        // allocation succeeds, the same update must be durable and visible.
+        {
+            const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+            var index = try Self.open(std.testing.allocator, dir, 100_000, true, null);
+            defer index.deinit();
+            try std.testing.expectEqual(@as(u64, if (update_succeeded) 1 else 0), index.commit_id);
+        }
+        saw_success = update_succeeded;
+    }
+    try std.testing.expect(saw_success);
 }
 
 test "duplicate query hashes score consistently across memory and file segments" {
@@ -1743,6 +1799,7 @@ test "versions never go backwards, and an upstream-fed index stays upstream-fed"
         defer index.deinit();
 
         _ = try index.update(&[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{1} } }}, .{ .version = 500 });
+        try std.testing.expect(index.segments.value.external_versions);
 
         // Backwards is refused and writes nothing.
         try std.testing.expectError(error.VersionWentBackwards, index.update(
