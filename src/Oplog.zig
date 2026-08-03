@@ -36,6 +36,10 @@ const default_max_file_size = 16 * 1024 * 1024;
 const record_header_size = 8; // u32 payload_len + u32 crc32
 const max_record_size = 64 * 1024 * 1024; // sanity bound for a framed payload
 
+fn validateRecordSize(len: usize) !void {
+    if (len > max_record_size) return error.RecordTooLarge;
+}
+
 pub const WriteOptions = struct {
     // Optimistic concurrency: fail with error.VersionMismatch if the index is not at
     // this version. Only reachable in standalone mode (a replicated apply never sets
@@ -60,6 +64,7 @@ write_offset: u64 = 0,
 last_commit_id: u64 = 0,
 last_version: u64 = 0,
 max_file_size: usize = default_max_file_size,
+write_failed: bool = false,
 
 fn buildName(buf: []u8, start: u64) []u8 {
     return std.fmt.bufPrint(buf, "{x:0>16}" ++ file_suffix, .{start}) catch unreachable;
@@ -114,7 +119,8 @@ fn readRecord(reader: *std.Io.Reader, arena: std.mem.Allocator) !RecordResult {
     };
     const len = std.mem.readInt(u32, header[0..4], .little);
     const crc = std.mem.readInt(u32, header[4..8], .little);
-    if (len == 0 or len > max_record_size) return .torn;
+    if (len == 0) return .torn;
+    try validateRecordSize(len);
 
     const payload = try arena.alloc(u8, len);
     reader.readSliceAll(payload) catch |err| switch (err) {
@@ -133,7 +139,9 @@ fn replay(self: *Self, ctx: anytype, handler: anytype) !void {
     defer arena.deinit();
 
     var count: u64 = 0;
-    files: for (self.files.items) |start| {
+    for (self.files.items, 0..) |start, file_index| {
+        if (count > 0 and start != self.last_commit_id + 1) return error.CorruptOplog;
+
         var name_buf: [file_name_len]u8 = undefined;
         const name = buildName(&name_buf, start);
         const file = try self.dir.openFile(name, .{ .mode = .read_only });
@@ -144,7 +152,9 @@ fn replay(self: *Self, ctx: anytype, handler: anytype) !void {
             _ = arena.reset(.retain_capacity);
             switch (try readRecord(&reader.interface, arena.allocator())) {
                 .record => |txn| {
-                    self.last_commit_id = @max(self.last_commit_id, txn.id);
+                    const expected_commit_id = if (count == 0) start else self.last_commit_id + 1;
+                    if (txn.id != expected_commit_id) return error.CorruptOplog;
+                    self.last_commit_id = txn.id;
                     // A locally-minted commit has no stored position: its version is
                     // its commit id, which is the standalone identity.
                     self.last_version = @max(self.last_version, txn.version orelse txn.id);
@@ -153,11 +163,16 @@ fn replay(self: *Self, ctx: anytype, handler: anytype) !void {
                 },
                 .clean_eof => break, // this file ended cleanly; on to the next
                 .torn => {
-                    // A torn record can only be the tail (a crash mid-append writes
-                    // the last record; nothing follows it). Recover the prefix and
-                    // stop — a later append or the PG poller refills from here.
-                    log.warn("oplog: torn record in {s}, stopping replay at commit {d}", .{ name, self.last_commit_id });
-                    break :files;
+                    // A later file is possible if an older version recovered a torn
+                    // tail, appended to a new file, but left the bad bytes in place.
+                    // It is only continuous if it starts with the next dense commit.
+                    if (file_index + 1 < self.files.items.len and
+                        self.files.items[file_index + 1] != self.last_commit_id + 1)
+                    {
+                        return error.CorruptOplog;
+                    }
+                    log.warn("oplog: ignoring torn tail in {s} after commit {d}", .{ name, self.last_commit_id });
+                    break;
                 },
             }
         }
@@ -200,6 +215,7 @@ pub const Commit = struct {
 /// the version it carries. With `options.expected_version` set and mismatched,
 /// fails with error.VersionMismatch and writes nothing.
 pub fn append(self: *Self, changes: []const Change, options: WriteOptions) !Commit {
+    if (self.write_failed) return error.OplogWriteFailed;
     if (options.expected_version) |expected| {
         if (self.last_version != expected) return error.VersionMismatch;
     }
@@ -230,6 +246,7 @@ pub fn append(self: *Self, changes: []const Change, options: WriteOptions) !Comm
         .changes = changes,
     }, &w.writer);
     const payload = w.written();
+    try validateRecordSize(payload.len);
 
     var header: [record_header_size]u8 = undefined;
     std.mem.writeInt(u32, header[0..4], @intCast(payload.len), .little);
@@ -237,9 +254,18 @@ pub fn append(self: *Self, changes: []const Change, options: WriteOptions) !Comm
 
     // getFile may rotate (resetting write_offset), so call it before writing.
     const file = try self.getFile(commit_id);
-    try self.writeAll(file, &header);
-    try self.writeAll(file, payload);
-    if (self.sync) try file.sync(.{});
+    self.writeAll(file, &header) catch |err| {
+        self.markWriteFailed();
+        return err;
+    };
+    self.writeAll(file, payload) catch |err| {
+        self.markWriteFailed();
+        return err;
+    };
+    if (self.sync) file.sync(.{}) catch |err| {
+        self.markWriteFailed();
+        return err;
+    };
 
     self.last_commit_id = commit_id;
     self.last_version = version;
@@ -249,14 +275,28 @@ pub fn append(self: *Self, changes: []const Change, options: WriteOptions) !Comm
 fn writeAll(self: *Self, file: zio.File, bytes: []const u8) !void {
     var written: usize = 0;
     while (written < bytes.len) {
-        written += try file.write(bytes[written..], self.write_offset + written);
+        const n = try file.write(bytes[written..], self.write_offset);
+        if (n == 0) return error.UnexpectedWriteZero;
+        written += n;
+        self.write_offset += n;
+        self.current_size += n;
     }
-    self.write_offset += bytes.len;
-    self.current_size += bytes.len;
+}
+
+fn markWriteFailed(self: *Self) void {
+    self.write_failed = true;
+    if (self.current_file) |file| file.close();
+    self.current_file = null;
+    log.err("oplog: append failed; refusing further writes until restart", .{});
 }
 
 fn cmpVersion(v: u64, item: u64) std.math.Order {
     return std.math.order(v, item);
+}
+
+test "oplog enforces the replay record limit before append" {
+    try validateRecordSize(max_record_size);
+    try std.testing.expectError(error.RecordTooLarge, validateRecordSize(max_record_size + 1));
 }
 
 /// Delete oplog files whose transactions are all below `commit_id` (now durable in
