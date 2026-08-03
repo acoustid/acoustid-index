@@ -14,6 +14,7 @@ const coordinator_server = @import("coordinator_server.zig");
 const MemoryCoordinator = @import("Coordinator.zig").MemoryCoordinator;
 const RemoteCoordinator = @import("RemoteCoordinator.zig");
 const Server = @import("server.zig").Server;
+const ServerContext = @import("server.zig").ServerContext;
 const registerRoutes = @import("server.zig").registerRoutes;
 
 // Process allocator: a leak-checking DebugAllocator in Debug builds, the C
@@ -137,7 +138,8 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
         std.log.info("replicating from coordinator {s}", .{config.coordinator_url.?});
     }
 
-    var server = Server.init(allocator, io, server_config, &multi_index);
+    var server_context = ServerContext{ .mi = &multi_index };
+    var server = Server.init(allocator, io, server_config, &server_context);
     defer server.deinit();
 
     registerRoutes(&server);

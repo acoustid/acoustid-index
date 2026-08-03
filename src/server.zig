@@ -6,7 +6,21 @@ const Change = @import("change.zig").Change;
 const MultiIndex = @import("MultiIndex.zig");
 const snapshot = @import("snapshot.zig");
 
-pub const Server = http.Server(MultiIndex);
+pub const ServerContext = struct {
+    mi: *MultiIndex,
+
+    pub fn uncaughtError(self: *ServerContext, req: *http.Request, res: *http.Response, err: anyerror) void {
+        _ = self;
+        sendError(req, res, err);
+    }
+
+    pub fn notFound(self: *ServerContext, req: *http.Request, res: *http.Response) !void {
+        _ = self;
+        sendError(req, res, error.NotFound);
+    }
+};
+
+pub const Server = http.Server(ServerContext);
 
 pub fn registerRoutes(server: *Server) void {
     const r = &server.router;
@@ -127,55 +141,35 @@ fn respond(value: anytype, req: *http.Request, res: *http.Response) !void {
     }
 }
 
-/// Decode a required body. On a missing/malformed body or unsupported type it
-/// responds and returns null so the caller can `orelse return`.
-fn requireBody(comptime T: type, req: *http.Request, res: *http.Response) ?T {
-    const ct = requestType(req) catch |err| {
-        sendError(req, res, err);
-        return null;
-    };
-    const bytes = (req.body() catch {
-        sendError(req, res, error.BadRequest);
-        return null;
-    }) orelse {
-        sendError(req, res, error.BadRequest);
-        return null;
-    };
-    return decodeAs(T, ct, bytes, req.arena) catch {
-        sendError(req, res, error.BadRequest);
-        return null;
-    };
+/// Decode a required body. Missing/malformed bodies and unsupported types are
+/// returned to the server context for consistent error responses.
+fn requireBody(comptime T: type, req: *http.Request) !T {
+    const ct = try requestType(req);
+    const bytes = (try req.body()) orelse return error.BadRequest;
+    return decodeAs(T, ct, bytes, req.arena) catch error.BadRequest;
 }
 
-/// Decode an optional body, falling back to a default when absent.
-fn optionalBody(comptime T: type, req: *http.Request, res: *http.Response, default: T) ?T {
-    const bytes = (req.body() catch {
-        sendError(req, res, error.BadRequest);
-        return null;
-    }) orelse return default;
-    const ct = requestType(req) catch |err| {
-        sendError(req, res, err);
-        return null;
-    };
-    return decodeAs(T, ct, bytes, req.arena) catch {
-        sendError(req, res, error.BadRequest);
-        return null;
-    };
+/// Decode an optional body, falling back to a default when absent. Decode
+/// failures are returned to the server context for consistent error responses.
+fn optionalBody(comptime T: type, req: *http.Request, default: T) !T {
+    const bytes = (try req.body()) orelse return default;
+    const ct = try requestType(req);
+    return decodeAs(T, ct, bytes, req.arena) catch error.BadRequest;
 }
 
 // --- system ---
 
-fn handleMetrics(mi: *MultiIndex, _: *http.Request, res: *http.Response) !void {
-    try mi.writeMetrics(res.writer());
+fn handleMetrics(ctx: *ServerContext, _: *http.Request, res: *http.Response) !void {
+    try ctx.mi.writeMetrics(res.writer());
     try res.header("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
 }
 
-fn handleHealth(_: *MultiIndex, _: *http.Request, res: *http.Response) !void {
+fn handleHealth(_: *ServerContext, _: *http.Request, res: *http.Response) !void {
     res.body = "OK\n";
 }
 
-fn handleIndexHealth(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
-    switch (mi.indexHealth(indexName(req)) catch |err| return sendError(req, res, err)) {
+fn handleIndexHealth(ctx: *ServerContext, req: *http.Request, res: *http.Response) !void {
+    switch (try ctx.mi.indexHealth(indexName(req))) {
         .ready => res.body = "OK\n",
         // 503 + a distinct body: the index exists but is being filled by a
         // bootstrap (initial seed or below-retention restore), and every search
@@ -192,18 +186,18 @@ fn handleIndexHealth(mi: *MultiIndex, req: *http.Request, res: *http.Response) !
 
 // --- search / update ---
 
-fn handleSearch(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
-    var request = requireBody(api.SearchRequest, req, res) orelse return;
+fn handleSearch(ctx: *ServerContext, req: *http.Request, res: *http.Response) !void {
+    var request = try requireBody(api.SearchRequest, req);
     // Sanitize untrusted request values (the legacy front-end passes trusted ones).
     request.limit = @max(@min(request.limit, api.max_search_limit), api.min_search_limit);
     request.timeout = @min(request.timeout, api.max_search_timeout);
-    const response = mi.search(req.arena, indexName(req), request) catch |err| return sendError(req, res, err);
+    const response = try ctx.mi.search(req.arena, indexName(req), request);
     try respond(response, req, res);
 }
 
-fn handleUpdate(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
-    const request = requireBody(api.UpdateRequest, req, res) orelse return;
-    const response = mi.update(req.arena, indexName(req), request) catch |err| return sendError(req, res, err);
+fn handleUpdate(ctx: *ServerContext, req: *http.Request, res: *http.Response) !void {
+    const request = try requireBody(api.UpdateRequest, req);
+    const response = try ctx.mi.update(req.arena, indexName(req), request);
     try respond(response, req, res);
 }
 
@@ -217,85 +211,87 @@ const PutFingerprintRequest = struct {
     }
 };
 
-fn handleHeadFingerprint(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
-    const id = fingerprintId(req) catch |err| return sendError(req, res, err);
-    const exists = mi.checkFingerprintExists(indexName(req), id) catch |err| return sendError(req, res, err);
+fn handleHeadFingerprint(ctx: *ServerContext, req: *http.Request, res: *http.Response) !void {
+    const id = try fingerprintId(req);
+    const exists = try ctx.mi.checkFingerprintExists(indexName(req), id);
     if (!exists) res.status = .not_found;
 }
 
-fn handleGetFingerprint(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
-    const id = fingerprintId(req) catch |err| return sendError(req, res, err);
-    const response = mi.getFingerprintInfo(req.arena, indexName(req), id) catch |err| return sendError(req, res, err);
+fn handleGetFingerprint(ctx: *ServerContext, req: *http.Request, res: *http.Response) !void {
+    const id = try fingerprintId(req);
+    const response = try ctx.mi.getFingerprintInfo(req.arena, indexName(req), id);
     try respond(response, req, res);
 }
 
-fn handlePutFingerprint(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
-    const id = fingerprintId(req) catch |err| return sendError(req, res, err);
-    const body = requireBody(PutFingerprintRequest, req, res) orelse return;
+fn handlePutFingerprint(ctx: *ServerContext, req: *http.Request, res: *http.Response) !void {
+    const id = try fingerprintId(req);
+    const body = try requireBody(PutFingerprintRequest, req);
     const request = api.UpdateRequest{
         .changes = &[_]Change{.{ .insert = .{ .id = id, .hashes = body.hashes } }},
     };
-    _ = mi.update(req.arena, indexName(req), request) catch |err| return sendError(req, res, err);
+    _ = try ctx.mi.update(req.arena, indexName(req), request);
     try sendEmpty(req, res);
 }
 
-fn handleDeleteFingerprint(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
-    const id = fingerprintId(req) catch |err| return sendError(req, res, err);
+fn handleDeleteFingerprint(ctx: *ServerContext, req: *http.Request, res: *http.Response) !void {
+    const id = try fingerprintId(req);
     const request = api.UpdateRequest{
         .changes = &[_]Change{.{ .delete = .{ .id = id } }},
     };
-    _ = mi.update(req.arena, indexName(req), request) catch |err| return sendError(req, res, err);
+    _ = try ctx.mi.update(req.arena, indexName(req), request);
     try sendEmpty(req, res);
 }
 
 // --- index management ---
 
-fn handleHeadIndex(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
-    const exists = mi.checkIndexExists(indexName(req)) catch |err| return sendError(req, res, err);
+fn handleHeadIndex(ctx: *ServerContext, req: *http.Request, res: *http.Response) !void {
+    const exists = try ctx.mi.checkIndexExists(indexName(req));
     if (!exists) res.status = .not_found;
 }
 
-fn handleGetIndex(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
-    const response = mi.getIndexInfo(req.arena, indexName(req)) catch |err| return sendError(req, res, err);
+fn handleGetIndex(ctx: *ServerContext, req: *http.Request, res: *http.Response) !void {
+    const response = try ctx.mi.getIndexInfo(req.arena, indexName(req));
     try respond(response, req, res);
 }
 
-fn handlePutIndex(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
-    const request = optionalBody(api.CreateIndexRequest, req, res, .{}) orelse return;
-    const response = mi.createIndex(indexName(req), request) catch |err| return sendError(req, res, err);
+fn handlePutIndex(ctx: *ServerContext, req: *http.Request, res: *http.Response) !void {
+    const request = try optionalBody(api.CreateIndexRequest, req, .{});
+    const response = try ctx.mi.createIndex(indexName(req), request);
     if (!response.ready) res.status = .accepted; // 202 until ready
     try respond(response, req, res);
 }
 
-fn handleDeleteIndex(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
-    const request = optionalBody(api.DeleteIndexRequest, req, res, .{}) orelse return;
-    const response = mi.deleteIndex(indexName(req), request) catch |err| return sendError(req, res, err);
+fn handleDeleteIndex(ctx: *ServerContext, req: *http.Request, res: *http.Response) !void {
+    const request = try optionalBody(api.DeleteIndexRequest, req, .{});
+    const response = try ctx.mi.deleteIndex(indexName(req), request);
     try respond(response, req, res);
 }
-
-// Adapts snapshot.writeSnapshot's *std.Io.Writer onto dusty's chunked response. Zero
-// internal buffer, so each write (notably the large resident segment slices) is handed
-// straight to res.chunk -> the socket, never copied through an intermediate buffer.
-var chunk_no_buf: [0]u8 = .{};
 
 const ChunkedWriter = struct {
     res: *http.Response,
     interface: std.Io.Writer,
+    err: ?anyerror = null,
 
-    fn init(res: *http.Response) ChunkedWriter {
-        return .{ .res = res, .interface = .{ .buffer = &chunk_no_buf, .vtable = &.{ .drain = drain } } };
+    fn init(res: *http.Response, buf: []u8) ChunkedWriter {
+        return .{ .res = res, .interface = .{ .buffer = buf, .vtable = &.{ .drain = drain } } };
     }
 
     fn drain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
         const self: *ChunkedWriter = @fieldParentPtr("interface", w);
         var total: usize = 0;
         for (data[0 .. data.len - 1]) |seg| {
-            self.res.chunk(seg) catch return error.WriteFailed;
+            self.res.chunk(seg) catch |err| {
+                self.err = err;
+                return error.WriteFailed;
+            };
             total += seg.len;
         }
         const last = data[data.len - 1];
         for (0..splat) |_| {
-            self.res.chunk(last) catch return error.WriteFailed;
+            self.res.chunk(last) catch |err| {
+                self.err = err;
+                return error.WriteFailed;
+            };
             total += last.len;
         }
         return w.consume(total);
@@ -305,20 +301,21 @@ const ChunkedWriter = struct {
 // What this node holds for an index, so a bootstrapping peer can decide whether to
 // fetch a snapshot from here. The peer-facing half of peers.findDonor; deliberately
 // cheap, since every bootstrapping node probes every peer.
-fn handlePeerStatus(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
-    const response = mi.getPeerStatus(indexName(req)) catch |err| return sendError(req, res, err);
+fn handlePeerStatus(ctx: *ServerContext, req: *http.Request, res: *http.Response) !void {
+    const response = try ctx.mi.getPeerStatus(indexName(req));
     try respond(response, req, res);
 }
 
-fn handleSnapshotExport(mi: *MultiIndex, req: *http.Request, res: *http.Response) !void {
-    // Acquire the pinned snapshot first: this is the only step that can fail before any
-    // bytes go out, so error reporting still works. Once chunking starts, a mid-stream
-    // failure just breaks the connection (the restorer retries another donor).
-    var src = mi.acquireSnapshot(indexName(req)) catch |err| return sendError(req, res, err);
+fn handleSnapshotExport(ctx: *ServerContext, req: *http.Request, res: *http.Response) !void {
+    var src = try ctx.mi.acquireSnapshot(indexName(req));
     defer src.reader.deinit();
 
-    res.header("Content-Type", "application/octet-stream") catch {};
-    var cw = ChunkedWriter.init(res);
-    try snapshot.writeSnapshot(&cw.interface, req.arena, src.reader.snapshot.value, src.generation);
-    try cw.interface.flush();
+    try res.header("Content-Type", "application/octet-stream");
+
+    var buf: [1024]u8 = undefined;
+    var cw = ChunkedWriter.init(res, &buf);
+    snapshot.writeSnapshot(&cw.interface, req.arena, src.reader.snapshot.value, src.generation) catch |err| switch (err) {
+        error.WriteFailed => return cw.err orelse error.WriteFailed,
+        else => return err,
+    };
 }
