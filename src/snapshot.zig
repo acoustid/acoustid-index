@@ -51,14 +51,11 @@ pub fn writeSnapshot(w: *std.Io.Writer, arena: std.mem.Allocator, segs: *const S
     const entries = try arena.alloc(SegmentEntry, segs.file.len);
     for (segs.file, 0..) |s, i| entries[i] = .{ .info = s.value.info, .size = s.value.data.len };
 
-    var hbuf: std.Io.Writer.Allocating = .init(arena);
-    defer hbuf.deinit();
-    try msgpack.encode(SnapshotHeader{ .generation = generation, .segments = entries }, &hbuf.writer);
-    try w.writeAll(hbuf.written());
-
+    try msgpack.encode(SnapshotHeader{ .generation = generation, .segments = entries }, w);
     for (segs.file) |s| {
-        try w.writeAll(s.value.data); // resident file bytes, streamed uncopied
+        try w.writeAll(s.value.data);
     }
+    try w.flush();
 }
 
 pub const Entry = struct { info: SegmentInfo, data: []const u8 };
