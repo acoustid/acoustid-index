@@ -1053,7 +1053,8 @@ test "allocation failure cannot leave the WAL ahead of published segments" {
     try std.testing.expect(saw_success);
 }
 
-test "duplicate query hashes score consistently across memory and file segments" {
+test "duplicate hashes score consistently across memory and file segments" {
+
     const rt = try zio.Runtime.init(std.testing.allocator, .{});
     defer rt.deinit();
 
@@ -1067,9 +1068,10 @@ test "duplicate query hashes score consistently across memory and file segments"
     var index = try Self.open(std.testing.allocator, dir, 1, true, null); // threshold 1 -> flushes
     defer index.deinit();
 
-    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{ 100, 200 } } }}, .{});
+    _ = try index.update(&[_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{ 100, 100, 200 } } }}, .{});
 
-    // In-memory: a repeated query hash scores the doc once (query is a set).
+    // In-memory: repeated hashes in either the stored fingerprint or the query
+    // score the doc once (both are sets).
     {
         var r = SearchResults.init(std.testing.allocator, .{ .max_results = 10, .min_score = 1 });
         defer r.deinit();
@@ -1080,8 +1082,7 @@ test "duplicate query hashes score consistently across memory and file segments"
         try std.testing.expectEqual(@as(u32, 1), r.hits.get(1).?.score);
     }
 
-    // After flushing to a file segment the same query must score identically (it
-    // scored 2 before the dedupe, because FileSegment re-probed the repeated hash).
+    // After flushing to a file segment the same query must score identically.
     try index.runMaintenance();
     try std.testing.expectEqual(@as(usize, 1), index.segments.value.file.len);
     {
