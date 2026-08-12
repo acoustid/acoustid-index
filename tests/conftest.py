@@ -86,6 +86,12 @@ class Server:
         deadline = time.time() + timeout
         last_err = None
         while time.time() < deadline:
+            # Same check wait_for_healthy() makes. A legacy port that cannot bind
+            # takes the process down after /_health has already answered, and
+            # without this we would spend the whole timeout reporting "not up"
+            # for something that is not running at all.
+            if self.proc is not None and self.proc.poll() is not None:
+                raise RuntimeError(f"server exited early with code {self.proc.returncode}")
             try:
                 socket.create_connection(("127.0.0.1", self.legacy_port), timeout=1).close()
                 return
