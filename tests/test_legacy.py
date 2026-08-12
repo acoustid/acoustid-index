@@ -100,3 +100,58 @@ def test_index_attribute_persists(legacy):
     assert legacy.cmd("set attribute leg_attr 123") == "OK "
     assert legacy.cmd("commit") == "OK "
     assert legacy.cmd("get leg_attr") == "OK 123"
+
+
+# --- which index the legacy port serves -------------------------------------
+#
+# The name was fixed at "main". It has to be selectable to put the legacy port
+# in front of data that already exists under another name -- production serves
+# "acoustid" -- because pointing it at the wrong index does not fail. It creates
+# an empty one and answers every search with a miss, which looks like a working
+# server holding no data.
+
+
+@pytest.fixture(scope="module")
+def named_server(_built):
+    from conftest import Server
+
+    srv = Server(legacy_index_name="acoustid")
+    srv.start()
+    try:
+        yield srv
+    finally:
+        srv.cleanup()
+
+
+def test_legacy_writes_land_in_the_named_index(named_server, session):
+    """Committed over the legacy port, read back over HTTP under that name."""
+    c = Legacy(named_server.legacy_port)
+    try:
+        assert c.cmd("begin") == "OK "
+        assert c.cmd("insert 7001 21000,22000,23000") == "OK "
+        assert c.cmd("commit") == "OK "
+    finally:
+        c.close()
+
+    r = session.get(f"{named_server.get_url()}/acoustid")
+    assert r.status_code == 200, r.text
+    assert r.json()["stats"]["num_docs"] == 1
+
+    # And nothing was created under the old fixed name.
+    assert session.get(f"{named_server.get_url()}/main").status_code == 404
+
+
+def test_legacy_search_reads_the_named_index(named_server, session):
+    c = Legacy(named_server.legacy_port)
+    try:
+        assert c.cmd("begin") == "OK "
+        assert c.cmd("insert 7002 31000,32000,33000") == "OK "
+        assert c.cmd("commit") == "OK "
+        assert c.cmd("search 31000,32000,33000") == "OK 7002:3"
+    finally:
+        c.close()
+
+
+def test_the_default_is_still_main(server, session):
+    """The unflagged server is what every existing deployment runs."""
+    assert session.get(f"{server.get_url()}/main").status_code == 200
