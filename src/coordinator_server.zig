@@ -65,19 +65,26 @@ fn handleBootstrap(co: *Service, req: *http.Request, res: *http.Response) !void 
     // a mid-stream failure just breaks the connection, which the client reads as
     // truncation (no terminator) — never as completion.
     try res.header("Content-Type", comptime http.ContentType.msgpack.toContentType());
+    var buf: [64 * 1024]u8 = undefined;
+    var body = try res.stream(&buf);
+
     var aw: std.Io.Writer.Allocating = .init(req.arena);
     try msgpack.encode(changelog_mod.BootstrapHeader{ .position = stream.position }, &aw.writer);
-    try res.chunk(aw.written());
+    try body.interface.writeAll(aw.written());
 
     while (try stream.next()) |changes| {
         if (changes.len == 0) continue; // the empty array is the terminator, nothing else
         aw.clearRetainingCapacity();
         try msgpack.encode(changes, &aw.writer);
-        try res.chunk(aw.written());
+        try body.interface.writeAll(aw.written());
     }
     aw.clearRetainingCapacity();
     try msgpack.encode(@as([]const Change, &.{}), &aw.writer);
-    try res.chunk(aw.written());
+    try body.interface.writeAll(aw.written());
+
+    // Only on the success path: an error above returns without the terminator,
+    // which is exactly the truncation signal the comment above promises.
+    try body.end();
 }
 
 fn handleTruncate(co: *Service, req: *http.Request, res: *http.Response) !void {
@@ -151,7 +158,9 @@ fn queryInt(req: *http.Request, name: []const u8) ?u64 {
 }
 
 fn respond(value: anytype, res: *http.Response) !void {
-    try msgpack.encode(value, res.writer());
+    var body = res.writer();
+    try msgpack.encode(value, &body.interface);
+    try body.end();
     try res.header("Content-Type", comptime http.ContentType.msgpack.toContentType());
 }
 
