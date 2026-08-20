@@ -25,7 +25,19 @@ const write_buf_size = 64 * 1024;
 /// beside it would answer every legacy search with a miss rather than an error,
 /// which is the failure that looks like working software.
 pub fn listen(mi: *MultiIndex, addr: zio.net.IpAddress, index_name: []const u8, read_only: bool) !void {
-    _ = try mi.createIndex(index_name, .{});
+    // Only a standalone node creates on demand. On a replica the coordinator owns
+    // index lifecycle, and `createIndex` is a WRITE there: MultiIndex dispatches to
+    // the replicated path BEFORE its local "already exists, idempotent" check, so
+    // this reaches the feed even when the index is already open locally. A feed
+    // that refuses writes -- the production one does, deliberately, because the
+    // changelog is written by the fingerprint trigger -- answers 403 and the
+    // listener dies before it binds.
+    //
+    // `read_only` is already the "this node replicates" signal, used just below to
+    // reject client writes. Applying it here too is the whole fix.
+    if (!read_only) {
+        _ = try mi.createIndex(index_name, .{});
+    }
 
     // reuse_address sets SO_REUSEADDR + SO_REUSEPORT (zio), so the port rebinds
     // promptly after a restart.
