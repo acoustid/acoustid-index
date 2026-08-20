@@ -134,7 +134,9 @@ fn respond(value: anytype, req: *http.Request, res: *http.Response) !void {
     switch (responseType(req)) {
         .json => try res.json(value, .{}),
         .msgpack => {
-            try msgpack.encode(value, res.writer());
+            var body = res.writer();
+            try msgpack.encode(value, &body.interface);
+            try body.end();
             try res.header("Content-Type", comptime http.ContentType.msgpack.toContentType());
         },
         else => unreachable,
@@ -160,7 +162,9 @@ fn optionalBody(comptime T: type, req: *http.Request, default: T) !T {
 // --- system ---
 
 fn handleMetrics(ctx: *ServerContext, _: *http.Request, res: *http.Response) !void {
-    try ctx.mi.writeMetrics(res.writer());
+    var body = res.writer();
+    try ctx.mi.writeMetrics(&body.interface);
+    try body.end();
     try res.header("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
 }
 
@@ -267,37 +271,6 @@ fn handleDeleteIndex(ctx: *ServerContext, req: *http.Request, res: *http.Respons
     try respond(response, req, res);
 }
 
-const ChunkedWriter = struct {
-    res: *http.Response,
-    interface: std.Io.Writer,
-    err: ?anyerror = null,
-
-    fn init(res: *http.Response, buf: []u8) ChunkedWriter {
-        return .{ .res = res, .interface = .{ .buffer = buf, .vtable = &.{ .drain = drain } } };
-    }
-
-    fn drain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
-        const self: *ChunkedWriter = @fieldParentPtr("interface", w);
-        var total: usize = 0;
-        for (data[0 .. data.len - 1]) |seg| {
-            self.res.chunk(seg) catch |err| {
-                self.err = err;
-                return error.WriteFailed;
-            };
-            total += seg.len;
-        }
-        const last = data[data.len - 1];
-        for (0..splat) |_| {
-            self.res.chunk(last) catch |err| {
-                self.err = err;
-                return error.WriteFailed;
-            };
-            total += last.len;
-        }
-        return w.consume(total);
-    }
-};
-
 // What this node holds for an index, so a bootstrapping peer can decide whether to
 // fetch a snapshot from here. The peer-facing half of peers.findDonor; deliberately
 // cheap, since every bootstrapping node probes every peer.
@@ -307,15 +280,25 @@ fn handlePeerStatus(ctx: *ServerContext, req: *http.Request, res: *http.Response
 }
 
 fn handleSnapshotExport(ctx: *ServerContext, req: *http.Request, res: *http.Response) !void {
+    // Acquire the pinned snapshot first: this is the only step that can fail before
+    // any bytes go out, so error reporting still works. Once the body has started, a
+    // mid-stream failure just breaks the connection (the restorer retries another
+    // donor).
     var src = try ctx.mi.acquireSnapshot(indexName(req));
     defer src.reader.deinit();
 
     try res.header("Content-Type", "application/octet-stream");
 
-    var buf: [1024]u8 = undefined;
-    var cw = ChunkedWriter.init(res, &buf);
-    snapshot.writeSnapshot(&cw.interface, req.arena, src.reader.snapshot.value, src.generation) catch |err| switch (err) {
-        error.WriteFailed => return cw.err orelse error.WriteFailed,
+    var buf: [64 * 1024]u8 = undefined;
+    var body = try res.stream(&buf);
+    snapshot.writeSnapshot(&body.interface, req.arena, src.reader.snapshot.value, src.generation) catch |err| switch (err) {
+        error.WriteFailed => return body.err orelse error.WriteFailed,
+        else => return err,
+    };
+    // Flushes what is left AND writes the chunked terminator. Without it the client
+    // waits on a body that never ends.
+    body.end() catch |err| switch (err) {
+        error.WriteFailed => return body.err orelse error.WriteFailed,
         else => return err,
     };
 }
