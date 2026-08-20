@@ -68,22 +68,21 @@ fn handleBootstrap(co: *Service, req: *http.Request, res: *http.Response) !void 
     var buf: [64 * 1024]u8 = undefined;
     var body = try res.stream(&buf);
 
-    var aw: std.Io.Writer.Allocating = .init(req.arena);
-    try msgpack.encode(changelog_mod.BootstrapHeader{ .position = stream.position }, &aw.writer);
-    try body.interface.writeAll(aw.written());
+    // Encoded straight into the body: the writer buffers, so nothing needs the
+    // whole value contiguous first. Chunk boundaries fall wherever the buffer
+    // fills rather than on value edges, which the client does not care about --
+    // it decodes from a stream reader, not a chunk at a time.
+    try msgpack.encode(changelog_mod.BootstrapHeader{ .position = stream.position }, &body.interface);
 
     while (try stream.next()) |changes| {
         if (changes.len == 0) continue; // the empty array is the terminator, nothing else
-        aw.clearRetainingCapacity();
-        try msgpack.encode(changes, &aw.writer);
-        try body.interface.writeAll(aw.written());
+        try msgpack.encode(changes, &body.interface);
     }
-    aw.clearRetainingCapacity();
-    try msgpack.encode(@as([]const Change, &.{}), &aw.writer);
-    try body.interface.writeAll(aw.written());
+    try msgpack.encode(@as([]const Change, &.{}), &body.interface);
 
     // Only on the success path: an error above returns without the terminator,
-    // which is exactly the truncation signal the comment above promises.
+    // which is exactly the truncation signal the comment above promises. A value
+    // left half-written by such an error is part of that same truncation.
     try body.end();
 }
 
