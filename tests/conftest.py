@@ -27,10 +27,12 @@ class Server:
     """Runs the fpindex binary as a subprocess against a persistent data dir, so
     restart tests keep their data. One instance per test session."""
 
-    def __init__(self):
+    def __init__(self, legacy_index_name=None):
         self.data_dir = tempfile.mkdtemp(prefix="fpindex-e2e-")
         self.port = _free_port()
         self.legacy_port = _free_port()
+        # None means "do not pass the flag", which is what exercises the default.
+        self.legacy_index_name = legacy_index_name
         self.proc = None
 
     def get_url(self):
@@ -38,11 +40,13 @@ class Server:
 
     def start(self):
         assert self.proc is None
-        self.proc = subprocess.Popen(
-            [BINARY, "--dir", self.data_dir, "--host", "127.0.0.1",
-             "--port", str(self.port), "--legacy-port", str(self.legacy_port)],
-        )
+        argv = [BINARY, "--dir", self.data_dir, "--host", "127.0.0.1",
+                "--port", str(self.port), "--legacy-port", str(self.legacy_port)]
+        if self.legacy_index_name is not None:
+            argv += ["--legacy-index-name", self.legacy_index_name]
+        self.proc = subprocess.Popen(argv)
         self.wait_for_healthy()
+        self.wait_for_legacy()
 
     def stop(self, kill=False):
         if self.proc is None:
@@ -73,6 +77,28 @@ class Server:
                 last_err = e
             time.sleep(0.1)
         raise RuntimeError(f"server not healthy after {timeout}s: {last_err}")
+
+    def wait_for_legacy(self, timeout=30):
+        """/_health only answers for the HTTP listener. The legacy port is a
+        separately spawned task, so a test that connects to it straight after
+        start() races the bind -- which is why the first legacy test failed on
+        every run with ConnectionRefusedError."""
+        deadline = time.time() + timeout
+        last_err = None
+        while time.time() < deadline:
+            # Same check wait_for_healthy() makes. A legacy port that cannot bind
+            # takes the process down after /_health has already answered, and
+            # without this we would spend the whole timeout reporting "not up"
+            # for something that is not running at all.
+            if self.proc is not None and self.proc.poll() is not None:
+                raise RuntimeError(f"server exited early with code {self.proc.returncode}")
+            try:
+                socket.create_connection(("127.0.0.1", self.legacy_port), timeout=1).close()
+                return
+            except OSError as e:
+                last_err = e
+            time.sleep(0.1)
+        raise RuntimeError(f"legacy port not up after {timeout}s: {last_err}")
 
     def cleanup(self):
         self.stop()

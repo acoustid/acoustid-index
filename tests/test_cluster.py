@@ -306,3 +306,138 @@ def test_new_node_bootstraps_from_the_feeds_source_stream(tmp_path):
             p.send_signal(signal.SIGKILL)
         for p in procs:
             p.wait()
+
+
+class _ReadOnlyFeed:
+    """A coordinator that refuses writes, the way the production feed does.
+
+    Forwards every read route to a real `--coordinator` process, but answers the
+    write routes with 403. That is exactly acoustid-server's feed: the changelog
+    there is written by the AFTER INSERT trigger on `fingerprint`, and the index
+    is created once out of band, so every write route exists only to be refused.
+
+    A plain `--coordinator` cannot stand in for it, because it happily accepts
+    the create and the bug does not reproduce.
+    """
+
+    REFUSED = (("PUT", "/_index/"), ("DELETE", "/_index/"),
+               ("POST", "/_changelog/"), ("POST", "/_truncate/"))
+
+    def __init__(self, upstream_port):
+        import http.server
+        import threading
+
+        upstream = f"http://127.0.0.1:{upstream_port}"
+        refused = self.REFUSED
+        self.refused_hits = []
+        hits = self.refused_hits
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def _refused(self):
+                return any(self.command == m and self.path.startswith(p)
+                           for m, p in refused)
+
+            def _proxy(self):
+                if self._refused():
+                    hits.append((self.command, self.path))
+                    body = b'{"error":"read-only feed"}'
+                    self.send_response(403)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                n = int(self.headers.get("Content-Length") or 0)
+                payload = self.rfile.read(n) if n else None
+                req = urllib.request.Request(
+                    upstream + self.path, data=payload, method=self.command)
+                try:
+                    with urllib.request.urlopen(req, timeout=30) as r:
+                        body, status = r.read(), r.status
+                except urllib.error.HTTPError as e:
+                    body, status = e.read(), e.code
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            do_GET = do_PUT = do_POST = do_DELETE = _proxy
+
+            def log_message(self, *a):
+                pass
+
+        self.port = _free_port()
+        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", self.port), Handler)
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+
+    @property
+    def url(self):
+        return f"http://127.0.0.1:{self.port}"
+
+    def close(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+
+def _legacy_cmd(port, line, timeout=10):
+    with socket.create_connection(("127.0.0.1", port), timeout=timeout) as s:
+        f = s.makefile("rwb")
+        f.write(line.encode("ascii") + b"\r\n")
+        f.flush()
+        return f.readline().decode("ascii").rstrip("\r\n")
+
+
+def test_legacy_port_starts_on_a_replica_of_a_read_only_feed(tmp_path):
+    """A replica must not try to create its legacy index.
+
+    Regression: `listen` called createIndex unconditionally. On a replica that
+    dispatches to the replicated path before the local "already exists" check,
+    so it became a PUT to the feed; against a feed that refuses writes it is a
+    403 and the process exits before binding the legacy port.
+
+    Without the fix this fails at `_wait_legacy`: the port never opens.
+    """
+    if not os.path.exists(BINARY):
+        subprocess.run(["zig", "build"], cwd=REPO_ROOT, check=True)
+
+    co, replica, legacy_port = _free_port(), _free_port(), _free_port()
+    procs, feed = [], None
+    try:
+        procs.append(subprocess.Popen([BINARY, "--coordinator", "--port", str(co)]))
+        _wait(co, "/_changelog/x/1?after=0&max=1&timeout_ms=50")
+
+        feed = _ReadOnlyFeed(co)
+        procs.append(subprocess.Popen([
+            BINARY, "--port", str(replica), "--dir", str(tmp_path / "r1"),
+            "--coordinator-url", feed.url,
+            "--legacy-port", str(legacy_port)]))
+        _wait(replica, "/_health")
+
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            assert procs[-1].poll() is None, (
+                f"replica exited {procs[-1].returncode} instead of serving the "
+                f"legacy port; refused writes seen: {feed.refused_hits}")
+            try:
+                socket.create_connection(("127.0.0.1", legacy_port), timeout=1).close()
+                break
+            except OSError:
+                time.sleep(0.1)
+        else:
+            raise AssertionError(
+                f"legacy port never opened; refused writes: {feed.refused_hits}")
+
+        assert _legacy_cmd(legacy_port, "echo hello") == "OK hello"
+        assert feed.refused_hits == [], (
+            f"replica sent writes to a read-only feed: {feed.refused_hits}")
+    finally:
+        for p in procs:
+            p.send_signal(signal.SIGKILL)
+        for p in procs:
+            p.wait()
+        if feed is not None:
+            feed.close()

@@ -11,14 +11,33 @@ const Change = @import("change.zig").Change;
 const Metadata = @import("Metadata.zig");
 const log = std.log.scoped(.legacy);
 
-const index_name = "main";
+const default_index_name = "main";
 const read_buf_size = 256 * 1024; // also the max line length
 const write_buf_size = 64 * 1024;
 
-/// Accept loop. Ensures the "main" index exists, then serves connections until
+/// Accept loop. Ensures the index exists, then serves connections until
 /// cancelled (shutdown cancels the connection group).
-pub fn listen(mi: *MultiIndex, addr: zio.net.IpAddress, read_only: bool) !void {
-    _ = try mi.createIndex(index_name, .{});
+///
+/// The name was fixed at "main" because that is what the C++ server exposed and
+/// what the clients still ask for. It has to be selectable to put the legacy
+/// port in front of an index that already exists under another name: the
+/// production data is served as "acoustid", and creating an empty "main"
+/// beside it would answer every legacy search with a miss rather than an error,
+/// which is the failure that looks like working software.
+pub fn listen(mi: *MultiIndex, addr: zio.net.IpAddress, index_name: []const u8, read_only: bool) !void {
+    // Only a standalone node creates on demand. On a replica the coordinator owns
+    // index lifecycle, and `createIndex` is a WRITE there: MultiIndex dispatches to
+    // the replicated path BEFORE its local "already exists, idempotent" check, so
+    // this reaches the feed even when the index is already open locally. A feed
+    // that refuses writes -- the production one does, deliberately, because the
+    // changelog is written by the fingerprint trigger -- answers 403 and the
+    // listener dies before it binds.
+    //
+    // `read_only` is already the "this node replicates" signal, used just below to
+    // reject client writes. Applying it here too is the whole fix.
+    if (!read_only) {
+        _ = try mi.createIndex(index_name, .{});
+    }
 
     // reuse_address sets SO_REUSEADDR + SO_REUSEPORT (zio), so the port rebinds
     // promptly after a restart.
@@ -32,13 +51,16 @@ pub fn listen(mi: *MultiIndex, addr: zio.net.IpAddress, read_only: bool) !void {
     while (true) {
         const stream = try server.accept(.{});
         errdefer stream.close();
-        try group.spawn(handleConnection, .{ mi, stream, read_only });
+        try group.spawn(handleConnection, .{ mi, stream, index_name, read_only });
     }
 }
 
 const Session = struct {
     alloc: std.mem.Allocator,
     read_only: bool = false, // replica: reject writes, allow searches
+    // Which index this connection talks to. On the Session rather than passed
+    // down because every handler already has one.
+    index_name: []const u8 = default_index_name,
 
     // Ephemeral, per-connection tuning (C++ Session attributes).
     max_results: u32 = 500,
@@ -70,7 +92,7 @@ const Session = struct {
 
 const Response = union(enum) { ok: []const u8, err: []const u8 };
 
-fn handleConnection(mi: *MultiIndex, stream: zio.net.Stream, read_only: bool) void {
+fn handleConnection(mi: *MultiIndex, stream: zio.net.Stream, index_name: []const u8, read_only: bool) void {
     defer stream.close();
     defer stream.shutdown(.both) catch {};
 
@@ -86,6 +108,7 @@ fn handleConnection(mi: *MultiIndex, stream: zio.net.Stream, read_only: bool) vo
     var session = Session{
         .alloc = alloc,
         .read_only = read_only,
+        .index_name = index_name,
         .attrs = Metadata.initOwned(alloc),
         .txn_arena = std.heap.ArenaAllocator.init(alloc),
     };
@@ -189,7 +212,7 @@ fn search(mi: *MultiIndex, session: *Session, arena: std.mem.Allocator, args: []
         error.InvalidFingerprint => return .{ .err = "invalid fingerprint" },
         else => return err,
     };
-    const resp = mi.search(arena, index_name, .{
+    const resp = mi.search(arena, session.index_name, .{
         .query = hashes,
         .limit = session.max_results,
         .timeout = session.timeout_ms,
@@ -225,7 +248,7 @@ fn insert(session: *Session, args: [][]const u8) !Response {
 fn commit(mi: *MultiIndex, session: *Session, arena: std.mem.Allocator) !Response {
     if (!session.in_txn) return .{ .err = "not in transaction" };
     if (session.changes.items.len > 0 or session.attrs.count() > 0) {
-        _ = mi.update(arena, index_name, .{
+        _ = mi.update(arena, session.index_name, .{
             .changes = session.changes.items,
             .metadata = if (session.attrs.count() > 0) session.attrs else null,
         }) catch |err| switch (err) {
@@ -244,7 +267,7 @@ fn getAttribute(mi: *MultiIndex, session: *Session, arena: std.mem.Allocator, ar
         return .{ .ok = try std.fmt.allocPrint(arena, "{d}", .{ptr.*}) };
     }
     // Index attribute -> committed metadata (empty if unset).
-    const info = mi.getIndexInfo(arena, index_name) catch |err| switch (err) {
+    const info = mi.getIndexInfo(arena, session.index_name) catch |err| switch (err) {
         error.Canceled => return err,
         else => return .{ .ok = "" },
     };

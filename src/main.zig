@@ -47,6 +47,11 @@ const Config = struct {
     checkpoint_age_ms: u64 = 60_000,
     // Legacy line-protocol listener; 0 disables it.
     legacy_port: u16 = 0,
+    // Which index the legacy port serves. "main" is what the C++ server used and
+    // what the clients still ask for, but the data may live under another name:
+    // production is "acoustid". Pointing the legacy port at the wrong index does
+    // not fail, it creates an empty one and answers every search with a miss.
+    legacy_index_name: []const u8 = "main",
     // Max file-segment loads in flight across all indexes at startup; 0 = no limit.
     load_concurrency: usize = 0,
     // Run as the changelog coordinator (serves append/read) instead of an index.
@@ -157,7 +162,7 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
 
     if (config.legacy_port != 0) {
         const legacy_addr = try zio.net.IpAddress.parseIp4(config.host, config.legacy_port);
-        var legacy_task = try zio.spawn(legacy.listen, .{ &multi_index, legacy_addr, config.coordinator_url != null });
+        var legacy_task = try zio.spawn(legacy.listen, .{ &multi_index, legacy_addr, config.legacy_index_name, config.coordinator_url != null });
         defer legacy_task.cancel();
 
         const result = try zio.select(.{ .http = &http_task, .legacy = &legacy_task, .sigint = &sigint, .sigterm = &sigterm });
@@ -245,6 +250,8 @@ fn parseArgs(args: std.process.Args) !Config {
             config.checkpoint_age_ms = try std.fmt.parseInt(u64, it.next() orelse return error.MissingArgument, 10);
         } else if (std.mem.eql(u8, arg, "--legacy-port")) {
             config.legacy_port = try std.fmt.parseInt(u16, it.next() orelse return error.MissingArgument, 10);
+        } else if (std.mem.eql(u8, arg, "--legacy-index-name")) {
+            config.legacy_index_name = it.next() orelse return error.MissingArgument;
         } else if (std.mem.eql(u8, arg, "--load-concurrency")) {
             config.load_concurrency = try std.fmt.parseInt(usize, it.next() orelse return error.MissingArgument, 10);
         } else if (std.mem.eql(u8, arg, "--coordinator")) {
