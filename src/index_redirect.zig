@@ -62,12 +62,7 @@ pub fn read(dir: zio.Dir, allocator: std.mem.Allocator) !IndexRedirect {
 }
 
 /// Atomically replace the redirect (temp + rename).
-pub fn write(dir: zio.Dir, allocator: std.mem.Allocator, redirect: IndexRedirect) !void {
-    var w = std.Io.Writer.Allocating.init(allocator);
-    defer w.deinit();
-    try msgpack.encode(redirect, &w.writer);
-    const bytes = w.written();
-
+pub fn write(dir: zio.Dir, redirect: IndexRedirect) !void {
     const file = try dir.createFile(redirect_tmp, .{ .truncate = true });
     {
         errdefer {
@@ -78,10 +73,13 @@ pub fn write(dir: zio.Dir, allocator: std.mem.Allocator, redirect: IndexRedirect
                 log.warn("failed to remove temp redirect file: {}", .{err});
             };
         }
-        var written: usize = 0;
-        while (written < bytes.len) {
-            written += try file.write(bytes[written..], written);
-        }
+        var buf: [4096]u8 = undefined;
+        var fw = file.writer(&buf);
+        msgpack.encode(redirect, &fw.interface) catch |err| switch (err) {
+            error.WriteFailed => return fw.err orelse error.Unexpected,
+            else => |e| return e,
+        };
+        fw.interface.flush() catch return fw.err orelse error.Unexpected;
         try file.sync(.{});
     }
     file.close();
@@ -118,7 +116,7 @@ test "write/read round-trip" {
         cwd.deleteDir(dir_path) catch {};
     }
 
-    try write(dir, testing.allocator, .{ .name = "test.index", .generation = 123, .deleted = false });
+    try write(dir, .{ .name = "test.index", .generation = 123, .deleted = false });
     const r = try read(dir, testing.allocator);
     defer testing.allocator.free(r.name);
     try testing.expectEqualStrings("test.index", r.name);

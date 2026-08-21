@@ -554,8 +554,8 @@ fn installNewLineage(self: *Self, name: []const u8, generation: u64) !*IndexRef 
 
 // Write the redirect and open (creating) the generation's v<gen> data dir. The
 // returned dir has its own fd, so the caller may close name_dir afterward.
-fn createLineageDir(self: *Self, name_dir: zio.Dir, name: []const u8, generation: u64) !zio.Dir {
-    try index_redirect.write(name_dir, self.allocator, .{ .name = name, .generation = generation, .deleted = false });
+fn createLineageDir(_: *Self, name_dir: zio.Dir, name: []const u8, generation: u64) !zio.Dir {
+    try index_redirect.write(name_dir, .{ .name = name, .generation = generation, .deleted = false });
     var buf: [index_redirect.max_data_dir_len]u8 = undefined;
     const dd = (index_redirect.IndexRedirect{ .name = name, .generation = generation }).dataDir(&buf);
     return openOrCreateDir(name_dir, dd);
@@ -872,7 +872,7 @@ fn deleteIndexReplicated(self: *Self, repl: *Replicator, name: []const u8, reque
 fn markDeleted(self: *Self, name: []const u8, generation: u64) !void {
     const name_dir = try self.dir.openDir(name, .{ .iterate = true });
     defer name_dir.close();
-    try index_redirect.write(name_dir, self.allocator, .{ .name = name, .generation = generation, .deleted = true });
+    try index_redirect.write(name_dir, .{ .name = name, .generation = generation, .deleted = true });
     var buf: [index_redirect.max_data_dir_len]u8 = undefined;
     const dd = (index_redirect.IndexRedirect{ .name = name, .generation = generation }).dataDir(&buf);
     deleteDirTree(self.allocator, name_dir, dd) catch |err| {
