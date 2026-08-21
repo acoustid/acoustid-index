@@ -44,6 +44,12 @@ def test_unknown_command(legacy):
     assert legacy.cmd("frobnicate x").startswith("ERR ")
 
 
+def test_quit_acknowledges_and_closes_connection(legacy):
+    # v2022 accepted every command beginning with "quit", then closed.
+    assert legacy.cmd("quit now") == "OK "
+    assert legacy.f.readline() == b""
+
+
 def test_invalid_fingerprint(legacy):
     assert legacy.cmd("search notanumber").startswith("ERR ")
 
@@ -67,6 +73,17 @@ def test_insert_search_commit(legacy):
     # 1001 matches all three (score 3); 1002 matches 11000,12000 (score 2); desc.
     assert legacy.cmd("search 11000,12000,13000") == "OK 1001:3 1002:2"
     assert legacy.cmd("search 11000,12000,19000") == "OK 1002:3 1001:2"
+
+
+def test_top_score_percent_rounds_cutoff_like_v2022(legacy):
+    assert legacy.cmd("begin") == "OK "
+    assert legacy.cmd("insert 3001 31001,31002,31003") == "OK "
+    assert legacy.cmd("insert 3002 31001") == "OK "
+    assert legacy.cmd("commit") == "OK "
+
+    # v2022 rounds 3 * 50% to 2, excluding the score-1 result.
+    assert legacy.cmd("set top_score_percent 50") == "OK "
+    assert legacy.cmd("search 31001,31002,31003") == "OK 3001:3"
 
 
 def test_rollback_discards(legacy):
