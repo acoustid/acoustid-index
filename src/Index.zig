@@ -986,7 +986,7 @@ fn writeManifestFor(self: *Self, file: []const FileRef) !void {
     const infos = try self.allocator.alloc(SegmentInfo, file.len);
     defer self.allocator.free(infos);
     for (file, 0..) |seg, i| infos[i] = seg.value.info;
-    try manifest.write(self.data_dir, self.allocator, infos);
+    try manifest.write(self.data_dir, infos);
 }
 
 fn cleanupTestDir(cwd: zio.Dir, path: []const u8) void {
