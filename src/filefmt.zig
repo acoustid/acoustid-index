@@ -266,10 +266,13 @@ pub fn readSegment(dir: zio.Dir, info: SegmentInfo, segment: *FileSegment) !void
     if (footer.checksum != crc.final()) return error.ChecksumMismatch;
 }
 
+/// Remove a segment file. Both callers are cleanup after a failed write, so the
+/// unlink is uncancelable: a cancellation that skipped it would orphan the file
+/// with nothing left to retry it.
 pub fn deleteSegmentFile(dir: zio.Dir, info: SegmentInfo) !void {
     var name_buf: [max_file_name_size]u8 = undefined;
     const name = buildSegmentFileName(&name_buf, info);
-    try dir.deleteFile(name);
+    try dir.deleteFileUncancelable(name);
 }
 
 test "segment round-trip: write, read, search" {

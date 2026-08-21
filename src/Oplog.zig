@@ -312,12 +312,20 @@ pub fn truncate(self: *Self, commit_id: u64) !void {
     if (keep_from > 0) keep_from -= 1;
 
     var deleted: usize = 0;
+    // A cancel stops the loop like any other failure, but must not skip the
+    // bookkeeping below: the files already unlinked have to leave `self.files`
+    // either way. Reported after the list is fixed up.
+    var canceled = false;
     while (deleted < keep_from) : (deleted += 1) {
         const start = self.files.items[deleted];
         if (self.current_file != null and start == self.current_start) break; // never delete the open file
         var name_buf: [file_name_len]u8 = undefined;
         const name = buildName(&name_buf, start);
         self.dir.deleteFile(name) catch |err| {
+            if (err == error.Canceled) {
+                canceled = true;
+                break;
+            }
             if (err != error.FileNotFound) {
                 log.warn("failed to delete oplog file {s}: {}", .{ name, err });
                 break;
@@ -330,4 +338,5 @@ pub fn truncate(self: *Self, commit_id: u64) !void {
         self.files.shrinkRetainingCapacity(remaining);
         log.info("truncated {d} oplog files below commit {d}", .{ deleted, commit_id });
     }
+    if (canceled) return error.Canceled;
 }

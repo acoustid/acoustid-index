@@ -615,7 +615,10 @@ pub fn bootstrapLineage(self: *Self, name: []const u8, generation: u64, reader: 
 
     const name_dir = try self.dir.openDir(name, .{ .iterate = true });
     defer name_dir.close();
-    const redirect = index_redirect.read(name_dir, self.allocator) catch return error.IndexNotFound;
+    const redirect = index_redirect.read(name_dir, self.allocator) catch |err| switch (err) {
+        error.Canceled => return error.Canceled,
+        else => return error.IndexNotFound,
+    };
     defer self.allocator.free(redirect.name);
     if (redirect.deleted or redirect.generation != generation) return error.IndexGenerationMismatch;
 
@@ -683,7 +686,10 @@ fn disarmTransferDeadline(transfer_deadline: ?*zio.AutoCancel) !void {
 pub fn bootstrapLineageFromSource(self: *Self, name: []const u8, generation: u64, stream: *BootstrapStream, transfer_deadline: ?*zio.AutoCancel) !u64 {
     const name_dir = try self.dir.openDir(name, .{ .iterate = true });
     defer name_dir.close();
-    const redirect = index_redirect.read(name_dir, self.allocator) catch return error.IndexNotFound;
+    const redirect = index_redirect.read(name_dir, self.allocator) catch |err| switch (err) {
+        error.Canceled => return error.Canceled,
+        else => return error.IndexNotFound,
+    };
     defer self.allocator.free(redirect.name);
     if (redirect.deleted or redirect.generation != generation) return error.IndexGenerationMismatch;
 
@@ -841,9 +847,17 @@ fn dropIndex(self: *Self, name: []const u8) !DropResult {
     metrics.removeIndex(name);
     // Mark the redirect deleted and drop the generation's data dir; keep
     // data/<name>/ + current so a recreate can bump to the next generation.
-    self.markDeleted(name, gen) catch |err| {
-        log.warn("failed to mark index '{s}' deleted: {}", .{ name, err });
-    };
+    //
+    // Shielded: the index is already out of the map, so the on-disk state has to
+    // catch up regardless of a shutdown cancel. Swallowing the error unshielded
+    // would also consume the task's pending cancellation.
+    {
+        zio.beginShield();
+        defer zio.endShield();
+        self.markDeleted(name, gen) catch |err| {
+            log.warn("failed to mark index '{s}' deleted: {}", .{ name, err });
+        };
+    }
     return .dropped;
 }
 

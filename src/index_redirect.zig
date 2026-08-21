@@ -67,9 +67,7 @@ pub fn write(dir: zio.Dir, redirect: IndexRedirect) !void {
     {
         errdefer {
             file.close();
-            zio.beginShield();
-            defer zio.endShield();
-            dir.deleteFile(redirect_tmp) catch |err| {
+            dir.deleteFileUncancelable(redirect_tmp) catch |err| {
                 log.warn("failed to remove temp redirect file: {}", .{err});
             };
         }

@@ -71,6 +71,10 @@ pub fn resolve(self: Self, arena: std.mem.Allocator) ![]const []const u8 {
     var out: std.ArrayListUnmanaged([]const u8) = .empty;
     for (self.urls) |url| {
         self.expandUrl(arena, url, &out) catch |err| {
+            // A shutdown is not a resolution failure: resolution suspends, so
+            // swallowing the cancel here would both hide it and consume it,
+            // leaving the caller unable to observe it later.
+            if (err == error.Canceled) return error.Canceled;
             // One unresolvable name must not hide the peers that did resolve.
             log.warn("peer URL '{s}' did not resolve: {}", .{ url, err });
         };

@@ -852,9 +852,18 @@ fn checkpoint(self: *Self, force: bool) !bool {
     // Transactions up to file_commit_id are now durable in file segments; drop the
     // oplog files entirely below it. (After the manifest commit, so a crash in
     // between just leaves redundant oplog entries that replay skips.)
-    self.oplog.truncate(self.file_commit_id) catch |err| {
-        log.warn("oplog truncate failed: {}", .{err});
-    };
+    //
+    // Shielded: the checkpoint is already committed, so this must run to completion
+    // rather than fail half-way under a shutdown cancel. Swallowing the error
+    // unshielded would also consume the task's pending cancellation and leave the
+    // checkpoint loop unable to observe it at its next suspension point.
+    {
+        zio.beginShield();
+        defer zio.endShield();
+        self.oplog.truncate(self.file_commit_id) catch |err| {
+            log.warn("oplog truncate failed: {}", .{err});
+        };
+    }
 
     metrics.incCheckpoints();
     log.info("checkpointed to file segment {x}-{x} ({} items)", .{ info.commit_id, info.merges, fseg.value.num_items });
@@ -967,10 +976,8 @@ fn mergeToFileSegment(self: *Self, comptime Segment: type, sources: []SharedPtr(
 
     try filefmt.writeSegment(self.data_dir, &merger, self.allocator);
     errdefer {
-        // Shielded so the just-written file is removed even under cancellation
-        // (a cancelled task's I/O is otherwise skipped, orphaning the file).
-        zio.beginShield();
-        defer zio.endShield();
+        // deleteSegmentFile is uncancelable, so the just-written file is removed even
+        // under cancellation (a cancelled task's I/O is otherwise skipped).
         filefmt.deleteSegmentFile(self.data_dir, info) catch |err| {
             log.warn("failed to remove segment file after error: {}", .{err});
         };

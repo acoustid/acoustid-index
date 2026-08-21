@@ -46,9 +46,7 @@ pub fn write(dir: zio.Dir, segments: []const SegmentInfo) !void {
     {
         errdefer {
             file.close();
-            zio.beginShield();
-            defer zio.endShield();
-            dir.deleteFile(manifest_tmp) catch |err| {
+            dir.deleteFileUncancelable(manifest_tmp) catch |err| {
                 log.warn("failed to remove temp manifest file: {}", .{err});
             };
         }

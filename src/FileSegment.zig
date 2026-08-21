@@ -63,7 +63,11 @@ pub fn deinit(self: *Self) void {
     if (self.delete_on_destroy and self.data.len > 0) {
         var buf: [64]u8 = undefined;
         const name = std.fmt.bufPrint(&buf, "{x:0>16}-{x:0>8}.data", .{ self.info.commit_id, self.info.merges }) catch unreachable;
-        self.dir.deleteFile(name) catch |err| {
+        // Uncancelable: deinit has nowhere to report an error, so the unlink has to
+        // run even under cancellation — otherwise a merged-away file is orphaned with
+        // nothing left to retry it, and swallowing the cancel here would consume it
+        // for the whole task.
+        self.dir.deleteFileUncancelable(name) catch |err| {
             if (err != error.FileNotFound) log.warn("failed to delete segment file {s}: {}", .{ name, err });
         };
     }
