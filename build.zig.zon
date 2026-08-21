@@ -11,8 +11,8 @@
             .hash = "zio-0.17.0-xHbVVBnMJwAHQhkjFNfq2sAO_HTUz5F1awWWWX2psSNw",
         },
         .dusty = .{
-            .url = "git+https://github.com/lalinsky/dusty.git#81308672cf34236b2c60cbaac7deb616358d452c",
-            .hash = "dusty-0.1.0-Qdw7Rsf0HAB13L8HBDBsjp-gO5YNJ-grup-0ODXd9Dmo",
+            .url = "git+https://github.com/lalinsky/dusty.git#20fc42646a49d6461915bc069216e9e5dc9f5f1b",
+            .hash = "dusty-0.1.0-Qdw7Rlb9HAAgoTCgNH3-RQiljK-l1avjPmEDEjtdC8FT",
         },
         .msgpack = .{
             .url = "git+https://github.com/lalinsky/msgpack.zig.git#bef66711e678d42feba0e979dd7e6986d5c5ce13",
