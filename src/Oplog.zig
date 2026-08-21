@@ -150,7 +150,11 @@ fn replay(self: *Self, ctx: anytype, handler: anytype) !void {
         var reader = file.reader(&read_buf);
         while (true) {
             _ = arena.reset(.retain_capacity);
-            switch (try readRecord(&reader.interface, arena.allocator())) {
+            const record = readRecord(&reader.interface, arena.allocator()) catch |err| switch (err) {
+                error.ReadFailed => return reader.err orelse error.Unexpected,
+                else => |e| return e,
+            };
+            switch (record) {
                 .record => |txn| {
                     const expected_commit_id = if (count == 0) start else self.last_commit_id + 1;
                     if (txn.id != expected_commit_id) return error.CorruptOplog;
