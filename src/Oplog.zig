@@ -314,7 +314,10 @@ pub fn truncate(self: *Self, commit_id: u64) !void {
         var name_buf: [file_name_len]u8 = undefined;
         const name = buildName(&name_buf, start);
         self.dir.deleteFile(name) catch |err| {
-            if (err != error.FileNotFound) log.warn("failed to delete oplog file {s}: {}", .{ name, err });
+            if (err != error.FileNotFound) {
+                log.warn("failed to delete oplog file {s}: {}", .{ name, err });
+                break;
+            }
         };
     }
     if (deleted > 0) {
