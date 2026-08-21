@@ -41,26 +41,22 @@ pub fn read(dir: zio.Dir, allocator: std.mem.Allocator) ![]SegmentInfo {
 /// Atomically replace the manifest with `segments`. Nothing index-level is stored:
 /// whether the index is upstream-fed is derivable from the segments themselves (any
 /// non-null SegmentInfo.version), so there is no separate flag to keep in sync.
-pub fn write(dir: zio.Dir, allocator: std.mem.Allocator, segments: []const SegmentInfo) !void {
-    var w = std.Io.Writer.Allocating.init(allocator);
-    defer w.deinit();
-    try msgpack.encode(segments, &w.writer);
-    const bytes = w.written();
-
+pub fn write(dir: zio.Dir, segments: []const SegmentInfo) !void {
     const file = try dir.createFile(manifest_tmp, .{ .truncate = true });
     {
         errdefer {
             file.close();
-            zio.beginShield();
-            defer zio.endShield();
-            dir.deleteFile(manifest_tmp) catch |err| {
+            dir.deleteFileUncancelable(manifest_tmp) catch |err| {
                 log.warn("failed to remove temp manifest file: {}", .{err});
             };
         }
-        var written: usize = 0;
-        while (written < bytes.len) {
-            written += try file.write(bytes[written..], written);
-        }
+        var buf: [4096]u8 = undefined;
+        var fw = file.writer(&buf);
+        msgpack.encode(segments, &fw.interface) catch |err| switch (err) {
+            error.WriteFailed => return fw.err orelse error.Unexpected,
+            else => |e| return e,
+        };
+        fw.interface.flush() catch return fw.err orelse error.Unexpected;
         try file.sync(.{});
     }
     file.close();

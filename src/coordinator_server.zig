@@ -68,22 +68,20 @@ fn handleBootstrap(co: *Service, req: *http.Request, res: *http.Response) !void 
     var buf: [64 * 1024]u8 = undefined;
     var body = try res.stream(&buf);
 
-    // Encoded straight into the body: the writer buffers, so nothing needs the
-    // whole value contiguous first. Chunk boundaries fall wherever the buffer
-    // fills rather than on value edges, which the client does not care about --
-    // it decodes from a stream reader, not a chunk at a time.
-    try msgpack.encode(changelog_mod.BootstrapHeader{ .position = stream.position }, &body.interface);
-
-    while (try stream.next()) |changes| {
-        if (changes.len == 0) continue; // the empty array is the terminator, nothing else
-        try msgpack.encode(changes, &body.interface);
-    }
-    try msgpack.encode(@as([]const Change, &.{}), &body.interface);
-
-    // Only on the success path: an error above returns without the terminator,
-    // which is exactly the truncation signal the comment above promises. A value
-    // left half-written by such an error is part of that same truncation.
+    writeBootstrapBody(&body.interface, &stream) catch |err| switch (err) {
+        error.WriteFailed => return body.err orelse error.Unexpected,
+        else => |e| return e,
+    };
     try body.end();
+}
+
+fn writeBootstrapBody(w: *std.Io.Writer, stream: *changelog_mod.BootstrapStream) !void {
+    try msgpack.encode(changelog_mod.BootstrapHeader{ .position = stream.position }, w);
+    while (try stream.next()) |changes| {
+        if (changes.len == 0) continue;
+        try msgpack.encode(changes, w);
+    }
+    try msgpack.encode(@as([]const Change, &.{}), w);
 }
 
 fn handleTruncate(co: *Service, req: *http.Request, res: *http.Response) !void {
@@ -158,7 +156,10 @@ fn queryInt(req: *http.Request, name: []const u8) ?u64 {
 
 fn respond(value: anytype, res: *http.Response) !void {
     var body = res.writer();
-    try msgpack.encode(value, &body.interface);
+    msgpack.encode(value, &body.interface) catch |err| switch (err) {
+        error.WriteFailed => return body.err orelse error.Unexpected,
+        else => |e| return e,
+    };
     try body.end();
     try res.header("Content-Type", comptime http.ContentType.msgpack.toContentType());
 }

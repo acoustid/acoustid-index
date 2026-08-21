@@ -93,7 +93,7 @@ pub fn restoreInto(dir: zio.Dir, r: *std.Io.Reader, arena: std.mem.Allocator, ex
 
     const infos = try arena.alloc(SegmentInfo, header.segments.len);
     for (header.segments, 0..) |seg, i| infos[i] = seg.info;
-    try manifest.write(dir, arena, infos);
+    try manifest.write(dir, infos);
 
     const scratch = try arena.alloc(u8, 128 * 1024);
     for (header.segments) |seg| {

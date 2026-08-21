@@ -554,8 +554,8 @@ fn installNewLineage(self: *Self, name: []const u8, generation: u64) !*IndexRef 
 
 // Write the redirect and open (creating) the generation's v<gen> data dir. The
 // returned dir has its own fd, so the caller may close name_dir afterward.
-fn createLineageDir(self: *Self, name_dir: zio.Dir, name: []const u8, generation: u64) !zio.Dir {
-    try index_redirect.write(name_dir, self.allocator, .{ .name = name, .generation = generation, .deleted = false });
+fn createLineageDir(_: *Self, name_dir: zio.Dir, name: []const u8, generation: u64) !zio.Dir {
+    try index_redirect.write(name_dir, .{ .name = name, .generation = generation, .deleted = false });
     var buf: [index_redirect.max_data_dir_len]u8 = undefined;
     const dd = (index_redirect.IndexRedirect{ .name = name, .generation = generation }).dataDir(&buf);
     return openOrCreateDir(name_dir, dd);
@@ -615,7 +615,10 @@ pub fn bootstrapLineage(self: *Self, name: []const u8, generation: u64, reader: 
 
     const name_dir = try self.dir.openDir(name, .{ .iterate = true });
     defer name_dir.close();
-    const redirect = index_redirect.read(name_dir, self.allocator) catch return error.IndexNotFound;
+    const redirect = index_redirect.read(name_dir, self.allocator) catch |err| switch (err) {
+        error.Canceled => return error.Canceled,
+        else => return error.IndexNotFound,
+    };
     defer self.allocator.free(redirect.name);
     if (redirect.deleted or redirect.generation != generation) return error.IndexGenerationMismatch;
 
@@ -683,7 +686,10 @@ fn disarmTransferDeadline(transfer_deadline: ?*zio.AutoCancel) !void {
 pub fn bootstrapLineageFromSource(self: *Self, name: []const u8, generation: u64, stream: *BootstrapStream, transfer_deadline: ?*zio.AutoCancel) !u64 {
     const name_dir = try self.dir.openDir(name, .{ .iterate = true });
     defer name_dir.close();
-    const redirect = index_redirect.read(name_dir, self.allocator) catch return error.IndexNotFound;
+    const redirect = index_redirect.read(name_dir, self.allocator) catch |err| switch (err) {
+        error.Canceled => return error.Canceled,
+        else => return error.IndexNotFound,
+    };
     defer self.allocator.free(redirect.name);
     if (redirect.deleted or redirect.generation != generation) return error.IndexGenerationMismatch;
 
@@ -841,9 +847,17 @@ fn dropIndex(self: *Self, name: []const u8) !DropResult {
     metrics.removeIndex(name);
     // Mark the redirect deleted and drop the generation's data dir; keep
     // data/<name>/ + current so a recreate can bump to the next generation.
-    self.markDeleted(name, gen) catch |err| {
-        log.warn("failed to mark index '{s}' deleted: {}", .{ name, err });
-    };
+    //
+    // Shielded: the index is already out of the map, so the on-disk state has to
+    // catch up regardless of a shutdown cancel. Swallowing the error unshielded
+    // would also consume the task's pending cancellation.
+    {
+        zio.beginShield();
+        defer zio.endShield();
+        self.markDeleted(name, gen) catch |err| {
+            log.warn("failed to mark index '{s}' deleted: {}", .{ name, err });
+        };
+    }
     return .dropped;
 }
 
@@ -872,7 +886,7 @@ fn deleteIndexReplicated(self: *Self, repl: *Replicator, name: []const u8, reque
 fn markDeleted(self: *Self, name: []const u8, generation: u64) !void {
     const name_dir = try self.dir.openDir(name, .{ .iterate = true });
     defer name_dir.close();
-    try index_redirect.write(name_dir, self.allocator, .{ .name = name, .generation = generation, .deleted = true });
+    try index_redirect.write(name_dir, .{ .name = name, .generation = generation, .deleted = true });
     var buf: [index_redirect.max_data_dir_len]u8 = undefined;
     const dd = (index_redirect.IndexRedirect{ .name = name, .generation = generation }).dataDir(&buf);
     deleteDirTree(self.allocator, name_dir, dd) catch |err| {

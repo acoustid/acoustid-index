@@ -8,10 +8,6 @@
 //                 by one empty block (num_items == 0) for SIMD read padding
 //   6. Block index - little-endian u32 max_hash per block
 //   7. Footer   - msgpack: magic, num_items, num_blocks, checksum
-//   8. Footer size - little-endian u32
-//
-// Written whole from an in-memory buffer via zio.File (atomic temp+rename), and
-// read whole into an aligned heap buffer (mlock'd anonymous memory comes later).
 
 const std = @import("std");
 const zio = @import("zio");
@@ -86,12 +82,10 @@ pub const SegmentFileFooter = struct {
     }
 };
 
-const WriteBlocksResult = struct {
-    footer: SegmentFileFooter,
-    max_hashes: []u32,
-};
-
-fn writeBlocks(seg_reader: anytype, writer: *std.Io.Writer, min_doc_id: u32, comptime block_size: u32, allocator: std.mem.Allocator) !WriteBlocksResult {
+/// Write the block section followed by the block index (one u32 max hash per
+/// block). `allocator` only backs the block index, which cannot be emitted
+/// until every block has been encoded.
+fn writeBlocks(seg_reader: anytype, writer: *std.Io.Writer, min_doc_id: u32, comptime block_size: u32, allocator: std.mem.Allocator) !SegmentFileFooter {
     var encoder = BlockEncoder.init();
     var items_buffer: [block.MAX_ITEMS_PER_BLOCK]Item = undefined;
     var items_in_buffer: usize = 0;
@@ -100,7 +94,7 @@ fn writeBlocks(seg_reader: anytype, writer: *std.Io.Writer, min_doc_id: u32, com
     var crc = std.hash.crc.Crc64Xz.init();
     var block_data: [block_size]u8 = undefined;
     var max_hashes: std.ArrayListUnmanaged(u32) = .empty;
-    errdefer max_hashes.deinit(allocator);
+    defer max_hashes.deinit(allocator);
 
     while (true) {
         while (items_in_buffer < items_buffer.len) {
@@ -126,14 +120,15 @@ fn writeBlocks(seg_reader: anytype, writer: *std.Io.Writer, min_doc_id: u32, com
         items_in_buffer = remaining;
     }
 
+    for (max_hashes.items) |max_hash| {
+        try writer.writeInt(u32, max_hash, .little);
+    }
+
     return .{
-        .footer = .{
-            .magic = footer_magic,
-            .num_items = num_items,
-            .num_blocks = num_blocks,
-            .checksum = crc.final(),
-        },
-        .max_hashes = try max_hashes.toOwnedSlice(allocator),
+        .magic = footer_magic,
+        .num_items = num_items,
+        .num_blocks = num_blocks,
+        .checksum = crc.final(),
     };
 }
 
@@ -147,62 +142,49 @@ pub fn writeSegment(dir: zio.Dir, seg_reader: anytype, allocator: std.mem.Alloca
     var name_buf: [max_file_name_size]u8 = undefined;
     const name = buildSegmentFileName(&name_buf, segment.info);
 
-    var w = std.Io.Writer.Allocating.init(allocator);
-    defer w.deinit();
-    const writer = &w.writer;
-    const packer = msgpack.packer(writer);
+    var file = try dir.createAtomicFile(name, .{});
+    defer file.deinit();
 
-    try packer.write(SegmentFileHeader{
-        .magic = header_magic,
-        .info = segment.info,
-        .has_metadata = true,
-        .has_docs = true,
-        .block_size = block_size,
-    });
-    try packer.writeMap(segment.metadata.entries);
-    try packer.writeMap(segment.docs);
+    var buf: [block_size * 16]u8 = undefined;
+    var fw = file.file.writer(&buf);
+    const w = &fw.interface;
+    const packer = msgpack.packer(w);
 
-    const rem = w.written().len % block_size;
-    if (rem != 0) try writer.splatByteAll(0, block_size - rem);
+    // std.Io.Writer collapses every failure into error.WriteFailed; we hold the
+    // FileWriter, so translate it back to the real errno rather than leak it.
+    const result = write: {
+        packer.write(SegmentFileHeader{
+            .magic = header_magic,
+            .info = segment.info,
+            .has_metadata = true,
+            .has_docs = true,
+            .block_size = block_size,
+        }) catch |err| break :write err;
+        packer.writeMap(segment.metadata.entries) catch |err| break :write err;
+        packer.writeMap(segment.docs) catch |err| break :write err;
 
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    const result = try writeBlocks(seg_reader, writer, segment.min_doc_id, block_size, arena.allocator());
+        // Pad to a block boundary. logicalPos() is the true file offset; the
+        // buffered length is not, since a drain writes the buffer plus whatever
+        // overflowed it and so leaves fw.position at an arbitrary place.
+        const rem = fw.logicalPos() % block_size;
+        if (rem != 0) w.splatByteAll(0, block_size - rem) catch |err| break :write err;
 
-    for (result.max_hashes) |max_hash| {
-        try writer.writeInt(u32, max_hash, .little);
-    }
+        const footer = writeBlocks(seg_reader, w, segment.min_doc_id, block_size, allocator) catch |err| break :write err;
+        packer.write(footer) catch |err| break :write err;
 
-    const footer_start = w.written().len;
-    try packer.write(result.footer);
-    const footer_size: u32 = @intCast(w.written().len - footer_start);
-    try writer.writeInt(u32, footer_size, .little);
+        w.flush() catch |err| break :write err;
+        break :write footer;
+    };
 
-    const bytes = w.written();
+    const footer = result catch |err| switch (err) {
+        error.WriteFailed => return fw.err orelse error.Unexpected,
+        else => |e| return e,
+    };
 
-    var tmp_buf: [max_file_name_size + 4]u8 = undefined;
-    const tmp_name = std.fmt.bufPrint(&tmp_buf, "{s}.tmp", .{name}) catch unreachable;
+    try file.file.sync(.{});
+    try file.replace();
 
-    const file = try dir.createFile(tmp_name, .{ .truncate = true });
-    {
-        errdefer {
-            file.close();
-            zio.beginShield();
-            defer zio.endShield();
-            dir.deleteFile(tmp_name) catch |err| {
-                log.warn("failed to remove temp segment file: {}", .{err});
-            };
-        }
-        var written: usize = 0;
-        while (written < bytes.len) {
-            written += try file.write(bytes[written..], written);
-        }
-        try file.sync(.{});
-    }
-    file.close();
-    try dir.rename(tmp_name, dir, name);
-
-    log.info("wrote segment {s} ({} blocks, {} items)", .{ name, result.footer.num_blocks, result.footer.num_items });
+    log.info("wrote segment {s} ({} blocks, {} items)", .{ name, footer.num_blocks, footer.num_items });
 }
 
 /// Read the segment file for `info` from `dir` into `segment` (heap-resident).
@@ -284,10 +266,13 @@ pub fn readSegment(dir: zio.Dir, info: SegmentInfo, segment: *FileSegment) !void
     if (footer.checksum != crc.final()) return error.ChecksumMismatch;
 }
 
+/// Remove a segment file. Both callers are cleanup after a failed write, so the
+/// unlink is uncancelable: a cancellation that skipped it would orphan the file
+/// with nothing left to retry it.
 pub fn deleteSegmentFile(dir: zio.Dir, info: SegmentInfo) !void {
     var name_buf: [max_file_name_size]u8 = undefined;
     const name = buildSegmentFileName(&name_buf, info);
-    try dir.deleteFile(name);
+    try dir.deleteFileUncancelable(name);
 }
 
 test "segment round-trip: write, read, search" {

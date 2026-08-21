@@ -7,12 +7,12 @@
         // Pinned to each dep's main commit so the build is self-contained for CI
         // and fresh clones. Re-pin after landing changes upstream.
         .zio = .{
-            .url = "git+https://github.com/lalinsky/zio.git#a9f14d2deb2184e01a76b97ddd31b2353754c7b0",
-            .hash = "zio-0.15.0-xHbVVNRRIQDKB7pq7ZCKnjNGaT0GLtA7r6G3Tr30W3b5",
+            .url = "git+https://github.com/lalinsky/zio.git#78bff089d6a163aa3f00492956840bd3bc80e1c1",
+            .hash = "zio-0.17.0-xHbVVBnMJwAHQhkjFNfq2sAO_HTUz5F1awWWWX2psSNw",
         },
         .dusty = .{
-            .url = "git+https://github.com/lalinsky/dusty.git#81308672cf34236b2c60cbaac7deb616358d452c",
-            .hash = "dusty-0.1.0-Qdw7Rsf0HAB13L8HBDBsjp-gO5YNJ-grup-0ODXd9Dmo",
+            .url = "git+https://github.com/lalinsky/dusty.git#20fc42646a49d6461915bc069216e9e5dc9f5f1b",
+            .hash = "dusty-0.1.0-Qdw7Rlb9HAAgoTCgNH3-RQiljK-l1avjPmEDEjtdC8FT",
         },
         .msgpack = .{
             .url = "git+https://github.com/lalinsky/msgpack.zig.git#bef66711e678d42feba0e979dd7e6986d5c5ce13",
