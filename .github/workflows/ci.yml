@@ -58,8 +58,15 @@ jobs:
         with:
           version: 0.16.0
 
+      # -Dcpu pins the ISA. Without it the build targets the runner's native
+      # CPU, so the published binary carries whatever extensions GitHub's
+      # machine happened to have -- v26.8.0 shipped AVX-512 and died with
+      # SIGILL, before any logging, on every host without it. x86_64_v3 is
+      # AVX2/FMA/BMI2, i.e. Haswell and newer, which is the oldest hardware we
+      # support. `baseline` is not an option: it fails to compile in
+      # streamvbyte.zig.
       - name: Build release binary
-        run: zig build --release=fast --summary all
+        run: zig build --release=fast -Dcpu=x86_64_v3 --summary all
 
       - name: Log in to the Container registry
         if: github.event_name != 'pull_request'
