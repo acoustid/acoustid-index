@@ -135,7 +135,10 @@ fn respond(value: anytype, req: *http.Request, res: *http.Response) !void {
         .json => try res.json(value, .{}),
         .msgpack => {
             var body = res.writer();
-            try msgpack.encode(value, &body.interface);
+            msgpack.encode(value, &body.interface) catch |err| switch (err) {
+                error.WriteFailed => return body.err orelse error.Unexpected,
+                else => |e| return e,
+            };
             try body.end();
             try res.header("Content-Type", comptime http.ContentType.msgpack.toContentType());
         },
@@ -163,7 +166,10 @@ fn optionalBody(comptime T: type, req: *http.Request, default: T) !T {
 
 fn handleMetrics(ctx: *ServerContext, _: *http.Request, res: *http.Response) !void {
     var body = res.writer();
-    try ctx.mi.writeMetrics(&body.interface);
+    ctx.mi.writeMetrics(&body.interface) catch |err| switch (err) {
+        error.WriteFailed => return body.err orelse error.Unexpected,
+        else => |e| return e,
+    };
     try body.end();
     try res.header("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
 }
@@ -292,13 +298,8 @@ fn handleSnapshotExport(ctx: *ServerContext, req: *http.Request, res: *http.Resp
     var buf: [64 * 1024]u8 = undefined;
     var body = try res.stream(&buf);
     snapshot.writeSnapshot(&body.interface, req.arena, src.reader.snapshot.value, src.generation) catch |err| switch (err) {
-        error.WriteFailed => return body.err orelse error.WriteFailed,
-        else => return err,
+        error.WriteFailed => return body.err orelse error.Unexpected,
+        else => |e| return e,
     };
-    // Flushes what is left AND writes the chunked terminator. Without it the client
-    // waits on a body that never ends.
-    body.end() catch |err| switch (err) {
-        error.WriteFailed => return body.err orelse error.WriteFailed,
-        else => return err,
-    };
+    try body.end();
 }
