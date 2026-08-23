@@ -273,11 +273,27 @@ fn getAttribute(mi: *MultiIndex, session: *Session, arena: std.mem.Allocator, ar
     if (session.sessionAttr(name)) |ptr| {
         return .{ .ok = try std.fmt.allocPrint(arena, "{d}", .{ptr.*}) };
     }
-    // Index attribute -> committed metadata (empty if unset).
     const info = mi.getIndexInfo(arena, session.index_name) catch |err| switch (err) {
         error.Canceled => return err,
         else => return .{ .ok = "" },
     };
+
+    // The old C++ index derived this one rather than storing it: IndexWriter
+    // tracked the highest id passed to addDocument and persisted it as an
+    // attribute on commit, so a client could always read it back. Here the
+    // equivalent is a segment stat, and nothing writes the metadata key -- a
+    // replica fed by the changelog never goes through a writer that could.
+    //
+    // Answering it from metadata alone returns empty, and acoustid-server reads
+    // that as `int(... or "0")`. In FingerprintSearcher that zero becomes the
+    // lower bound of its "fingerprints newer than the index" fallback scan, so
+    // an empty answer silently turns a bounded tail scan into a full scan of
+    // the fingerprint table.
+    if (std.mem.eql(u8, name, "max_document_id")) {
+        return .{ .ok = try std.fmt.allocPrint(arena, "{d}", .{info.stats.max_doc_id}) };
+    }
+
+    // Index attribute -> committed metadata (empty if unset).
     return .{ .ok = info.metadata.get(name) orelse "" };
 }
 

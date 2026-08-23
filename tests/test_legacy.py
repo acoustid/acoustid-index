@@ -172,3 +172,44 @@ def test_legacy_search_reads_the_named_index(named_server, session):
 def test_the_default_is_still_main(server, session):
     """The unflagged server is what every existing deployment runs."""
     assert session.get(f"{server.get_url()}/main").status_code == 200
+
+
+def test_max_document_id_reflects_the_index(legacy):
+    """`get attribute max_document_id` must answer from index state.
+
+    The old C++ index derived this: IndexWriter tracked the highest id it was
+    given and persisted it on commit. Nothing writes that metadata key here, and
+    a replica fed by the changelog never goes through a writer that could, so
+    answering from metadata alone returns empty.
+
+    Empty is not a harmless "unknown". acoustid-server reads it as
+    `int(... or "0")` and uses it as the lower bound of the fallback scan in
+    FingerprintSearcher, so zero turns a bounded tail scan into a full scan of
+    the fingerprint table.
+    """
+    # The index is shared across tests in this file, so this asserts on change
+    # rather than on absolute values -- but it must be a NUMBER, never empty,
+    # which is the whole bug.
+    before = legacy.cmd("get attribute max_document_id")
+    assert before.startswith("OK ")
+    assert before[3:].strip().isdigit(), before
+
+    high = 900456
+    assert legacy.cmd("begin") == "OK "
+    assert legacy.cmd("insert 900123 901,902,903") == "OK "
+    assert legacy.cmd(f"insert {high} 904,905,906") == "OK "
+    assert legacy.cmd("commit") == "OK "
+
+    assert legacy.cmd("get attribute max_document_id") == f"OK {high}"
+
+    # Highest ever, not most recent: inserting a lower id must not lower it.
+    assert legacy.cmd("begin") == "OK "
+    assert legacy.cmd("insert 900200 907,908,909") == "OK "
+    assert legacy.cmd("commit") == "OK "
+    assert legacy.cmd("get attribute max_document_id") == f"OK {high}"
+
+    # A real metadata attribute still comes from metadata.
+    assert legacy.cmd("begin") == "OK "
+    assert legacy.cmd("set attribute some_other_attr 42") == "OK "
+    assert legacy.cmd("commit") == "OK "
+    assert legacy.cmd("get attribute some_other_attr") == "OK 42"
