@@ -172,3 +172,39 @@ def test_legacy_search_reads_the_named_index(named_server, session):
 def test_the_default_is_still_main(server, session):
     """The unflagged server is what every existing deployment runs."""
     assert session.get(f"{server.get_url()}/main").status_code == 200
+
+
+def test_max_document_id_reflects_the_index(legacy):
+    """Derived from index state, replicating the old index. Empty is not a
+    harmless "unknown": acoustid-server reads it as `int(... or "0")` and uses
+    it as the lower bound of a fallback scan, so 0 scans the whole table."""
+    # The index is shared across tests in this file, so this asserts on change
+    # rather than on absolute values -- but it must be a NUMBER, never empty,
+    # which is the whole bug.
+    before = legacy.cmd("get attribute max_document_id")
+    assert before.startswith("OK ")
+    assert before[3:].strip().isdigit(), before
+
+    # Derived from the current maximum, not a fixed number: the index is shared,
+    # so a hardcoded id breaks whenever another test happens to insert a bigger
+    # one -- an order dependency that would look like this bug returning.
+    before_max = int(before[3:])
+    high = before_max + 2
+    assert legacy.cmd("begin") == "OK "
+    assert legacy.cmd(f"insert {high - 1} 901,902,903") == "OK "
+    assert legacy.cmd(f"insert {high} 904,905,906") == "OK "
+    assert legacy.cmd("commit") == "OK "
+
+    assert legacy.cmd("get attribute max_document_id") == f"OK {high}"
+
+    # Highest ever, not most recent: inserting a lower id must not lower it.
+    assert legacy.cmd("begin") == "OK "
+    assert legacy.cmd(f"insert {high - 2} 907,908,909") == "OK "
+    assert legacy.cmd("commit") == "OK "
+    assert legacy.cmd("get attribute max_document_id") == f"OK {high}"
+
+    # A real metadata attribute still comes from metadata.
+    assert legacy.cmd("begin") == "OK "
+    assert legacy.cmd("set attribute some_other_attr 42") == "OK "
+    assert legacy.cmd("commit") == "OK "
+    assert legacy.cmd("get attribute some_other_attr") == "OK 42"

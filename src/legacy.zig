@@ -273,11 +273,17 @@ fn getAttribute(mi: *MultiIndex, session: *Session, arena: std.mem.Allocator, ar
     if (session.sessionAttr(name)) |ptr| {
         return .{ .ok = try std.fmt.allocPrint(arena, "{d}", .{ptr.*}) };
     }
-    // Index attribute -> committed metadata (empty if unset).
     const info = mi.getIndexInfo(arena, session.index_name) catch |err| switch (err) {
         error.Canceled => return err,
         else => return .{ .ok = "" },
     };
+
+    // Derived, not stored, replicating the old index's behaviour.
+    if (std.mem.eql(u8, name, "max_document_id")) {
+        return .{ .ok = try std.fmt.allocPrint(arena, "{d}", .{info.stats.max_doc_id}) };
+    }
+
+    // Index attribute -> committed metadata (empty if unset).
     return .{ .ok = info.metadata.get(name) orelse "" };
 }
 
