@@ -175,18 +175,9 @@ def test_the_default_is_still_main(server, session):
 
 
 def test_max_document_id_reflects_the_index(legacy):
-    """`get attribute max_document_id` must answer from index state.
-
-    The old C++ index derived this: IndexWriter tracked the highest id it was
-    given and persisted it on commit. Nothing writes that metadata key here, and
-    a replica fed by the changelog never goes through a writer that could, so
-    answering from metadata alone returns empty.
-
-    Empty is not a harmless "unknown". acoustid-server reads it as
-    `int(... or "0")` and uses it as the lower bound of the fallback scan in
-    FingerprintSearcher, so zero turns a bounded tail scan into a full scan of
-    the fingerprint table.
-    """
+    """Derived from index state, replicating the old index. Empty is not a
+    harmless "unknown": acoustid-server reads it as `int(... or "0")` and uses
+    it as the lower bound of a fallback scan, so 0 scans the whole table."""
     # The index is shared across tests in this file, so this asserts on change
     # rather than on absolute values -- but it must be a NUMBER, never empty,
     # which is the whole bug.
