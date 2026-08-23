@@ -1,6 +1,6 @@
 .{
     .name = .fpindex,
-    .version = "26.8.1",
+    .version = "26.8.2",
     .fingerprint = 0x38793b7cf12ed7c9,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
