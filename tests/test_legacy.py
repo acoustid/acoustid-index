@@ -185,9 +185,13 @@ def test_max_document_id_reflects_the_index(legacy):
     assert before.startswith("OK ")
     assert before[3:].strip().isdigit(), before
 
-    high = 900456
+    # Derived from the current maximum, not a fixed number: the index is shared,
+    # so a hardcoded id breaks whenever another test happens to insert a bigger
+    # one -- an order dependency that would look like this bug returning.
+    before_max = int(before[3:])
+    high = before_max + 2
     assert legacy.cmd("begin") == "OK "
-    assert legacy.cmd("insert 900123 901,902,903") == "OK "
+    assert legacy.cmd(f"insert {high - 1} 901,902,903") == "OK "
     assert legacy.cmd(f"insert {high} 904,905,906") == "OK "
     assert legacy.cmd("commit") == "OK "
 
@@ -195,7 +199,7 @@ def test_max_document_id_reflects_the_index(legacy):
 
     # Highest ever, not most recent: inserting a lower id must not lower it.
     assert legacy.cmd("begin") == "OK "
-    assert legacy.cmd("insert 900200 907,908,909") == "OK "
+    assert legacy.cmd(f"insert {high - 2} 907,908,909") == "OK "
     assert legacy.cmd("commit") == "OK "
     assert legacy.cmd("get attribute max_document_id") == f"OK {high}"
 
