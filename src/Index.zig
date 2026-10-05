@@ -23,6 +23,7 @@ const SearchResults = @import("common.zig").SearchResults;
 const metrics = @import("metrics.zig");
 const SharedPtr = @import("shared_ptr.zig").SharedPtr;
 const DocInfo = @import("common.zig").DocInfo;
+const syncDir = @import("common.zig").syncDir;
 const log = std.log.scoped(.index);
 
 const FileRef = SharedPtr(FileSegment);
@@ -267,6 +268,8 @@ pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: us
     errdefer data_dir.close();
     const oplog_dir = try openOrCreateDir(dir, "oplog");
     errdefer oplog_dir.close();
+    // Their entries in `dir` must be durable before anything committed lands in them.
+    try syncDir(dir);
 
     // 1. Load file segments listed in the manifest, concurrently: readSegment is
     //    IO-bound (reads the whole file via async IO), so overlapping the loads
