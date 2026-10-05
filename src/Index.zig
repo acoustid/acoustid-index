@@ -272,6 +272,8 @@ pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: us
     errdefer data_dir.close();
     const oplog_dir = try openOrCreateDir(dir, "oplog");
     errdefer oplog_dir.close();
+    // Their entries in `dir` must be durable before anything committed lands in them.
+    try dir.sync();
 
     // 1. Load file segments listed in the manifest, concurrently: readSegment is
     //    IO-bound (reads the whole file via async IO), so overlapping the loads

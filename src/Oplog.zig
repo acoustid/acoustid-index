@@ -199,6 +199,9 @@ fn getFile(self: *Self, commit_id: u64) !zio.File {
     const name = buildName(&name_buf, commit_id);
     const file = try self.dir.createFile(name, .{ .truncate = true });
     errdefer file.close();
+    // Appends fsync the file, but not its directory entry: without this a crash
+    // could drop the whole new file along with every commit acknowledged in it.
+    if (self.sync) try self.dir.sync();
     try self.files.append(self.allocator, commit_id);
 
     self.current_file = file;
