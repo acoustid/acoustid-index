@@ -27,6 +27,7 @@ const log = std.log.scoped(.oplog);
 const Change = @import("change.zig").Change;
 const Metadata = @import("Metadata.zig");
 const Transaction = @import("change.zig").Transaction;
+const syncDir = @import("common.zig").syncDir;
 
 const Self = @This();
 
@@ -199,6 +200,9 @@ fn getFile(self: *Self, commit_id: u64) !zio.File {
     const name = buildName(&name_buf, commit_id);
     const file = try self.dir.createFile(name, .{ .truncate = true });
     errdefer file.close();
+    // Appends fsync the file, but not its directory entry: without this a crash
+    // could drop the whole new file along with every commit acknowledged in it.
+    if (self.sync) try syncDir(self.dir);
     try self.files.append(self.allocator, commit_id);
 
     self.current_file = file;

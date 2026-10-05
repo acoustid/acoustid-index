@@ -22,6 +22,7 @@ const Coordinator = @import("Coordinator.zig").Coordinator;
 const BootstrapStream = @import("Coordinator.zig").BootstrapStream;
 const index_redirect = @import("index_redirect.zig");
 const deleteDirTree = @import("common.zig").deleteDirTree;
+const syncDir = @import("common.zig").syncDir;
 const SearchResultsPool = @import("common.zig").SearchResultsPool;
 const metrics = @import("metrics.zig");
 const log = std.log.scoped(.multi_index);
@@ -530,6 +531,8 @@ fn installNewLineage(self: *Self, name: []const u8, generation: u64) !*IndexRef 
     const name_dir = try openOrCreateDir(self.dir, name);
     var name_dir_open = true;
     defer if (name_dir_open) name_dir.close();
+    // The index exists on disk only if its dir's entry in the data root does.
+    try syncDir(self.dir);
 
     const data_dir = try self.createLineageDir(name_dir, name, generation);
     name_dir.close();
@@ -552,13 +555,19 @@ fn installNewLineage(self: *Self, name: []const u8, generation: u64) !*IndexRef 
     return ref;
 }
 
-// Write the redirect and open (creating) the generation's v<gen> data dir. The
+// Open (creating) the generation's v<gen> data dir and write the redirect. The
 // returned dir has its own fd, so the caller may close name_dir afterward.
+//
+// Dir first: the redirect write syncs name_dir, which makes the new v<gen> entry
+// durable with it. The other way round, a crash could leave a redirect pointing at
+// a dir that isn't there, and the index would fail to open at startup.
 fn createLineageDir(_: *Self, name_dir: zio.Dir, name: []const u8, generation: u64) !zio.Dir {
-    try index_redirect.write(name_dir, .{ .name = name, .generation = generation, .deleted = false });
     var buf: [index_redirect.max_data_dir_len]u8 = undefined;
     const dd = (index_redirect.IndexRedirect{ .name = name, .generation = generation }).dataDir(&buf);
-    return openOrCreateDir(name_dir, dd);
+    const data_dir = try openOrCreateDir(name_dir, dd);
+    errdefer data_dir.close();
+    try index_redirect.write(name_dir, .{ .name = name, .generation = generation, .deleted = false });
+    return data_dir;
 }
 
 // ---- meta-consumer local ops (replicated mode) ----
@@ -794,9 +803,14 @@ fn installBootstrap(self: *Self, name: []const u8, generation: u64, name_dir: zi
 }
 
 fn swapAndReopen(self: *Self, ref: *IndexRef, name_dir: zio.Dir, vdir_name: []const u8, vdir: zio.Dir) !void {
+    // Drop the stale WAL before the new data goes in, and make that durable first:
+    // replayed on top of the restored segments after a crash, its commits would land
+    // on data they never belonged to. Index.open recreates it empty.
+    deleteDirTree(self.allocator, vdir, "oplog") catch {};
+    try syncDir(vdir);
     deleteDirTree(self.allocator, vdir, "data") catch {};
     try vdir.rename(restore_tmp, vdir, "data");
-    deleteDirTree(self.allocator, vdir, "oplog") catch {}; // Index.open recreates it empty
+    try syncDir(vdir);
 
     const data_dir = try name_dir.openDir(vdir_name, .{ .iterate = true });
     ref.index = Index.open(self.allocator, data_dir, self.checkpoint_threshold, self.sync, null) catch |err| {

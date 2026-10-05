@@ -7,6 +7,7 @@ const std = @import("std");
 const zio = @import("zio");
 const msgpack = @import("msgpack");
 const SegmentInfo = @import("segment.zig").SegmentInfo;
+const syncDir = @import("common.zig").syncDir;
 const log = std.log.scoped(.manifest);
 
 const manifest_file = "manifest";
@@ -61,4 +62,7 @@ pub fn write(dir: zio.Dir, segments: []const SegmentInfo) !void {
     }
     file.close();
     try dir.rename(manifest_tmp, dir, manifest_file);
+    // The manifest is the commit point, so the rename has to be durable. This also
+    // covers the segment files written into the same dir before it.
+    try syncDir(dir);
 }

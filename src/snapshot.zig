@@ -19,6 +19,7 @@ const msgpack = @import("msgpack");
 const filefmt = @import("filefmt.zig");
 const manifest = @import("manifest.zig");
 const SegmentInfo = @import("segment.zig").SegmentInfo;
+const syncDir = @import("common.zig").syncDir;
 const Segments = @import("Index.zig").Segments;
 
 // Bump `format` on an incompatible layout change; new optional fields are backward
@@ -101,6 +102,10 @@ pub fn restoreInto(dir: zio.Dir, r: *std.Io.Reader, arena: std.mem.Allocator, ex
         const name = filefmt.buildSegmentFileName(&name_buf, seg.info);
         try streamToFile(dir, name, r, seg.size, scratch);
     }
+    // The restored dir is swapped in and opened as-is, so its segments must be on
+    // disk before that: a manifest naming a segment a crash emptied would fail the
+    // checksum and keep the index from opening at all.
+    try syncDir(dir);
 }
 
 fn streamToFile(dir: zio.Dir, name: []const u8, r: *std.Io.Reader, size: u64, scratch: []u8) !void {
@@ -116,4 +121,5 @@ fn streamToFile(dir: zio.Dir, name: []const u8, r: *std.Io.Reader, size: u64, sc
         off += want;
         remaining -= want;
     }
+    try file.sync(.{});
 }

@@ -32,6 +32,13 @@ pub fn deleteDirTree(allocator: std.mem.Allocator, parent: zio.Dir, name: []cons
     try parent.deleteDir(name);
 }
 
+// fsync a directory, making the entries created, renamed or removed in it durable.
+// Syncing a file only covers its contents; without this a crash can lose a rename
+// or a newly created file even though the file itself was synced.
+pub fn syncDir(dir: zio.Dir) !void {
+    try zio.File.fromFd(dir.fd).sync(.{});
+}
+
 pub const DocInfo = struct {
     version: u64,
     deleted: bool,

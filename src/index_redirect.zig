@@ -13,6 +13,7 @@ const std = @import("std");
 const zio = @import("zio");
 const msgpack = @import("msgpack");
 const log = std.log.scoped(.index_redirect);
+const syncDir = @import("common.zig").syncDir;
 
 pub const max_data_dir_len = 24; // "v" + up to 20 digits + slack
 
@@ -82,6 +83,7 @@ pub fn write(dir: zio.Dir, redirect: IndexRedirect) !void {
     }
     file.close();
     try dir.rename(redirect_tmp, dir, redirect_file);
+    try syncDir(dir);
 }
 
 // ---- tests ----
