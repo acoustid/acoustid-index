@@ -337,7 +337,8 @@ fn openBootstrapImpl(ptr: *anyopaque, index_name: []const u8, generation: u64) a
     };
     errdefer ctx.arena.deinit();
     errdefer ctx.client.deinit();
-    ctx.resp = try ctx.client.fetch(url, .{ .method = .get });
+    // Streamed: unbuffered and outside the client timeout, like the snapshot fetch.
+    ctx.resp = try ctx.client.fetch(url, .{ .method = .get, .stream = true });
     errdefer ctx.resp.deinit();
     if (ctx.resp.status() != .ok) return statusToError(ctx.resp.status());
 

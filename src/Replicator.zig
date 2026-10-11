@@ -397,7 +397,8 @@ fn fetchFromInner(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: pe
     var client = http.Client.init(self.allocator, self.io orelse return error.NoIo, .{});
     defer client.deinit();
 
-    var resp = try client.fetch(url, .{ .method = .get });
+    // Streamed: unbuffered and outside the client timeout; `deadline` bounds it.
+    var resp = try client.fetch(url, .{ .method = .get, .stream = true });
     defer resp.deinit();
     if (resp.status() != .ok) return error.SnapshotFetchFailed;
 
