@@ -293,6 +293,10 @@ fn handleSnapshotExport(ctx: *ServerContext, req: *http.Request, res: *http.Resp
     var src = try ctx.mi.acquireSnapshot(indexName(req));
     defer src.reader.deinit();
 
+    // A whole index takes longer than the server's request timeout; the receiver
+    // bounds the transfer with its bootstrap deadline.
+    req.setTimeout(.none);
+
     try res.header("Content-Type", "application/octet-stream");
 
     var buf: [64 * 1024]u8 = undefined;

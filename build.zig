@@ -30,7 +30,7 @@ pub fn build(b: *std.Build) void {
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run_cmd.addArgs(args);
+    run_cmd.addPassthruArgs();
     const run_step = b.step("run", "Run the server");
     run_step.dependOn(&run_cmd.step);
 
@@ -48,7 +48,7 @@ pub fn build(b: *std.Build) void {
     const run_e2e = b.addSystemCommand(&.{ "python3", "-m", "pytest", "-v", "tests/" });
     run_e2e.step.dependOn(b.getInstallStep());
     run_e2e.has_side_effects = true;
-    if (b.args) |args| run_e2e.addArgs(args);
+    run_e2e.addPassthruArgs();
     const e2e_step = b.step("e2e-tests", "Run integration tests (pytest)");
     e2e_step.dependOn(&run_e2e.step);
 }

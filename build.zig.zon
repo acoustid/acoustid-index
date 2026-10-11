@@ -2,25 +2,25 @@
     .name = .fpindex,
     .version = "26.8.2",
     .fingerprint = 0x38793b7cf12ed7c9,
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{
         // Pinned to each dep's main commit so the build is self-contained for CI
         // and fresh clones. Re-pin after landing changes upstream.
         .zio = .{
-            .url = "git+https://github.com/lalinsky/zio.git#78bff089d6a163aa3f00492956840bd3bc80e1c1",
-            .hash = "zio-0.17.0-xHbVVBnMJwAHQhkjFNfq2sAO_HTUz5F1awWWWX2psSNw",
+            .url = "git+https://github.com/lalinsky/zio.git#d15034f1a4d9ddaa42829aae8f7e02d37cd1093a",
+            .hash = "zio-0.19.0-xHbVVOh_LAARremJ6LB0458m2qh22szKGX2l175yUu90",
         },
         .dusty = .{
-            .url = "git+https://github.com/lalinsky/dusty.git#20fc42646a49d6461915bc069216e9e5dc9f5f1b",
-            .hash = "dusty-0.1.0-Qdw7Rlb9HAAgoTCgNH3-RQiljK-l1avjPmEDEjtdC8FT",
+            .url = "git+https://github.com/lalinsky/dusty.git#9014a53e04a33e1539b7e08225474d86b37c2938",
+            .hash = "dusty-0.4.0-Qdw7RlxnIwD-iVcoP24nHhckB9I0nYYk8r9B5PrECpiY",
         },
         .msgpack = .{
-            .url = "git+https://github.com/lalinsky/msgpack.zig.git#bef66711e678d42feba0e979dd7e6986d5c5ce13",
-            .hash = "msgpack-0.7.0-ZOu9PLr5AQAA8D-J8UdE_EFy2bJVUtP0mzBY6aUAEoCV",
+            .url = "git+https://github.com/lalinsky/msgpack.zig.git#cab2baec27b8948d72e99fccad3c86e45f55145e",
+            .hash = "msgpack-0.9.0-ZOu9PPapAgBZeODlz-HPcf5hskyiOzhr3GILSD8CZIsO",
         },
         .metrics = .{
-            .url = "https://github.com/karlseguin/metrics.zig/archive/6de29b83a750a06c438d268543e0e3c3c1b309da.tar.gz",
-            .hash = "metrics-0.0.0-W7G4eIegAQD4XxA9Co7Atbw59u_2zvxYf406AZuoAHPM",
+            .url = "https://github.com/karlseguin/metrics.zig/archive/3676413b54c8b36c3aca2c22500aaf065ff2b45d.tar.gz",
+            .hash = "metrics-0.0.0-W7G4eIqtAQDVZUfnac9O7sSc12T4Mf4E0wVrbQMJzAPu",
         },
     },
     .paths = .{

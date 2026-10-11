@@ -392,17 +392,20 @@ fn fetchFrom(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: peers_m
 fn fetchFromInner(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: peers_mod.Donor, deadline: *zio.AutoCancel) !u64 {
     const url = try std.fmt.allocPrint(arena, "{s}/{s}/_snapshot", .{ donor.base_url, c.name });
 
-    // A client per fetch: dusty's connection pool has no locking, and two indexes can
-    // bootstrap concurrently. Same reason peers.zig builds one per probe.
+    // A client per fetch: a bootstrap is one long transfer, so a shared client would
+    // have no connection to reuse.
     var client = http.Client.init(self.allocator, self.io orelse return error.NoIo, .{});
     defer client.deinit();
 
-    var resp = try client.fetch(url, .{ .method = .get });
+    // Streamed: unbuffered and outside the client timeout; `deadline` bounds it.
+    var resp = try client.fetch(url, .{ .method = .get, .stream = true });
     defer resp.deinit();
     if (resp.status() != .ok) return error.SnapshotFetchFailed;
 
     log.info("bootstrapping '{s}' gen {d} from {s} (watermark {d})", .{ c.name, c.generation, donor.base_url, donor.file_version });
-    return self.mi.bootstrapLineage(c.name, c.generation, resp.reader(), deadline);
+    var body_buf: [1024]u8 = undefined;
+    var body = try resp.reader(&body_buf);
+    return self.mi.bootstrapLineage(c.name, c.generation, &body.interface, deadline);
 }
 
 fn consumeLoop(c: *Consumer, start_version: u64) zio.Cancelable!void {

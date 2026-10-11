@@ -21,7 +21,7 @@ const registerRoutes = @import("server.zig").registerRoutes;
 // allocator (malloc) otherwise — malloc scales better than a mutex-guarded GPA
 // under many threads.
 const RootAllocator = struct {
-    const use_debug = builtin.mode == .Debug;
+    const use_debug = builtin.mode == .debug;
     gpa: if (use_debug) std.heap.DebugAllocator(.{}) else void,
 
     fn init() RootAllocator {
@@ -143,8 +143,12 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
         std.log.info("replicating from coordinator {s}", .{config.coordinator_url.?});
     }
 
+    const listeners = [_]http.Listener{.{ .address = .{ .ip = try std.Io.net.IpAddress.parse(config.host, config.port) } }};
+    var http_config = server_config;
+    http_config.listeners = &listeners;
+
     var server_context = ServerContext{ .mi = &multi_index };
-    var server = Server.init(allocator, io, server_config, &server_context);
+    var server = Server.init(allocator, io, http_config, &server_context);
     defer server.deinit();
 
     registerRoutes(&server);
@@ -154,10 +158,9 @@ fn runServer(allocator: std.mem.Allocator, rt: *zio.Runtime, config: Config) !vo
     var sigterm = try zio.Signal.init(.terminate);
     defer sigterm.deinit();
 
-    const addr: http.Address = .{ .ip = try std.Io.net.IpAddress.parse(config.host, config.port) };
     std.log.info("fpindex-ng listening on http://{s}:{d} (dir={s})", .{ config.host, config.port, config.dir });
 
-    var http_task = try zio.spawn(Server.listen, .{ &server, addr });
+    var http_task = try zio.spawn(Server.run, .{&server});
     defer http_task.cancel();
 
     if (config.legacy_port != 0) {
@@ -208,7 +211,11 @@ fn runCoordinator(allocator: std.mem.Allocator, io: std.Io, config: Config) !voi
     defer mc.deinit();
     var co = coordinator_server.Service{ .coordinator = mc.coordinator() };
 
-    var server = coordinator_server.Server.init(allocator, io, server_config, &co);
+    const listeners = [_]http.Listener{.{ .address = .{ .ip = try std.Io.net.IpAddress.parse(config.host, config.port) } }};
+    var http_config = server_config;
+    http_config.listeners = &listeners;
+
+    var server = coordinator_server.Server.init(allocator, io, http_config, &co);
     defer server.deinit();
     coordinator_server.registerRoutes(&server);
 
@@ -217,10 +224,9 @@ fn runCoordinator(allocator: std.mem.Allocator, io: std.Io, config: Config) !voi
     var sigterm = try zio.Signal.init(.terminate);
     defer sigterm.deinit();
 
-    const addr: http.Address = .{ .ip = try std.Io.net.IpAddress.parse(config.host, config.port) };
     std.log.info("fpindex coordinator listening on http://{s}:{d}", .{ config.host, config.port });
 
-    var http_task = try zio.spawn(coordinator_server.Server.listen, .{ &server, addr });
+    var http_task = try zio.spawn(coordinator_server.Server.run, .{&server});
     defer http_task.cancel();
 
     const result = try zio.select(.{ .http = &http_task, .sigint = &sigint, .sigterm = &sigterm });
