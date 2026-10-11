@@ -127,7 +127,7 @@ fn readRecord(reader: *std.Io.Reader, arena: std.mem.Allocator) !RecordResult {
         error.EndOfStream => return .torn, // partial payload
         else => return err,
     };
-    if (std.hash.crc.Crc32.hash(payload) != crc) return .torn;
+    if (std.hash.Crc32.hash(payload) != crc) return .torn;
 
     const txn = msgpack.decodeFromSliceLeaky(Transaction, arena, payload) catch return .torn;
     return .{ .record = txn };
@@ -254,7 +254,7 @@ pub fn append(self: *Self, changes: []const Change, options: WriteOptions) !Comm
 
     var header: [record_header_size]u8 = undefined;
     std.mem.writeInt(u32, header[0..4], @intCast(payload.len), .little);
-    std.mem.writeInt(u32, header[4..8], std.hash.crc.Crc32.hash(payload), .little);
+    std.mem.writeInt(u32, header[4..8], std.hash.Crc32.hash(payload), .little);
 
     // getFile may rotate (resetting write_offset), so call it before writing.
     const file = try self.getFile(commit_id);

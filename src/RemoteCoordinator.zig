@@ -274,10 +274,15 @@ fn arenaFor(self: *Self, index_name: []const u8) !*std.heap.ArenaAllocator {
 // done-versus-died distinction: end-of-stream without it means the server died
 // mid-scan, and surfaces as the decode error rather than as a shorter corpus.
 
+// dusty does not export the body reader type, only the method that returns it.
+const BodyReader = @typeInfo(@typeInfo(@TypeOf(http.ClientResponse.reader)).@"fn".return_type.?).error_union.payload;
+
 const BootstrapCtx = struct {
     allocator: std.mem.Allocator,
     client: http.Client,
     resp: http.ClientResponse,
+    body: BodyReader,
+    body_buf: [1024]u8,
     arena: std.heap.ArenaAllocator,
     done: bool = false,
 
@@ -290,7 +295,7 @@ const BootstrapCtx = struct {
         const self: *BootstrapCtx = @ptrCast(@alignCast(ptr));
         if (self.done) return null;
         _ = self.arena.reset(.retain_capacity); // frees the previous batch
-        const batch = try nextBatch(self.arena.allocator(), self.resp.reader());
+        const batch = try nextBatch(self.arena.allocator(), &self.body.interface);
         if (batch == null) self.done = true;
         return batch;
     }
@@ -326,6 +331,8 @@ fn openBootstrapImpl(ptr: *anyopaque, index_name: []const u8, generation: u64) a
         .allocator = self.allocator,
         .client = http.Client.init(self.allocator, self.io, .{}),
         .resp = undefined,
+        .body = undefined,
+        .body_buf = undefined,
         .arena = std.heap.ArenaAllocator.init(self.allocator),
     };
     errdefer ctx.arena.deinit();
@@ -334,9 +341,10 @@ fn openBootstrapImpl(ptr: *anyopaque, index_name: []const u8, generation: u64) a
     errdefer ctx.resp.deinit();
     if (ctx.resp.status() != .ok) return statusToError(ctx.resp.status());
 
-    // The reader points into ctx.resp, so it is only taken now that ctx sits at
-    // its final heap address.
-    const header = try msgpack.decodeLeaky(changelog_mod.BootstrapHeader, ctx.arena.allocator(), ctx.resp.reader());
+    // The reader points into ctx.resp and ctx.body_buf, so it is only taken now
+    // that ctx sits at its final heap address.
+    ctx.body = try ctx.resp.reader(&ctx.body_buf);
+    const header = try msgpack.decodeLeaky(changelog_mod.BootstrapHeader, ctx.arena.allocator(), &ctx.body.interface);
     return .{ .ptr = ctx, .vtable = &BootstrapCtx.stream_vtable, .position = header.position };
 }
 

@@ -402,7 +402,9 @@ fn fetchFromInner(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: pe
     if (resp.status() != .ok) return error.SnapshotFetchFailed;
 
     log.info("bootstrapping '{s}' gen {d} from {s} (watermark {d})", .{ c.name, c.generation, donor.base_url, donor.file_version });
-    return self.mi.bootstrapLineage(c.name, c.generation, resp.reader(), deadline);
+    var body_buf: [1024]u8 = undefined;
+    var body = try resp.reader(&body_buf);
+    return self.mi.bootstrapLineage(c.name, c.generation, &body.interface, deadline);
 }
 
 fn consumeLoop(c: *Consumer, start_version: u64) zio.Cancelable!void {

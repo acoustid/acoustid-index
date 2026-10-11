@@ -91,7 +91,7 @@ fn writeBlocks(seg_reader: anytype, writer: *std.Io.Writer, min_doc_id: u32, com
     var items_in_buffer: usize = 0;
     var num_items: u32 = 0;
     var num_blocks: u32 = 0;
-    var crc = std.hash.crc.Crc64Xz.init();
+    var crc = std.hash.crc.@"CRC-64/XZ".init();
     var block_data: [block_size]u8 = undefined;
     var max_hashes: std.ArrayListUnmanaged(u32) = .empty;
     defer max_hashes.deinit(allocator);
@@ -237,7 +237,7 @@ pub fn readSegment(dir: zio.Dir, info: SegmentInfo, segment: *FileSegment) !void
 
     var num_items: u32 = 0;
     var num_blocks: u32 = 0;
-    var crc = std.hash.crc.Crc64Xz.init();
+    var crc = std.hash.crc.@"CRC-64/XZ".init();
     var ptr = blocks_start;
     while (ptr + block_size <= data.len) {
         const block_data = data[ptr .. ptr + block_size];
