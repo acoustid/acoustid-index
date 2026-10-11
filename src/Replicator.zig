@@ -392,8 +392,8 @@ fn fetchFrom(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: peers_m
 fn fetchFromInner(self: *Self, arena: std.mem.Allocator, c: *Consumer, donor: peers_mod.Donor, deadline: *zio.AutoCancel) !u64 {
     const url = try std.fmt.allocPrint(arena, "{s}/{s}/_snapshot", .{ donor.base_url, c.name });
 
-    // A client per fetch: dusty's connection pool has no locking, and two indexes can
-    // bootstrap concurrently. Same reason peers.zig builds one per probe.
+    // A client per fetch: a bootstrap is one long transfer, so a shared client would
+    // have no connection to reuse.
     var client = http.Client.init(self.allocator, self.io orelse return error.NoIo, .{});
     defer client.deinit();
 
