@@ -139,10 +139,10 @@ pub const Reader = struct {
 pub fn search(self: Self, sorted_hashes: []const u32, results: *SearchResults) !void {
     var prev_block_range_start: usize = 0;
 
-    var block_cache = [_]BlockCacheEntry{.{
+    var block_cache: [MAX_BLOCKS_PER_HASH]BlockCacheEntry = @splat(.{
         .block_no = std.math.maxInt(usize),
         .block_reader = BlockReader.init(self.min_doc_id),
-    }} ** MAX_BLOCKS_PER_HASH;
+    });
 
     for (sorted_hashes) |hash| {
         try zio.maybeYield();

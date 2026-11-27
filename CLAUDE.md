@@ -13,8 +13,8 @@ should not be re-litigated; the why lives in git and PR history.
 
 ## Key decisions
 
-- **Stack**: Zig 0.16 + [zio](../zio) (async runtime, own project) + [dusty](../dusty)
-  (HTTP, own project) + [msgpack.zig](../msgpack.zig). All local path deps for now.
+- **Stack**: Zig 0.17 + [zio](../zio) (async runtime, own project) + [dusty](../dusty)
+  (HTTP, own project) + [msgpack.zig](../msgpack.zig). Pinned by commit in `build.zig.zon`.
 - **No backwards compatibility with the previous implementation.** No v1
   segment/oplog/snapshot readers, no converters. Migration = rebuild nodes from
   the log.

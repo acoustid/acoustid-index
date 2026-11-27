@@ -60,6 +60,10 @@ fn handleBootstrap(co: *Service, req: *http.Request, res: *http.Response) !void 
         return fail(res, .not_found, "no bootstrap stream");
     defer stream.deinit();
 
+    // The corpus takes longer than the server's request timeout; the receiver
+    // bounds the transfer with its bootstrap deadline.
+    req.setTimeout(.none);
+
     // Same wire shape as the PG feed: a msgpack header, then arrays of changes,
     // terminated by an empty array. Chunked, so nothing buffers the whole corpus;
     // a mid-stream failure just breaks the connection, which the client reads as

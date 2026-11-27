@@ -241,8 +241,8 @@ fn probeOne(io: std.Io, allocator: std.mem.Allocator, index_name: []const u8, ti
 fn probeOneFallible(io: std.Io, arena: std.mem.Allocator, index_name: []const u8, p: *Probe) !void {
     const url = try std.fmt.allocPrint(arena, "{s}/{s}/_status", .{ p.base_url, index_name });
 
-    // A client per probe: they run concurrently and dusty's connection pool is not
-    // shared-safe. Same pattern as RemoteCoordinator's per-call clients.
+    // A client per probe, on the probe's own arena: a client shared by concurrent
+    // probes would need a thread-safe allocator, and there is no reuse to gain.
     var client = http.Client.init(arena, io, .{});
     defer client.deinit();
 

@@ -2,25 +2,24 @@
     .name = .fpindex,
     .version = "26.8.2",
     .fingerprint = 0x38793b7cf12ed7c9,
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.1",
     .dependencies = .{
-        // Pinned to each dep's main commit so the build is self-contained for CI
-        // and fresh clones. Re-pin after landing changes upstream.
+        // Pinned to tagged releases. Re-pin with `zig fetch --save=<name> <url>#<tag>`.
         .zio = .{
-            .url = "git+https://github.com/lalinsky/zio.git#78bff089d6a163aa3f00492956840bd3bc80e1c1",
-            .hash = "zio-0.17.0-xHbVVBnMJwAHQhkjFNfq2sAO_HTUz5F1awWWWX2psSNw",
+            .url = "git+https://github.com/lalinsky/zio.git?ref=v0.20.1#c0a6b5877c9bbc71d2d2c0b3374ce7fa61a4ec12",
+            .hash = "zio-0.20.1-xHbVVI0wLwDgE2dXWDCWH0UfCQYEhnBYHs1Td12oAGeR",
         },
         .dusty = .{
-            .url = "git+https://github.com/lalinsky/dusty.git#20fc42646a49d6461915bc069216e9e5dc9f5f1b",
-            .hash = "dusty-0.1.0-Qdw7Rlb9HAAgoTCgNH3-RQiljK-l1avjPmEDEjtdC8FT",
+            .url = "git+https://github.com/lalinsky/dusty.git?ref=v0.6.0#102b0c76eee2ed9c0ea3fff199473a7d731eb258",
+            .hash = "dusty-0.6.0-Qdw7RhVxJgA6uMKSP4-Ll-7uj8fkY7BJQ9VcRFMAFVk0",
         },
         .msgpack = .{
-            .url = "git+https://github.com/lalinsky/msgpack.zig.git#bef66711e678d42feba0e979dd7e6986d5c5ce13",
-            .hash = "msgpack-0.7.0-ZOu9PLr5AQAA8D-J8UdE_EFy2bJVUtP0mzBY6aUAEoCV",
+            .url = "git+https://github.com/lalinsky/msgpack.zig.git?ref=v0.10.0#42fb39c08d859bc24bfc1798a8604ce0635b8a4a",
+            .hash = "msgpack-0.10.0-ZOu9PJ_mAgBPNCyrHsb4Un8aB2-0SGBZR1gWsg7EdV7R",
         },
         .metrics = .{
-            .url = "https://github.com/karlseguin/metrics.zig/archive/6de29b83a750a06c438d268543e0e3c3c1b309da.tar.gz",
-            .hash = "metrics-0.0.0-W7G4eIegAQD4XxA9Co7Atbw59u_2zvxYf406AZuoAHPM",
+            .url = "https://github.com/karlseguin/metrics.zig/archive/3676413b54c8b36c3aca2c22500aaf065ff2b45d.tar.gz",
+            .hash = "metrics-0.0.0-W7G4eIqtAQDVZUfnac9O7sSc12T4Mf4E0wVrbQMJzAPu",
         },
     },
     .paths = .{
