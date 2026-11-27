@@ -10,6 +10,7 @@
 // search survives a concurrent delete.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const zio = @import("zio");
 const api = @import("api.zig");
 const Index = @import("Index.zig");
@@ -65,6 +66,7 @@ sync: bool = true,
 load_concurrency: usize = 0,
 // Set in replicated mode: writes go through the log, a consumer applies them.
 replication: ?*Replicator = null,
+test_fail_swap: if (builtin.is_test) bool else void = if (builtin.is_test) false else {},
 
 pub fn init(allocator: std.mem.Allocator, dir: zio.Dir) Self {
     return .{ .allocator = allocator, .dir = dir, .results_pool = SearchResultsPool.init(allocator) };
@@ -154,7 +156,23 @@ pub fn acquireSnapshot(self: *Self, name: []const u8) !SnapshotSource {
     const index = try self.getIndex(name);
     defer self.releaseIndex(index);
     const ref: *IndexRef = @fieldParentPtr("index", index);
+    // A peer must not seed from a bootstrapping index; refused, it moves on to
+    // its next donor.
+    try self.refuseWhileBootstrapping(name);
     return .{ .reader = try index.acquireReader(), .generation = ref.generation };
+}
+
+// While a bootstrap fills an index (initial seed or below-retention restore), it
+// holds no data or stale data, and anything read from it would be an
+// honest-looking but wrong answer. Refuse with IndexNotReady (503), the same
+// signal the health probe gives, so a caller that skipped the probe still cannot
+// mistake a loading node for a miss. Call after getIndex, so a missing index keeps
+// answering 404 rather than 503. Not used by /_status (peer discovery must find
+// loading nodes) or getIndexInfo (the existence check).
+fn refuseWhileBootstrapping(self: *Self, name: []const u8) !void {
+    if (self.replication) |repl| {
+        if (repl.isBootstrapping(name)) return error.IndexNotReady;
+    }
 }
 
 // Return a borrow. Uncancelable: it runs in defer cleanup and must always
@@ -269,6 +287,10 @@ fn openOneIndexInner(self: *Self, name: []const u8, load_sem: ?*zio.Semaphore, o
     name_dir.close();
     name_dir_open = false;
 
+    // A crash during a bootstrap leaves these behind; none is part of the index.
+    deleteRetired(self.allocator, data_dir) catch {}; // the next bootstrap retries
+    for ([_][]const u8{ restore_tmp, bootstrap_build_tmp }) |n| deleteDirTree(self.allocator, data_dir, n) catch {};
+
     const ref = try self.allocator.create(IndexRef);
     errdefer self.allocator.destroy(ref);
     ref.* = .{ .index = undefined, .generation = redirect.generation };
@@ -288,15 +310,7 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
     const index = try self.getIndex(name);
     defer self.releaseIndex(index);
 
-    // While a bootstrap fills this index (initial seed or below-retention
-    // restore), refuse rather than answer: every result would be an
-    // honest-looking but empty or stale set. IndexNotReady -> 503, the same
-    // signal the health probe gives, so a caller that skipped the probe still
-    // cannot mistake a loading node for a miss. After getIndex, so a missing
-    // index keeps answering 404 rather than 503.
-    if (self.replication) |repl| {
-        if (repl.isBootstrapping(name)) return error.IndexNotReady;
-    }
+    try self.refuseWhileBootstrapping(name);
     metrics.incSearches(name);
 
     const collector = try self.results_pool.acquire(.{
@@ -657,9 +671,9 @@ const bootstrap_build_tmp = "bootstrap.tmp";
 
 // Disarm a bootstrap transfer deadline once the remote stream is fully drained.
 // The deadline exists to bound a wedged transfer; everything after the last byte is
-// bounded local work (flush, rename, drain-and-swap) whose interruption costs the
-// lineage — installBootstrap's failure path drops it from the map, and the consumer
-// then wedges on IndexNotFound. clear() alone is not enough: it only stops a timer
+// bounded local work (flush, rename, drain-and-swap) whose interruption throws the
+// whole transfer away — installBootstrap's failure path leaves the index empty and
+// the consumer starts over. clear() alone is not enough: it only stops a timer
 // that has not fired yet, and one that fired in the instant before leaves a
 // cancellation already pending on this task, which would otherwise surface at the
 // install's first suspension point. checkCancel() surfaces it HERE, where it is
@@ -770,6 +784,18 @@ pub fn bootstrapLineageFromSource(self: *Self, name: []const u8, generation: u64
 }
 
 fn installBootstrap(self: *Self, name: []const u8, generation: u64, name_dir: zio.Dir, vdir_name: []const u8, vdir: zio.Dir) !u64 {
+    // All deleting happens here, outside the manager lock: a retired copy is a
+    // whole index, and deleting it under the lock would stall every index. Clearing
+    // leftovers first means retiring under the lock is a plain rename onto a free
+    // name; if that fails, nothing has been touched yet and the consumer retries.
+    try deleteRetired(self.allocator, vdir);
+    const result = self.installBootstrapLocked(name, generation, name_dir, vdir_name, vdir);
+    // Garbage either way. Startup and the next attempt remove what this misses.
+    deleteRetired(self.allocator, vdir) catch {};
+    return result;
+}
+
+fn installBootstrapLocked(self: *Self, name: []const u8, generation: u64, name_dir: zio.Dir, vdir_name: []const u8, vdir: zio.Dir) !u64 {
     try self.lock.lock();
     defer self.lock.unlock();
 
@@ -786,37 +812,85 @@ fn installBootstrap(self: *Self, name: []const u8, generation: u64, name_dir: zi
         };
     }
 
+    defer {
+        ref.being_deleted = false;
+        ref.released.broadcast();
+    }
     // Close the live index, swap data <- data.restore, drop the stale WAL, reopen.
     ref.index.deinit();
     self.swapAndReopen(ref, name_dir, vdir_name, vdir) catch |err| {
-        // The Index is now deinit'd and unusable; remove it so nothing touches it and
-        // let the meta consumer rebuild the lineage.
-        const kv = self.indexes.fetchRemove(name).?;
-        self.allocator.free(kv.key);
-        self.allocator.destroy(kv.value);
-        metrics.removeIndex(name);
+        // Leave the slot holding an empty index, the same state as a fresh lineage:
+        // the consumer keeps reporting bootstrapping and retries, and a restart
+        // seeds it from scratch. Whatever the swap left in data/ is retired, so bad
+        // donor data cannot crash-loop us; if even an empty index cannot open, the
+        // disk is gone. Shielded: a shutdown cancel must not leave the slot holding
+        // a deinit'd index, nor turn into that panic.
+        zio.beginShield();
+        defer zio.endShield();
+        self.reopenEmpty(ref, name_dir, vdir_name, vdir) catch |e2|
+            std.debug.panic("cannot reopen '{s}' after a failed bootstrap swap ({}): {}", .{ name, err, e2 });
         return err;
     };
-    ref.being_deleted = false;
-    ref.released.broadcast();
     return ref.index.version;
 }
 
+fn reopenEmpty(self: *Self, ref: *IndexRef, name_dir: zio.Dir, vdir_name: []const u8, vdir: zio.Dir) !void {
+    // Not onto *.old: those may hold the previous index, retired by the swap.
+    try retire(vdir, "oplog", oplog_failed);
+    try retire(vdir, "data", data_failed);
+    try vdir.sync();
+    try self.reopen(ref, name_dir, vdir_name);
+}
+
 fn swapAndReopen(self: *Self, ref: *IndexRef, name_dir: zio.Dir, vdir_name: []const u8, vdir: zio.Dir) !void {
-    // Drop the stale WAL before the new data goes in, and make that durable first:
+    // Retire the stale WAL before the new data goes in, and make that durable first:
     // replayed on top of the restored segments after a crash, its commits would land
     // on data they never belonged to. Index.open recreates it empty.
-    deleteDirTree(self.allocator, vdir, "oplog") catch {};
+    try retire(vdir, "oplog", oplog_old);
     try vdir.sync();
-    deleteDirTree(self.allocator, vdir, "data") catch {};
+    try retire(vdir, "data", data_old);
     try vdir.rename(restore_tmp, vdir, "data");
     try vdir.sync();
 
+    if (builtin.is_test and self.test_fail_swap) return error.TestSwapFailed;
+
+    try self.reopen(ref, name_dir, vdir_name);
+}
+
+// Retired by the swap (the previous index) and by the empty-index fallback (what
+// the failed swap left). Distinct names, so neither rename lands on the other.
+const data_old = "data.old";
+const oplog_old = "oplog.old";
+const data_failed = "data.failed";
+const oplog_failed = "oplog.failed";
+const retired_dirs = [_][]const u8{ data_old, oplog_old, data_failed, oplog_failed };
+
+// Move `name` aside with one atomic rename instead of deleting it in place: a crash
+// mid-delete would leave a manifest naming missing segments (or a WAL with a hole),
+// and the index, and with it the whole node, would fail to open. `retired` must be
+// free (see installBootstrap); retired copies are deleted outside the lock.
+fn retire(vdir: zio.Dir, name: []const u8, retired: []const u8) !void {
+    vdir.rename(name, vdir, retired) catch |err| switch (err) {
+        error.FileNotFound => {},
+        else => return err,
+    };
+}
+
+// Delete every retired copy present. Never needed to open the index.
+fn deleteRetired(allocator: std.mem.Allocator, vdir: zio.Dir) !void {
+    for (retired_dirs) |n| deleteDirTree(allocator, vdir, n) catch |err| switch (err) {
+        error.FileNotFound => {},
+        else => return err,
+    };
+}
+
+fn reopen(self: *Self, ref: *IndexRef, name_dir: zio.Dir, vdir_name: []const u8) !void {
     const data_dir = try name_dir.openDir(vdir_name, .{ .iterate = true });
     ref.index = Index.open(self.allocator, data_dir, self.checkpoint_threshold, self.sync, null) catch |err| {
         data_dir.close();
         return err;
     };
+    errdefer ref.index.deinit();
     ref.index.checkpoint_age = self.checkpoint_age;
     try ref.index.start();
 }
@@ -909,6 +983,9 @@ fn markDeleted(self: *Self, name: []const u8, generation: u64) !void {
 }
 
 pub fn getIndexInfo(self: *Self, arena: std.mem.Allocator, name: []const u8) !api.GetIndexInfoResponse {
+    // Not refused while bootstrapping: it doubles as the existence check, and a
+    // just-created index is briefly bootstrapping while its consumer looks for a
+    // seed. The version it reports tells a loading index apart anyway.
     const index = try self.getIndex(name);
     defer self.releaseIndex(index);
 
@@ -931,6 +1008,7 @@ pub fn getFingerprintInfo(self: *Self, arena: std.mem.Allocator, name: []const u
     _ = arena;
     const index = try self.getIndex(name);
     defer self.releaseIndex(index);
+    try self.refuseWhileBootstrapping(name);
 
     var reader = try index.acquireReader();
     defer reader.deinit();
@@ -943,6 +1021,7 @@ pub fn getFingerprintInfo(self: *Self, arena: std.mem.Allocator, name: []const u
 pub fn checkFingerprintExists(self: *Self, name: []const u8, id: u32) !bool {
     const index = try self.getIndex(name);
     defer self.releaseIndex(index);
+    try self.refuseWhileBootstrapping(name);
 
     var reader = try index.acquireReader();
     defer reader.deinit();

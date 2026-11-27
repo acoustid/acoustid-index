@@ -883,6 +883,133 @@ test "bootstrapLineage swaps an index's data from a donor snapshot" {
     try std.testing.expectEqual(@as(usize, 0), (try mi.search(a, "main", .{ .query = &q1 })).results.len);
 }
 
+test "a failed bootstrap swap leaves the index empty, and the next bootstrap fills it" {
+    const Index = @import("Index.zig");
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // A donor snapshot (generation 1) with doc 99 in a file segment.
+    const donor_path = "test_failed_swap_donor";
+    common.deleteDirTree(std.testing.allocator, cwd, donor_path) catch {};
+    try cwd.createDir(donor_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, donor_path) catch {};
+
+    var buf: std.Io.Writer.Allocating = .init(a);
+    var donor_version: u64 = 0;
+    {
+        const ddir = try cwd.openDir(donor_path, .{ .iterate = true });
+        var donor = try Index.open(std.testing.allocator, ddir, 1, true, null); // threshold 1 -> checkpoint
+        defer donor.deinit();
+        _ = try donor.update(&[_]Change{.{ .insert = .{ .id = 99, .hashes = &[_]u32{ 7, 8, 9 } } }}, .{});
+        try donor.runMaintenance();
+        var dr = try donor.acquireReader();
+        defer dr.deinit();
+        donor_version = dr.snapshot.value.version;
+        try snapshot.writeSnapshot(&buf.writer, a, dr.snapshot.value, 1);
+    }
+
+    const main_path = "test_failed_swap_main";
+    common.deleteDirTree(std.testing.allocator, cwd, main_path) catch {};
+    try cwd.createDir(main_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, main_path) catch {};
+    const mdir = try cwd.openDir(main_path, .{ .iterate = true });
+    var mi = MultiIndex.init(std.testing.allocator, mdir);
+    defer mi.deinit();
+    _ = try mi.createIndex("main", .{});
+
+    var q = [_]u32{ 7, 8, 9 };
+
+    // Nothing retired is left behind once a swap is over, failed or not.
+    const vdir = try mdir.openDir("main/v000001", .{ .iterate = true });
+    defer vdir.close();
+    const expectNoLeftovers = struct {
+        fn check(d: zio.Dir) !void {
+            for ([_][]const u8{ "data.old", "oplog.old", "data.failed", "oplog.failed", "data.restore" }) |n|
+                try std.testing.expectError(error.FileNotFound, d.openDir(n, .{}));
+        }
+    }.check;
+
+    // The swap fails after the rename: the index stays, open and empty — the
+    // donor's half-installed data is retired, not served.
+    mi.test_fail_swap = true;
+    var r1 = std.Io.Reader.fixed(buf.written());
+    try std.testing.expectError(error.TestSwapFailed, mi.bootstrapLineage("main", 1, &r1, null));
+    try std.testing.expect(try mi.checkIndexExists("main"));
+    try std.testing.expectEqual(@as(usize, 0), (try mi.search(a, "main", .{ .query = &q })).results.len);
+    try expectNoLeftovers(vdir);
+
+    // A retired copy an earlier cleanup did not get to does not block the retry.
+    try vdir.createDir("data.old", 0o755);
+    {
+        const sub = try vdir.openDir("data.old", .{});
+        defer sub.close();
+        const f = try sub.createFile("junk", .{});
+        f.close();
+    }
+
+    // The retry installs the donor's data.
+    mi.test_fail_swap = false;
+    var r2 = std.Io.Reader.fixed(buf.written());
+    try std.testing.expectEqual(donor_version, try mi.bootstrapLineage("main", 1, &r2, null));
+    const hit = try mi.search(a, "main", .{ .query = &q });
+    try std.testing.expectEqual(@as(usize, 1), hit.results.len);
+    try std.testing.expectEqual(@as(u32, 99), hit.results[0].id);
+    try expectNoLeftovers(vdir);
+}
+
+test "startup removes what a crashed bootstrap left in the lineage dir" {
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_bootstrap_leftovers";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    {
+        var mi = MultiIndex.init(std.testing.allocator, try cwd.openDir(dir_path, .{ .iterate = true }));
+        defer mi.deinit();
+        _ = try mi.createIndex("main", .{});
+        _ = try mi.update(a, "main", .{ .changes = &[_]Change{.{ .insert = .{ .id = 1, .hashes = &.{ 1, 2, 3 } } }} });
+    }
+
+    // What a crash mid-bootstrap leaves: retired copies and transfer staging, each
+    // with something in it.
+    const leftovers = [_][]const u8{ "data.old", "oplog.old", "data.failed", "oplog.failed", "data.restore", "bootstrap.tmp" };
+    const vdir = try cwd.openDir(dir_path ++ "/main/v000001", .{ .iterate = true });
+    defer vdir.close();
+    for (leftovers) |n| {
+        try vdir.createDir(n, 0o755);
+        const sub = try vdir.openDir(n, .{});
+        defer sub.close();
+        const f = try sub.createFile("junk", .{});
+        f.close();
+    }
+
+    var mi = MultiIndex.init(std.testing.allocator, try cwd.openDir(dir_path, .{ .iterate = true }));
+    defer mi.deinit();
+    try mi.open();
+
+    var q = [_]u32{ 1, 2, 3 };
+    const hit = try mi.search(a, "main", .{ .query = &q });
+    try std.testing.expectEqual(@as(usize, 1), hit.results.len);
+    for (leftovers) |n| try std.testing.expectError(error.FileNotFound, vdir.openDir(n, .{}));
+}
+
 test "bootstrapLineageFromSource builds, flushes and swaps in a corpus stream" {
     const common = @import("common.zig");
     const BootstrapStream = coordinator_mod.BootstrapStream;
@@ -1112,13 +1239,14 @@ test "an empty node below a truncated log seeds from the source stream" {
     try std.testing.expectEqual(MultiIndex.IndexHealth.ready, try mi.indexHealth("main"));
 }
 
-// Delegates everything except openBootstrap, which always fails — a feed that
-// declares bootstrap but cannot serve it, freezing an empty consumer in its seed
-// retry loop.
-const StuckBootstrap = struct {
+// Delegates everything except openBootstrap, which `open` answers instead (the
+// call count lets it script a sequence of attempts).
+const BootstrapOverride = struct {
     inner: Coordinator,
+    open: *const fn (self: *BootstrapOverride) anyerror!coordinator_mod.BootstrapStream,
+    calls: usize = 0,
 
-    fn coordinator(self: *StuckBootstrap) Coordinator {
+    fn coordinator(self: *BootstrapOverride) Coordinator {
         return .{ .ptr = self, .vtable = &vtable };
     }
     const vtable: Coordinator.VTable = .{
@@ -1131,33 +1259,41 @@ const StuckBootstrap = struct {
         .openBootstrap = openBootstrapImpl,
     };
     fn appendImpl(ptr: *anyopaque, name: []const u8, generation: u64, changes: []const Change, expected: ?u64) anyerror!u64 {
-        const self: *StuckBootstrap = @ptrCast(@alignCast(ptr));
+        const self: *BootstrapOverride = @ptrCast(@alignCast(ptr));
         return self.inner.append(name, generation, changes, expected);
     }
     fn readImpl(ptr: *anyopaque, name: []const u8, generation: u64, after: u64, out: []Entry, deadline: zio.Timeout) anyerror!usize {
-        const self: *StuckBootstrap = @ptrCast(@alignCast(ptr));
+        const self: *BootstrapOverride = @ptrCast(@alignCast(ptr));
         return self.inner.read(name, generation, after, out, deadline);
     }
     fn createIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!u64 {
-        const self: *StuckBootstrap = @ptrCast(@alignCast(ptr));
+        const self: *BootstrapOverride = @ptrCast(@alignCast(ptr));
         return self.inner.createIndex(name);
     }
     fn deleteIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!u64 {
-        const self: *StuckBootstrap = @ptrCast(@alignCast(ptr));
+        const self: *BootstrapOverride = @ptrCast(@alignCast(ptr));
         return self.inner.deleteIndex(name);
     }
     fn readMetaImpl(ptr: *anyopaque, after: u64, out: []MetaOp, deadline: zio.Timeout) anyerror!usize {
-        const self: *StuckBootstrap = @ptrCast(@alignCast(ptr));
+        const self: *BootstrapOverride = @ptrCast(@alignCast(ptr));
         return self.inner.readMeta(after, out, deadline);
     }
     fn setRetentionFloorImpl(ptr: *anyopaque, name: []const u8, generation: u64, floor: u64) anyerror!void {
-        const self: *StuckBootstrap = @ptrCast(@alignCast(ptr));
+        const self: *BootstrapOverride = @ptrCast(@alignCast(ptr));
         return self.inner.setRetentionFloor(name, generation, floor);
     }
-    fn openBootstrapImpl(_: *anyopaque, _: []const u8, _: u64) anyerror!coordinator_mod.BootstrapStream {
-        return error.CoordinatorError;
+    fn openBootstrapImpl(ptr: *anyopaque, _: []const u8, _: u64) anyerror!coordinator_mod.BootstrapStream {
+        const self: *BootstrapOverride = @ptrCast(@alignCast(ptr));
+        self.calls += 1;
+        return self.open(self);
     }
 };
+
+// A feed that declares bootstrap but cannot serve it, freezing an empty consumer in
+// its seed retry loop.
+fn failBootstrap(_: *BootstrapOverride) anyerror!coordinator_mod.BootstrapStream {
+    return error.CoordinatorError;
+}
 
 test "per-index health reads loading while the initial seed cannot complete" {
     const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
@@ -1179,7 +1315,7 @@ test "per-index health reads loading while the initial seed cannot complete" {
     _ = try cl.coordinator().append("main", gen, &[_]Change{.{ .insert = .{ .id = 1, .hashes = &.{ 1, 2, 3 } } }}, null);
     try cl.setRetentionFloor("main", gen, 1); // replay from 0 impossible; only a bootstrap can seed
 
-    var stuck = StuckBootstrap{ .inner = cl.coordinator() };
+    var stuck = BootstrapOverride{ .inner = cl.coordinator(), .open = failBootstrap };
     var mi = MultiIndex.init(std.testing.allocator, dir);
     defer mi.deinit();
     try mi.startReplication(stuck.coordinator());
@@ -1200,8 +1336,90 @@ test "per-index health reads loading while the initial seed cannot complete" {
     defer arena.deinit();
     var q = [_]u32{ 1, 2, 3 };
     try std.testing.expectError(error.IndexNotReady, mi.search(arena.allocator(), "main", .{ .query = &q }));
+    // And no peer can seed from it.
+    try std.testing.expectError(error.IndexNotReady, mi.acquireSnapshot("main"));
+    // Nor do lookups answer from the empty index.
+    try std.testing.expectError(error.IndexNotReady, mi.getFingerprintInfo(arena.allocator(), "main", 1));
+    try std.testing.expectError(error.IndexNotReady, mi.checkFingerprintExists("main", 1));
 
     try std.testing.expectEqual(MultiIndex.IndexHealth.missing, try mi.indexHealth("nope"));
+}
+
+test "a seed that installs nothing after a failed swap replays into an empty index" {
+    const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{ .executors = .exact(2) });
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_replicator_seed_after_failed_swap";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var cl = MemoryCoordinator.init(std.testing.allocator);
+    defer cl.deinit();
+    const gen = try cl.coordinator().createIndex("main");
+    _ = try cl.coordinator().append("main", gen, &[_]Change{.{ .insert = .{ .id = 1, .hashes = &.{ 1, 2, 3 } } }}, null);
+
+    // The first attempt streams doc 99, and its swap fails after the rename, leaving
+    // it in the data dir. Every later attempt streams nothing, so the seed ends
+    // without an install and the feed is replayed from 0.
+    const Stream = struct {
+        batches: []const []const Change,
+        i: usize = 0,
+        const vt: coordinator_mod.BootstrapStream.VTable = .{ .next = nextImpl, .deinit = deinitImpl };
+        fn nextImpl(ptr: *anyopaque) anyerror!?[]const Change {
+            const self: *@This() = @ptrCast(@alignCast(ptr));
+            if (self.i >= self.batches.len) return null;
+            self.i += 1;
+            return self.batches[self.i - 1];
+        }
+        fn deinitImpl(_: *anyopaque) void {}
+
+        var first: @This() = .{ .batches = &.{&.{.{ .insert = .{ .id = 99, .hashes = &.{ 7, 8, 9 } } }}} };
+        var empty: @This() = .{ .batches = &.{} };
+        fn open(o: *BootstrapOverride) anyerror!coordinator_mod.BootstrapStream {
+            const s = if (o.calls == 1) &first else &empty;
+            s.i = 0;
+            return .{ .ptr = s, .vtable = &vt, .position = 0 };
+        }
+    };
+    var flaky = BootstrapOverride{ .inner = cl.coordinator(), .open = Stream.open };
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    mi.test_fail_swap = true;
+    try mi.startReplication(flaky.coordinator());
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // The replayed feed lands in a usable index.
+    var q = [_]u32{ 1, 2, 3 };
+    var found = false;
+    var i: usize = 0;
+    while (i < 500) : (i += 1) {
+        const r = mi.search(a, "main", .{ .query = &q }) catch {
+            try zio.sleep(.fromMilliseconds(10));
+            continue;
+        };
+        if (r.results.len == 1 and r.results[0].id == 1) {
+            found = true;
+            break;
+        }
+        try zio.sleep(.fromMilliseconds(10));
+    }
+    try std.testing.expect(found);
+    try std.testing.expect(flaky.calls >= 2);
+    try std.testing.expectEqual(MultiIndex.IndexHealth.ready, try mi.indexHealth("main"));
+
+    // The half-done swap was wiped, not reopened.
+    var q99 = [_]u32{ 7, 8, 9 };
+    try std.testing.expectEqual(@as(usize, 0), (try mi.search(a, "main", .{ .query = &q99 })).results.len);
 }
 
 test "per-index health reads loading during a below-retention restore too" {
@@ -1253,6 +1471,9 @@ test "per-index health reads loading during a below-retention restore too" {
     // the index exists, it just cannot answer yet.
     var q = [_]u32{ 10, 20 };
     try std.testing.expectError(error.IndexNotReady, mi.search(a, "main", .{ .query = &q }));
+    // It still holds its old data at a nonzero file_version, so peers would rank it
+    // as a donor; the snapshot must be refused anyway.
+    try std.testing.expectError(error.IndexNotReady, mi.acquireSnapshot("main"));
 }
 
 test "meta consumer drops a local index absent from the meta feed" {
@@ -1358,13 +1579,15 @@ test "read-your-writes times out when the consumer can't apply" {
     var mi = MultiIndex.init(std.testing.allocator, dir);
     defer mi.deinit();
     try mi.startReplication(wedged.coordinator());
-    mi.replication.?.ryw_timeout = .fromMilliseconds(300);
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
 
     _ = try mi.createIndex("main", .{}); // meta path works -> index + consumer exist
+    // Short only from here: the create waits on the meta feed under the same
+    // timeout, and its fsyncs can take longer than this on a slow CI disk.
+    mi.replication.?.ryw_timeout = .fromMilliseconds(300);
 
     // The append is accepted; the consumer can never read it back, so the write's
     // read-your-writes wait times out (-> 503) instead of hanging forever.
@@ -1394,7 +1617,6 @@ test "read-your-writes timeout is not rearmed by other lineages applying" {
     var mi = MultiIndex.init(std.testing.allocator, dir);
     defer mi.deinit();
     try mi.startReplication(wedged.coordinator());
-    mi.replication.?.ryw_timeout = .fromMilliseconds(400);
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -1402,6 +1624,8 @@ test "read-your-writes timeout is not rearmed by other lineages applying" {
 
     _ = try mi.createIndex("good", .{});
     _ = try mi.createIndex("bad", .{});
+    // Short only after the creates (see the test above).
+    mi.replication.?.ryw_timeout = .fromMilliseconds(400);
 
     // Keep "good" applying in the background: markApplied broadcasts the shared cond,
     // which a per-wait timeout would treat as progress and rearm forever. The wait on

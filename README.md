@@ -79,7 +79,7 @@ and `Accept`.
 | `PUT /:index` | Create an index. Body: `{"expect_does_not_exist": bool, "generation": u64}` (both optional). Idempotent. |
 | `DELETE /:index` | Delete an index. Body: `{"expect_exists": bool}` (optional). |
 | `GET /:index` | Index info: version, metadata, stats. |
-| `POST /:index/_search` | Body: `{"query": [u32], "limit": u32, "timeout": u32, "min_score": u32, "score_pct": u32}` (all but `query` optional). Returns `{"results": [{"id", "score"}]}`. Answers `503` while the index is being filled by a bootstrap. |
+| `POST /:index/_search` | Body: `{"query": [u32], "limit": u32, "timeout": u32, "min_score": u32, "score_pct": u32}` (all but `query` optional). Returns `{"results": [{"id", "score"}]}`. |
 | `POST /:index/_update` | Batch write. Body: `{"changes": [{"insert": {"id": u32, "hashes": [u32]}} \| {"delete": {"id": u32}}], "metadata": {..}, "expected_version": u64}`. Returns the new version. |
 | `PUT /:index/:id` | Insert one fingerprint. Body: `{"hashes": [u32]}`. |
 | `DELETE /:index/:id` | Delete one fingerprint. |
@@ -89,11 +89,14 @@ and `Accept`.
 
 Fingerprint IDs are unsigned 32-bit and must be nonzero.
 
+While an index is being filled by a bootstrap, `_search`, `GET`/`HEAD /:index/:id`
+and `_snapshot` answer `503`. `GET /:index` and `_status` stay available.
+
 ### Health probes
 
 Use `GET /_health` for liveness and peer discovery, and `GET /:index/_health` for
 routing search traffic. A node whose index is still being filled by a bootstrap
-answers `503 LOADING` on the index health and `503` on searches; it must stay
+answers `503 LOADING` on the index health and `503` on reads; it must stay
 reachable by peers (liveness green) during that time.
 
 ## Storage
@@ -145,7 +148,7 @@ A node whose index is *empty* seeds itself before its first read, in this order:
 3. plain replay from position 0.
 
 While either bootstrap is filling an index, `GET /:index/_health` answers
-`503 LOADING` and searches are refused with `503`.
+`503 LOADING`, and reads of its data are refused with `503` (see HTTP API).
 
 On an initial fill of a new cluster, start one node first and let it finish
 seeding; the remaining nodes then bootstrap from it as peers.
