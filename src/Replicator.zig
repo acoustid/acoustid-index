@@ -1579,13 +1579,15 @@ test "read-your-writes times out when the consumer can't apply" {
     var mi = MultiIndex.init(std.testing.allocator, dir);
     defer mi.deinit();
     try mi.startReplication(wedged.coordinator());
-    mi.replication.?.ryw_timeout = .fromMilliseconds(300);
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
 
     _ = try mi.createIndex("main", .{}); // meta path works -> index + consumer exist
+    // Short only from here: the create waits on the meta feed under the same
+    // timeout, and its fsyncs can take longer than this on a slow CI disk.
+    mi.replication.?.ryw_timeout = .fromMilliseconds(300);
 
     // The append is accepted; the consumer can never read it back, so the write's
     // read-your-writes wait times out (-> 503) instead of hanging forever.
@@ -1615,7 +1617,6 @@ test "read-your-writes timeout is not rearmed by other lineages applying" {
     var mi = MultiIndex.init(std.testing.allocator, dir);
     defer mi.deinit();
     try mi.startReplication(wedged.coordinator());
-    mi.replication.?.ryw_timeout = .fromMilliseconds(400);
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -1623,6 +1624,8 @@ test "read-your-writes timeout is not rearmed by other lineages applying" {
 
     _ = try mi.createIndex("good", .{});
     _ = try mi.createIndex("bad", .{});
+    // Short only after the creates (see the test above).
+    mi.replication.?.ryw_timeout = .fromMilliseconds(400);
 
     // Keep "good" applying in the background: markApplied broadcasts the shared cond,
     // which a per-wait timeout would treat as progress and rearm forever. The wait on
