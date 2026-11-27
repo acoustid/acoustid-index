@@ -61,4 +61,7 @@ pub fn write(dir: zio.Dir, segments: []const SegmentInfo) !void {
     }
     file.close();
     try dir.rename(manifest_tmp, dir, manifest_file);
+    // The manifest is the commit point, so the rename has to be durable. This also
+    // covers the segment files written into the same dir before it.
+    try dir.sync();
 }

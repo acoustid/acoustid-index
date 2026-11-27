@@ -199,7 +199,20 @@ fn getFile(self: *Self, commit_id: u64) !zio.File {
     const name = buildName(&name_buf, commit_id);
     const file = try self.dir.createFile(name, .{ .truncate = true });
     errdefer file.close();
-    try self.files.append(self.allocator, commit_id);
+    // Appends fsync the file, but not its directory entry: without this a crash
+    // could drop the whole new file along with every commit acknowledged in it.
+    if (self.sync) self.dir.sync() catch |err| {
+        self.markWriteFailed();
+        syncFailed(err);
+        return err;
+    };
+    // A crash between creating a file and its first durable record leaves it empty,
+    // and open() lists it; this append mints that commit again and reuses the name.
+    // Listing it twice would let truncate() delete the live file via the stale entry.
+    const files = self.files.items;
+    if (files.len == 0 or files[files.len - 1] != commit_id) {
+        try self.files.append(self.allocator, commit_id);
+    }
 
     self.current_file = file;
     self.current_start = commit_id;
@@ -268,6 +281,7 @@ pub fn append(self: *Self, changes: []const Change, options: WriteOptions) !Comm
     };
     if (self.sync) file.sync(.{}) catch |err| {
         self.markWriteFailed();
+        syncFailed(err);
         return err;
     };
 
@@ -287,6 +301,17 @@ fn writeAll(self: *Self, file: zio.File, bytes: []const u8) !void {
     }
 }
 
+// A failed fsync on the WAL panics. After a writeback error the kernel may have
+// dropped the dirty pages and marked them clean, so a retry can report success
+// for data that never reached the disk, and there is no way to tell from here
+// what did. Restarting replays the WAL from disk, which is the only way to find
+// out. Cancellation is the exception: the fsync may not have run at all, so the
+// oplog is only marked failed (see markWriteFailed).
+fn syncFailed(err: anyerror) void {
+    if (err == error.Canceled) return;
+    std.debug.panic("oplog: fsync failed: {s}", .{@errorName(err)});
+}
+
 fn markWriteFailed(self: *Self) void {
     self.write_failed = true;
     if (self.current_file) |file| file.close();
@@ -296,6 +321,43 @@ fn markWriteFailed(self: *Self) void {
 
 fn cmpVersion(v: u64, item: u64) std.math.Order {
     return std.math.order(v, item);
+}
+
+test "an empty leftover log file is reused, not listed twice" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_oplog_leftover_file";
+    @import("common.zig").deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer @import("common.zig").deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+    defer dir.close();
+
+    const Ctx = struct {
+        fn apply(_: *@This(), _: Transaction) !void {}
+    };
+    var ctx: Ctx = .{};
+    const ins = [_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{1} } }};
+
+    {
+        var oplog = try open(std.testing.allocator, dir, true, &ctx, Ctx.apply);
+        defer oplog.deinit();
+        _ = try oplog.append(&ins, .{});
+    }
+
+    // A crash between creating the next file and its first durable record leaves
+    // it empty, named after the commit the next append mints again.
+    var name_buf: [file_name_len]u8 = undefined;
+    (try dir.createFile(buildName(&name_buf, 2), .{})).close();
+
+    var oplog = try open(std.testing.allocator, dir, true, &ctx, Ctx.apply);
+    defer oplog.deinit();
+    try std.testing.expectEqualSlices(u64, &.{ 1, 2 }, oplog.files.items);
+    const commit = try oplog.append(&ins, .{});
+    try std.testing.expectEqual(@as(u64, 2), commit.commit_id);
+    try std.testing.expectEqualSlices(u64, &.{ 1, 2 }, oplog.files.items);
 }
 
 test "oplog enforces the replay record limit before append" {

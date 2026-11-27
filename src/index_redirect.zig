@@ -82,6 +82,7 @@ pub fn write(dir: zio.Dir, redirect: IndexRedirect) !void {
     }
     file.close();
     try dir.rename(redirect_tmp, dir, redirect_file);
+    try dir.sync();
 }
 
 // ---- tests ----
