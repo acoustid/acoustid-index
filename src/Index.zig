@@ -6,6 +6,7 @@
 // never pulls a segment out from under an in-flight search.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const zio = @import("zio");
 const Change = @import("change.zig").Change;
 const MetadataEntry = @import("change.zig").MetadataEntry;
@@ -251,6 +252,10 @@ pending_since: ?zio.Timestamp = null,
 // and is safe to call any time — no dependency on the coroutine running.
 wake: zio.ResetEvent = .init,
 maintenance: ?zio.JoinHandle(zio.Cancelable!void) = null,
+
+// Tests only: runs in mergeFiles after the merged segment is built, before the
+// write lock is taken, to interleave writes with an in-flight merge.
+test_merge_hook: if (builtin.is_test) ?*const fn (*Self) anyerror!void else void = if (builtin.is_test) null else {},
 
 pub fn open(allocator: std.mem.Allocator, dir: zio.Dir, checkpoint_threshold: usize, sync: bool, load_sem: ?*zio.Semaphore) !Self {
     var file_list: std.ArrayListUnmanaged(FileRef) = .empty;
@@ -906,6 +911,10 @@ fn mergeFiles(self: *Self) !bool {
     errdefer if (!fseg_placed) fseg.release(self.allocator, FileSegment.deinit, .{});
     const info = fseg.value.info;
 
+    if (builtin.is_test) {
+        if (self.test_merge_hook) |hook| try hook(self);
+    }
+
     try self.write_lock.lock();
     defer self.write_lock.unlock();
 
@@ -957,7 +966,10 @@ fn mergeFiles(self: *Self) !bool {
     // when the last snapshot/reader referencing them drops. Done AFTER the commit, so
     // a failed/rolled-back merge never marks a still-live segment for deletion. This
     // is the ONLY place file segments are retired (checkpoint only adds one).
-    for (cur.file[lo..hi]) |s| s.value.delete_on_destroy = true;
+    // Go through `src_file`, not `cur.file`: the swap released `cur`, and if a
+    // write replaced the snapshot during the merge that freed it. `snap` is still
+    // held, and its file list is the same segments.
+    for (src_file[lo..hi]) |s| s.value.delete_on_destroy = true;
 
     metrics.incFileMerges();
     log.info("merged {} file segments -> {x}-{x} ({} items)", .{ n, info.commit_id, info.merges, fseg.value.num_items });
@@ -1313,6 +1325,55 @@ test "merged-away files are deleted even when a reader outlived the merge" {
     // Releasing the reader deletes them: on-disk .data == the live file-segment count.
     reader.deinit();
     try std.testing.expectEqual(index.segments.value.file.len, try countDataFiles(cwd, dir_path));
+}
+
+test "a write landing during a file merge does not break the merge's retirement" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_index_merge_concurrent_write";
+    cleanupTestDir(cwd, dir_path);
+    try cwd.createDir(dir_path, 0o755);
+    defer cleanupTestDir(cwd, dir_path);
+
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+    var index = try Self.open(std.testing.allocator, dir, 1, true, null); // threshold 1 -> checkpoint each
+    defer index.deinit();
+
+    const Hook = struct {
+        var next_id: u32 = 1000;
+        var calls: usize = 0;
+        // Replace the snapshot mid-merge, so the snapshot the merge swaps out is no
+        // longer the one it captured and is freed by the swap.
+        fn run(idx: *Self) anyerror!void {
+            calls += 1;
+            _ = try idx.update(&[_]Change{.{ .insert = .{ .id = next_id, .hashes = &[_]u32{ 100, next_id } } }}, .{});
+            next_id += 1;
+        }
+    };
+    Hook.calls = 0;
+    Hook.next_id = 1000;
+    index.test_merge_hook = Hook.run;
+
+    var id: u32 = 1;
+    while (id <= 30) : (id += 1) {
+        _ = try index.update(&[_]Change{.{ .insert = .{ .id = id, .hashes = &[_]u32{ 100, id } } }}, .{});
+        try index.runMaintenance();
+    }
+    try std.testing.expect(Hook.calls > 0);
+
+    // Merged-away files were retired and deleted.
+    try std.testing.expectEqual(index.segments.value.file.len, try countDataFiles(cwd, dir_path));
+
+    // Nothing was lost: the 30 regular inserts plus every mid-merge one.
+    var results = SearchResults.init(std.testing.allocator, .{ .max_results = 1000, .min_score = 1 });
+    defer results.deinit();
+    var reader = try index.acquireReader();
+    defer reader.deinit();
+    var hashes = [_]u32{100};
+    try reader.search(&hashes, &results);
+    try std.testing.expectEqual(30 + Hook.calls, results.getResults().len);
 }
 
 test "checkpoint and reload" {
