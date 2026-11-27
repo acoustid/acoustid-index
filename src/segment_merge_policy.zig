@@ -130,8 +130,9 @@ pub fn TieredMergePolicy(comptime Segment: type, comptime getSizeFn: GetSizeFn(S
                     }
                     const size = getSizeFn(segments[candidate.end]);
                     if (size > self.max_segment_size) {
-                        // Can't include oversized segments
-                        continue;
+                        // Can't include oversized segments, and merges are
+                        // adjacent-only, so we can't skip over one either
+                        break;
                     }
 
                     candidate.size += size;
@@ -280,4 +281,26 @@ test "TieredMergePolicy" {
         std.debug.print("num merges: {}\n", .{total_merge_count});
         std.debug.print("avg merge size: {}\n", .{total_merge_size / total_merge_count});
     }
+}
+
+test "TieredMergePolicy stops a candidate at an oversized segment" {
+    const policy = TieredMergePolicy(MockSegment, MockSegment.getSize, MockSegment.isFrozen){
+        .min_segment_size = 100,
+        .max_segment_size = 1000,
+        .segments_per_merge = 10,
+        .segments_per_level = 5,
+    };
+
+    // An oversized segment in the middle used to spin the candidate loop forever.
+    var segments = [_]MockSegment{
+        .{ .id = 1, .size = 100 },
+        .{ .id = 2, .size = 100 },
+        .{ .id = 3, .size = 5000 },
+        .{ .id = 4, .size = 100 },
+        .{ .id = 5, .size = 100 },
+    };
+
+    const candidate = policy.findSegmentsToMerge(&segments) orelse return error.TestExpectedCandidate;
+    try std.testing.expectEqual(@as(usize, 0), candidate.start);
+    try std.testing.expectEqual(@as(usize, 2), candidate.end);
 }
