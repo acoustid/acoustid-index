@@ -1327,6 +1327,8 @@ test "per-index health reads loading while the initial seed cannot complete" {
     defer arena.deinit();
     var q = [_]u32{ 1, 2, 3 };
     try std.testing.expectError(error.IndexNotReady, mi.search(arena.allocator(), "main", .{ .query = &q }));
+    // And no peer can seed from it.
+    try std.testing.expectError(error.IndexNotReady, mi.acquireSnapshot("main"));
 
     try std.testing.expectEqual(MultiIndex.IndexHealth.missing, try mi.indexHealth("nope"));
 }
@@ -1457,6 +1459,9 @@ test "per-index health reads loading during a below-retention restore too" {
     // the index exists, it just cannot answer yet.
     var q = [_]u32{ 10, 20 };
     try std.testing.expectError(error.IndexNotReady, mi.search(a, "main", .{ .query = &q }));
+    // It still holds its old data at a nonzero file_version, so peers would rank it
+    // as a donor; the snapshot must be refused anyway.
+    try std.testing.expectError(error.IndexNotReady, mi.acquireSnapshot("main"));
 }
 
 test "meta consumer drops a local index absent from the meta feed" {

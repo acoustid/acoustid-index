@@ -85,7 +85,7 @@ and `Accept`.
 | `DELETE /:index/:id` | Delete one fingerprint. |
 | `GET /:index/:id` | Fingerprint info (404 if absent). |
 | `GET /:index/_status` | Replication watermarks: `{"generation", "version", "file_version"}`. `version` is the last applied changelog position; `file_version` is the highest position durable in file segments (what a snapshot from this node covers). |
-| `GET /:index/_snapshot` | Stream a snapshot (manifest + file segments) of this node's index. |
+| `GET /:index/_snapshot` | Stream a snapshot (manifest + file segments) of this node's index. Answers `503` while the index is being filled by a bootstrap. |
 
 Fingerprint IDs are unsigned 32-bit and must be nonzero.
 
@@ -145,7 +145,7 @@ A node whose index is *empty* seeds itself before its first read, in this order:
 3. plain replay from position 0.
 
 While either bootstrap is filling an index, `GET /:index/_health` answers
-`503 LOADING` and searches are refused with `503`.
+`503 LOADING`, and searches and snapshot requests are refused with `503`.
 
 On an initial fill of a new cluster, start one node first and let it finish
 seeding; the remaining nodes then bootstrap from it as peers.

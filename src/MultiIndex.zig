@@ -156,6 +156,12 @@ pub fn acquireSnapshot(self: *Self, name: []const u8) !SnapshotSource {
     const index = try self.getIndex(name);
     defer self.releaseIndex(index);
     const ref: *IndexRef = @fieldParentPtr("index", index);
+    // Same rule as search: while a bootstrap fills this index, it holds stale or
+    // no data (empty after a failed swap). A peer must not seed from it; refused,
+    // the peer moves on to its next donor.
+    if (self.replication) |repl| {
+        if (repl.isBootstrapping(name)) return error.IndexNotReady;
+    }
     return .{ .reader = try index.acquireReader(), .generation = ref.generation };
 }
 
