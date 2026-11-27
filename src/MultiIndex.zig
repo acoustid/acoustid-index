@@ -557,14 +557,15 @@ fn installNewLineage(self: *Self, name: []const u8, generation: u64) !*IndexRef 
 // Open (creating) the generation's v<gen> data dir and write the redirect. The
 // returned dir has its own fd, so the caller may close name_dir afterward.
 //
-// Dir first: the redirect write syncs name_dir, which makes the new v<gen> entry
-// durable with it. The other way round, a crash could leave a redirect pointing at
-// a dir that isn't there, and the index would fail to open at startup.
+// The v<gen> entry is made durable before the redirect is written: otherwise a
+// crash could leave a redirect pointing at a dir that isn't there, and the index
+// would fail to open at startup.
 fn createLineageDir(_: *Self, name_dir: zio.Dir, name: []const u8, generation: u64) !zio.Dir {
     var buf: [index_redirect.max_data_dir_len]u8 = undefined;
     const dd = (index_redirect.IndexRedirect{ .name = name, .generation = generation }).dataDir(&buf);
     const data_dir = try openOrCreateDir(name_dir, dd);
     errdefer data_dir.close();
+    try name_dir.sync();
     try index_redirect.write(name_dir, .{ .name = name, .generation = generation, .deleted = false });
     return data_dir;
 }
