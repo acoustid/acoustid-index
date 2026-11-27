@@ -201,7 +201,11 @@ fn getFile(self: *Self, commit_id: u64) !zio.File {
     errdefer file.close();
     // Appends fsync the file, but not its directory entry: without this a crash
     // could drop the whole new file along with every commit acknowledged in it.
-    if (self.sync) try self.dir.sync();
+    if (self.sync) self.dir.sync() catch |err| {
+        self.markWriteFailed();
+        syncFailed(err);
+        return err;
+    };
     try self.files.append(self.allocator, commit_id);
 
     self.current_file = file;
@@ -271,6 +275,7 @@ pub fn append(self: *Self, changes: []const Change, options: WriteOptions) !Comm
     };
     if (self.sync) file.sync(.{}) catch |err| {
         self.markWriteFailed();
+        syncFailed(err);
         return err;
     };
 
@@ -288,6 +293,17 @@ fn writeAll(self: *Self, file: zio.File, bytes: []const u8) !void {
         self.write_offset += n;
         self.current_size += n;
     }
+}
+
+// A failed fsync on the WAL panics. After a writeback error the kernel may have
+// dropped the dirty pages and marked them clean, so a retry can report success
+// for data that never reached the disk, and there is no way to tell from here
+// what did. Restarting replays the WAL from disk, which is the only way to find
+// out. Cancellation is the exception: the fsync may not have run at all, so the
+// oplog is only marked failed (see markWriteFailed).
+fn syncFailed(err: anyerror) void {
+    if (err == error.Canceled) return;
+    std.debug.panic("oplog: fsync failed: {s}", .{@errorName(err)});
 }
 
 fn markWriteFailed(self: *Self) void {
