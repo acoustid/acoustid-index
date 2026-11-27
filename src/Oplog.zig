@@ -206,7 +206,13 @@ fn getFile(self: *Self, commit_id: u64) !zio.File {
         syncFailed(err);
         return err;
     };
-    try self.files.append(self.allocator, commit_id);
+    // A crash between creating a file and its first durable record leaves it empty,
+    // and open() lists it; this append mints that commit again and reuses the name.
+    // Listing it twice would let truncate() delete the live file via the stale entry.
+    const files = self.files.items;
+    if (files.len == 0 or files[files.len - 1] != commit_id) {
+        try self.files.append(self.allocator, commit_id);
+    }
 
     self.current_file = file;
     self.current_start = commit_id;
@@ -315,6 +321,43 @@ fn markWriteFailed(self: *Self) void {
 
 fn cmpVersion(v: u64, item: u64) std.math.Order {
     return std.math.order(v, item);
+}
+
+test "an empty leftover log file is reused, not listed twice" {
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_oplog_leftover_file";
+    @import("common.zig").deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer @import("common.zig").deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+    defer dir.close();
+
+    const Ctx = struct {
+        fn apply(_: *@This(), _: Transaction) !void {}
+    };
+    var ctx: Ctx = .{};
+    const ins = [_]Change{.{ .insert = .{ .id = 1, .hashes = &[_]u32{1} } }};
+
+    {
+        var oplog = try open(std.testing.allocator, dir, true, &ctx, Ctx.apply);
+        defer oplog.deinit();
+        _ = try oplog.append(&ins, .{});
+    }
+
+    // A crash between creating the next file and its first durable record leaves
+    // it empty, named after the commit the next append mints again.
+    var name_buf: [file_name_len]u8 = undefined;
+    (try dir.createFile(buildName(&name_buf, 2), .{})).close();
+
+    var oplog = try open(std.testing.allocator, dir, true, &ctx, Ctx.apply);
+    defer oplog.deinit();
+    try std.testing.expectEqualSlices(u64, &.{ 1, 2 }, oplog.files.items);
+    const commit = try oplog.append(&ins, .{});
+    try std.testing.expectEqual(@as(u64, 2), commit.commit_id);
+    try std.testing.expectEqualSlices(u64, &.{ 1, 2 }, oplog.files.items);
 }
 
 test "oplog enforces the replay record limit before append" {
