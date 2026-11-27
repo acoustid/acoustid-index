@@ -926,13 +926,24 @@ test "a failed bootstrap swap leaves the index empty, and the next bootstrap fil
 
     var q = [_]u32{ 7, 8, 9 };
 
+    // Nothing retired is left behind once a swap is over, failed or not.
+    const vdir = try mdir.openDir("main/v000001", .{ .iterate = true });
+    defer vdir.close();
+    const expectNoLeftovers = struct {
+        fn check(d: zio.Dir) !void {
+            for ([_][]const u8{ "data.old", "oplog.old", "data.restore" }) |n|
+                try std.testing.expectError(error.FileNotFound, d.openDir(n, .{}));
+        }
+    }.check;
+
     // The swap fails after the rename: the index stays, open and empty — the
-    // donor's half-installed data is wiped, not served.
+    // donor's half-installed data is retired, not served.
     mi.test_fail_swap = true;
     var r1 = std.Io.Reader.fixed(buf.written());
     try std.testing.expectError(error.TestSwapFailed, mi.bootstrapLineage("main", 1, &r1, null));
     try std.testing.expect(try mi.checkIndexExists("main"));
     try std.testing.expectEqual(@as(usize, 0), (try mi.search(a, "main", .{ .query = &q })).results.len);
+    try expectNoLeftovers(vdir);
 
     // The retry installs the donor's data.
     mi.test_fail_swap = false;
@@ -941,6 +952,53 @@ test "a failed bootstrap swap leaves the index empty, and the next bootstrap fil
     const hit = try mi.search(a, "main", .{ .query = &q });
     try std.testing.expectEqual(@as(usize, 1), hit.results.len);
     try std.testing.expectEqual(@as(u32, 99), hit.results[0].id);
+    try expectNoLeftovers(vdir);
+}
+
+test "startup removes what a crashed bootstrap left in the lineage dir" {
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_bootstrap_leftovers";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    {
+        var mi = MultiIndex.init(std.testing.allocator, try cwd.openDir(dir_path, .{ .iterate = true }));
+        defer mi.deinit();
+        _ = try mi.createIndex("main", .{});
+        _ = try mi.update(a, "main", .{ .changes = &[_]Change{.{ .insert = .{ .id = 1, .hashes = &.{ 1, 2, 3 } } }} });
+    }
+
+    // What a crash mid-bootstrap leaves: retired copies and transfer staging, each
+    // with something in it.
+    const leftovers = [_][]const u8{ "data.old", "oplog.old", "data.restore", "bootstrap.tmp" };
+    const vdir = try cwd.openDir(dir_path ++ "/main/v000001", .{ .iterate = true });
+    defer vdir.close();
+    for (leftovers) |n| {
+        try vdir.createDir(n, 0o755);
+        const sub = try vdir.openDir(n, .{});
+        defer sub.close();
+        const f = try sub.createFile("junk", .{});
+        f.close();
+    }
+
+    var mi = MultiIndex.init(std.testing.allocator, try cwd.openDir(dir_path, .{ .iterate = true }));
+    defer mi.deinit();
+    try mi.open();
+
+    var q = [_]u32{ 1, 2, 3 };
+    const hit = try mi.search(a, "main", .{ .query = &q });
+    try std.testing.expectEqual(@as(usize, 1), hit.results.len);
+    for (leftovers) |n| try std.testing.expectError(error.FileNotFound, vdir.openDir(n, .{}));
 }
 
 test "bootstrapLineageFromSource builds, flushes and swaps in a corpus stream" {
