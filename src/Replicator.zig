@@ -931,7 +931,7 @@ test "a failed bootstrap swap leaves the index empty, and the next bootstrap fil
     defer vdir.close();
     const expectNoLeftovers = struct {
         fn check(d: zio.Dir) !void {
-            for ([_][]const u8{ "data.old", "oplog.old", "data.restore" }) |n|
+            for ([_][]const u8{ "data.old", "oplog.old", "data.failed", "oplog.failed", "data.restore" }) |n|
                 try std.testing.expectError(error.FileNotFound, d.openDir(n, .{}));
         }
     }.check;
@@ -944,6 +944,15 @@ test "a failed bootstrap swap leaves the index empty, and the next bootstrap fil
     try std.testing.expect(try mi.checkIndexExists("main"));
     try std.testing.expectEqual(@as(usize, 0), (try mi.search(a, "main", .{ .query = &q })).results.len);
     try expectNoLeftovers(vdir);
+
+    // A retired copy an earlier cleanup did not get to does not block the retry.
+    try vdir.createDir("data.old", 0o755);
+    {
+        const sub = try vdir.openDir("data.old", .{});
+        defer sub.close();
+        const f = try sub.createFile("junk", .{});
+        f.close();
+    }
 
     // The retry installs the donor's data.
     mi.test_fail_swap = false;
@@ -980,7 +989,7 @@ test "startup removes what a crashed bootstrap left in the lineage dir" {
 
     // What a crash mid-bootstrap leaves: retired copies and transfer staging, each
     // with something in it.
-    const leftovers = [_][]const u8{ "data.old", "oplog.old", "data.restore", "bootstrap.tmp" };
+    const leftovers = [_][]const u8{ "data.old", "oplog.old", "data.failed", "oplog.failed", "data.restore", "bootstrap.tmp" };
     const vdir = try cwd.openDir(dir_path ++ "/main/v000001", .{ .iterate = true });
     defer vdir.close();
     for (leftovers) |n| {

@@ -288,7 +288,7 @@ fn openOneIndexInner(self: *Self, name: []const u8, load_sem: ?*zio.Semaphore, o
     name_dir_open = false;
 
     // A crash during a bootstrap leaves these behind; none is part of the index.
-    deleteRetired(self.allocator, data_dir);
+    deleteRetired(self.allocator, data_dir) catch {}; // the next bootstrap retries
     for ([_][]const u8{ restore_tmp, bootstrap_build_tmp }) |n| deleteDirTree(self.allocator, data_dir, n) catch {};
 
     const ref = try self.allocator.create(IndexRef);
@@ -784,10 +784,14 @@ pub fn bootstrapLineageFromSource(self: *Self, name: []const u8, generation: u64
 }
 
 fn installBootstrap(self: *Self, name: []const u8, generation: u64, name_dir: zio.Dir, vdir_name: []const u8, vdir: zio.Dir) !u64 {
+    // All deleting happens here, outside the manager lock: a retired copy is a
+    // whole index, and deleting it under the lock would stall every index. Clearing
+    // leftovers first means retiring under the lock is a plain rename onto a free
+    // name; if that fails, nothing has been touched yet and the consumer retries.
+    try deleteRetired(self.allocator, vdir);
     const result = self.installBootstrapLocked(name, generation, name_dir, vdir_name, vdir);
-    // The retired copies are garbage either way; delete them outside the lock.
-    // Startup removes whatever this does not get to.
-    deleteRetired(self.allocator, vdir);
+    // Garbage either way. Startup and the next attempt remove what this misses.
+    deleteRetired(self.allocator, vdir) catch {};
     return result;
 }
 
@@ -831,8 +835,9 @@ fn installBootstrapLocked(self: *Self, name: []const u8, generation: u64, name_d
 }
 
 fn reopenEmpty(self: *Self, ref: *IndexRef, name_dir: zio.Dir, vdir_name: []const u8, vdir: zio.Dir) !void {
-    try self.retire(vdir, "oplog", oplog_old);
-    try self.retire(vdir, "data", data_old);
+    // Not onto *.old: those may hold the previous index, retired by the swap.
+    try retire(vdir, "oplog", oplog_failed);
+    try retire(vdir, "data", data_failed);
     try vdir.sync();
     try self.reopen(ref, name_dir, vdir_name);
 }
@@ -841,9 +846,9 @@ fn swapAndReopen(self: *Self, ref: *IndexRef, name_dir: zio.Dir, vdir_name: []co
     // Retire the stale WAL before the new data goes in, and make that durable first:
     // replayed on top of the restored segments after a crash, its commits would land
     // on data they never belonged to. Index.open recreates it empty.
-    try self.retire(vdir, "oplog", oplog_old);
+    try retire(vdir, "oplog", oplog_old);
     try vdir.sync();
-    try self.retire(vdir, "data", data_old);
+    try retire(vdir, "data", data_old);
     try vdir.rename(restore_tmp, vdir, "data");
     try vdir.sync();
 
@@ -852,25 +857,31 @@ fn swapAndReopen(self: *Self, ref: *IndexRef, name_dir: zio.Dir, vdir_name: []co
     try self.reopen(ref, name_dir, vdir_name);
 }
 
+// Retired by the swap (the previous index) and by the empty-index fallback (what
+// the failed swap left). Distinct names, so neither rename lands on the other.
 const data_old = "data.old";
 const oplog_old = "oplog.old";
+const data_failed = "data.failed";
+const oplog_failed = "oplog.failed";
+const retired_dirs = [_][]const u8{ data_old, oplog_old, data_failed, oplog_failed };
 
 // Move `name` aside with one atomic rename instead of deleting it in place: a crash
 // mid-delete would leave a manifest naming missing segments (or a WAL with a hole),
-// and the index, and with it the whole node, would fail to open. Retired copies are
-// deleted after the swap, or at startup.
-fn retire(self: *Self, vdir: zio.Dir, name: []const u8, retired: []const u8) !void {
-    deleteDirTree(self.allocator, vdir, retired) catch {}; // a previous swap's leftover
+// and the index, and with it the whole node, would fail to open. `retired` must be
+// free (see installBootstrap); retired copies are deleted outside the lock.
+fn retire(vdir: zio.Dir, name: []const u8, retired: []const u8) !void {
     vdir.rename(name, vdir, retired) catch |err| switch (err) {
         error.FileNotFound => {},
         else => return err,
     };
 }
 
-// Leftovers of an interrupted or finished bootstrap: retired copies and transfer
-// staging. Never needed to open the index.
-fn deleteRetired(allocator: std.mem.Allocator, vdir: zio.Dir) void {
-    for ([_][]const u8{ data_old, oplog_old }) |n| deleteDirTree(allocator, vdir, n) catch {};
+// Delete every retired copy present. Never needed to open the index.
+fn deleteRetired(allocator: std.mem.Allocator, vdir: zio.Dir) !void {
+    for (retired_dirs) |n| deleteDirTree(allocator, vdir, n) catch |err| switch (err) {
+        error.FileNotFound => {},
+        else => return err,
+    };
 }
 
 fn reopen(self: *Self, ref: *IndexRef, name_dir: zio.Dir, vdir_name: []const u8) !void {
