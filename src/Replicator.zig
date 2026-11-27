@@ -883,6 +883,84 @@ test "bootstrapLineage swaps an index's data from a donor snapshot" {
     try std.testing.expectEqual(@as(usize, 0), (try mi.search(a, "main", .{ .query = &q1 })).results.len);
 }
 
+test "a failed bootstrap swap keeps the index, and the next bootstrap reopens it" {
+    const Index = @import("Index.zig");
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{});
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // A donor snapshot (generation 1) with doc 99 in a file segment.
+    const donor_path = "test_failed_swap_donor";
+    common.deleteDirTree(std.testing.allocator, cwd, donor_path) catch {};
+    try cwd.createDir(donor_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, donor_path) catch {};
+
+    var buf: std.Io.Writer.Allocating = .init(a);
+    var donor_version: u64 = 0;
+    {
+        const ddir = try cwd.openDir(donor_path, .{ .iterate = true });
+        var donor = try Index.open(std.testing.allocator, ddir, 1, true, null); // threshold 1 -> checkpoint
+        defer donor.deinit();
+        _ = try donor.update(&[_]Change{.{ .insert = .{ .id = 99, .hashes = &[_]u32{ 7, 8, 9 } } }}, .{});
+        try donor.runMaintenance();
+        var dr = try donor.acquireReader();
+        defer dr.deinit();
+        donor_version = dr.snapshot.value.version;
+        try snapshot.writeSnapshot(&buf.writer, a, dr.snapshot.value, 1);
+    }
+
+    const main_path = "test_failed_swap_main";
+    common.deleteDirTree(std.testing.allocator, cwd, main_path) catch {};
+    try cwd.createDir(main_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, main_path) catch {};
+    const mdir = try cwd.openDir(main_path, .{ .iterate = true });
+    var mi = MultiIndex.init(std.testing.allocator, mdir);
+    defer mi.deinit(); // also covers deinit with a closed slot ("other" below)
+    _ = try mi.createIndex("main", .{});
+    _ = try mi.createIndex("other", .{});
+    _ = try mi.createIndex("doomed", .{});
+
+    var q = [_]u32{ 7, 8, 9 };
+
+    // The swap fails: the index stays known but unavailable, rather than vanishing.
+    mi.test_fail_swap = true;
+    var r1 = std.Io.Reader.fixed(buf.written());
+    try std.testing.expectError(error.TestSwapFailed, mi.bootstrapLineage("main", 1, &r1, null));
+    try std.testing.expect(try mi.checkIndexExists("main"));
+    try std.testing.expectEqual(MultiIndex.IndexHealth.loading, try mi.indexHealth("main"));
+    try std.testing.expectError(error.IndexNotReady, mi.search(a, "main", .{ .query = &q }));
+
+    // The retry reopens it with the donor's data.
+    mi.test_fail_swap = false;
+    var r2 = std.Io.Reader.fixed(buf.written());
+    try std.testing.expectEqual(donor_version, try mi.bootstrapLineage("main", 1, &r2, null));
+    try std.testing.expectEqual(MultiIndex.IndexHealth.ready, try mi.indexHealth("main"));
+    const hit = try mi.search(a, "main", .{ .query = &q });
+    try std.testing.expectEqual(@as(usize, 1), hit.results.len);
+    try std.testing.expectEqual(@as(u32, 99), hit.results[0].id);
+
+    // A closed index can still be deleted.
+    mi.test_fail_swap = true;
+    var r3 = std.Io.Reader.fixed(buf.written());
+    try std.testing.expectError(error.TestSwapFailed, mi.bootstrapLineage("doomed", 1, &r3, null));
+    _ = try mi.deleteIndex("doomed", .{ .expect_exists = true });
+    try std.testing.expect(!try mi.checkIndexExists("doomed"));
+
+    // Left closed for mi.deinit.
+    var r4 = std.Io.Reader.fixed(buf.written());
+    try std.testing.expectError(error.TestSwapFailed, mi.bootstrapLineage("other", 1, &r4, null));
+
+    // Scraping metrics skips the closed slot.
+    var mbuf: std.Io.Writer.Allocating = .init(a);
+    try mi.writeMetrics(&mbuf.writer);
+}
+
 test "bootstrapLineageFromSource builds, flushes and swaps in a corpus stream" {
     const common = @import("common.zig");
     const BootstrapStream = coordinator_mod.BootstrapStream;
