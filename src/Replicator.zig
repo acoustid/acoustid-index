@@ -1329,6 +1329,9 @@ test "per-index health reads loading while the initial seed cannot complete" {
     try std.testing.expectError(error.IndexNotReady, mi.search(arena.allocator(), "main", .{ .query = &q }));
     // And no peer can seed from it.
     try std.testing.expectError(error.IndexNotReady, mi.acquireSnapshot("main"));
+    // Nor do lookups answer from the empty index.
+    try std.testing.expectError(error.IndexNotReady, mi.getFingerprintInfo(arena.allocator(), "main", 1));
+    try std.testing.expectError(error.IndexNotReady, mi.checkFingerprintExists("main", 1));
 
     try std.testing.expectEqual(MultiIndex.IndexHealth.missing, try mi.indexHealth("nope"));
 }

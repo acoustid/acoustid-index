@@ -156,13 +156,23 @@ pub fn acquireSnapshot(self: *Self, name: []const u8) !SnapshotSource {
     const index = try self.getIndex(name);
     defer self.releaseIndex(index);
     const ref: *IndexRef = @fieldParentPtr("index", index);
-    // Same rule as search: while a bootstrap fills this index, it holds stale or
-    // no data (empty after a failed swap). A peer must not seed from it; refused,
-    // the peer moves on to its next donor.
+    // A peer must not seed from a bootstrapping index; refused, it moves on to
+    // its next donor.
+    try self.refuseWhileBootstrapping(name);
+    return .{ .reader = try index.acquireReader(), .generation = ref.generation };
+}
+
+// While a bootstrap fills an index (initial seed or below-retention restore), it
+// holds no data or stale data, and anything read from it would be an
+// honest-looking but wrong answer. Refuse with IndexNotReady (503), the same
+// signal the health probe gives, so a caller that skipped the probe still cannot
+// mistake a loading node for a miss. Call after getIndex, so a missing index keeps
+// answering 404 rather than 503. Not used by /_status (peer discovery must find
+// loading nodes) or getIndexInfo (the existence check).
+fn refuseWhileBootstrapping(self: *Self, name: []const u8) !void {
     if (self.replication) |repl| {
         if (repl.isBootstrapping(name)) return error.IndexNotReady;
     }
-    return .{ .reader = try index.acquireReader(), .generation = ref.generation };
 }
 
 // Return a borrow. Uncancelable: it runs in defer cleanup and must always
@@ -300,15 +310,7 @@ pub fn search(self: *Self, arena: std.mem.Allocator, name: []const u8, request: 
     const index = try self.getIndex(name);
     defer self.releaseIndex(index);
 
-    // While a bootstrap fills this index (initial seed or below-retention
-    // restore), refuse rather than answer: every result would be an
-    // honest-looking but empty or stale set. IndexNotReady -> 503, the same
-    // signal the health probe gives, so a caller that skipped the probe still
-    // cannot mistake a loading node for a miss. After getIndex, so a missing
-    // index keeps answering 404 rather than 503.
-    if (self.replication) |repl| {
-        if (repl.isBootstrapping(name)) return error.IndexNotReady;
-    }
+    try self.refuseWhileBootstrapping(name);
     metrics.incSearches(name);
 
     const collector = try self.results_pool.acquire(.{
@@ -970,6 +972,9 @@ fn markDeleted(self: *Self, name: []const u8, generation: u64) !void {
 }
 
 pub fn getIndexInfo(self: *Self, arena: std.mem.Allocator, name: []const u8) !api.GetIndexInfoResponse {
+    // Not refused while bootstrapping: it doubles as the existence check, and a
+    // just-created index is briefly bootstrapping while its consumer looks for a
+    // seed. The version it reports tells a loading index apart anyway.
     const index = try self.getIndex(name);
     defer self.releaseIndex(index);
 
@@ -992,6 +997,7 @@ pub fn getFingerprintInfo(self: *Self, arena: std.mem.Allocator, name: []const u
     _ = arena;
     const index = try self.getIndex(name);
     defer self.releaseIndex(index);
+    try self.refuseWhileBootstrapping(name);
 
     var reader = try index.acquireReader();
     defer reader.deinit();
@@ -1004,6 +1010,7 @@ pub fn getFingerprintInfo(self: *Self, arena: std.mem.Allocator, name: []const u
 pub fn checkFingerprintExists(self: *Self, name: []const u8, id: u32) !bool {
     const index = try self.getIndex(name);
     defer self.releaseIndex(index);
+    try self.refuseWhileBootstrapping(name);
 
     var reader = try index.acquireReader();
     defer reader.deinit();
