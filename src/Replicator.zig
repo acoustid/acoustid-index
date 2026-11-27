@@ -331,14 +331,6 @@ fn seedEmptyLineage(self: *Self, c: *Consumer) zio.Cancelable!u64 {
 }
 
 fn trySeed(self: *Self, c: *Consumer) !u64 {
-    const position = try self.trySeedInner(c);
-    // An earlier attempt's swap may have failed and left the slot closed, while this
-    // one found nothing to install. Replay needs a usable index; no-op otherwise.
-    try self.mi.reopenEmptyIfClosed(c.name, c.generation);
-    return position;
-}
-
-fn trySeedInner(self: *Self, c: *Consumer) !u64 {
     if (self.bootstrapConsumer(c, 0)) |v| {
         return v;
     } else |err| switch (err) {
@@ -891,7 +883,7 @@ test "bootstrapLineage swaps an index's data from a donor snapshot" {
     try std.testing.expectEqual(@as(usize, 0), (try mi.search(a, "main", .{ .query = &q1 })).results.len);
 }
 
-test "a failed bootstrap swap keeps the index, and the next bootstrap reopens it" {
+test "a failed bootstrap swap leaves the index empty, and the next bootstrap fills it" {
     const Index = @import("Index.zig");
     const common = @import("common.zig");
 
@@ -929,44 +921,26 @@ test "a failed bootstrap swap keeps the index, and the next bootstrap reopens it
     defer common.deleteDirTree(std.testing.allocator, cwd, main_path) catch {};
     const mdir = try cwd.openDir(main_path, .{ .iterate = true });
     var mi = MultiIndex.init(std.testing.allocator, mdir);
-    defer mi.deinit(); // also covers deinit with a closed slot ("other" below)
+    defer mi.deinit();
     _ = try mi.createIndex("main", .{});
-    _ = try mi.createIndex("other", .{});
-    _ = try mi.createIndex("doomed", .{});
 
     var q = [_]u32{ 7, 8, 9 };
 
-    // The swap fails: the index stays known but unavailable, rather than vanishing.
+    // The swap fails after the rename: the index stays, open and empty — the
+    // donor's half-installed data is wiped, not served.
     mi.test_fail_swap = true;
     var r1 = std.Io.Reader.fixed(buf.written());
     try std.testing.expectError(error.TestSwapFailed, mi.bootstrapLineage("main", 1, &r1, null));
     try std.testing.expect(try mi.checkIndexExists("main"));
-    try std.testing.expectEqual(MultiIndex.IndexHealth.loading, try mi.indexHealth("main"));
-    try std.testing.expectError(error.IndexNotReady, mi.search(a, "main", .{ .query = &q }));
+    try std.testing.expectEqual(@as(usize, 0), (try mi.search(a, "main", .{ .query = &q })).results.len);
 
-    // The retry reopens it with the donor's data.
+    // The retry installs the donor's data.
     mi.test_fail_swap = false;
     var r2 = std.Io.Reader.fixed(buf.written());
     try std.testing.expectEqual(donor_version, try mi.bootstrapLineage("main", 1, &r2, null));
-    try std.testing.expectEqual(MultiIndex.IndexHealth.ready, try mi.indexHealth("main"));
     const hit = try mi.search(a, "main", .{ .query = &q });
     try std.testing.expectEqual(@as(usize, 1), hit.results.len);
     try std.testing.expectEqual(@as(u32, 99), hit.results[0].id);
-
-    // A closed index can still be deleted.
-    mi.test_fail_swap = true;
-    var r3 = std.Io.Reader.fixed(buf.written());
-    try std.testing.expectError(error.TestSwapFailed, mi.bootstrapLineage("doomed", 1, &r3, null));
-    _ = try mi.deleteIndex("doomed", .{ .expect_exists = true });
-    try std.testing.expect(!try mi.checkIndexExists("doomed"));
-
-    // Left closed for mi.deinit.
-    var r4 = std.Io.Reader.fixed(buf.written());
-    try std.testing.expectError(error.TestSwapFailed, mi.bootstrapLineage("other", 1, &r4, null));
-
-    // Scraping metrics skips the closed slot.
-    var mbuf: std.Io.Writer.Allocating = .init(a);
-    try mi.writeMetrics(&mbuf.writer);
 }
 
 test "bootstrapLineageFromSource builds, flushes and swaps in a corpus stream" {
@@ -1299,7 +1273,7 @@ test "per-index health reads loading while the initial seed cannot complete" {
     try std.testing.expectEqual(MultiIndex.IndexHealth.missing, try mi.indexHealth("nope"));
 }
 
-test "a seed that installs nothing after a failed swap reopens the index empty" {
+test "a seed that installs nothing after a failed swap replays into an empty index" {
     const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
     const common = @import("common.zig");
 
@@ -1352,7 +1326,7 @@ test "a seed that installs nothing after a failed swap reopens the index empty" 
     defer arena.deinit();
     const a = arena.allocator();
 
-    // The replayed feed lands in a usable index: the slot did not stay closed.
+    // The replayed feed lands in a usable index.
     var q = [_]u32{ 1, 2, 3 };
     var found = false;
     var i: usize = 0;

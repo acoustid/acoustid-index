@@ -33,17 +33,11 @@ const Self = @This();
 // ref lives on the heap (the maintenance coroutine captures it). `references`
 // starts at 1 for the map's own reference; getIndex/releaseIndex adjust it under
 // the manager lock, and deleteIndex waits for it to fall back to 1.
-//
-// `closed`: a bootstrap swap failed after the live Index was closed, so `index`
-// is not open. The slot stays in the map so the consumer's next bootstrap
-// attempt can reopen it (installBootstrap); until then borrows are refused with
-// IndexNotReady and health reads loading.
 const IndexRef = struct {
     index: Index,
     generation: u64, // this index's lineage; persisted in the redirect + v<gen> dir
     references: usize = 1,
     being_deleted: bool = false,
-    closed: bool = false,
     released: zio.Condition = .init,
 };
 
@@ -72,7 +66,6 @@ sync: bool = true,
 load_concurrency: usize = 0,
 // Set in replicated mode: writes go through the log, a consumer applies them.
 replication: ?*Replicator = null,
-// Tests only: make swapAndReopen fail after the rename, before the reopen.
 test_fail_swap: if (builtin.is_test) bool else void = if (builtin.is_test) false else {},
 
 pub fn init(allocator: std.mem.Allocator, dir: zio.Dir) Self {
@@ -117,7 +110,7 @@ pub fn deinit(self: *Self) void {
     }
     var it = self.indexes.iterator();
     while (it.next()) |entry| {
-        if (!entry.value_ptr.*.closed) entry.value_ptr.*.index.deinit();
+        entry.value_ptr.*.index.deinit();
         self.allocator.destroy(entry.value_ptr.*);
         self.allocator.free(entry.key_ptr.*);
     }
@@ -133,7 +126,6 @@ fn getIndex(self: *Self, name: []const u8) !*Index {
     defer self.lock.unlock();
     const ref = self.indexes.get(name) orelse return error.IndexNotFound;
     if (ref.being_deleted) return error.IndexNotFound;
-    if (ref.closed) return error.IndexNotReady;
     ref.references += 1;
     return &ref.index;
 }
@@ -147,7 +139,6 @@ fn getIndexForGeneration(self: *Self, name: []const u8, generation: u64) !*Index
     const ref = self.indexes.get(name) orelse return error.IndexNotFound;
     if (ref.being_deleted) return error.IndexNotFound;
     if (ref.generation != generation) return error.IndexGenerationMismatch;
-    if (ref.closed) return error.IndexNotReady;
     ref.references += 1;
     return &ref.index;
 }
@@ -410,7 +401,6 @@ pub fn writeMetrics(self: *Self, w: *std.Io.Writer) !void {
         var it = self.indexes.iterator();
         while (it.next()) |entry| {
             const name = entry.key_ptr.*;
-            if (entry.value_ptr.*.closed) continue;
             var reader = try entry.value_ptr.*.index.acquireReader();
             defer reader.deinit();
             try metrics.setDocs(name, reader.numDocs());
@@ -441,7 +431,6 @@ pub fn indexHealth(self: *Self, name: []const u8) !IndexHealth {
     defer self.lock.unlock();
     const ref = self.indexes.get(name) orelse return .missing;
     if (ref.being_deleted) return .missing;
-    if (ref.closed) return .loading;
     // Same lock order as the reconcile paths: MultiIndex.lock -> Replicator.mutex.
     if (self.replication) |repl| {
         if (repl.isBootstrapping(name)) return .loading;
@@ -482,7 +471,6 @@ pub fn createIndex(self: *Self, name: []const u8, request: api.CreateIndexReques
                 if (g < existing.generation) return error.OlderIndexAlreadyExists;
                 if (g > existing.generation) return error.NewerIndexAlreadyExists;
             }
-            if (existing.closed) return error.IndexNotReady;
             return .{ .version = existing.index.version, .ready = true, .generation = existing.generation };
         }
         return error.IndexAlreadyExists;
@@ -535,7 +523,6 @@ fn createIndexReplicated(self: *Self, repl: *Replicator, name: []const u8, reque
     try self.lock.lock();
     defer self.lock.unlock();
     const ref = self.indexes.get(name) orelse return error.IndexNotFound;
-    if (ref.closed) return error.IndexNotReady;
     return .{ .version = ref.index.version, .ready = true, .generation = ref.generation };
 }
 
@@ -600,8 +587,7 @@ pub fn reconcileCreate(self: *Self, name: []const u8, generation: u64) !void {
         try self.lock.lock();
         defer self.lock.unlock();
         if (self.indexes.get(name)) |ref| {
-            // A closed slot is rebuilt like a stale one: drop it and start over.
-            if (!ref.being_deleted and !ref.closed and ref.generation == generation) {
+            if (!ref.being_deleted and ref.generation == generation) {
                 if (self.replication) |repl| try repl.addConsumer(name, generation, ref.index.version);
                 return;
             }
@@ -673,9 +659,9 @@ const bootstrap_build_tmp = "bootstrap.tmp";
 
 // Disarm a bootstrap transfer deadline once the remote stream is fully drained.
 // The deadline exists to bound a wedged transfer; everything after the last byte is
-// bounded local work (flush, rename, drain-and-swap) whose interruption costs a
-// whole transfer — a failed swap leaves the index closed until the next bootstrap
-// attempt reopens it. clear() alone is not enough: it only stops a timer
+// bounded local work (flush, rename, drain-and-swap) whose interruption throws the
+// whole transfer away — installBootstrap's failure path leaves the index empty and
+// the consumer starts over. clear() alone is not enough: it only stops a timer
 // that has not fired yet, and one that fired in the instant before leaves a
 // cancellation already pending on this task, which would otherwise surface at the
 // install's first suspension point. checkCancel() surfaces it HERE, where it is
@@ -801,20 +787,34 @@ fn installBootstrap(self: *Self, name: []const u8, generation: u64, name_dir: zi
             return err;
         };
     }
+
     defer {
         ref.being_deleted = false;
         ref.released.broadcast();
     }
-
-    // Close the live index (unless a failed swap already did), swap
-    // data <- data.restore, drop the stale WAL, reopen.
-    if (!ref.closed) ref.index.deinit();
-    ref.closed = true;
-    // On failure the slot stays closed and in the map: the consumer retries the
-    // bootstrap, and the next attempt lands back here and reopens it.
-    try self.swapAndReopen(ref, name_dir, vdir_name, vdir);
-    ref.closed = false;
+    // Close the live index, swap data <- data.restore, drop the stale WAL, reopen.
+    ref.index.deinit();
+    self.swapAndReopen(ref, name_dir, vdir_name, vdir) catch |err| {
+        // Leave the slot holding an empty index, the same state as a fresh lineage:
+        // the consumer keeps reporting bootstrapping and retries, and a restart
+        // seeds it from scratch. Whatever the swap left in data/ is wiped, so bad
+        // donor data cannot crash-loop us; if even an empty index cannot open, the
+        // disk is gone. Shielded: a shutdown cancel must not leave the slot holding
+        // a deinit'd index, nor turn into that panic.
+        zio.beginShield();
+        defer zio.endShield();
+        self.reopenEmpty(ref, name_dir, vdir_name, vdir) catch |e2|
+            std.debug.panic("cannot reopen '{s}' after a failed bootstrap swap ({}): {}", .{ name, err, e2 });
+        return err;
+    };
     return ref.index.version;
+}
+
+fn reopenEmpty(self: *Self, ref: *IndexRef, name_dir: zio.Dir, vdir_name: []const u8, vdir: zio.Dir) !void {
+    deleteDirTree(self.allocator, vdir, "oplog") catch {};
+    deleteDirTree(self.allocator, vdir, "data") catch {};
+    try vdir.sync();
+    try self.reopen(ref, name_dir, vdir_name);
 }
 
 fn swapAndReopen(self: *Self, ref: *IndexRef, name_dir: zio.Dir, vdir_name: []const u8, vdir: zio.Dir) !void {
@@ -841,36 +841,6 @@ fn reopen(self: *Self, ref: *IndexRef, name_dir: zio.Dir, vdir_name: []const u8)
     errdefer ref.index.deinit();
     ref.index.checkpoint_age = self.checkpoint_age;
     try ref.index.start();
-}
-
-/// Reopen a slot that a failed bootstrap swap left closed, as an empty index. For a
-/// seed that ended without installing anything (no donor, no or empty corpus
-/// stream): the slot must serve again before the feed is replayed into it. The data
-/// dir may hold a half-done swap, so it is wiped. No-op for an open slot.
-pub fn reopenEmptyIfClosed(self: *Self, name: []const u8, generation: u64) !void {
-    try self.lock.lock();
-    defer self.lock.unlock();
-
-    const ref = self.indexes.get(name) orelse return error.IndexNotFound;
-    if (ref.being_deleted or ref.generation != generation) return error.IndexGenerationMismatch;
-    if (!ref.closed) return;
-
-    const name_dir = try self.dir.openDir(name, .{ .iterate = true });
-    defer name_dir.close();
-    var vbuf: [index_redirect.max_data_dir_len]u8 = undefined;
-    const vdir_name = (index_redirect.IndexRedirect{ .name = name, .generation = generation }).dataDir(&vbuf);
-    const vdir = try name_dir.openDir(vdir_name, .{ .iterate = true });
-    defer vdir.close();
-
-    // WAL first, as in swapAndReopen: it must never be replayed onto other data.
-    deleteDirTree(self.allocator, vdir, "oplog") catch {};
-    try vdir.sync();
-    deleteDirTree(self.allocator, vdir, "data") catch {};
-    try vdir.sync();
-
-    log.info("reopening '{s}' gen {d} empty after a failed bootstrap swap", .{ name, generation });
-    try self.reopen(ref, name_dir, vdir_name);
-    ref.closed = false;
 }
 
 /// Drop the local index for `name` (stop its data consumer, drain borrows, remove
@@ -907,7 +877,7 @@ fn dropIndex(self: *Self, name: []const u8) !DropResult {
 
     const kv = self.indexes.fetchRemove(name).?;
     const gen = kv.value.generation;
-    if (!kv.value.closed) kv.value.index.deinit();
+    kv.value.index.deinit();
     self.allocator.destroy(kv.value);
     self.allocator.free(kv.key);
     metrics.removeIndex(name);
