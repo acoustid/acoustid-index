@@ -37,15 +37,14 @@ onto it — `:latest` follows the most recently pushed tag, so tagging an older
 release after a newer one would move it backwards. It serves on 8080 and keeps
 data in the `/var/lib/fpindex` volume, as user 6081.
 
-    docker run --security-opt seccomp=unconfined \
-        -p 8080:8080 -v fpindex-data:/var/lib/fpindex \
+    docker run -p 8080:8080 -v fpindex-data:/var/lib/fpindex \
         ghcr.io/acoustid/acoustid-index:main
 
-**`--security-opt seccomp=unconfined` is required.** Docker's default seccomp
-profile blocks `io_uring_setup`, which the async runtime needs; without it the
-server exits immediately with `error: PermissionDenied`. A custom profile that
-allows the `io_uring_*` syscalls works too. Kubernetes only hits this if the pod
-sets `seccompProfile: RuntimeDefault`.
+The async runtime uses io_uring and falls back to epoll where `io_uring_setup` is
+not allowed. Docker's default seccomp profile blocks it, so under plain
+`docker run` the server runs on epoll; `--security-opt seccomp=unconfined`, or a
+custom profile that allows the `io_uring_*` syscalls, enables io_uring. In
+Kubernetes the same applies to pods with `seccompProfile: RuntimeDefault`.
 
 The image is built from a binary produced outside it (`zig build --release=fast`),
 so `docker build .` on a clean checkout fails until that has run.
