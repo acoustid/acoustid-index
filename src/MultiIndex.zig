@@ -829,6 +829,10 @@ fn swapAndReopen(self: *Self, ref: *IndexRef, name_dir: zio.Dir, vdir_name: []co
 
     if (builtin.is_test and self.test_fail_swap) return error.TestSwapFailed;
 
+    try self.reopen(ref, name_dir, vdir_name);
+}
+
+fn reopen(self: *Self, ref: *IndexRef, name_dir: zio.Dir, vdir_name: []const u8) !void {
     const data_dir = try name_dir.openDir(vdir_name, .{ .iterate = true });
     ref.index = Index.open(self.allocator, data_dir, self.checkpoint_threshold, self.sync, null) catch |err| {
         data_dir.close();
@@ -837,6 +841,36 @@ fn swapAndReopen(self: *Self, ref: *IndexRef, name_dir: zio.Dir, vdir_name: []co
     errdefer ref.index.deinit();
     ref.index.checkpoint_age = self.checkpoint_age;
     try ref.index.start();
+}
+
+/// Reopen a slot that a failed bootstrap swap left closed, as an empty index. For a
+/// seed that ended without installing anything (no donor, no or empty corpus
+/// stream): the slot must serve again before the feed is replayed into it. The data
+/// dir may hold a half-done swap, so it is wiped. No-op for an open slot.
+pub fn reopenEmptyIfClosed(self: *Self, name: []const u8, generation: u64) !void {
+    try self.lock.lock();
+    defer self.lock.unlock();
+
+    const ref = self.indexes.get(name) orelse return error.IndexNotFound;
+    if (ref.being_deleted or ref.generation != generation) return error.IndexGenerationMismatch;
+    if (!ref.closed) return;
+
+    const name_dir = try self.dir.openDir(name, .{ .iterate = true });
+    defer name_dir.close();
+    var vbuf: [index_redirect.max_data_dir_len]u8 = undefined;
+    const vdir_name = (index_redirect.IndexRedirect{ .name = name, .generation = generation }).dataDir(&vbuf);
+    const vdir = try name_dir.openDir(vdir_name, .{ .iterate = true });
+    defer vdir.close();
+
+    // WAL first, as in swapAndReopen: it must never be replayed onto other data.
+    deleteDirTree(self.allocator, vdir, "oplog") catch {};
+    try vdir.sync();
+    deleteDirTree(self.allocator, vdir, "data") catch {};
+    try vdir.sync();
+
+    log.info("reopening '{s}' gen {d} empty after a failed bootstrap swap", .{ name, generation });
+    try self.reopen(ref, name_dir, vdir_name);
+    ref.closed = false;
 }
 
 /// Drop the local index for `name` (stop its data consumer, drain borrows, remove

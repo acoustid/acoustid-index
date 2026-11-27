@@ -331,6 +331,14 @@ fn seedEmptyLineage(self: *Self, c: *Consumer) zio.Cancelable!u64 {
 }
 
 fn trySeed(self: *Self, c: *Consumer) !u64 {
+    const position = try self.trySeedInner(c);
+    // An earlier attempt's swap may have failed and left the slot closed, while this
+    // one found nothing to install. Replay needs a usable index; no-op otherwise.
+    try self.mi.reopenEmptyIfClosed(c.name, c.generation);
+    return position;
+}
+
+fn trySeedInner(self: *Self, c: *Consumer) !u64 {
     if (self.bootstrapConsumer(c, 0)) |v| {
         return v;
     } else |err| switch (err) {
@@ -1190,13 +1198,14 @@ test "an empty node below a truncated log seeds from the source stream" {
     try std.testing.expectEqual(MultiIndex.IndexHealth.ready, try mi.indexHealth("main"));
 }
 
-// Delegates everything except openBootstrap, which always fails — a feed that
-// declares bootstrap but cannot serve it, freezing an empty consumer in its seed
-// retry loop.
-const StuckBootstrap = struct {
+// Delegates everything except openBootstrap, which `open` answers instead (the
+// call count lets it script a sequence of attempts).
+const BootstrapOverride = struct {
     inner: Coordinator,
+    open: *const fn (self: *BootstrapOverride) anyerror!coordinator_mod.BootstrapStream,
+    calls: usize = 0,
 
-    fn coordinator(self: *StuckBootstrap) Coordinator {
+    fn coordinator(self: *BootstrapOverride) Coordinator {
         return .{ .ptr = self, .vtable = &vtable };
     }
     const vtable: Coordinator.VTable = .{
@@ -1209,33 +1218,41 @@ const StuckBootstrap = struct {
         .openBootstrap = openBootstrapImpl,
     };
     fn appendImpl(ptr: *anyopaque, name: []const u8, generation: u64, changes: []const Change, expected: ?u64) anyerror!u64 {
-        const self: *StuckBootstrap = @ptrCast(@alignCast(ptr));
+        const self: *BootstrapOverride = @ptrCast(@alignCast(ptr));
         return self.inner.append(name, generation, changes, expected);
     }
     fn readImpl(ptr: *anyopaque, name: []const u8, generation: u64, after: u64, out: []Entry, deadline: zio.Timeout) anyerror!usize {
-        const self: *StuckBootstrap = @ptrCast(@alignCast(ptr));
+        const self: *BootstrapOverride = @ptrCast(@alignCast(ptr));
         return self.inner.read(name, generation, after, out, deadline);
     }
     fn createIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!u64 {
-        const self: *StuckBootstrap = @ptrCast(@alignCast(ptr));
+        const self: *BootstrapOverride = @ptrCast(@alignCast(ptr));
         return self.inner.createIndex(name);
     }
     fn deleteIndexImpl(ptr: *anyopaque, name: []const u8) anyerror!u64 {
-        const self: *StuckBootstrap = @ptrCast(@alignCast(ptr));
+        const self: *BootstrapOverride = @ptrCast(@alignCast(ptr));
         return self.inner.deleteIndex(name);
     }
     fn readMetaImpl(ptr: *anyopaque, after: u64, out: []MetaOp, deadline: zio.Timeout) anyerror!usize {
-        const self: *StuckBootstrap = @ptrCast(@alignCast(ptr));
+        const self: *BootstrapOverride = @ptrCast(@alignCast(ptr));
         return self.inner.readMeta(after, out, deadline);
     }
     fn setRetentionFloorImpl(ptr: *anyopaque, name: []const u8, generation: u64, floor: u64) anyerror!void {
-        const self: *StuckBootstrap = @ptrCast(@alignCast(ptr));
+        const self: *BootstrapOverride = @ptrCast(@alignCast(ptr));
         return self.inner.setRetentionFloor(name, generation, floor);
     }
-    fn openBootstrapImpl(_: *anyopaque, _: []const u8, _: u64) anyerror!coordinator_mod.BootstrapStream {
-        return error.CoordinatorError;
+    fn openBootstrapImpl(ptr: *anyopaque, _: []const u8, _: u64) anyerror!coordinator_mod.BootstrapStream {
+        const self: *BootstrapOverride = @ptrCast(@alignCast(ptr));
+        self.calls += 1;
+        return self.open(self);
     }
 };
+
+// A feed that declares bootstrap but cannot serve it, freezing an empty consumer in
+// its seed retry loop.
+fn failBootstrap(_: *BootstrapOverride) anyerror!coordinator_mod.BootstrapStream {
+    return error.CoordinatorError;
+}
 
 test "per-index health reads loading while the initial seed cannot complete" {
     const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
@@ -1257,7 +1274,7 @@ test "per-index health reads loading while the initial seed cannot complete" {
     _ = try cl.coordinator().append("main", gen, &[_]Change{.{ .insert = .{ .id = 1, .hashes = &.{ 1, 2, 3 } } }}, null);
     try cl.setRetentionFloor("main", gen, 1); // replay from 0 impossible; only a bootstrap can seed
 
-    var stuck = StuckBootstrap{ .inner = cl.coordinator() };
+    var stuck = BootstrapOverride{ .inner = cl.coordinator(), .open = failBootstrap };
     var mi = MultiIndex.init(std.testing.allocator, dir);
     defer mi.deinit();
     try mi.startReplication(stuck.coordinator());
@@ -1280,6 +1297,83 @@ test "per-index health reads loading while the initial seed cannot complete" {
     try std.testing.expectError(error.IndexNotReady, mi.search(arena.allocator(), "main", .{ .query = &q }));
 
     try std.testing.expectEqual(MultiIndex.IndexHealth.missing, try mi.indexHealth("nope"));
+}
+
+test "a seed that installs nothing after a failed swap reopens the index empty" {
+    const MemoryCoordinator = coordinator_mod.MemoryCoordinator;
+    const common = @import("common.zig");
+
+    const rt = try zio.Runtime.init(std.testing.allocator, .{ .executors = .exact(2) });
+    defer rt.deinit();
+
+    const cwd = zio.Dir.cwd();
+    const dir_path = "test_replicator_seed_after_failed_swap";
+    common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    try cwd.createDir(dir_path, 0o755);
+    defer common.deleteDirTree(std.testing.allocator, cwd, dir_path) catch {};
+    const dir = try cwd.openDir(dir_path, .{ .iterate = true });
+
+    var cl = MemoryCoordinator.init(std.testing.allocator);
+    defer cl.deinit();
+    const gen = try cl.coordinator().createIndex("main");
+    _ = try cl.coordinator().append("main", gen, &[_]Change{.{ .insert = .{ .id = 1, .hashes = &.{ 1, 2, 3 } } }}, null);
+
+    // The first attempt streams doc 99, and its swap fails after the rename, leaving
+    // it in the data dir. Every later attempt streams nothing, so the seed ends
+    // without an install and the feed is replayed from 0.
+    const Stream = struct {
+        batches: []const []const Change,
+        i: usize = 0,
+        const vt: coordinator_mod.BootstrapStream.VTable = .{ .next = nextImpl, .deinit = deinitImpl };
+        fn nextImpl(ptr: *anyopaque) anyerror!?[]const Change {
+            const self: *@This() = @ptrCast(@alignCast(ptr));
+            if (self.i >= self.batches.len) return null;
+            self.i += 1;
+            return self.batches[self.i - 1];
+        }
+        fn deinitImpl(_: *anyopaque) void {}
+
+        var first: @This() = .{ .batches = &.{&.{.{ .insert = .{ .id = 99, .hashes = &.{ 7, 8, 9 } } }}} };
+        var empty: @This() = .{ .batches = &.{} };
+        fn open(o: *BootstrapOverride) anyerror!coordinator_mod.BootstrapStream {
+            const s = if (o.calls == 1) &first else &empty;
+            s.i = 0;
+            return .{ .ptr = s, .vtable = &vt, .position = 0 };
+        }
+    };
+    var flaky = BootstrapOverride{ .inner = cl.coordinator(), .open = Stream.open };
+
+    var mi = MultiIndex.init(std.testing.allocator, dir);
+    defer mi.deinit();
+    mi.test_fail_swap = true;
+    try mi.startReplication(flaky.coordinator());
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    // The replayed feed lands in a usable index: the slot did not stay closed.
+    var q = [_]u32{ 1, 2, 3 };
+    var found = false;
+    var i: usize = 0;
+    while (i < 500) : (i += 1) {
+        const r = mi.search(a, "main", .{ .query = &q }) catch {
+            try zio.sleep(.fromMilliseconds(10));
+            continue;
+        };
+        if (r.results.len == 1 and r.results[0].id == 1) {
+            found = true;
+            break;
+        }
+        try zio.sleep(.fromMilliseconds(10));
+    }
+    try std.testing.expect(found);
+    try std.testing.expect(flaky.calls >= 2);
+    try std.testing.expectEqual(MultiIndex.IndexHealth.ready, try mi.indexHealth("main"));
+
+    // The half-done swap was wiped, not reopened.
+    var q99 = [_]u32{ 7, 8, 9 };
+    try std.testing.expectEqual(@as(usize, 0), (try mi.search(a, "main", .{ .query = &q99 })).results.len);
 }
 
 test "per-index health reads loading during a below-retention restore too" {
